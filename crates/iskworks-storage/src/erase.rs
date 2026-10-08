@@ -154,6 +154,14 @@ pub(crate) async fn erase_workspace_in_tx(
         workspace_id,
     )
     .await?;
+    // Allocations reference recordings (reserved output / consumed by), so
+    // they go before the recordings.
+    run(
+        tx,
+        "DELETE FROM inventory_allocations WHERE workspace_id = $1",
+        workspace_id,
+    )
+    .await?;
     sqlx::query(
         "DELETE FROM ticket_inventory_recordings WHERE id = ANY($1) OR ticket_id = ANY($2)",
     )
@@ -164,12 +172,6 @@ pub(crate) async fn erase_workspace_in_tx(
     run(
         tx,
         "DELETE FROM inventory_balances WHERE workspace_id = $1",
-        workspace_id,
-    )
-    .await?;
-    run(
-        tx,
-        "DELETE FROM inventory_allocations WHERE workspace_id = $1",
         workspace_id,
     )
     .await?;

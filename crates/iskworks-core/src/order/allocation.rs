@@ -33,11 +33,53 @@ pub enum AllocationOwner {
     TicketPrerequisite(TicketPrerequisiteId),
 }
 
+/// Why an allocation exists. `Legacy` rows predate Epic reservations (the
+/// retired Order/Ticket lifecycle claims, all released or consumed); every
+/// row written since is owned by an Epic requirement and says how it was
+/// reserved.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AllocationReason {
+    Legacy,
+    /// Reserved from existing stock when the Epic was created.
+    EpicCreate,
+    /// Reserved later through the Epic's explicit "Reserve inventory" action.
+    EpicTopUp,
+    /// A ticket's recorded output, reserved to the requirement it feeds.
+    RecordedOutput,
+    /// Moved or adjusted by hand.
+    Manual,
+}
+
+impl AllocationReason {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::EpicCreate => "epic_create",
+            Self::EpicTopUp => "epic_top_up",
+            Self::RecordedOutput => "recorded_output",
+            Self::Manual => "manual",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "legacy" => Some(Self::Legacy),
+            "epic_create" => Some(Self::EpicCreate),
+            "epic_top_up" => Some(Self::EpicTopUp),
+            "recorded_output" => Some(Self::RecordedOutput),
+            "manual" => Some(Self::Manual),
+            _ => None,
+        }
+    }
+}
+
 /// A standing claim against physical inventory, owned by an `OrderRequirement`
-/// or `TicketPrerequisite`; only active rows count toward reserved quantity.
-/// Nothing creates allocations any more: creating an Epic or Ticket freezes
-/// its `reused_quantity` without reserving inventory, and every previously
-/// active row was released by migration.
+/// (or, for `Legacy` rows only, a `TicketPrerequisite`); only active rows
+/// count toward reserved quantity, and every planning read counts free stock
+/// (`physical - active`).
 ///
 /// Two timestamps rather than a status enum -- `released_at`/
 /// `consumed_at` -- so the terminal outcome (freed vs. actually used) is
@@ -52,14 +94,21 @@ pub struct InventoryAllocation {
     pub type_id: i64,
     pub quantity: u64,
     pub owner: AllocationOwner,
+    pub reason: AllocationReason,
+    /// The recording whose output this row reserves; set exactly when
+    /// `reason` is `RecordedOutput`.
+    pub source_recording_id: Option<TicketInventoryRecordingId>,
     pub created_at: DateTime<Utc>,
-    /// Set on the owning Order/Ticket's cancellation -- frees the claim,
-    /// no ledger event posted (nothing was ever actually consumed).
+    /// Set when the claim is abandoned (Epic canceled/archived, recorded
+    /// output reverted, stock taken by another Epic) -- no ledger event
+    /// posted, nothing was ever actually consumed.
     pub released_at: Option<DateTime<Utc>>,
-    /// Set on the owning Order/Ticket's completion, in the same
-    /// transaction as posting a real `InventoryEventKind::Consumption`
-    /// event for this allocation's `quantity`.
+    /// Set by the recording that used this stock, in the same transaction
+    /// as its real `InventoryEventKind::Consumption` event.
     pub consumed_at: Option<DateTime<Utc>>,
+    /// The recording that consumed this row; set together with
+    /// `consumed_at` on every non-`Legacy` row.
+    pub consumed_by_recording_id: Option<TicketInventoryRecordingId>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -126,10 +175,27 @@ mod tests {
             type_id: 34,
             quantity,
             owner: AllocationOwner::OrderRequirement(OrderRequirementId::new()),
+            reason: AllocationReason::EpicCreate,
+            source_recording_id: None,
             created_at: Utc::now(),
             released_at: None,
             consumed_at: None,
+            consumed_by_recording_id: None,
         }
+    }
+
+    #[test]
+    fn allocation_reason_round_trips_its_storage_string() {
+        for reason in [
+            AllocationReason::Legacy,
+            AllocationReason::EpicCreate,
+            AllocationReason::EpicTopUp,
+            AllocationReason::RecordedOutput,
+            AllocationReason::Manual,
+        ] {
+            assert_eq!(AllocationReason::parse(reason.as_str()), Some(reason));
+        }
+        assert_eq!(AllocationReason::parse("reserved"), None);
     }
 
     #[test]
