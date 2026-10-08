@@ -522,6 +522,7 @@ fn run_full(
             |(type_id, unit_basis)| crate::build_materials::InventoryBasisEntry {
                 type_id: *type_id,
                 quantity: 0,
+                reserved_quantity: 0,
                 unit_basis: Some(dec(unit_basis)),
                 total_basis: Decimal::ZERO,
             },

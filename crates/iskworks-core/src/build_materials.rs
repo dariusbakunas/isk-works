@@ -718,7 +718,11 @@ pub struct VerificationOperationInput {
 #[serde(rename_all = "camelCase")]
 pub struct InventoryBasisEntry {
     pub type_id: i64,
+    /// Physical on-hand quantity.
     pub quantity: u64,
+    /// Held by open Epics' active reservations; the planning pool was
+    /// seeded with `quantity - reserved_quantity` (floored at 0).
+    pub reserved_quantity: u64,
     pub unit_basis: Option<Decimal>,
     pub total_basis: Decimal,
 }

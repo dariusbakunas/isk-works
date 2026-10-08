@@ -522,3 +522,58 @@ async fn consumed_epic_allocation_requires_its_consuming_recording(pool: PgPool)
     .await
     .expect("legacy consumed rows predate recording links");
 }
+
+// --- `PgInventoryRepository::active_reservations`: the planning pool's
+// free-stock subtraction ---
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn active_reservations_sums_active_rows_per_type_for_the_owner(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    for (type_id, quantity) in [(34, 100), (34, 50), (35, 7)] {
+        seed_legacy_order_allocation(
+            &pool,
+            &repository,
+            workspace_id,
+            owner_id,
+            build_id,
+            type_id,
+            quantity,
+        )
+        .await;
+    }
+    let released =
+        seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 34, 9)
+            .await;
+    let consumed =
+        seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 35, 3)
+            .await;
+    sqlx::query("UPDATE inventory_allocations SET released_at = now() WHERE id = $1")
+        .bind(released)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE inventory_allocations SET consumed_at = now() WHERE id = $1")
+        .bind(consumed)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let inventory = PgInventoryRepository::new(pool.clone());
+    let reserved = inventory
+        .active_reservations(workspace_id, owner_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reserved,
+        std::collections::BTreeMap::from([(34, 150), (35, 7)])
+    );
+
+    let other_owner = inventory
+        .active_reservations(workspace_id, OwnerId::new())
+        .await
+        .unwrap();
+    assert!(other_owner.is_empty());
+}

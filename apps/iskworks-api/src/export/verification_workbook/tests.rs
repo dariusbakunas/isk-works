@@ -301,6 +301,7 @@ mod cost {
         InventoryBasisEntry {
             type_id,
             quantity: 0,
+            reserved_quantity: 0,
             unit_basis: unit_basis.map(dec),
             total_basis: Decimal::ZERO,
         }

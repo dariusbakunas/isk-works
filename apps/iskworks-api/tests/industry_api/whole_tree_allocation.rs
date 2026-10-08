@@ -1018,3 +1018,61 @@ async fn graph_of_a_missing_build_is_a_404() {
     let (status, _) = post_graph(app, BuildId::new(), overlay(1, serde_json::json!([]))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// -- Planning counts free stock: physical minus open Epics' reservations ---
+#[tokio::test]
+async fn materials_count_only_free_stock_for_raw_materials() {
+    // Hull Section fully covered so only the root's own 100 Tritanium is
+    // demanded. 100 on hand, 60 reserved by another Epic -> 40 free.
+    let (parent, linked, parent_id, owner_id) = nested_chain(1);
+    let inventory = support::inventory::SeededInventoryRepository::new([(90_001, 2), (34, 100)])
+        .with_reserved(34, 60);
+    let (app, _inv) = materials_app_with_inventory(parent, owner_id, linked, inventory);
+    let (status, json) = post_materials(app, parent_id, overlay(1, hull_section_built())).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let tritanium = row(&json, 34).unwrap();
+    assert_eq!(tritanium["requiredQuantity"], 100);
+    assert_eq!(tritanium["allocatedQuantity"], 40);
+    assert_eq!(tritanium["shortageQuantity"], 60);
+    assert_eq!(tritanium["fullyCovered"], false);
+    assert_materials_invariants(&json);
+}
+
+#[tokio::test]
+async fn materials_resize_a_child_build_around_reserved_intermediates() {
+    // Two Hull Sections on hand, but another Epic holds one: only one is
+    // free, so the hull child is sized to the one still missing -- the
+    // issue's "intermediates I just produced show as covered" case.
+    let (parent, linked, parent_id, owner_id) = nested_chain(1);
+    let root_id = parent.id;
+    let inventory =
+        support::inventory::SeededInventoryRepository::new([(90_001, 2)]).with_reserved(90_001, 1);
+    let (app, _inv) = materials_app_with_inventory(parent, owner_id, linked, inventory);
+    let (status, json) = post_materials(app, parent_id, overlay(1, hull_section_built())).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let hull_alloc = node_alloc(&json, root_id, 90_001).unwrap();
+    assert_eq!(hull_alloc["requiredQuantity"], 2);
+    assert_eq!(hull_alloc["allocatedQuantity"], 1);
+    assert_eq!(hull_alloc["shortageQuantity"], 1);
+    assert_eq!(hull_alloc["childRuns"], 1);
+    assert_materials_invariants(&json);
+}
+
+#[tokio::test]
+async fn materials_treat_over_reserved_stock_as_none_free() {
+    // Reservations exceeding physical (e.g. after a manual adjustment)
+    // leave nothing free -- never a negative or wrapped pool.
+    let (parent, linked, parent_id, owner_id) = nested_chain(1);
+    let inventory = support::inventory::SeededInventoryRepository::new([(90_001, 2), (34, 50)])
+        .with_reserved(34, 80);
+    let (app, _inv) = materials_app_with_inventory(parent, owner_id, linked, inventory);
+    let (status, json) = post_materials(app, parent_id, overlay(1, hull_section_built())).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let tritanium = row(&json, 34).unwrap();
+    assert_eq!(tritanium["allocatedQuantity"], 0);
+    assert_eq!(tritanium["shortageQuantity"], 100);
+    assert_materials_invariants(&json);
+}

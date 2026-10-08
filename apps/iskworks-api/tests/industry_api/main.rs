@@ -2027,7 +2027,26 @@ fn materials_app(
     axum::Router,
     Arc<support::inventory::SeededInventoryRepository>,
 ) {
-    let inventory = Arc::new(support::inventory::SeededInventoryRepository::new(balances));
+    materials_app_with_inventory(
+        parent,
+        owner_id,
+        linked_builds,
+        support::inventory::SeededInventoryRepository::new(balances),
+    )
+}
+
+/// [`materials_app`] over a caller-built inventory fake (e.g. one with
+/// reservations).
+fn materials_app_with_inventory(
+    parent: Build,
+    owner_id: OwnerId,
+    linked_builds: Vec<Build>,
+    inventory: support::inventory::SeededInventoryRepository,
+) -> (
+    axum::Router,
+    Arc<support::inventory::SeededInventoryRepository>,
+) {
+    let inventory = Arc::new(inventory);
     let router = build_router(
         AppState::new(Arc::new(configured_workspace_owned_by(
             "Industry", owner_id,
