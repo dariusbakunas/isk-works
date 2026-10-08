@@ -34,6 +34,11 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::TicketNotArchivable => (StatusCode::CONFLICT, "ticket_not_archivable", false),
         OrderError::TicketNotRestorable => (StatusCode::CONFLICT, "ticket_not_restorable", false),
         OrderError::ArithmeticOverflow => (StatusCode::BAD_REQUEST, "arithmetic_overflow", false),
+        // Create Epic answers a shortfall with its own drift body (fresh
+        // preview included); this is the generic fallback.
+        OrderError::ReservationShortfall(_) => {
+            (StatusCode::CONFLICT, "reservation_shortfall", true)
+        }
         OrderError::AcquisitionRunNotFound => {
             (StatusCode::NOT_FOUND, "acquisition_run_not_found", false)
         }

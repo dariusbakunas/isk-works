@@ -100,6 +100,19 @@ pub struct NewOrderPlan {
     /// unchanged in shape, `operation_occurrence_key` places each row.
     pub requirements: Vec<NewOrderRequirement>,
     pub tickets: Vec<NewPlanTicket>,
+    /// `Some` reserves every requirement's frozen `reused_quantity` from
+    /// free stock in the same transaction (all or nothing,
+    /// [`OrderError::ReservationShortfall`] otherwise); `None` persists
+    /// the plan inventory-neutral.
+    pub reservation: Option<NewPlanReservation>,
+}
+
+/// How to order a new plan's reservations: the plan's operation stages
+/// (`OperationDag::stages`), so requirements are served earliest consumer
+/// first (see `order::plan_epic_reservations`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NewPlanReservation {
+    pub stages: std::collections::BTreeMap<String, u32>,
 }
 
 /// One generated ticket within a whole-tree plan, paired with the
@@ -125,6 +138,9 @@ pub struct OrderPlanResult {
     pub requirements: Vec<OrderRequirement>,
     pub operations: Vec<PlanOperation>,
     pub tickets: Vec<Ticket>,
+    /// The allocations written for [`NewOrderPlan::reservation`], in
+    /// serving order; empty when the plan reserved nothing.
+    pub reservations: Vec<PlannedReservation>,
 }
 
 /// One frozen material need for a Manufacturing/Reaction ticket.
@@ -386,6 +402,11 @@ pub enum OrderError {
     TicketNotRestorable,
     #[error("quantity arithmetic exceeds the supported range")]
     ArithmeticOverflow,
+    /// Reserving a new Epic's frozen reuse needs more of these types than
+    /// is free (another Epic reserved it since the preview, or stock was
+    /// removed).
+    #[error("not enough free inventory to reserve this Epic's planned reuse")]
+    ReservationShortfall(Vec<ReservationShortfall>),
     #[error("acquisition run was not found")]
     AcquisitionRunNotFound,
     #[error("an acquisition run needs at least one ticket")]
@@ -513,8 +534,12 @@ pub trait OrderRepository: Send + Sync {
     /// `create_ticket` sequence (two transactions), there is no
     /// window where an Order can exist without its root ticket.
     ///
-    /// Still fully inventory-neutral: no `inventory_allocations` /
-    /// `inventory_events` / balance write, no reservation row, of any kind.
+    /// Never posts an `inventory_events` row or changes a balance. With
+    /// [`NewOrderPlan::reservation`] it locks the reused types' balances
+    /// (sorted `type_id` order), measures free stock under that lock and
+    /// writes one `epic_create` allocation per reusing requirement, or
+    /// fails with [`OrderError::ReservationShortfall`] and persists
+    /// nothing.
     async fn create_order_plan(
         &self,
         new_plan: NewOrderPlan,

@@ -42,8 +42,8 @@ use super::*;
 pub(super) async fn create_order(
     State(state): State<AppState>,
     Path(build_id): Path<uuid::Uuid>,
-    Json(command): Json<PreviewBuildPlanCommand>,
-) -> Result<(StatusCode, Json<OrderDetailResponse>), ApiError> {
+    Json(request): Json<CreateOrderRequest>,
+) -> Result<Response, ApiError> {
     let (workspace_id, owner_id) = workspace_context(&state).await?;
     let build_id = BuildId(build_id);
     let build = state
@@ -53,8 +53,39 @@ pub(super) async fn create_order(
 
     let frozen = state
         .order_plan_coordinator()?
-        .freeze(workspace_id, owner_id, build_id, command)
+        .freeze(workspace_id, owner_id, build_id, request.command)
         .await?;
+
+    // Reservation drift: the client confirmed the reuse it previewed. Less
+    // reuse now means more to buy or build than the user agreed to, so
+    // refuse with the fresh preview; more reuse is strictly less work, so
+    // proceed and report it.
+    let reuse_increased = match &request.reservation {
+        Some(reservation) => {
+            let expected =
+                reservation
+                    .expected_reuse
+                    .iter()
+                    .fold(BTreeMap::new(), |mut reuse, line| {
+                        *reuse.entry(line.type_id).or_insert(0_u64) += line.quantity;
+                        reuse
+                    });
+            let comparison = compare_reuse(&expected, &reuse_by_type(&frozen.requirements));
+            if !comparison.decreased.is_empty() {
+                return Ok(reservation_drift_response(
+                    EpicReusePreview::of(&frozen.requirements),
+                    comparison.decreased,
+                    Vec::new(),
+                ));
+            }
+            comparison.increased
+        }
+        None => Vec::new(),
+    };
+    let preview = request
+        .reservation
+        .is_some()
+        .then(|| EpicReusePreview::of(&frozen.requirements));
     let root_operation = frozen
         .operations
         .first()
@@ -232,8 +263,22 @@ pub(super) async fn create_order(
             operations: frozen.operations,
             requirements: frozen.requirements,
             tickets: plan_tickets,
+            reservation: request.reservation.as_ref().map(|_| NewPlanReservation {
+                stages: dag.stages.clone(),
+            }),
         })
-        .await?;
+        .await;
+    let plan_result = match plan_result {
+        Ok(plan_result) => plan_result,
+        Err(OrderError::ReservationShortfall(shortfalls)) => {
+            return Ok(reservation_drift_response(
+                preview.expect("a shortfall implies a reservation request"),
+                Vec::new(),
+                shortfalls,
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
 
     // A freshly created Order has no fulfillment links yet by construction
     // (`create_order_plan` links requirements to tickets only through
@@ -253,7 +298,135 @@ pub(super) async fn create_order(
         empty_fulfillments,
     );
     response.production_plan = production_plan;
-    Ok((StatusCode::CREATED, Json(response)))
+    response.reuse_increased = reuse_increased;
+    Ok((StatusCode::CREATED, Json(response)).into_response())
+}
+
+/// `POST /api/builds/:build_id/orders` body: the live overlay command
+/// (flattened, so a bare command still works) plus an optional request to
+/// reserve the Epic's frozen reuse.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CreateOrderRequest {
+    #[serde(flatten)]
+    command: PreviewBuildPlanCommand,
+    /// Absent: the Epic is created without reserving anything.
+    #[serde(default)]
+    reservation: Option<CreateOrderReservation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CreateOrderReservation {
+    /// The per-type reuse the client previewed and the user confirmed.
+    #[serde(default)]
+    expected_reuse: Vec<ExpectedReuse>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ExpectedReuse {
+    type_id: i64,
+    quantity: u64,
+}
+
+/// What an Epic created from this overlay right now would reuse from free
+/// stock, per type.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EpicReusePreview {
+    reuse: Vec<ReuseLine>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ReuseLine {
+    type_id: i64,
+    type_name: String,
+    quantity: u64,
+}
+
+impl EpicReusePreview {
+    fn of(requirements: &[NewOrderRequirement]) -> Self {
+        let names: BTreeMap<i64, &str> = requirements
+            .iter()
+            .map(|requirement| (requirement.type_id, requirement.captured_name.as_str()))
+            .collect();
+        Self {
+            reuse: reuse_by_type(requirements)
+                .into_iter()
+                .map(|(type_id, quantity)| ReuseLine {
+                    type_id,
+                    type_name: names.get(&type_id).copied().unwrap_or_default().to_string(),
+                    quantity,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ReservationDriftEnvelope {
+    error: ReservationDriftBody,
+}
+
+/// 409 when the Epic can't reserve what the user confirmed. Carries the
+/// fresh preview so the client can refresh without another request.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReservationDriftBody {
+    code: &'static str,
+    message: &'static str,
+    retryable: bool,
+    preview: EpicReusePreview,
+    /// Types the Epic would now reuse less of than previewed.
+    decreased: Vec<ReuseChange>,
+    /// Types another writer reserved or removed since the freeze.
+    shortfalls: Vec<ReservationShortfall>,
+}
+
+fn reservation_drift_response(
+    preview: EpicReusePreview,
+    decreased: Vec<ReuseChange>,
+    shortfalls: Vec<ReservationShortfall>,
+) -> Response {
+    // Same `{ "error": ... }` envelope as every other API error, so
+    // clients read it through their usual error path.
+    (
+        StatusCode::CONFLICT,
+        Json(ReservationDriftEnvelope {
+            error: ReservationDriftBody {
+            code: "reservation_drift",
+            message: "Free inventory changed since the preview. Review the updated reuse and confirm again.",
+            retryable: true,
+            preview,
+            decreased,
+            shortfalls,
+        },
+        }),
+    )
+        .into_response()
+}
+
+/// `POST /api/builds/:build_id/orders/preview`: run the same freeze Create
+/// Epic would, persist nothing, and return the per-type reuse the dialog
+/// shows (and later sends back as `expectedReuse`).
+pub(super) async fn preview_order(
+    State(state): State<AppState>,
+    Path(build_id): Path<uuid::Uuid>,
+    Json(command): Json<PreviewBuildPlanCommand>,
+) -> Result<Json<EpicReusePreview>, ApiError> {
+    let (workspace_id, owner_id) = workspace_context(&state).await?;
+    let build_id = BuildId(build_id);
+    state
+        .industry_repository()?
+        .get_build(workspace_id, build_id)
+        .await?;
+    let frozen = state
+        .order_plan_coordinator()?
+        .freeze(workspace_id, owner_id, build_id, command)
+        .await?;
+    Ok(Json(EpicReusePreview::of(&frozen.requirements)))
 }
 
 #[derive(Debug, Serialize)]

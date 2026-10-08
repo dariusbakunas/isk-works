@@ -2,17 +2,17 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
-    derive_recording_summary, NewOrder, NewOrderPlan, NewOrderRequirement, NewPlanOperation,
-    NewTicket, NewTicketPrerequisite, Order, OrderError, OrderId, OrderPlanResult, OrderRepository,
-    OrderRequirement, OrderRequirementFulfillment, OrderRequirementFulfillmentId,
-    OrderRequirementId, PlanOperation, PlanOperationEvidence, PlanOperationId,
-    PlanRequirementEvidence, RecordAcquisitionInput, RecordAcquisitionOutcome,
-    RecordProductionInput, RecordProductionOutcome, RequirementKind, RequirementTicketCreation,
-    RevertTicketInventoryRecordingOutcome, Ticket, TicketId, TicketInventoryEffect,
-    TicketInventoryRecording, TicketInventoryRecordingId, TicketInventoryRecordingKind,
-    TicketInventoryRecordingStatus, TicketKind, TicketMetadataUpdate, TicketPrerequisite,
-    TicketPrerequisiteFulfillment, TicketPrerequisiteFulfillmentId, TicketPrerequisiteId,
-    TicketStatus,
+    derive_recording_summary, plan_epic_reservations, reuse_by_type, AllocationReason, NewOrder,
+    NewOrderPlan, NewOrderRequirement, NewPlanOperation, NewTicket, NewTicketPrerequisite, Order,
+    OrderError, OrderId, OrderPlanResult, OrderRepository, OrderRequirement,
+    OrderRequirementFulfillment, OrderRequirementFulfillmentId, OrderRequirementId, PlanOperation,
+    PlanOperationEvidence, PlanOperationId, PlanRequirementEvidence, RecordAcquisitionInput,
+    RecordAcquisitionOutcome, RecordProductionInput, RecordProductionOutcome, RequirementKind,
+    RequirementTicketCreation, RevertTicketInventoryRecordingOutcome, Ticket, TicketId,
+    TicketInventoryEffect, TicketInventoryRecording, TicketInventoryRecordingId,
+    TicketInventoryRecordingKind, TicketInventoryRecordingStatus, TicketKind, TicketMetadataUpdate,
+    TicketPrerequisite, TicketPrerequisiteFulfillment, TicketPrerequisiteFulfillmentId,
+    TicketPrerequisiteId, TicketStatus,
 };
 use iskworks_core::{
     allocate_acquisition_delivery, weighted_unit_cost, AcquisitionProgressUpdate, AcquisitionRun,
@@ -34,6 +34,7 @@ mod inserts;
 mod inventory_posting;
 mod recording_queries;
 mod repository_impl;
+mod reservations;
 mod rows;
 
 #[cfg(test)]

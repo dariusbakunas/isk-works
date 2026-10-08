@@ -1152,8 +1152,11 @@ describe("Create Build planning", () => {
       if (url.endsWith("/api/builds/reaction-build-1") && init?.method === "PUT") {
         return mockResponse({ ...reactionBuild, revision: reactionBuild.revision + 1 });
       }
+      if (url.endsWith("/api/builds/reaction-build-1/orders/preview") && init?.method === "POST") {
+        return mockResponse({ reuse: [{ typeId: 16634, typeName: "Hydrocarbons", quantity: 120 }] });
+      }
       if (url.endsWith("/api/builds/reaction-build-1/orders") && init?.method === "POST") {
-        planBuildRequestBody = { buildId: "reaction-build-1" };
+        planBuildRequestBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return mockResponse({
           id: "order-1",
           workspaceId: "workspace-1",
@@ -1242,7 +1245,17 @@ describe("Create Build planning", () => {
     const createEpicButton = await screen.findByRole("button", { name: "Create Epic" }, { timeout: 3000 });
     await user.click(createEpicButton);
 
+    // The dialog previews the inventory the Epic uses, with Reserve on.
+    const dialog = await screen.findByRole("dialog", { name: "Create Epic" });
+    expect(await within(dialog).findByText("Hydrocarbons")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Reserve inventory/ })).toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "Create Epic" }));
+
     await waitFor(() => expect(planBuildRequestBody).not.toBeNull());
+    expect(planBuildRequestBody).toMatchObject({
+      buildId: "reaction-build-1",
+      reservation: { expectedReuse: [{ typeId: 16634, quantity: 120 }] },
+    });
 
     // "Create Epic" lands on the Board with the new Epic's inspector
     // already open (`/board?epic=order-1`) rather than a separate Order

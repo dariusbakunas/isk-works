@@ -565,6 +565,7 @@ async fn create_order_plan_is_atomic_and_rolls_back_completely_on_failure(pool: 
         operations: vec![root_op, bogus_op],
         requirements: Vec::new(),
         tickets: Vec::new(),
+        reservation: None,
     };
 
     let result = order_repository.create_order_plan(plan).await;

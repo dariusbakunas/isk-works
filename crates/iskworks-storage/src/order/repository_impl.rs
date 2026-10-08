@@ -294,6 +294,25 @@ impl OrderRepository for PgOrderRepository {
             OrderError::Persistence("new Order plan requires a source Build".to_string())
         })?;
 
+        // Reserve before writing anything: lock the reused types' balances,
+        // measure free stock under the lock, and fail the whole plan on a
+        // shortfall. The allocations themselves are inserted once their
+        // requirements exist.
+        let reservations = match &new_plan.reservation {
+            Some(reservation) => {
+                let free = super::reservations::lock_free_stock(
+                    &mut tx,
+                    order.workspace_id,
+                    order.owner_id,
+                    reuse_by_type(&new_plan.requirements).into_keys(),
+                )
+                .await?;
+                plan_epic_reservations(&new_plan.requirements, &reservation.stages, &free)
+                    .map_err(OrderError::ReservationShortfall)?
+            }
+            None => Vec::new(),
+        };
+
         sqlx::query(
             r#"
             INSERT INTO price_snapshots (
@@ -399,6 +418,15 @@ impl OrderRepository for PgOrderRepository {
         for requirement in new_plan.requirements {
             requirements.push(insert_order_requirement(&mut tx, order.id, requirement).await?);
         }
+        super::reservations::insert_requirement_allocations(
+            &mut tx,
+            order.workspace_id,
+            order.owner_id,
+            AllocationReason::EpicCreate,
+            &reservations,
+            now,
+        )
+        .await?;
 
         let mut tickets = Vec::with_capacity(new_plan.tickets.len());
         let mut ticket_id_by_occurrence: HashMap<String, TicketId> = HashMap::new();
@@ -474,6 +502,7 @@ impl OrderRepository for PgOrderRepository {
             requirements,
             operations,
             tickets,
+            reservations,
         })
     }
 
