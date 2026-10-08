@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest something ISK Works should do.
+labels: ["feature", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to do in EVE industry terms, and what gets in the way?
+      placeholder: When I plan a capital build, I have to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

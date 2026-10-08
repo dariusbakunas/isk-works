@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in ISK Works doesn't work as it should.
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't paste wallet, asset or character data.** Describe the problem with item names and numbers instead.
+        Security issues go to [private vulnerability reporting](https://github.com/dariusbakunas/isk-works/security/advisories/new), not here.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in the app header, e.g. `v1.2.3 (abc1234)`.
+    validations:
+      required: true
+  - type: dropdown
+    id: instance
+    attributes:
+      label: Where are you running it?
+      options:
+        - Public instance
+        - Self-hosted
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If numbers are wrong, include the item, runs and facility setup.
+      placeholder: |
+        1. Go to ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and OS
+      placeholder: Firefox 131, macOS 15
