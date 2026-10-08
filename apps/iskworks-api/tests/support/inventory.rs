@@ -22,6 +22,8 @@ pub struct SeededInventoryRepository {
     /// reports `average_unit_cost` / `total_historical_cost` instead of the
     /// zero-cost default.
     costs: std::collections::BTreeMap<i64, String>,
+    /// `type_id -> quantity` held by active reservations (open Epics).
+    reserved: std::collections::BTreeMap<i64, u64>,
     pub list_balances_calls: Mutex<u32>,
 }
 
@@ -31,6 +33,7 @@ impl SeededInventoryRepository {
         Self {
             balances: balances.into_iter().collect(),
             costs: std::collections::BTreeMap::new(),
+            reserved: std::collections::BTreeMap::new(),
             list_balances_calls: Mutex::new(0),
         }
     }
@@ -40,6 +43,13 @@ impl SeededInventoryRepository {
     #[must_use]
     pub fn with_unit_basis(mut self, type_id: i64, unit_basis: &str) -> Self {
         self.costs.insert(type_id, unit_basis.to_string());
+        self
+    }
+
+    /// Mark `quantity` of a seeded type as reserved by open Epics.
+    #[must_use]
+    pub fn with_reserved(mut self, type_id: i64, quantity: u64) -> Self {
+        self.reserved.insert(type_id, quantity);
         self
     }
 
@@ -86,6 +96,14 @@ impl InventoryRepository for SeededInventoryRepository {
                 }
             })
             .collect())
+    }
+
+    async fn active_reservations(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+    ) -> Result<std::collections::BTreeMap<i64, u64>, InventoryError> {
+        Ok(self.reserved.clone())
     }
 
     async fn get_history(

@@ -121,6 +121,27 @@ fn planning_inventory_seed_sums_duplicate_type_ids() {
     assert_eq!(pool.available(35), 5);
 }
 
+#[test]
+fn planning_inventory_seed_free_excludes_reservations_and_remembers_them() {
+    let mut pool = PlanningInventory::seed_free([(34, 1_000, 600), (35, 50, 80), (36, 10, 0)]);
+    assert_eq!(pool.available(34), 400);
+    assert_eq!(pool.reserved(34), 600);
+    // Over-reserved: nothing free, never wrapped.
+    assert_eq!(pool.available(35), 0);
+    assert_eq!(pool.reserved(35), 80);
+    assert_eq!(pool.available(36), 10);
+    assert_eq!(pool.reserved(36), 0);
+    // Reserved stock is never drawn.
+    assert_eq!(pool.take(34, 1_000), 400);
+    assert_eq!(pool.remaining(34), 0);
+}
+
+#[test]
+fn planning_inventory_seed_reports_nothing_reserved() {
+    let pool = PlanningInventory::seed([(34, 1_000)]);
+    assert_eq!(pool.reserved(34), 0);
+}
+
 // ---------------------------------------------------------------------------
 // allocate -- the boundary primitive
 // ---------------------------------------------------------------------------

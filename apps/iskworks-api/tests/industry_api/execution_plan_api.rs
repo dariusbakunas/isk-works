@@ -38,7 +38,32 @@ fn execution_plan_app_with(
     axum::Router,
     Arc<support::inventory::SeededInventoryRepository>,
 ) {
-    let inventory = Arc::new(support::inventory::SeededInventoryRepository::new(balances));
+    execution_plan_app_with_inventory(
+        parent,
+        owner_id,
+        linked_builds,
+        support::inventory::SeededInventoryRepository::new(balances),
+        sde,
+        facility_profiles,
+    )
+}
+
+#[allow(clippy::type_complexity)]
+fn execution_plan_app_with_inventory(
+    parent: Build,
+    owner_id: OwnerId,
+    linked_builds: Vec<Build>,
+    inventory: support::inventory::SeededInventoryRepository,
+    sde: Arc<dyn SdeReadRepository>,
+    facility_profiles: std::collections::HashMap<
+        iskworks_core::FacilityProfileId,
+        iskworks_core::IndustryFacilityProfile,
+    >,
+) -> (
+    axum::Router,
+    Arc<support::inventory::SeededInventoryRepository>,
+) {
+    let inventory = Arc::new(inventory);
     let router = build_router(
         AppState::new(Arc::new(configured_workspace_owned_by(
             "Industry", owner_id,
@@ -934,4 +959,35 @@ async fn execution_plan_missing_build_is_a_404_not_a_persistence_leak() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     // Curated error body, never a raw persistence/debug string.
     assert!(json["error"].is_object());
+}
+
+// -------------------------------------------------------------------
+// Free stock: acquisitions count only what open Epics haven't reserved
+// -------------------------------------------------------------------
+
+#[tokio::test]
+async fn execution_plan_acquisitions_report_free_and_reserved_stock() {
+    // Root needs 100 Tritanium; 100 on hand but 70 reserved by another
+    // Epic -> 30 free, 70 to buy.
+    let (parent, linked, parent_id, owner_id) = nested_chain(1);
+    let inventory = support::inventory::SeededInventoryRepository::new([(90_001, 2), (34, 100)])
+        .with_reserved(34, 70);
+    let (app, _inv) = execution_plan_app_with_inventory(
+        parent,
+        owner_id,
+        linked,
+        inventory,
+        Arc::new(FixtureSdeRepository),
+        std::collections::HashMap::new(),
+    );
+    let (status, json) =
+        post_execution_plan(app, parent_id, overlay(1, hull_section_built())).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let tritanium = acquisition_for_type(&json, 34).expect("Tritanium must be acquired");
+    assert_eq!(tritanium["requiredQuantity"], 100);
+    assert_eq!(tritanium["availableQuantity"], 30);
+    assert_eq!(tritanium["reservedQuantity"], 70);
+    assert_eq!(tritanium["plannedInventoryQuantity"], 30);
+    assert_eq!(tritanium["shortageQuantity"], 70);
 }

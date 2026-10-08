@@ -1,4 +1,5 @@
 use super::*;
+use iskworks_core::order::AllocationReason;
 
 // --- Inventory reporting: `PgProductionRepository::reserved_quantity` ---
 //
@@ -384,4 +385,233 @@ async fn reserved_quantity_excludes_legacy_allocations_for_another_workspace(poo
             .unwrap(),
         0
     );
+}
+
+// --- Migration 202610080002: allocation reason + recording links ---
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn allocations_written_without_a_reason_are_legacy(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let id =
+        seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 34, 10)
+            .await;
+
+    let (reason, source, consumed_by): (String, Option<Uuid>, Option<Uuid>) = sqlx::query_as(
+        "SELECT reason, source_recording_id, consumed_by_recording_id \
+         FROM inventory_allocations WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        AllocationReason::parse(&reason),
+        Some(AllocationReason::Legacy)
+    );
+    assert_eq!(source, None);
+    assert_eq!(consumed_by, None);
+}
+
+/// Inserts an Epic-reason allocation row directly with the given lifecycle
+/// columns, returning the database result so constraint violations can be
+/// asserted.
+async fn try_insert_allocation(
+    pool: &PgPool,
+    repository: &PgOrderRepository,
+    workspace_id: WorkspaceId,
+    owner_id: OwnerId,
+    build_id: BuildId,
+    reason: AllocationReason,
+    consumed: bool,
+) -> Result<sqlx::postgres::PgQueryResult, sqlx::Error> {
+    let snapshot = empty_price_snapshot();
+    let order = draft_order(workspace_id, owner_id, build_id, snapshot.id);
+    let (_, requirements) = repository
+        .create_order(NewOrder {
+            order,
+            price_snapshot: snapshot,
+            requirements: vec![requirement(34, RequirementKind::Buy, 10)],
+        })
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO inventory_allocations \
+         (id, workspace_id, owner_id, type_id, quantity, order_requirement_id, created_at, \
+          reason, consumed_at) \
+         VALUES ($1, $2, $3, 34, 10, $4, now(), $5, CASE WHEN $6 THEN now() END)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(workspace_id.0)
+    .bind(owner_id.0)
+    .bind(requirements[0].id.0)
+    .bind(reason.as_str())
+    .bind(consumed)
+    .execute(pool)
+    .await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recorded_output_allocation_requires_its_source_recording(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+
+    let result = try_insert_allocation(
+        &pool,
+        &repository,
+        workspace_id,
+        owner_id,
+        build_id,
+        AllocationReason::RecordedOutput,
+        false,
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "recorded_output row without source_recording_id was accepted"
+    );
+
+    try_insert_allocation(
+        &pool,
+        &repository,
+        workspace_id,
+        owner_id,
+        build_id,
+        AllocationReason::EpicCreate,
+        false,
+    )
+    .await
+    .expect("an active epic_create row needs no recording link");
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn consumed_epic_allocation_requires_its_consuming_recording(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+
+    let result = try_insert_allocation(
+        &pool,
+        &repository,
+        workspace_id,
+        owner_id,
+        build_id,
+        AllocationReason::EpicCreate,
+        true,
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "consumed epic_create row without consumed_by_recording_id was accepted"
+    );
+
+    try_insert_allocation(
+        &pool,
+        &repository,
+        workspace_id,
+        owner_id,
+        build_id,
+        AllocationReason::Legacy,
+        true,
+    )
+    .await
+    .expect("legacy consumed rows predate recording links");
+}
+
+// --- `PgInventoryRepository::active_reservations`: the planning pool's
+// free-stock subtraction ---
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn active_reservations_sums_active_rows_per_type_for_the_owner(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    for (type_id, quantity) in [(34, 100), (34, 50), (35, 7)] {
+        seed_legacy_order_allocation(
+            &pool,
+            &repository,
+            workspace_id,
+            owner_id,
+            build_id,
+            type_id,
+            quantity,
+        )
+        .await;
+    }
+    let released =
+        seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 34, 9)
+            .await;
+    let consumed =
+        seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 35, 3)
+            .await;
+    sqlx::query("UPDATE inventory_allocations SET released_at = now() WHERE id = $1")
+        .bind(released)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE inventory_allocations SET consumed_at = now() WHERE id = $1")
+        .bind(consumed)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let inventory = PgInventoryRepository::new(pool.clone());
+    let reserved = inventory
+        .active_reservations(workspace_id, owner_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reserved,
+        std::collections::BTreeMap::from([(34, 150), (35, 7)])
+    );
+
+    let other_owner = inventory
+        .active_reservations(workspace_id, OwnerId::new())
+        .await
+        .unwrap();
+    assert!(other_owner.is_empty());
+}
+
+// --- `PgProductionRepository::coverage`: other Epics' reservations ---
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn build_coverage_counts_other_epics_reservations_as_unavailable(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    sqlx::query(
+        "INSERT INTO build_recipe_materials (build_id, type_id, captured_name, quantity_per_run, sort_order) \
+         VALUES ($1, 34, 'Tritanium', 100, 0)",
+    )
+    .bind(build_id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    seed_inventory_balance(&pool, workspace_id, owner_id, 34, 100).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 34, 70)
+        .await;
+
+    let coverage = crate::PgProductionRepository::new(pool.clone())
+        .coverage(workspace_id, build_id)
+        .await
+        .unwrap();
+    let tritanium = &coverage.material_lines[0];
+    assert_eq!(tritanium.required_quantity, 100);
+    assert_eq!(tritanium.accounted_owned_quantity, 100);
+    assert_eq!(tritanium.reserved_for_this_build, 0);
+    assert_eq!(tritanium.reserved_by_other_builds, 70);
+    assert_eq!(tritanium.unreserved_available_quantity, 30);
+    assert_eq!(tritanium.available_to_this_build, 30);
+    assert_eq!(tritanium.covered_quantity, 30);
+    assert_eq!(tritanium.missing_quantity, 70);
+    assert_eq!(tritanium.projected_historical_cost, None);
+    assert!(!coverage.complete_quantity_coverage);
+    assert!(!coverage.complete_cost_coverage);
 }

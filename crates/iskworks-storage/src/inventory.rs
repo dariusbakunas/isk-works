@@ -282,6 +282,31 @@ impl InventoryRepository for PgInventoryRepository {
         .collect()
     }
 
+    async fn active_reservations(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+    ) -> Result<std::collections::BTreeMap<i64, u64>, InventoryError> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT type_id, SUM(quantity)::bigint FROM inventory_allocations \
+             WHERE workspace_id = $1 AND owner_id = $2 \
+             AND released_at IS NULL AND consumed_at IS NULL \
+             GROUP BY type_id",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        rows.into_iter()
+            .map(|(type_id, reserved)| {
+                u64::try_from(reserved)
+                    .map(|reserved| (type_id, reserved))
+                    .map_err(|_| InventoryError::Persistence("negative reserved quantity".into()))
+            })
+            .collect()
+    }
+
     async fn get_history(
         &self,
         key: &InventoryItemKey,

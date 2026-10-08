@@ -392,6 +392,9 @@ pub struct AcquisitionLine {
     /// `0` only if the type is absent from `material_lines` (should not
     /// happen for a `Buy` contribution the same walk already recorded).
     pub available_quantity: u64,
+    /// Held by open Epics' reservations, excluded from
+    /// `available_quantity` (`AggregateMaterialLine::reserved_quantity`).
+    pub reserved_quantity: u64,
     /// The whole-tree source strategy for this type
     /// (`AggregateMaterialLine::strategy`) -- `Mixed` means this type is
     /// *also* produced (Build/Reaction) elsewhere in the tree. Purely
@@ -1238,6 +1241,7 @@ fn build_acquisitions(
                 planned_inventory_quantity: totals.planned_inventory,
                 shortage_quantity: totals.shortage,
                 available_quantity: line.map_or(0, |line| line.available_quantity),
+                reserved_quantity: line.map_or(0, |line| line.reserved_quantity),
                 source_strategy: line.map_or(MaterialRowStrategy::Buy, |line| line.strategy),
                 consumers: totals.consumers,
                 production_methods: Vec::new(),

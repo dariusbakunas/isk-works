@@ -7,7 +7,8 @@
 //!
 //! 1. **one** `InventoryRepository::list_balances(workspace, owner)` read --
 //!    the single, authoritative inventory observation for the whole request.
-//! 2. seed [`PlanningInventory`] from those balance quantities.
+//! 2. seed [`PlanningInventory`] from free stock: those balance quantities
+//!    minus `InventoryRepository::active_reservations` (open Epics' holds).
 //! 3. [`IndustryService::project_build_materials`] -- the overlay-rooted
 //!    allocating DFS: allocate inventory at **every** component-requirement
 //!    boundary, size each surviving Build/Reaction child dynamically to its
@@ -204,18 +205,26 @@ impl BuildMaterialsCoordinator {
 
         // (1) The single, authoritative inventory observation for the whole
         // request -- seeded into the ephemeral planning pool the traversal
-        // draws down exactly once.
-        let balances = self
-            .preview
-            .inventory_repository()?
+        // draws down exactly once. Planning counts free stock only: what
+        // open Epics have reserved is never available to another plan (or
+        // to a new Epic's freeze).
+        let inventory = self.preview.inventory_repository()?;
+        let balances = inventory
             .list_balances(workspace_id, owner_id)
             .await
             .map_err(BuildPreviewError::from)?;
-        let mut pool = PlanningInventory::seed(
-            balances
-                .iter()
-                .map(|balance| (balance.key.type_id, balance.quantity)),
-        );
+        let reserved = inventory
+            .active_reservations(workspace_id, owner_id)
+            .await
+            .map_err(BuildPreviewError::from)?;
+        let reserved_of = |type_id: i64| reserved.get(&type_id).copied().unwrap_or(0);
+        let mut pool = PlanningInventory::seed_free(balances.iter().map(|balance| {
+            (
+                balance.key.type_id,
+                balance.quantity,
+                reserved_of(balance.key.type_id),
+            )
+        }));
         // Retain the per-type basis from that *same* snapshot for the
         // verification workbook -- no second `list_balances`.
         let inventory_basis: Vec<InventoryBasisEntry> = if capture_verification {
@@ -224,6 +233,7 @@ impl BuildMaterialsCoordinator {
                 .map(|balance| InventoryBasisEntry {
                     type_id: balance.key.type_id,
                     quantity: balance.quantity,
+                    reserved_quantity: reserved_of(balance.key.type_id),
                     unit_basis: balance.average_unit_cost.map(|money| money.0),
                     total_basis: balance.total_historical_cost.0,
                 })

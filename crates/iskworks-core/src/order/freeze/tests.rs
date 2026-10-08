@@ -160,6 +160,7 @@ fn root_only_buy_plan_freezes_one_operation_and_two_requirements() {
     let inventory_basis = vec![InventoryBasisEntry {
         type_id: 34,
         quantity: 40,
+        reserved_quantity: 0,
         unit_basis: Some(Decimal::from(2)),
         total_basis: Decimal::from(80),
     }];
@@ -501,6 +502,7 @@ fn x_basis(quantity: u64) -> Vec<InventoryBasisEntry> {
     vec![InventoryBasisEntry {
         type_id: X,
         quantity,
+        reserved_quantity: 0,
         unit_basis: Some(Decimal::from(3)),
         total_basis: Decimal::from(3 * quantity),
     }]

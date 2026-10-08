@@ -105,11 +105,48 @@ impl PgProductionRepository {
         .map_err(map_sqlx)
     }
 
-    /// Builds hold no material reservations, so
-    /// `reserved_for_this_build`/`reserved_by_other_builds` are always `0`
-    /// here: everything else on `MaterialCoverage`
-    /// (owned quantity, cost, coverage state) only ever needed real
-    /// inventory, never a reservation table, so it stays fully live.
+    /// Σ active `inventory_allocations` per listed type for this owner; a
+    /// type with nothing reserved is absent.
+    async fn active_reserved_with<'e, E>(
+        executor: E,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, u64>, ProductionError>
+    where
+        E: sqlx::Executor<'e, Database = Postgres>,
+    {
+        if type_ids.is_empty() {
+            return Ok(std::collections::BTreeMap::new());
+        }
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT type_id, SUM(quantity)::bigint FROM inventory_allocations \
+             WHERE workspace_id = $1 AND owner_id = $2 AND type_id = ANY($3) \
+             AND released_at IS NULL AND consumed_at IS NULL \
+             GROUP BY type_id",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_ids)
+        .fetch_all(executor)
+        .await
+        .map_err(map_sqlx)?;
+        rows.into_iter()
+            .map(|(type_id, reserved)| {
+                u64::try_from(reserved)
+                    .map(|reserved| (type_id, reserved))
+                    .map_err(|_| {
+                        ProductionError::Persistence("negative reserved quantity".to_string())
+                    })
+            })
+            .collect()
+    }
+
+    /// Builds hold no reservations of their own (Epics do), so
+    /// `reserved_for_this_build` is always `0` and every active reservation
+    /// counts as `reserved_by_other_builds`: coverage, the projected
+    /// inventory cost and cost completeness all use free stock
+    /// (`physical - active reservations`).
     async fn coverage_with<'e, E>(
         executor: E,
         workspace_id: WorkspaceId,
@@ -129,13 +166,21 @@ impl PgProductionRepository {
         .fetch_one(executor)
         .await
         .map_err(map_sqlx)?;
+        let material_type_ids: Vec<i64> = materials.iter().map(|m| m.type_id).collect();
+        let reserved: std::collections::BTreeMap<i64, u64> = Self::active_reserved_with(
+            executor,
+            workspace_id,
+            OwnerId(build.owner_id),
+            &material_type_ids,
+        )
+        .await?;
         let mut lines = Vec::with_capacity(materials.len());
         for material in materials {
             let required = material.required(runs)?;
             let balance =
                 load_balance(executor, workspace_id, OwnerId(build.owner_id), &material).await?;
             let here = 0u64;
-            let elsewhere = 0u64;
+            let elsewhere = reserved.get(&material.type_id).copied().unwrap_or(0);
             let owned = balance.quantity;
             let unreserved = owned.saturating_sub(here.saturating_add(elsewhere));
             let available = here.saturating_add(unreserved);
@@ -151,7 +196,7 @@ impl PgProductionRepository {
             )
             .await?;
             let average = resolvable_average(&balance)?;
-            let projected = if balance.quantity >= required {
+            let projected = if available >= required {
                 average
                     .map(|value| value.checked_mul_quantity(required))
                     .transpose()
@@ -198,7 +243,7 @@ impl PgProductionRepository {
                 missing_quantity: missing,
                 average_historical_unit_cost: average,
                 projected_historical_cost: projected,
-                cost_quality: if balance.quantity < required {
+                cost_quality: if available < required {
                     MaterialCostQuality::Unresolved
                 } else {
                     quality
@@ -221,7 +266,7 @@ impl PgProductionRepository {
         let complete_quantity = lines.iter().all(|line| line.missing_quantity == 0);
         let complete_cost = lines
             .iter()
-            .all(|line| line.accounted_owned_quantity >= line.required_quantity);
+            .all(|line| line.available_to_this_build >= line.required_quantity);
         let mut warnings = Vec::new();
         if !connection_exists {
             warnings.push("No EVE connection is linked to this Owner. Inventory coverage remains fully available from ISK Works accounting records.".to_string());
@@ -287,30 +332,7 @@ impl ProductionRepository for PgProductionRepository {
         owner_id: OwnerId,
         type_ids: &[i64],
     ) -> Result<std::collections::BTreeMap<i64, u64>, ProductionError> {
-        if type_ids.is_empty() {
-            return Ok(std::collections::BTreeMap::new());
-        }
-        let rows: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT type_id, COALESCE(SUM(quantity), 0)::bigint FROM inventory_allocations \
-             WHERE workspace_id = $1 AND owner_id = $2 AND type_id = ANY($3) \
-             AND released_at IS NULL AND consumed_at IS NULL \
-             GROUP BY type_id",
-        )
-        .bind(workspace_id.0)
-        .bind(owner_id.0)
-        .bind(type_ids)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
-        rows.into_iter()
-            .map(|(type_id, reserved)| {
-                u64::try_from(reserved)
-                    .map(|reserved| (type_id, reserved))
-                    .map_err(|_| {
-                        ProductionError::Persistence("negative reserved quantity".to_string())
-                    })
-            })
-            .collect()
+        Self::active_reserved_with(&self.pool, workspace_id, owner_id, type_ids).await
     }
 
     /// Every active `inventory_allocations` row for this type, each

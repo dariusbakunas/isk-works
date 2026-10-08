@@ -227,6 +227,17 @@ pub trait InventoryRepository: Send + Sync {
         workspace_id: WorkspaceId,
         owner_id: OwnerId,
     ) -> Result<Vec<InventoryBalance>, InventoryError>;
+    /// Σ active (neither released nor consumed) `inventory_allocations` per
+    /// `type_id` for this owner -- the stock open Epics hold. Planning reads
+    /// free stock as `list_balances` minus this. A type with nothing
+    /// reserved is absent. Defaults to empty: a store that never reserves.
+    async fn active_reservations(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+    ) -> Result<std::collections::BTreeMap<i64, u64>, InventoryError> {
+        Ok(std::collections::BTreeMap::new())
+    }
     async fn get_history(&self, key: &InventoryItemKey)
         -> Result<InventoryHistory, InventoryError>;
     /// Every event (in `sequence` order) of each listed type for this

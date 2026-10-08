@@ -501,6 +501,7 @@ fn material_lines_from_node_allocations(
             // distinction matters (see
             // `acquisitions_expose_available_quantity_from_the_whole_tree_rollup`).
             available_quantity: totals.allocated,
+            reserved_quantity: 0,
             allocated_quantity: totals.allocated,
             shortage_quantity: totals.shortage,
             fully_covered: totals.shortage == 0,
@@ -522,6 +523,7 @@ fn run_full(
             |(type_id, unit_basis)| crate::build_materials::InventoryBasisEntry {
                 type_id: *type_id,
                 quantity: 0,
+                reserved_quantity: 0,
                 unit_basis: Some(dec(unit_basis)),
                 total_basis: Decimal::ZERO,
             },
@@ -1533,6 +1535,7 @@ fn acquisitions_expose_available_quantity_from_the_whole_tree_rollup() {
         type_name: "Tritanium".to_string(),
         required_quantity: 100,
         available_quantity: 9_999,
+        reserved_quantity: 4_321,
         allocated_quantity: 0,
         shortage_quantity: 100,
         fully_covered: false,
@@ -1550,6 +1553,7 @@ fn acquisitions_expose_available_quantity_from_the_whole_tree_rollup() {
 
     let line = p.acquisitions.iter().find(|a| a.type_id == 34).unwrap();
     assert_eq!(line.available_quantity, 9_999);
+    assert_eq!(line.reserved_quantity, 4_321);
     assert_eq!(line.source_strategy, MaterialRowStrategy::Buy);
 }
 
