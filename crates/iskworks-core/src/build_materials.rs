@@ -90,6 +90,9 @@ pub struct PlanningInventory {
     available_by_type: BTreeMap<i64, u64>,
     /// `type_id -> quantity still un-allocated`, decremented by [`Self::take`].
     remaining_by_type: BTreeMap<i64, u64>,
+    /// `type_id -> quantity held by open Epics' reservations`, excluded from
+    /// the seed. Informational only: never drawn from.
+    reserved_by_type: BTreeMap<i64, u64>,
 }
 
 impl PlanningInventory {
@@ -107,7 +110,32 @@ impl PlanningInventory {
         Self {
             available_by_type,
             remaining_by_type,
+            reserved_by_type: BTreeMap::new(),
         }
+    }
+
+    /// Seed the pool with free stock from `(type_id, physical, reserved)`
+    /// triples: each type's available quantity is `physical - reserved`
+    /// (floored at `0`), and `reserved` is remembered for
+    /// [`Self::reserved`]. Duplicate `type_id`s are summed.
+    #[must_use]
+    pub fn seed_free(stock: impl IntoIterator<Item = (i64, u64, u64)>) -> Self {
+        let mut physical_by_type: BTreeMap<i64, u64> = BTreeMap::new();
+        let mut reserved_by_type: BTreeMap<i64, u64> = BTreeMap::new();
+        for (type_id, physical, reserved) in stock {
+            let entry = physical_by_type.entry(type_id).or_insert(0);
+            *entry = entry.saturating_add(physical);
+            if reserved > 0 {
+                let entry = reserved_by_type.entry(type_id).or_insert(0);
+                *entry = entry.saturating_add(reserved);
+            }
+        }
+        let mut pool = Self::seed(physical_by_type.iter().map(|(&type_id, &physical)| {
+            let reserved = reserved_by_type.get(&type_id).copied().unwrap_or(0);
+            (type_id, physical.saturating_sub(reserved))
+        }));
+        pool.reserved_by_type = reserved_by_type;
+        pool
     }
 
     /// Draw up to `requested` units of `type_id` from what remains. Returns
@@ -136,6 +164,14 @@ impl PlanningInventory {
     #[must_use]
     pub fn available(&self, type_id: i64) -> u64 {
         self.available_by_type.get(&type_id).copied().unwrap_or(0)
+    }
+
+    /// Units of `type_id` held by open Epics and excluded from the seed
+    /// (`0` when seeded with [`Self::seed`]) -- what the aggregate reports
+    /// as `reserved_quantity`.
+    #[must_use]
+    pub fn reserved(&self, type_id: i64) -> u64 {
+        self.reserved_by_type.get(&type_id).copied().unwrap_or(0)
     }
 }
 
@@ -249,8 +285,12 @@ pub struct AggregateMaterialLine {
     /// leaf demand **and** Build/Reaction intermediate demand), **before**
     /// that boundary's own inventory allocation.
     pub required_quantity: u64,
-    /// The seeded inventory for this type (`PlanningInventory::available`).
+    /// The seeded inventory for this type (`PlanningInventory::available`)
+    /// -- free stock, after open Epics' reservations.
     pub available_quantity: u64,
+    /// Held by open Epics' reservations and so not in
+    /// `available_quantity` (`PlanningInventory::reserved`).
+    pub reserved_quantity: u64,
     /// Σ planned reuse from inventory across those boundaries (never exceeds
     /// `available_quantity`).
     pub allocated_quantity: u64,
@@ -1227,6 +1267,7 @@ impl MaterialsAccumulator {
                 type_name: totals.type_name,
                 required_quantity: totals.required,
                 available_quantity: inventory.available(type_id),
+                reserved_quantity: inventory.reserved(type_id),
                 allocated_quantity: totals.allocated,
                 shortage_quantity: totals.shortage,
                 fully_covered: totals.shortage == 0,

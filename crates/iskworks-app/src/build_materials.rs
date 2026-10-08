@@ -218,12 +218,11 @@ impl BuildMaterialsCoordinator {
             .await
             .map_err(BuildPreviewError::from)?;
         let reserved_of = |type_id: i64| reserved.get(&type_id).copied().unwrap_or(0);
-        let mut pool = PlanningInventory::seed(balances.iter().map(|balance| {
+        let mut pool = PlanningInventory::seed_free(balances.iter().map(|balance| {
             (
                 balance.key.type_id,
-                balance
-                    .quantity
-                    .saturating_sub(reserved_of(balance.key.type_id)),
+                balance.quantity,
+                reserved_of(balance.key.type_id),
             )
         }));
         // Retain the per-type basis from that *same* snapshot for the

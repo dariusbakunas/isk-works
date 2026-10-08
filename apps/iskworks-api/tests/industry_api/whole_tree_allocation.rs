@@ -1033,6 +1033,8 @@ async fn materials_count_only_free_stock_for_raw_materials() {
 
     let tritanium = row(&json, 34).unwrap();
     assert_eq!(tritanium["requiredQuantity"], 100);
+    assert_eq!(tritanium["availableQuantity"], 40);
+    assert_eq!(tritanium["reservedQuantity"], 60);
     assert_eq!(tritanium["allocatedQuantity"], 40);
     assert_eq!(tritanium["shortageQuantity"], 60);
     assert_eq!(tritanium["fullyCovered"], false);

@@ -577,3 +577,41 @@ async fn active_reservations_sums_active_rows_per_type_for_the_owner(pool: PgPoo
         .unwrap();
     assert!(other_owner.is_empty());
 }
+
+// --- `PgProductionRepository::coverage`: other Epics' reservations ---
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn build_coverage_counts_other_epics_reservations_as_unavailable(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    sqlx::query(
+        "INSERT INTO build_recipe_materials (build_id, type_id, captured_name, quantity_per_run, sort_order) \
+         VALUES ($1, 34, 'Tritanium', 100, 0)",
+    )
+    .bind(build_id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    seed_inventory_balance(&pool, workspace_id, owner_id, 34, 100).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    seed_legacy_order_allocation(&pool, &repository, workspace_id, owner_id, build_id, 34, 70)
+        .await;
+
+    let coverage = crate::PgProductionRepository::new(pool.clone())
+        .coverage(workspace_id, build_id)
+        .await
+        .unwrap();
+    let tritanium = &coverage.material_lines[0];
+    assert_eq!(tritanium.required_quantity, 100);
+    assert_eq!(tritanium.accounted_owned_quantity, 100);
+    assert_eq!(tritanium.reserved_for_this_build, 0);
+    assert_eq!(tritanium.reserved_by_other_builds, 70);
+    assert_eq!(tritanium.unreserved_available_quantity, 30);
+    assert_eq!(tritanium.available_to_this_build, 30);
+    assert_eq!(tritanium.covered_quantity, 30);
+    assert_eq!(tritanium.missing_quantity, 70);
+    assert_eq!(tritanium.projected_historical_cost, None);
+    assert!(!coverage.complete_quantity_coverage);
+    assert!(!coverage.complete_cost_coverage);
+}
