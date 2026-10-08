@@ -15,6 +15,7 @@ const industryApi = vi.hoisted(() => ({
   deleteOrder: vi.fn(),
   createTicketForRequirement: vi.fn(),
   bulkCreateTickets: vi.fn(),
+  reserveOrderInventory: vi.fn(),
 }));
 
 vi.mock("../../../api/industry", async () => {
@@ -212,6 +213,47 @@ describe("EpicInspector", () => {
     await user.click(await screen.findByRole("button", { name: "Create 2 tickets" }));
 
     await waitFor(() => expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-1", "req-2"]));
+  });
+
+  it("shows how much of the planned reuse the Epic holds and reserves the rest on request", async () => {
+    const tritanium = {
+      id: "req-trit",
+      typeId: 34,
+      capturedName: "Tritanium",
+      kind: "buy",
+      state: "needsAction",
+    } as unknown as OrderDetail["requirements"][number];
+    industryApi.getOrder
+      .mockResolvedValueOnce(orderDetailFixture({
+        requirements: [tritanium],
+        inventory: { plannedReuse: 600, reserved: 0, used: 0 },
+      }))
+      .mockResolvedValue(orderDetailFixture({
+        requirements: [tritanium],
+        inventory: { plannedReuse: 600, reserved: 200, used: 0 },
+      }));
+    industryApi.reserveOrderInventory.mockResolvedValue({
+      reserved: [{ typeId: 34, typeName: "Tritanium", quantity: 200 }],
+      shortfalls: [{ typeId: 34, wanted: 600, free: 200 }],
+    });
+    const user = userEvent.setup();
+    renderInspector();
+
+    expect(await screen.findByText("Reserved 0 of 600 planned from stock")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reserve inventory" }));
+
+    expect(industryApi.reserveOrderInventory).toHaveBeenCalledWith("order-1");
+    expect(await screen.findByText("Reserved 200 of 600 planned from stock")).toBeInTheDocument();
+    expect(screen.getByText("Tritanium: 400 short")).toBeInTheDocument();
+  });
+
+  it("offers no Reserve inventory for an archived Epic", async () => {
+    industryApi.getOrder.mockResolvedValue(orderDetailFixture({
+      inventory: { plannedReuse: 600, reserved: 0, used: 0 },
+    }));
+    renderInspector({ order: orderFixture({ archivedAt: "2026-10-08T00:00:00Z" }) });
+    expect(await screen.findByText("Reserved 0 of 600 planned from stock")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reserve inventory" })).not.toBeInTheDocument();
   });
 
   it("Open build is a real navigation link, distinct from every other row's inspect-in-place click", async () => {

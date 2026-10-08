@@ -407,6 +407,9 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
+    /// Reserving inventory for a canceled or archived Epic.
+    #[error("a canceled or archived Epic can't reserve inventory")]
+    OrderNotReservable,
     /// Only version-3 Epics freeze a whole-tree plan the Plan view can show.
     #[error("this Epic was created before whole-tree plans and has no frozen plan to show")]
     FrozenPlanUnavailable,
@@ -626,6 +629,16 @@ pub trait OrderRepository: Send + Sync {
     /// Per requirement of `order_id`: Σ its active (`reserved`) and
     /// consumed allocations. A requirement with no allocation reports
     /// zeros; every requirement of the order is present.
+    /// The Epic's explicit "Reserve inventory" (top-up): for each frozen
+    /// requirement, reserve up to `reused_quantity - held` (held = active
+    /// + consumed) from free stock, in serving order, under the balance
+    /// lock. Partial by design; what free stock can't cover comes back as
+    /// shortfalls. Version-3, open (not canceled, not archived) Epics only.
+    async fn reserve_order_inventory(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<CappedReservationPlan, OrderError>;
     async fn requirement_reservation_totals(
         &self,
         workspace_id: WorkspaceId,
@@ -851,10 +864,10 @@ pub trait OrderRepository: Send + Sync {
 
     /// Organizational only: stamps `canceled_at`. Valid any time before
     /// `completed_at` (requires `completed_at IS NULL AND canceled_at IS
-    /// NULL`) -- a purely stored-state precondition. Releases nothing (an
-    /// Order owns no reservations) and never touches linked tickets -- a
-    /// shared ticket may still be needed by other work, and Order status
-    /// never controls Ticket status.
+    /// NULL`) -- a purely stored-state precondition. Releases the Order's
+    /// active reservations in the same transaction (no ledger event) and
+    /// never touches linked tickets -- a shared ticket may still be needed
+    /// by other work, and Order status never controls Ticket status.
     async fn cancel_order(
         &self,
         workspace_id: WorkspaceId,
@@ -862,7 +875,9 @@ pub trait OrderRepository: Send + Sync {
     ) -> Result<Order, OrderError>;
 
     /// Orthogonal to workflow state -- valid from any status, requires
-    /// only `archived_at IS NULL`. Never touches `inventory_allocations`.
+    /// only `archived_at IS NULL`. Releases the Order's active
+    /// reservations in the same transaction; `restore_order` does not
+    /// re-reserve.
     async fn archive_order(
         &self,
         workspace_id: WorkspaceId,
