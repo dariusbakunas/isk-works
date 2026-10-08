@@ -232,6 +232,7 @@ pub(super) async fn create_order(
             operations: frozen.operations,
             requirements: frozen.requirements,
             tickets: plan_tickets,
+            reservation: None,
         })
         .await?;
 
