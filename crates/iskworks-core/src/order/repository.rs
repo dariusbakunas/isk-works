@@ -407,6 +407,9 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
+    /// Only version-3 Epics freeze a whole-tree plan the Plan view can show.
+    #[error("this Epic was created before whole-tree plans and has no frozen plan to show")]
+    FrozenPlanUnavailable,
     #[error("acquisition run was not found")]
     AcquisitionRunNotFound,
     #[error("an acquisition run needs at least one ticket")]

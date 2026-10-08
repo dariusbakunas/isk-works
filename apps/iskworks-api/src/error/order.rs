@@ -39,6 +39,9 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::ReservationShortfall(_) => {
             (StatusCode::CONFLICT, "reservation_shortfall", true)
         }
+        OrderError::FrozenPlanUnavailable => {
+            (StatusCode::CONFLICT, "frozen_plan_unavailable", false)
+        }
         OrderError::AcquisitionRunNotFound => {
             (StatusCode::NOT_FOUND, "acquisition_run_not_found", false)
         }

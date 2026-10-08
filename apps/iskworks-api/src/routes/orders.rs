@@ -10,8 +10,9 @@ use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
     compare_reuse, compute_order_rollup, derive_operation_dag, derive_order_status,
     derive_recording_summary, derive_requirement_state, derive_ticket_blockers, epic_coverage_line,
-    frozen_reuse, intended_build_backed_runs, planned_root_output, requirement_to_prerequisite,
-    reuse_by_type, EpicCoverageLine, FrozenDemandEdge, NewOrderPlan, NewOrderRequirement,
+    epic_plan_overlay, frozen_reuse, intended_build_backed_runs, planned_root_output,
+    project_frozen_execution_plan, requirement_to_prerequisite, reuse_by_type, EpicCoverageLine,
+    EpicPlanOverlay, FrozenDemandEdge, FrozenPlanInventory, NewOrderPlan, NewOrderRequirement,
     NewPlanReservation, NewPlanTicket, NewTicket, NewTicketPrerequisite, OperationDependency,
     Order, OrderError, OrderId, OrderRepository, OrderRequirement, OrderRequirementId,
     OrderRequirementRollup, OrderStatus, PlanOperation, RecordAcquisitionInput,
@@ -53,6 +54,10 @@ pub(crate) fn router() -> Router<AppState> {
         )
         .route("/api/orders/:order_id", get(get_order).delete(delete_order))
         .route("/api/orders/:order_id/coverage", get(get_order_coverage))
+        .route(
+            "/api/orders/:order_id/execution-plan",
+            get(get_order_execution_plan),
+        )
         .route("/api/orders/:order_id/start", post(start_order))
         .route("/api/orders/:order_id/complete", post(complete_order))
         .route("/api/orders/:order_id/cancel", post(cancel_order))

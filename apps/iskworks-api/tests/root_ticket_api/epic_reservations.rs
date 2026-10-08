@@ -507,3 +507,63 @@ async fn epic_coverage_of_an_unknown_epic_is_not_found(pool: PgPool) {
     let (status, _) = get_json(&fx, &format!("/api/orders/{}/coverage", Uuid::new_v4())).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// `GET /api/orders/:id/execution-plan`: the frozen Epic in the Plan view's
+// own shape, plus the Epic overlay.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn epic_execution_plan_stages_the_frozen_plan_like_the_build_plan(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    // Root: 5 Fabricated Component + 2,000 Tritanium; child (5 runs):
+    // 300 Pyerite + 500 Tritanium. 1,000 Tritanium on hand.
+    let parent = assembly_with_built_component(&fx, 1, 90100, &[]).await;
+    seed_balance(&pool, &fx, 34, "Tritanium", 1_000, 1_000).await;
+    let preview = preview_reuse(&fx, &parent).await;
+    let expected: Vec<(i64, u64)> = preview.into_iter().collect();
+    let (status, order) = create_reserving_order(&fx, &parent, &expected).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let order_id = order["id"].as_str().unwrap();
+
+    let (status, body) = get_json(&fx, &format!("/api/orders/{order_id}/execution-plan")).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let plan = &body["plan"];
+
+    // Build order: the component's stage first, the root last.
+    let stages = plan["stages"].as_array().unwrap();
+    assert_eq!(stages.len(), 2);
+    let root_id = plan["rootNodeId"].as_str().unwrap();
+    assert_eq!(stages[1]["nodeIds"], serde_json::json!([root_id]));
+    let component_id = stages[0]["nodeIds"][0].as_str().unwrap();
+    let component = plan["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == component_id)
+        .unwrap();
+    assert_eq!(component["outputTypeId"], 90100);
+    assert_eq!(component["projectedRuns"], 5);
+    assert_eq!(component["consumers"][0]["nodeId"], root_id);
+
+    // Tritanium is bought by both operations; the Epic reserved all 1,000.
+    let tritanium = plan["acquisitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|line| line["typeId"] == 34)
+        .expect("Tritanium still to source");
+    assert_eq!(tritanium["requiredQuantity"], 2_500);
+    assert_eq!(tritanium["plannedInventoryQuantity"], 1_000);
+    assert_eq!(tritanium["shortageQuantity"], 1_500);
+    assert_eq!(tritanium["availableQuantity"], 0);
+    assert_eq!(tritanium["reservedQuantity"], 0, "the Epic's own hold is not someone else's");
+
+    let epic = &body["epic"];
+    assert_eq!(epic["orderId"], order["id"]);
+    assert_eq!(epic["acquisitions"]["34"]["reserved"], 1_000);
+    assert_eq!(epic["acquisitions"]["34"]["remainingNeed"], 1_500);
+    assert_eq!(epic["nodes"][root_id]["ticketStatus"], "todo");
+    assert!(epic["nodes"][component_id]["ticketDisplayId"].is_string());
+}
