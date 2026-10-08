@@ -24,6 +24,7 @@ mod freeze;
 mod plan;
 mod recording;
 mod repository;
+mod reservation;
 mod ticket;
 mod ticket_plan;
 
@@ -33,5 +34,6 @@ pub use freeze::*;
 pub use plan::*;
 pub use recording::*;
 pub use repository::*;
+pub use reservation::*;
 pub use ticket::*;
 pub use ticket_plan::*;
