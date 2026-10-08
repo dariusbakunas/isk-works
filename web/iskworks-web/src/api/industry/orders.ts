@@ -150,6 +150,7 @@ export interface PlanOperationView {
   stage: number;
   ticketId: string | null;
   ticketDisplayId: string | null;
+  ticketStatus: TicketStatus | null;
   servedRequirementIds: string[];
 }
 
@@ -258,6 +259,26 @@ export function listOrders(archived: ArchivedFilter = "active"): Promise<OrderSu
 
 export function getOrder(id: string): Promise<OrderDetail> {
   return request(`/api/orders/${id}`);
+}
+
+// One frozen requirement's live inventory state in its Epic. `freeAvailable`
+// is the type's free stock, shared by every line of that type.
+export interface EpicCoverageLine {
+  requirementId: string;
+  reserved: number;
+  consumed: number;
+  remainingNeed: number;
+  freeAvailable: number;
+  freeCoverable: number;
+}
+
+export interface EpicCoverage {
+  orderId: string;
+  lines: EpicCoverageLine[];
+}
+
+export function getOrderCoverage(id: string): Promise<EpicCoverage> {
+  return request(`/api/orders/${id}/coverage`);
 }
 
 export function startOrder(id: string): Promise<OrderDetail> {

@@ -258,6 +258,7 @@ function acquisition(
     plannedInventoryQuantity: 0,
     shortageQuantity: total,
     availableQuantity: 0,
+    reservedQuantity: 0,
     sourceStrategy: "buy",
     consumers,
     productionMethods,

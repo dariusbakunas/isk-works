@@ -328,7 +328,20 @@ function AcquisitionSection({
                   </span>
                 ),
                 required: <Quantity value={line.requiredQuantity} />,
-                inventory: <Quantity value={line.plannedInventoryQuantity} />,
+                // Free stock only; stock open Epics hold is noted, never used.
+                inventory: line.reservedQuantity > 0 ? (
+                  <span
+                    className="flex flex-col items-end leading-tight"
+                    title={`${line.availableQuantity.toLocaleString()} free · ${line.reservedQuantity.toLocaleString()} reserved by Epics`}
+                  >
+                    <Quantity value={line.plannedInventoryQuantity} />
+                    <span className="text-[11px] text-muted">
+                      {line.reservedQuantity.toLocaleString()} reserved
+                    </span>
+                  </span>
+                ) : (
+                  <Quantity value={line.plannedInventoryQuantity} />
+                ),
                 shortage: <Quantity className="text-warning" value={line.shortageQuantity} />,
                 // The fresh (to-buy) price and cost for the shortage, from the
                 // cost projection -- "Unpriced" rather than a fabricated 0.

@@ -250,6 +250,7 @@ describe("EpicInspector", () => {
               stage: 0,
               ticketId: null,
               ticketDisplayId: null,
+              ticketStatus: null,
               servedRequirementIds: [],
             },
           ],

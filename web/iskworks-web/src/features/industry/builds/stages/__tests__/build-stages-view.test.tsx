@@ -108,6 +108,7 @@ function acquisition(over: Partial<AcquisitionLine> & { typeId: number }): Acqui
     plannedInventoryQuantity: 0,
     shortageQuantity: 100,
     availableQuantity: 0,
+    reservedQuantity: 0,
     sourceStrategy: "buy",
     consumers: [],
     productionMethods: [],
@@ -224,6 +225,38 @@ describe("BuildStagesView", () => {
     expect(screen.getByText("Final Production")).toBeInTheDocument();
     expect(within(rowFor("root")).getByText("Rifter")).toBeInTheDocument();
     expect(screen.queryByText("Stage 1")).not.toBeInTheDocument();
+  });
+
+  // Planning counts free stock; what open Epics hold is noted next to the
+  // planned use, never counted in it.
+  it("notes stock reserved by Epics next to an input's planned use", async () => {
+    const root = occurrence({ id: "root", nodeId: "root", isRoot: true, stage: 0, outputTypeName: "Rifter" });
+    postBuildExecutionPlan.mockResolvedValue(
+      plan({
+        stages: [stage(0, ["root"])],
+        nodes: [node({ id: "root", occurrenceIds: ["root"], outputTypeName: "Rifter", stage: 0 })],
+        occurrences: [root],
+        acquisitions: [
+          acquisition({
+            typeId: 34,
+            typeName: "Tritanium",
+            requiredQuantity: 1_000,
+            plannedInventoryQuantity: 30,
+            shortageQuantity: 970,
+            availableQuantity: 30,
+            reservedQuantity: 70,
+          }),
+          acquisition({ typeId: 35, typeName: "Pyerite", requiredQuantity: 200, shortageQuantity: 200 }),
+        ],
+      }),
+    );
+    renderView();
+    await flush();
+
+    const tritanium = rowFor("34");
+    expect(within(tritanium).getByText("70 reserved")).toBeInTheDocument();
+    expect(within(tritanium).getByTitle("30 free · 70 reserved by Epics")).toBeInTheDocument();
+    expect(within(rowFor("35")).queryByText(/reserved/)).not.toBeInTheDocument();
   });
 
   // The final product has no downstream requirement, so the backend reports
