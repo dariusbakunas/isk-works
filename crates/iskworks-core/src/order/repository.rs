@@ -407,6 +407,9 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
+    /// Only version-3 Epics freeze a whole-tree plan the Plan view can show.
+    #[error("this Epic was created before whole-tree plans and has no frozen plan to show")]
+    FrozenPlanUnavailable,
     #[error("acquisition run was not found")]
     AcquisitionRunNotFound,
     #[error("an acquisition run needs at least one ticket")]
@@ -620,6 +623,14 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<Ticket>, OrderError>;
+    /// Per requirement of `order_id`: Σ its active (`reserved`) and
+    /// consumed allocations. A requirement with no allocation reports
+    /// zeros; every requirement of the order is present.
+    async fn requirement_reservation_totals(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
     async fn list_ticket_prerequisites(
         &self,
         ticket_id: TicketId,

@@ -21,6 +21,8 @@ import {
 } from "./planner-panels";
 import { BuildEditorHeader } from "./build-editor-header";
 import { CreateEpicDialog } from "./create-epic-dialog";
+import { EpicSelector } from "../epic-mode/epic-selector";
+import { useBuildEpicSelection } from "../epic-mode/use-build-epic-selection";
 import { BuildPageHeader } from "./build-page-header";
 import { BuildSettingsSummary } from "./build-settings-summary";
 import { BuildWorkspaceSummary } from "./build-workspace-summary";
@@ -190,6 +192,10 @@ export function BuildEditorWorkspace({
     else params.set("view", view);
     setSearchParams(params, { replace: true });
   }, [initialBuild, settingsParam, viewParam, view, selected, openBuildSettings, searchParams, setSearchParams]);
+  // The Plan view's Epic: `null` shows free stock. Only a saved root Build
+  // has Epics; a focused child producer always shows free stock.
+  const epicSelection = useBuildEpicSelection(focusedProducer ? null : initialBuild?.id ?? null);
+  const selectedEpicId = epicSelection.selectedEpicId;
   // Non-null while the Create Epic dialog is open: the overlay it freezes.
   const [epicCommand, setEpicCommand] = useState<PreviewBuildPlanCommand | null>(null);
   const [orderError, setOrderError] = useState("");
@@ -267,10 +273,22 @@ export function BuildEditorWorkspace({
 
   const identity = selected ? (
     <BuildEditorHeader
+      epicSelector={initialBuild && !focusedProducer ? (
+        <EpicSelector
+          disabled={epicSelection.loading}
+          epics={epicSelection.epics}
+          onSelect={(epicId) => epicSelection.selectEpic(epicId, (params) => {
+            // An Epic's state is shown on the Plan tab.
+            if (epicId) params.set("view", "plan");
+          })}
+          selectedEpicId={selectedEpicId}
+        />
+      ) : undefined}
       onRunsChange={setRuns}
       onShowLogistics={initialBuild && view !== "logistics" ? () => setView("logistics") : undefined}
       preview={estimate}
       runs={runs}
+      runsDisabled={selectedEpicId !== null}
     />
   ) : null;
   const blueprintDialog = selected?.kind === "manufacturing" ? (
@@ -455,7 +473,12 @@ export function BuildEditorWorkspace({
       ) : null}
       {sdeReady && initialBuild ? (
         <div hidden={view !== "plan"}>
-          <BuildStagesView active={view === "plan"} editor={editor} focusedProducerId={focusedProducer?.id} />
+          <BuildStagesView
+            active={view === "plan"}
+            editor={editor}
+            epicId={selectedEpicId}
+            focusedProducerId={focusedProducer?.id}
+          />
         </div>
       ) : null}
       {sdeReady && initialBuild ? (

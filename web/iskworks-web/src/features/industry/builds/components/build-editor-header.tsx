@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CreateBuildPlanPreview } from "../../../../api/industry";
 import { Field } from "../../shared/field";
 import { Panel } from "../../../../components/primitives";
@@ -10,20 +11,30 @@ type CandidatePreview = CreateBuildPlanPreview;
 const MAX_RUNS = 1_000_000;
 
 export function BuildEditorHeader({
+  epicSelector,
   onRunsChange,
   onShowLogistics,
   preview,
   runs,
+  runsDisabled = false,
 }: {
+  /** The Plan view's Epic selector, next to Runs (saved root Builds). */
+  epicSelector?: ReactNode;
   onRunsChange: (value: string) => void;
   /** Jump from the shortage line to Logistics. */
   onShowLogistics?: () => void;
   preview: CandidatePreview | null;
   runs: string;
+  /** An Epic is selected: the Plan shows its frozen runs, not the draft's. */
+  runsDisabled?: boolean;
 }) {
   return (
     <Panel>
-      <div className="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-0">
+      <div
+        className={epicSelector
+          ? "grid gap-3 sm:grid-cols-[6rem_14rem_minmax(0,1fr)] sm:gap-0"
+          : "grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-0"}
+      >
         <div className="min-w-0 sm:pr-4">
           <Field
             label="Runs"
@@ -41,8 +52,10 @@ export function BuildEditorHeader({
             min={1}
             max={MAX_RUNS}
             step={1}
+            disabled={runsDisabled}
           />
         </div>
+        {epicSelector ? <div className="min-w-0 sm:pr-4">{epicSelector}</div> : null}
         <CandidateSummary
           onShowLogistics={onShowLogistics}
           preview={preview}

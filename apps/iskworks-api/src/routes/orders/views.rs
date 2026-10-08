@@ -62,6 +62,7 @@ pub(super) struct PlanOperationView {
     /// The one production ticket generated for this operation.
     ticket_id: Option<TicketId>,
     ticket_display_id: Option<String>,
+    ticket_status: Option<TicketStatus>,
     /// Every frozen requirement this operation serves (its consumers'
     /// rows naming it as `child_occurrence_key`) -- one per demand edge.
     served_requirement_ids: Vec<OrderRequirementId>,
@@ -107,6 +108,7 @@ pub(super) fn production_plan_view(
                 stage: dag.stages.get(key).copied().unwrap_or_default(),
                 ticket_id: ticket.map(|ticket| ticket.id),
                 ticket_display_id: ticket.map(|ticket| ticket.display_id.clone()),
+                ticket_status: ticket.map(|ticket| ticket.status),
                 served_requirement_ids: {
                     let mut ids: Vec<OrderRequirementId> = requirements
                         .iter()

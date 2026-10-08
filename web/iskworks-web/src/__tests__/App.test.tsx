@@ -1413,6 +1413,142 @@ describe("Manual Price Source", () => {
 });
 
 describe("Build detail planning", () => {
+  test("an Epic link opens the Build's Plan in that Epic's read-only view", async () => {
+    const draft = { ...plannedBuildFixture(), status: "draft", activePlanId: null, plans: [] };
+    const epicSummary = {
+      id: "epic-1",
+      workspaceId: "workspace-1",
+      ownerId: "owner-1",
+      sourceBuildId: "build-ready",
+      sourceBuildRevision: draft.revision,
+      displayName: "Manufacture Rifter",
+      runs: 1,
+      recipeFingerprint: "recipe",
+      priceSnapshotId: "snapshot-1",
+      estimatedMaterialCost: "0.0000",
+      expectedRevenue: null,
+      estimatedMargin: null,
+      missingPriceCount: 0,
+      createdAt: "2026-10-08T10:00:00Z",
+      updatedAt: "2026-10-08T10:00:00Z",
+      startedAt: null,
+      completedAt: null,
+      canceledAt: null,
+      archivedAt: null,
+      planningSnapshotVersion: 3,
+      status: "blocked",
+      rollup: { satisfied: 0, needsAction: 1, inProgress: 0, total: 1 },
+    };
+    const epicDetail = {
+      ...epicSummary,
+      requirements: [{
+        id: "req-trit",
+        orderId: "epic-1",
+        typeId: 34,
+        capturedName: "Tritanium",
+        kind: "buy",
+        sourceBuildId: null,
+        requiredQuantity: 32000,
+        fulfillmentScope: "missing",
+        reusedQuantity: 20000,
+        freshQuantity: 12000,
+        estimatedUnitCost: null,
+        estimatedLineTotal: null,
+        reusedLineTotal: null,
+        state: "needsAction",
+        linkedTickets: [],
+        operationOccurrenceKey: "root:build-ready",
+      }],
+      productionPlan: {
+        rootOccurrenceKey: "root:build-ready",
+        dependencies: [],
+        operations: [{
+          id: "op-root",
+          occurrenceKey: "root:build-ready",
+          parentOccurrenceKey: null,
+          buildId: "build-ready",
+          productTypeId: 587,
+          productName: "Rifter",
+          runs: 1,
+          producedQuantity: 1,
+          stage: 0,
+          ticketId: "ticket-1",
+          ticketDisplayId: "T-1",
+          ticketStatus: "todo",
+          servedRequirementIds: [],
+        }],
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/builds/build-ready")) return mockResponse(draft);
+      if (url.endsWith("/api/orders")) return mockResponse([epicSummary]);
+      if (url.endsWith("/api/orders/epic-1")) return mockResponse(epicDetail);
+      if (url.endsWith("/api/orders/epic-1/execution-plan")) return mockResponse({
+        plan: {
+          rootNodeId: "root:build-ready",
+          stages: [{ index: 0, nodeIds: ["root:build-ready"] }],
+          nodes: [{
+            id: "root:build-ready", outputTypeId: 587, outputTypeName: "Rifter", activity: "manufacturing", stage: 0,
+            occurrenceIds: ["root:build-ready"], facilityId: null, facilityName: null, effectiveMe: null, effectiveTe: null,
+            requiredQuantity: 0, plannedInventoryQuantity: 0, productionDemand: 0, projectedOutput: 1, projectedRuns: 1,
+            retainedSurplusQuantity: 0, retainedSurplusCost: null, materialComponentCost: null, ownInstallationCost: null,
+            totalProductionCost: null, costComplete: true, consumers: [], productionMethods: [], unitProductionCost: null,
+            availableQuantity: 0,
+          }],
+          edges: [],
+          occurrences: [{ id: "root:build-ready", nodeId: "root:build-ready", isRoot: true, stage: 0, requirements: [] }],
+          acquisitions: [{
+            typeId: 34, typeName: "Tritanium", requiredQuantity: 32000, plannedInventoryQuantity: 20000,
+            shortageQuantity: 12000, availableQuantity: 0, reservedQuantity: 0, sourceStrategy: "buy", consumers: [],
+            productionMethods: [], freshCost: null, freshUnitPrice: null, freshPriceStale: false,
+          }],
+          unresolved: [],
+          complete: true,
+          warnings: [],
+          generatedAt: "2026-10-08T10:00:00Z",
+          logistics: { destinations: [], totalVolumeM3: "0", volumeComplete: true },
+        },
+        epic: {
+          orderId: "epic-1",
+          displayName: "Manufacture Rifter",
+          sourceBuildRevision: draft.revision,
+          nodes: { "root:build-ready": { ticketId: "ticket-1", ticketDisplayId: "T-1", ticketStatus: "todo", output: { reserved: 0, consumed: 0, remainingNeed: 0 } } },
+          acquisitions: { "34": { reserved: 20000, consumed: 0, remainingNeed: 12000 } },
+        },
+      });
+      if (url.endsWith("/api/sde")) return mockResponse({ active: { sourceVersion: "test" } });
+      if (url.endsWith("/api/price-sources")) return mockResponse([]);
+      if (url.endsWith("/api/industry/facilities")) return mockResponse([]);
+      if (url.includes("/api/industry/blueprints/observations")) return mockResponse([]);
+      if (url.includes("/api/blueprints/691/plan?runs=1")) return mockResponse({
+        blueprintTypeId: 691,
+        blueprintName: "Rifter Blueprint",
+        runs: 1,
+        durationSeconds: 6000,
+        materials: [{ typeId: 34, typeName: "Tritanium", quantityPerRun: 32000, totalQuantity: 32000 }],
+        products: [{ typeId: 587, typeName: "Rifter", quantityPerRun: 1, totalQuantity: 1 }],
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/builds/build-ready?view=plan&epic=epic-1");
+
+    expect(await screen.findByText("Epic: Manufacture Rifter")).toBeInTheDocument();
+    // The Plan's own layout, showing the Epic's data.
+    const inputs = screen.getByRole("table", { name: "Inputs to Source" });
+    const tritanium = within(inputs).getByText("Tritanium").closest("tr")!;
+    expect(within(tritanium).getByText("20,000 reserved · 0 used")).toBeInTheDocument();
+    expect(within(tritanium).getByText("12,000")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Final Production" })).toBeInTheDocument();
+    expect(screen.getByText("T-1 · To do")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Epic" })).toHaveValue("epic-1");
+    expect(screen.getByLabelText("Runs")).toBeDisabled();
+  });
+
   test("opens a saved draft in the worksheet planner", async () => {
     const draft = {
       ...plannedBuildFixture(),

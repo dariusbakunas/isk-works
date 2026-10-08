@@ -9,16 +9,17 @@ use chrono::Utc;
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
     compare_reuse, compute_order_rollup, derive_operation_dag, derive_order_status,
-    derive_recording_summary, derive_requirement_state, derive_ticket_blockers, frozen_reuse,
-    intended_build_backed_runs, planned_root_output, requirement_to_prerequisite, reuse_by_type,
-    FrozenDemandEdge, NewOrderPlan, NewOrderRequirement, NewPlanReservation, NewPlanTicket,
+    derive_recording_summary, derive_requirement_state, derive_ticket_blockers, epic_plan_overlay,
+    frozen_reuse, intended_build_backed_runs, planned_root_output, project_frozen_execution_plan,
+    requirement_to_prerequisite, reuse_by_type, EpicPlanOverlay, FrozenDemandEdge,
+    FrozenPlanInventory, NewOrderPlan, NewOrderRequirement, NewPlanReservation, NewPlanTicket,
     NewTicket, NewTicketPrerequisite, OperationDependency, Order, OrderError, OrderId,
     OrderRepository, OrderRequirement, OrderRequirementId, OrderRequirementRollup, OrderStatus,
     PlanOperation, RecordAcquisitionInput, RecordProductionInput, RecordProductionInputLine,
-    RequirementFulfillmentState, RequirementKind, RequirementTicketCreation, ReservationShortfall,
-    ReuseChange, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind,
-    TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary,
-    TicketStatus, ROOT_OCCURRENCE_PREFIX,
+    RequirementFulfillmentState, RequirementKind, RequirementReservationTotals,
+    RequirementTicketCreation, ReservationShortfall, ReuseChange, Ticket, TicketBlockerRef,
+    TicketId, TicketInventoryRecording, TicketKind, TicketMetadataUpdate, TicketPrerequisite,
+    TicketPrerequisiteId, TicketRecordingSummary, TicketStatus, ROOT_OCCURRENCE_PREFIX,
 };
 use iskworks_core::{
     BuildId, BuildRecipe, ConnectedCharacterId, MarketScope, Money, PreviewBuildPlanCommand,
@@ -28,11 +29,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{workspace_context, ApiError, AppState};
 
+mod coverage;
 mod order_lifecycle;
 mod recording;
 mod requirement_tickets;
 mod tickets;
 mod views;
+use coverage::*;
 use order_lifecycle::*;
 use recording::*;
 use requirement_tickets::*;
@@ -49,6 +52,10 @@ pub(crate) fn router() -> Router<AppState> {
             get(list_order_tickets).post(create_ticket_route),
         )
         .route("/api/orders/:order_id", get(get_order).delete(delete_order))
+        .route(
+            "/api/orders/:order_id/execution-plan",
+            get(get_order_execution_plan),
+        )
         .route("/api/orders/:order_id/start", post(start_order))
         .route("/api/orders/:order_id/complete", post(complete_order))
         .route("/api/orders/:order_id/cancel", post(cancel_order))

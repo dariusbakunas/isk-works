@@ -7,16 +7,32 @@
 
 import type { ReactNode } from "react";
 
-import type { ExecutionNode, ExecutionPlanProjection } from "../../../../api/industry";
+import type { EpicNodeProgress, ExecutionNode, ExecutionPlanProjection, TicketStatus } from "../../../../api/industry";
 import { Badge } from "../../../../components/primitives";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
 import { OperationalTableRow } from "../../../../components/operational-table";
 
+const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  todo: "To do",
+  inProgress: "In progress",
+  complete: "Done",
+  canceled: "Canceled",
+};
+
+/** The item cell's second line in an Epic's Plan: the step's ticket. */
+function epicTicketLine(epic: EpicNodeProgress): string {
+  if (!epic.ticketDisplayId) return "No ticket";
+  return epic.ticketStatus
+    ? `${epic.ticketDisplayId} · ${TICKET_STATUS_LABELS[epic.ticketStatus]}`
+    : epic.ticketDisplayId;
+}
+
 function executionNodeCells(
   node: ExecutionNode,
   plan: ExecutionPlanProjection,
   showCost: boolean,
+  epic?: EpicNodeProgress,
 ): Record<string, ReactNode> {
   const distinctConsumers = new Set(node.consumers.map((consumer) => consumer.nodeId)).size;
   const grouped = node.occurrenceIds.length > 1;
@@ -38,7 +54,7 @@ function executionNodeCells(
          * table column (it would compete with Used By/Cost for desktop
          * width). */}
         <span className="truncate pl-8 text-[11px] text-muted">
-          {node.facilityName ?? "No facility"}
+          {epic ? epicTicketLine(epic) : (node.facilityName ?? "No facility")}
         </span>
       </span>
     ),
@@ -100,13 +116,19 @@ export function ExecutionNodeRow({
   node,
   plan,
   showCost,
+  epic,
 }: {
   node: ExecutionNode;
   plan: ExecutionPlanProjection;
   showCost: boolean;
+  /** An Epic's Plan: the step's ticket replaces the facility line, and a
+   * finished step reads as done. */
+  epic?: EpicNodeProgress;
 }) {
-  const status: "neutral" | "warning" = node.costComplete ? "neutral" : "warning";
-  return <OperationalTableRow cells={executionNodeCells(node, plan, showCost)} rowKey={node.id} status={status} />;
+  const status: "neutral" | "warning" | "positive" = epic?.ticketStatus === "complete"
+    ? "positive"
+    : node.costComplete ? "neutral" : "warning";
+  return <OperationalTableRow cells={executionNodeCells(node, plan, showCost, epic)} rowKey={node.id} status={status} />;
 }
 
 export function Quantity({ value, className = "" }: { value: number; className?: string }) {

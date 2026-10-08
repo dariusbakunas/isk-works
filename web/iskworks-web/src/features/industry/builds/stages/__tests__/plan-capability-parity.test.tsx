@@ -293,6 +293,7 @@ const tritLine: AcquisitionLine = {
   plannedInventoryQuantity: 0,
   shortageQuantity: 150,
   availableQuantity: 0,
+  reservedQuantity: 0,
   sourceStrategy: "buy",
   consumers: [acqEdge("root", ROOT, 100), acqEdge("pse", "pse-build", 50)],
   productionMethods: [],

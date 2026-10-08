@@ -263,8 +263,11 @@ export interface AcquisitionLine {
   /** Always `> 0` -- a fully inventory-covered row never appears here. */
   shortageQuantity: number;
   /** The type's whole-tree starting inventory, read through from the
-   * canonical Materials rollup -- identical regardless of source strategy. */
+   * canonical Materials rollup -- identical regardless of source strategy.
+   * Free stock: excludes what open Epics have reserved. */
   availableQuantity: number;
+  /** Held by open Epics' reservations, so not in `availableQuantity`. */
+  reservedQuantity: number;
   /** Informational only. `mixed` means this type is ALSO produced
    * elsewhere in the tree -- the quantities above are always Buy-only
    * regardless of this value. */
