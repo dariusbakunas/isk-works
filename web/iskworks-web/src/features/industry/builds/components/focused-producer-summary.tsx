@@ -16,7 +16,7 @@ export function FocusedProducerSummary({
     buildId: editor.initialBuild?.id ?? "",
     previewKey: editor.previewKey,
     active: true,
-    linkedBuildsByTypeId: editor.linkedBuildsByTypeId,
+    linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const focusedPlan = rootPlan ? focusExecutionPlan(rootPlan, producer.id) : null;
   const operation = focusedPlan?.nodes.find((node) => node.id === focusedPlan.rootNodeId);

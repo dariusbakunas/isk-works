@@ -23,6 +23,10 @@ export interface UseBuildExecutionPlanArgs {
    * new/changed entry refetches so a newly-linked child's occurrence
    * appears without waiting for an unrelated overlay edit. */
   linkedBuildsByTypeId: Record<number, { id: string }>;
+  /** A linked-build create/reuse is in flight. The server-side plan is about
+   * to change, so hold the fetch until it settles rather than sending one
+   * request per linked build and aborting all but the last. */
+  linkedBuildsSettling?: boolean;
 }
 
 export interface UseBuildExecutionPlanResult {
@@ -42,6 +46,7 @@ export function useBuildExecutionPlan({
   previewKey,
   active,
   linkedBuildsByTypeId,
+  linkedBuildsSettling = false,
 }: UseBuildExecutionPlanArgs): UseBuildExecutionPlanResult {
   const [plan, setPlan] = useState<ExecutionPlanProjection | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,6 +70,10 @@ export function useBuildExecutionPlan({
 
   useEffect(() => {
     if (!active || !buildId || !previewKey) return;
+    if (linkedBuildsSettling) {
+      setLoading(true);
+      return;
+    }
 
     let command: PreviewBuildPlanCommand;
     try {
@@ -101,7 +110,7 @@ export function useBuildExecutionPlan({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [buildId, previewKey, active, linkedSignal, refetchToken]);
+  }, [buildId, previewKey, active, linkedSignal, linkedBuildsSettling, refetchToken]);
 
   return { plan, loading, refreshError, hardError, refetch };
 }

@@ -16,6 +16,10 @@ export interface UseBuildWorksheetArgs {
   previewKey: string;
   active: boolean;
   linkedBuildsByTypeId: Record<number, { id: string }>;
+  /** A linked-build create/reuse is in flight. The server-side plan is about
+   * to change, so hold the fetch until it settles rather than sending one
+   * request per linked build and aborting all but the last. */
+  linkedBuildsSettling?: boolean;
 }
 
 export interface UseBuildWorksheetResult {
@@ -33,6 +37,7 @@ export function useBuildWorksheet({
   previewKey,
   active,
   linkedBuildsByTypeId,
+  linkedBuildsSettling = false,
 }: UseBuildWorksheetArgs): UseBuildWorksheetResult {
   const [worksheet, setWorksheet] = useState<BuildWorksheetProjection | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +60,10 @@ export function useBuildWorksheet({
 
   useEffect(() => {
     if (!active || !rootBuildId || !previewKey) return;
+    if (linkedBuildsSettling) {
+      setLoading(true);
+      return;
+    }
     let command: PreviewBuildPlanCommand;
     try {
       command = JSON.parse(previewKey) as PreviewBuildPlanCommand;
@@ -88,7 +97,7 @@ export function useBuildWorksheet({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [rootBuildId, focusedProducerId, includeDownstream, previewKey, active, linkedSignal, refetchToken]);
+  }, [rootBuildId, focusedProducerId, includeDownstream, previewKey, active, linkedSignal, linkedBuildsSettling, refetchToken]);
 
   return { worksheet, loading, refreshError, hardError, refetch };
 }

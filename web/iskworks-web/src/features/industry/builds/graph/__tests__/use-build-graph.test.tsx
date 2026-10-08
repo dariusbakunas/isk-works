@@ -156,6 +156,31 @@ describe("useBuildGraph", () => {
     expect(previewBuildGraph).toHaveBeenCalledTimes(2);
   });
 
+  it("holds the fetch while linked builds settle, then fetches once", async () => {
+    previewBuildGraph.mockResolvedValue(rootWithProduction(901, "linked-2"));
+    const props = {
+      buildId: ROOT_BUILD_ID,
+      previewKey: PREVIEW_KEY,
+      active: true,
+      linkedBuildsByTypeId: {} as Record<number, { id: string }>,
+      linkedBuildsSettling: true,
+    };
+    const { result, rerender } = renderHook((current) => useBuildGraph(current), { initialProps: props });
+    await flush();
+    rerender({ ...props, linkedBuildsByTypeId: { 900: { id: "linked-1" } } });
+    await flush();
+    expect(previewBuildGraph).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(true);
+
+    rerender({
+      ...props,
+      linkedBuildsByTypeId: { 900: { id: "linked-1" }, 901: { id: "linked-2" } },
+      linkedBuildsSettling: false,
+    });
+    await flush();
+    expect(previewBuildGraph).toHaveBeenCalledTimes(1);
+  });
+
   it("refetches when a linked build resolves, turning unresolved into production", async () => {
     previewBuildGraph.mockResolvedValueOnce(rootWithUnresolved(900));
     const { result, rerender } = renderHook((props) => useBuildGraph(props), {
