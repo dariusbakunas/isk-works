@@ -8,10 +8,12 @@ import {
   createTicketForRequirement,
   deleteOrder,
   getOrder,
+  reserveOrderInventory,
   restoreOrder,
   startOrder,
   type OrderDetail,
   type OrderSummary,
+  type ReserveInventoryResult,
   type TicketSummary,
 } from "../../api/industry";
 import { Badge, ButtonLink, ConfirmDialog, InlineAlert, ProgressBar } from "../../components/primitives";
@@ -109,6 +111,7 @@ export function EpicInspector({
   const [rowError, setRowError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reserveResult, setReserveResult] = useState<ReserveInventoryResult | null>(null);
 
   function loadDetail() {
     setDetailError("");
@@ -142,6 +145,15 @@ export function EpicInspector({
   const recordedCount = linkedTickets.filter((ticket) => ticket.recording?.state === "recorded").length;
 
   const needsActionRequirements = detail?.requirements.filter((requirement) => requirement.state === "needsAction") ?? [];
+
+  async function reserveInventory() {
+    setReserveResult(null);
+    await run(async () => {
+      setReserveResult(await reserveOrderInventory(order.id));
+      loadDetail();
+      onChanged?.();
+    });
+  }
 
   async function start() {
     await run(async () => {
@@ -260,6 +272,19 @@ export function EpicInspector({
             </Row>
           ) : null}
         </dl>
+
+        {detail?.inventory && detail.inventory.plannedReuse > 0 ? (
+          <InventorySection
+            busy={busy}
+            canReserve={!order.canceledAt && !order.archivedAt}
+            onReserve={() => void reserveInventory()}
+            result={reserveResult}
+            summary={detail.inventory}
+            typeName={(typeId) =>
+              detail.requirements.find((requirement) => requirement.typeId === typeId)?.capturedName
+              ?? `Type ${typeId}`}
+          />
+        ) : null}
 
         <div className="space-y-1.5">
           <SectionHeading>Progress</SectionHeading>
@@ -424,5 +449,52 @@ export function EpicInspector({
         recorded from those tickets will be kept. This cannot be undone.
       </ConfirmDialog>
     </PlannerInspectorShell>
+  );
+}
+
+/** What the Epic holds of the stock its plan reuses, and the explicit
+ * "Reserve inventory" (e.g. after restoring an archived Epic, whose
+ * reservations were released). */
+function InventorySection({
+  summary,
+  canReserve,
+  busy,
+  result,
+  onReserve,
+  typeName,
+}: {
+  summary: { plannedReuse: number; reserved: number; used: number };
+  typeName: (typeId: number) => string;
+  canReserve: boolean;
+  busy: boolean;
+  result: ReserveInventoryResult | null;
+  onReserve: () => void;
+}) {
+  const held = summary.reserved + summary.used;
+  const missing = Math.max(0, summary.plannedReuse - held);
+  return (
+    <div className="space-y-1.5">
+      <SectionHeading>Inventory</SectionHeading>
+      <p className="text-xs text-foreground">
+        Reserved {held.toLocaleString()} of {summary.plannedReuse.toLocaleString()} planned from stock
+      </p>
+      <ProgressBar percent={(held / summary.plannedReuse) * 100} tone={missing === 0 ? "positive" : "warning"} />
+      {summary.used > 0 ? (
+        <p className="text-[10px] text-muted">{summary.used.toLocaleString()} already used</p>
+      ) : null}
+      {canReserve && missing > 0 ? (
+        <button className="iw-button-secondary" disabled={busy} onClick={onReserve} type="button">
+          Reserve inventory
+        </button>
+      ) : null}
+      {result && result.shortfalls.length > 0 ? (
+        <InlineAlert title="Not enough free stock" tone="warning">
+          {result.shortfalls
+            .map((shortfall) =>
+              `${typeName(shortfall.typeId)}: ${(shortfall.wanted - shortfall.free).toLocaleString()} short`)
+            .join(" · ")}
+        </InlineAlert>
+      ) : null}
+    </div>
   );
 }

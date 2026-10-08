@@ -40,6 +40,21 @@ pub(super) struct OrderDetailResponse {
     /// client previewed (stock arrived in between). Omitted when empty.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) reuse_increased: Vec<ReuseChange>,
+    /// Version-3 Epics: how much of the frozen reuse the Epic holds and
+    /// has used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) inventory: Option<EpicInventorySummary>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct EpicInventorySummary {
+    /// Σ frozen `reused_quantity`: what the plan meant to take from stock.
+    pub(super) planned_reuse: u64,
+    /// Σ active reservations.
+    pub(super) reserved: u64,
+    /// Σ consumed reservations.
+    pub(super) used: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,5 +187,6 @@ pub(super) fn order_detail_response(
         requirements: requirement_views,
         production_plan: None,
         reuse_increased: Vec::new(),
+        inventory: None,
     }
 }

@@ -557,6 +557,11 @@ async fn archiving_releases_and_restoring_does_not_re_reserve(pool: PgPool) {
     let fx = fixture(&pool).await;
     let order_id = reserved_rifter_epic(&pool, &fx).await;
     let inventory_before = inventory_fingerprint(&pool).await;
+    let (_, detail) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(
+        detail["inventory"],
+        serde_json::json!({"plannedReuse": 600, "reserved": 600, "used": 0})
+    );
 
     let (status, body) = post_json(
         &fx.app,
@@ -566,6 +571,8 @@ async fn archiving_releases_and_restoring_does_not_re_reserve(pool: PgPool) {
     .await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(active_allocations(&pool).await.is_empty());
+    let (_, detail) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(detail["inventory"]["reserved"], 0);
 
     let (status, body) = post_json(
         &fx.app,

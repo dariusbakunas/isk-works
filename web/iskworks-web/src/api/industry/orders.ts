@@ -177,6 +177,25 @@ export interface OrderDetail extends Order {
   // Create Epic only: types the new Epic reserved more of than the dialog
   // previewed (stock arrived in between).
   reuseIncreased?: ReuseChange[];
+  // Version-3 Epics: how much of the frozen reuse the Epic holds and used.
+  inventory?: EpicInventorySummary;
+}
+
+export interface EpicInventorySummary {
+  plannedReuse: number;
+  reserved: number;
+  used: number;
+}
+
+export interface ReserveInventoryResult {
+  reserved: { typeId: number; typeName: string; quantity: number }[];
+  shortfalls: ReservationShortfall[];
+}
+
+// The Epic's "Reserve inventory": reserves what free stock allows toward
+// its frozen reuse and reports what's still short.
+export function reserveOrderInventory(id: string): Promise<ReserveInventoryResult> {
+  return request(`/api/orders/${id}/reserve`, { method: "POST" });
 }
 
 // Board-scoped listing: same derived status/rollup as `OrderDetail`

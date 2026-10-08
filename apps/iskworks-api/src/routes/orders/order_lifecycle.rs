@@ -643,8 +643,25 @@ pub(super) async fn fetch_order_detail(
             .await?;
         production_plan_view(operations, &requirements, &tickets)?
     };
+    let inventory = if order.planning_snapshot_version >= 3 {
+        let mut summary = EpicInventorySummary {
+            planned_reuse: requirements.iter().map(|r| r.reused_quantity).sum(),
+            ..EpicInventorySummary::default()
+        };
+        for totals in repository
+            .requirement_reservation_totals(workspace_id, order_id)
+            .await?
+        {
+            summary.reserved += totals.reserved;
+            summary.used += totals.consumed;
+        }
+        Some(summary)
+    } else {
+        None
+    };
     let mut response = order_detail_response(&order, requirements, fulfillments_per_requirement);
     response.production_plan = production_plan;
+    response.inventory = inventory;
     Ok(response)
 }
 
