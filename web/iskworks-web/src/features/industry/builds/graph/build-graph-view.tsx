@@ -88,7 +88,7 @@ export function BuildGraphView({
     buildId,
     previewKey: editor.previewKey,
     active,
-    linkedBuildsByTypeId: editor.linkedBuildsByTypeId,
+    linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const focusedFlow = useMemo(() => {
     if (!focusedProducerId) return graph.flow;

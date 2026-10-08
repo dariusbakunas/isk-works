@@ -38,6 +38,10 @@ export interface UseBuildGraphArgs {
    * new/changed entry refetches so an `unresolvedBuild` slot becomes a real
    * `production` node. No polling. */
   linkedBuildsByTypeId: Record<number, { id: string }>;
+  /** A linked-build create/reuse is in flight. The server-side plan is about
+   * to change, so hold the fetch until it settles rather than sending one
+   * request per linked build and aborting all but the last. */
+  linkedBuildsSettling?: boolean;
 }
 
 export interface BuildGraphFlowState {
@@ -73,6 +77,7 @@ export function useBuildGraph({
   previewKey,
   active,
   linkedBuildsByTypeId,
+  linkedBuildsSettling = false,
 }: UseBuildGraphArgs): UseBuildGraphResult {
   const [projection, setProjection] = useState<BuildGraphProjection | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,6 +130,10 @@ export function useBuildGraph({
 
   useEffect(() => {
     if (!active || !previewKey) return;
+    if (linkedBuildsSettling) {
+      setLoading(true);
+      return;
+    }
 
     let command: PreviewBuildPlanCommand;
     try {
@@ -194,7 +203,7 @@ export function useBuildGraph({
           : next;
       });
     }
-  }, [buildId, previewKey, active, linkedSignal, refetchToken]);
+  }, [buildId, previewKey, active, linkedSignal, linkedBuildsSettling, refetchToken]);
 
   // Every non-root node with graph children is collapsed unless the user
   // explicitly expanded it.

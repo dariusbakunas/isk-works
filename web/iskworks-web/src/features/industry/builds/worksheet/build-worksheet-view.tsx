@@ -32,7 +32,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId }: { acti
   };
   const { worksheet, loading, refreshError, hardError } = useBuildWorksheet({
     rootBuildId: editor.initialBuild?.id ?? "", focusedProducerId: focusedProducerId ?? null, includeDownstream,
-    previewKey: editor.previewKey, active, linkedBuildsByTypeId: editor.linkedBuildsByTypeId,
+    previewKey: editor.previewKey, active, linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const rows = worksheet?.groups.flatMap((group) => group.rows) ?? [];
 
@@ -40,7 +40,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId }: { acti
   // been selected so an unused Worksheet costs no second planning walk.
   const buildId = editor.initialBuild?.id ?? "";
   const { plan: rootPlan, refetch } = useBuildExecutionPlan({
-    buildId, previewKey: editor.previewKey, active: active && inspecting, linkedBuildsByTypeId: editor.linkedBuildsByTypeId,
+    buildId, previewKey: editor.previewKey, active: active && inspecting, linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const plan = useMemo(
     () => rootPlan && focusedProducerId ? focusExecutionPlan(rootPlan, focusedProducerId) : rootPlan,

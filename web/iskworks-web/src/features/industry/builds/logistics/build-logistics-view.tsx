@@ -60,7 +60,7 @@ export function BuildLogisticsView({
     buildId: editor.initialBuild?.id ?? "",
     previewKey: editor.previewKey,
     active,
-    linkedBuildsByTypeId: editor.linkedBuildsByTypeId,
+    linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const plan = useMemo(
     () => rootPlan && focusedProducerId ? focusExecutionPlan(rootPlan, focusedProducerId) : rootPlan,
