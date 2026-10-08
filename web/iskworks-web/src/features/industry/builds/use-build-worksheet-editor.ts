@@ -506,17 +506,43 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   // racing it with a stale `expectedRevision`.
   const saveRef = useRef(save);
   saveRef.current = save;
-  const saveQueueRef = useRef<Promise<Build | null>>(Promise.resolve(null));
-  function queueSave(): Promise<Build | null> {
-    const queued = saveQueueRef.current.catch(() => null).then(() => saveRef.current());
+  // The draft as last persisted (see `autosaveSnapshot` below), and the one
+  // the latest render would save. Equal means a save would only bump the
+  // revision.
+  const lastSavedSnapshotRef = useRef("");
+  const currentSnapshotRef = useRef("");
+  const buildIdRef = useRef(initialBuild?.id);
+  buildIdRef.current = initialBuild?.id;
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const queued = saveQueueRef.current.catch(() => null).then(task);
     saveQueueRef.current = queued;
     return queued;
   }
+  async function saveRecordingSnapshot(): Promise<Build | null> {
+    const snapshot = currentSnapshotRef.current;
+    const draft = await saveRef.current();
+    if (draft) lastSavedSnapshotRef.current = snapshot;
+    return draft;
+  }
+  function queueSave(): Promise<Build | null> {
+    return enqueue(saveRecordingSnapshot);
+  }
+  // Like `queueSave`, but an existing build with nothing unsaved is not
+  // re-saved: resolves to its id either way, or null if the save failed.
+  function queueSaveIfChanged(): Promise<string | null> {
+    return enqueue(async () => {
+      const buildId = buildIdRef.current;
+      const snapshot = currentSnapshotRef.current;
+      if (buildId && snapshot && snapshot === lastSavedSnapshotRef.current) return buildId;
+      return (await saveRecordingSnapshot())?.id ?? null;
+    });
+  }
 
   async function buildLinkedComponent(typeId: number): Promise<Build> {
-    const draft = await queueSave();
-    if (!draft) throw new Error("Save the build before creating a linked build.");
-    return createLinkedBuild(draft.id, { componentTypeId: typeId });
+    const buildId = await queueSaveIfChanged();
+    if (!buildId) throw new Error("Save the build before creating a linked build.");
+    return createLinkedBuild(buildId, { componentTypeId: typeId });
   }
 
   // ---- Active linked-build lifecycle (editor-owned) --------------------
@@ -530,6 +556,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   // `linkedBuildErrors` and never issues the calls itself.
   const [linkedBuildsByTypeId, setLinkedBuildsByTypeId] = useState<Record<number, Build>>({});
   const [linkedBuildPending, setLinkedBuildPending] = useState<Record<number, boolean>>({});
+  const linkedBuildsSettling = Object.keys(linkedBuildPending).length > 0;
   const [linkedBuildErrors, setLinkedBuildErrors] = useState<Record<number, string>>({});
   // Per-type in-flight guard -- a ref, so effect reruns / StrictMode double
   // invokes can't launch a second create/resync for the same component.
@@ -646,7 +673,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       return "";
     }
   })();
-  const lastSavedSnapshotRef = useRef("");
+  currentSnapshotRef.current = autosaveSnapshot;
   const hasSeededSnapshotRef = useRef(false);
 
   useEffect(() => {
@@ -659,11 +686,8 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       }
     }
     if (autosaveSnapshot === lastSavedSnapshotRef.current) return;
-    const snapshot = autosaveSnapshot;
     const timer = window.setTimeout(() => {
-      queueSave().then((draft) => {
-        if (draft) lastSavedSnapshotRef.current = snapshot;
-      });
+      void queueSave();
     }, 800);
     return () => window.clearTimeout(timer);
     // Only a snapshot change schedules an autosave; `queueSave` and `initialBuild` are read fresh and must not retrigger it.
@@ -837,6 +861,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     setFulfillmentScopes,
     linkedBuildsByTypeId,
     linkedBuildPending,
+    linkedBuildsSettling,
     linkedBuildErrors,
     adoptLinkedBuild,
     blueprintMode,

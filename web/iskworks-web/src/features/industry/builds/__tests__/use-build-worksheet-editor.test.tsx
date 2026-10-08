@@ -396,6 +396,35 @@ describe("useBuildWorksheetEditor -- active linked-build lifecycle", () => {
     expect(industryApi.createLinkedBuild).toHaveBeenCalledWith("build-1", { componentTypeId: 34 });
   });
 
+  test("opening a build with Build-resolved components does not re-save it", async () => {
+    const resolvedBuild = {
+      ...initialBuild(),
+      draftPlanning: { input: { componentResolutions: [{ typeId: 34, recipe: buildRecipe }] } },
+    } as unknown as Build;
+    let resolveCreate!: (build: Build) => void;
+    industryApi.createLinkedBuild.mockReturnValue(new Promise((resolve) => { resolveCreate = resolve; }));
+
+    const view = renderHook(() => useBuildWorksheetEditor(resolvedBuild), { wrapper });
+    await waitFor(() => expect(industryApi.createLinkedBuild).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(view.result.current.linkedBuildsSettling).toBe(true);
+
+    act(() => resolveCreate(linkedBuild({ id: "producer-1" })));
+    await waitFor(() => expect(view.result.current.linkedBuildsSettling).toBe(false), { timeout: 4000 });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(industryApi.updateBuild).not.toHaveBeenCalled();
+  });
+
+  test("an unsaved edit is saved before its linked build is created", async () => {
+    const { result } = await renderReady();
+
+    act(() => result.current.setComponentResolutions({ 34: { recipe: buildRecipe } }));
+
+    await waitFor(() => expect(industryApi.createLinkedBuild).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(industryApi.updateBuild).toHaveBeenCalledTimes(1);
+    expect(industryApi.updateBuild.mock.invocationCallOrder[0])
+      .toBeLessThan(industryApi.createLinkedBuild.mock.invocationCallOrder[0]);
+  });
+
   test("does not create a linked build for a Buy-resolved material", async () => {
     const { result } = await renderReady();
 
