@@ -407,6 +407,9 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
+    /// Reserving inventory for a canceled or archived Epic.
+    #[error("a canceled or archived Epic can't reserve inventory")]
+    OrderNotReservable,
     /// Only version-3 Epics freeze a whole-tree plan the Plan view can show.
     #[error("this Epic was created before whole-tree plans and has no frozen plan to show")]
     FrozenPlanUnavailable,
@@ -626,6 +629,16 @@ pub trait OrderRepository: Send + Sync {
     /// Per requirement of `order_id`: Σ its active (`reserved`) and
     /// consumed allocations. A requirement with no allocation reports
     /// zeros; every requirement of the order is present.
+    /// The Epic's explicit "Reserve inventory" (top-up): for each frozen
+    /// requirement, reserve up to `reused_quantity - held` (held = active
+    /// + consumed) from free stock, in serving order, under the balance
+    /// lock. Partial by design; what free stock can't cover comes back as
+    /// shortfalls. Version-3, open (not canceled, not archived) Epics only.
+    async fn reserve_order_inventory(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<CappedReservationPlan, OrderError>;
     async fn requirement_reservation_totals(
         &self,
         workspace_id: WorkspaceId,

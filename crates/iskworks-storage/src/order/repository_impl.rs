@@ -580,6 +580,23 @@ impl OrderRepository for PgOrderRepository {
         .collect()
     }
 
+    async fn reserve_order_inventory(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<CappedReservationPlan, OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let plan = super::reservations::top_up_order_reservations(
+            &mut tx,
+            workspace_id,
+            order_id,
+            crate::db_now(),
+        )
+        .await?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(plan)
+    }
+
     async fn requirement_reservation_totals(
         &self,
         workspace_id: WorkspaceId,

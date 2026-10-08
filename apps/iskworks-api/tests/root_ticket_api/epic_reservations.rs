@@ -605,3 +605,110 @@ async fn a_refused_cancel_releases_nothing(pool: PgPool) {
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(released_count(&pool).await, released);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// `POST /api/orders/:id/reserve`: explicit top-up.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn reserve(fx: &Fixture, order_id: &str) -> (StatusCode, Value) {
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/reserve"),
+        Value::Null,
+    )
+    .await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reserve_inventory_takes_back_a_restored_epics_reuse(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/archive"),
+        Value::Null,
+    )
+    .await;
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/restore"),
+        Value::Null,
+    )
+    .await;
+
+    let (status, body) = reserve(&fx, &order_id).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        body["reserved"],
+        serde_json::json!([{"typeId": 34, "typeName": "Tritanium", "quantity": 600}])
+    );
+    assert_eq!(body["shortfalls"], serde_json::json!([]));
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 600, "epic_top_up".to_string())]
+    );
+
+    // Already holding its full reuse: a repeat reserves nothing.
+    let (status, body) = reserve(&fx, &order_id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["reserved"], serde_json::json!([]));
+    assert_eq!(active_allocations(&pool).await.len(), 1);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reserve_inventory_takes_what_is_free_and_reports_the_rest(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/archive"),
+        Value::Null,
+    )
+    .await;
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/restore"),
+        Value::Null,
+    )
+    .await;
+    // Meanwhile 400 of the 600 Tritanium left the hangar.
+    sqlx::query("UPDATE inventory_balances SET quantity = 200 WHERE type_id = 34")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (status, body) = reserve(&fx, &order_id).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["reserved"][0]["quantity"], 200);
+    assert_eq!(
+        body["shortfalls"],
+        serde_json::json!([{"typeId": 34, "wanted": 600, "free": 200}])
+    );
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 200, "epic_top_up".to_string())]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_canceled_epic_cannot_reserve(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/cancel"),
+        Value::Null,
+    )
+    .await;
+
+    let (status, body) = reserve(&fx, &order_id).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "order_not_reservable");
+    assert!(active_allocations(&pool).await.is_empty());
+}

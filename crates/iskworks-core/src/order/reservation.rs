@@ -96,14 +96,18 @@ pub fn compare_reuse(
 /// The deterministic serving order key for a requirement (see the module
 /// doc). A requirement with no operation (pre-v3) sorts last.
 fn serving_key<'a>(
-    requirement: &'a NewOrderRequirement,
+    operation_occurrence_key: Option<&'a str>,
+    requirement_id: OrderRequirementId,
     stages: &BTreeMap<String, u32>,
 ) -> (u32, &'a str, Uuid) {
-    let key = requirement.operation_occurrence_key.as_deref();
-    let stage = key
+    let stage = operation_occurrence_key
         .and_then(|key| stages.get(key).copied())
         .unwrap_or(u32::MAX);
-    (stage, key.unwrap_or(""), requirement.id.0)
+    (
+        stage,
+        operation_occurrence_key.unwrap_or(""),
+        requirement_id.0,
+    )
 }
 
 /// Reserve exactly each requirement's frozen `reused_quantity` from free
@@ -138,7 +142,13 @@ pub fn plan_epic_reservations(
         .iter()
         .filter(|requirement| requirement.reused_quantity > 0)
         .collect();
-    ordered.sort_by_key(|requirement| serving_key(requirement, stages));
+    ordered.sort_by_key(|requirement| {
+        serving_key(
+            requirement.operation_occurrence_key.as_deref(),
+            requirement.id,
+            stages,
+        )
+    });
     Ok(ordered
         .into_iter()
         .map(|requirement| PlannedReservation {
@@ -147,6 +157,72 @@ pub fn plan_epic_reservations(
             quantity: requirement.reused_quantity,
         })
         .collect())
+}
+
+/// How much more one requirement of an existing Epic wants reserved.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct ReservationNeed<'a> {
+    pub requirement_id: OrderRequirementId,
+    pub type_id: i64,
+    pub operation_occurrence_key: Option<&'a str>,
+    pub quantity: u64,
+}
+
+/// A top-up's result: what was reserved, and what free stock couldn't
+/// cover.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct CappedReservationPlan {
+    pub reservations: Vec<PlannedReservation>,
+    /// Per type: `wanted` = Σ needs, `free` = free stock before reserving.
+    pub shortfalls: Vec<ReservationShortfall>,
+}
+
+/// Reserve what free stock allows, in serving order: each need gets
+/// `min(need, free left of its type)`. Partial by design -- an explicit
+/// top-up takes what it can and reports the rest.
+#[must_use]
+pub fn plan_capped_reservations(
+    needs: &[ReservationNeed<'_>],
+    stages: &BTreeMap<String, u32>,
+    free_by_type: &BTreeMap<i64, u64>,
+) -> CappedReservationPlan {
+    let mut ordered: Vec<&ReservationNeed<'_>> =
+        needs.iter().filter(|need| need.quantity > 0).collect();
+    ordered.sort_by_key(|need| {
+        serving_key(need.operation_occurrence_key, need.requirement_id, stages)
+    });
+
+    let mut left = free_by_type.clone();
+    let mut wanted: BTreeMap<i64, u64> = BTreeMap::new();
+    let mut reservations = Vec::new();
+    for need in ordered {
+        *wanted.entry(need.type_id).or_insert(0) += need.quantity;
+        let free = left.entry(need.type_id).or_insert(0);
+        let quantity = need.quantity.min(*free);
+        *free -= quantity;
+        if quantity > 0 {
+            reservations.push(PlannedReservation {
+                requirement_id: need.requirement_id,
+                type_id: need.type_id,
+                quantity,
+            });
+        }
+    }
+    let shortfalls = wanted
+        .into_iter()
+        .filter_map(|(type_id, wanted)| {
+            let free = free_by_type.get(&type_id).copied().unwrap_or(0);
+            (wanted > free).then_some(ReservationShortfall {
+                type_id,
+                wanted,
+                free,
+            })
+        })
+        .collect();
+    CappedReservationPlan {
+        reservations,
+        shortfalls,
+    }
 }
 
 /// Σ allocations owned by one requirement, by lifecycle (released rows
@@ -410,6 +486,91 @@ mod tests {
         );
         assert_eq!(over.remaining_need, 0);
         assert_eq!(over.free_coverable, 0);
+    }
+
+    #[test]
+    fn capped_reservations_serve_the_earliest_consumer_and_report_the_rest() {
+        let reaction = OrderRequirementId::new();
+        let root = OrderRequirementId::new();
+        let pyerite = OrderRequirementId::new();
+        let needs = [
+            ReservationNeed {
+                requirement_id: root,
+                type_id: 34,
+                operation_occurrence_key: Some("root"),
+                quantity: 600,
+            },
+            ReservationNeed {
+                requirement_id: reaction,
+                type_id: 34,
+                operation_occurrence_key: Some("reaction"),
+                quantity: 300,
+            },
+            ReservationNeed {
+                requirement_id: pyerite,
+                type_id: 35,
+                operation_occurrence_key: Some("root"),
+                quantity: 50,
+            },
+        ];
+        let plan = plan_capped_reservations(
+            &needs,
+            &stages(&[("root", 1), ("reaction", 0)]),
+            &BTreeMap::from([(34, 500), (35, 80)]),
+        );
+
+        // The reaction (stage 0) is served before the root (stage 1); the
+        // root's own two rows tie on stage and key, so they order by id.
+        assert_eq!(
+            plan.reservations[0],
+            PlannedReservation {
+                requirement_id: reaction,
+                type_id: 34,
+                quantity: 300
+            }
+        );
+        let mut rest = plan.reservations[1..].to_vec();
+        rest.sort_by_key(|reservation| reservation.type_id);
+        assert_eq!(
+            rest,
+            vec![
+                PlannedReservation {
+                    requirement_id: root,
+                    type_id: 34,
+                    quantity: 200
+                },
+                PlannedReservation {
+                    requirement_id: pyerite,
+                    type_id: 35,
+                    quantity: 50
+                },
+            ]
+        );
+        assert_eq!(
+            plan.shortfalls,
+            vec![ReservationShortfall {
+                type_id: 34,
+                wanted: 900,
+                free: 500
+            }]
+        );
+    }
+
+    #[test]
+    fn capped_reservations_with_nothing_free_reserve_nothing() {
+        let id = OrderRequirementId::new();
+        let plan = plan_capped_reservations(
+            &[ReservationNeed {
+                requirement_id: id,
+                type_id: 34,
+                operation_occurrence_key: Some("root"),
+                quantity: 10,
+            }],
+            &stages(&[("root", 0)]),
+            &BTreeMap::new(),
+        );
+        assert!(plan.reservations.is_empty());
+        assert_eq!(plan.shortfalls[0].free, 0);
     }
 
     #[test]

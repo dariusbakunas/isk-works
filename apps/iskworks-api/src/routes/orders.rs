@@ -62,6 +62,10 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/orders/:order_id/archive", post(archive_order))
         .route("/api/orders/:order_id/restore", post(restore_order))
         .route(
+            "/api/orders/:order_id/reserve",
+            post(reserve_order_inventory),
+        )
+        .route(
             "/api/tickets/:ticket_id",
             patch(update_ticket).delete(delete_ticket),
         )
