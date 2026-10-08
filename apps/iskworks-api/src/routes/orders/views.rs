@@ -36,6 +36,10 @@ pub(super) struct OrderDetailResponse {
     /// it serves. Absent for a version-1 Epic.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) production_plan: Option<ProductionPlanView>,
+    /// Create Epic only: types the new Epic reserved more of than the
+    /// client previewed (stock arrived in between). Omitted when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(super) reuse_increased: Vec<ReuseChange>,
 }
 
 #[derive(Debug, Serialize)]
@@ -165,5 +169,6 @@ pub(super) fn order_detail_response(
         rollup,
         requirements: requirement_views,
         production_plan: None,
+        reuse_increased: Vec::new(),
     }
 }

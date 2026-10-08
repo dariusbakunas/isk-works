@@ -261,3 +261,172 @@ async fn create_order_plan_without_a_reservation_request_reserves_nothing(pool: 
     assert!(result.reservations.is_empty());
     assert_eq!(allocation_count(&pool).await, 0);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Routes: `POST /api/builds/:id/orders/preview` and Create Epic's
+// `reservation` request.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn preview_reuse(fx: &Fixture, build: &Build) -> std::collections::BTreeMap<i64, u64> {
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/builds/{}/orders/preview", build.id.0),
+        command_json_for_build(build),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "preview: {body}");
+    reuse_map(&body["reuse"])
+}
+
+fn reuse_map(lines: &Value) -> std::collections::BTreeMap<i64, u64> {
+    lines
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| {
+            (
+                line["typeId"].as_i64().unwrap(),
+                line["quantity"].as_u64().unwrap(),
+            )
+        })
+        .collect()
+}
+
+async fn create_reserving_order(
+    fx: &Fixture,
+    build: &Build,
+    expected_reuse: &[(i64, u64)],
+) -> (StatusCode, Value) {
+    let mut body = command_json_for_build(build);
+    body["reservation"] = serde_json::json!({
+        "expectedReuse": expected_reuse
+            .iter()
+            .map(|(type_id, quantity)| serde_json::json!({"typeId": type_id, "quantity": quantity}))
+            .collect::<Vec<_>>(),
+    });
+    post_json(&fx.app, &format!("/api/builds/{}/orders", build.id.0), body).await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_epic_reserves_what_it_previewed_and_a_second_plan_sees_only_free_stock(
+    pool: PgPool,
+) {
+    let fx = fixture(&pool).await;
+    let build = rifter(&fx).await;
+    // Rifter needs 1,000 Tritanium and 200 Pyerite; 600 Tritanium on hand.
+    seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
+
+    let preview = preview_reuse(&fx, &build).await;
+    assert_eq!(preview, std::collections::BTreeMap::from([(34, 600)]));
+    assert_eq!(allocation_count(&pool).await, 0, "preview reserves nothing");
+
+    let (status, order) = create_reserving_order(&fx, &build, &[(34, 600)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    assert!(order.get("reuseIncreased").is_none());
+    assert_eq!(requirement_of(&order, 34)["reusedQuantity"], 600);
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 600, "epic_create".to_string())]
+    );
+
+    // The issue's scenario: the next plan no longer counts that stock.
+    assert!(
+        preview_reuse(&fx, &build).await.is_empty(),
+        "another Epic's reserved Tritanium is not free"
+    );
+    let (status, second) = create_reserving_order(&fx, &build, &[]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {second}");
+    assert_eq!(requirement_of(&second, 34)["reusedQuantity"], 0);
+    assert_eq!(requirement_of(&second, 34)["freshQuantity"], 1_000);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_epic_refuses_less_reuse_than_previewed_with_a_fresh_preview(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let build = rifter(&fx).await;
+    seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
+    let orders_before = order_count(&pool).await;
+
+    // The dialog showed 800 (stock has since dropped to 600).
+    let (status, body) = create_reserving_order(&fx, &build, &[(34, 800)]).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "reservation_drift");
+    assert_eq!(
+        reuse_map(&body["error"]["preview"]["reuse"]),
+        std::collections::BTreeMap::from([(34, 600)]),
+        "the fresh preview rides along so the dialog can refresh in place"
+    );
+    assert_eq!(
+        body["error"]["decreased"],
+        serde_json::json!([{"typeId": 34, "expected": 800, "now": 600}])
+    );
+    assert_eq!(body["error"]["shortfalls"], serde_json::json!([]));
+    assert_eq!(order_count(&pool).await, orders_before, "nothing created");
+    assert_eq!(allocation_count(&pool).await, 0);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_epic_accepts_more_reuse_than_previewed_and_reports_it(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let build = rifter(&fx).await;
+    seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
+
+    // The dialog showed 400 (an asset sync has since brought in more).
+    let (status, order) = create_reserving_order(&fx, &build, &[(34, 400)]).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    assert_eq!(
+        order["reuseIncreased"],
+        serde_json::json!([{"typeId": 34, "expected": 400, "now": 600}])
+    );
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 600, "epic_create".to_string())]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_epic_without_a_reservation_request_reserves_nothing(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let build = rifter(&fx).await;
+    seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
+
+    let (status, order) = create_order(&fx.app, &build).await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(requirement_of(&order, 34)["reusedQuantity"], 600);
+    assert_eq!(allocation_count(&pool).await, 0);
+}
+
+/// The freeze draws root and child demand from one shared pool, so an
+/// Epic never plans to reuse more of a type than is free -- the old
+/// "root and child both freeze the same stock" duplicate cannot happen,
+/// and reserving such an Epic never trips a shortfall on its own.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn shared_raw_material_reuse_never_exceeds_free_stock(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    // Root: 5 Fabricated Component + 2,000 Tritanium; child (5 runs):
+    // 300 Pyerite + 500 Tritanium. 2,500 Tritanium demanded, 2,200 on hand.
+    let parent = assembly_with_built_component(&fx, 1, 90100, &[]).await;
+    seed_balance(&pool, &fx, 34, "Tritanium", 2_200, 2_200).await;
+
+    let preview = preview_reuse(&fx, &parent).await;
+    assert_eq!(preview.get(&34), Some(&2_200), "capped at the shared pool");
+
+    let expected: Vec<(i64, u64)> = preview.into_iter().collect();
+    let (status, order) = create_reserving_order(&fx, &parent, &expected).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let reserved: i64 = active_allocations(&pool)
+        .await
+        .iter()
+        .filter(|(type_id, _, _)| *type_id == 34)
+        .map(|(_, quantity, _)| quantity)
+        .sum();
+    assert_eq!(reserved, 2_200);
+}

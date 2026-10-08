@@ -1,22 +1,24 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
-    compute_order_rollup, derive_operation_dag, derive_order_status, derive_recording_summary,
-    derive_requirement_state, derive_ticket_blockers, frozen_reuse, intended_build_backed_runs,
-    planned_root_output, requirement_to_prerequisite, FrozenDemandEdge, NewOrderPlan,
-    NewPlanTicket, NewTicket, NewTicketPrerequisite, OperationDependency, Order, OrderError,
-    OrderId, OrderRepository, OrderRequirement, OrderRequirementId, OrderRequirementRollup,
-    OrderStatus, PlanOperation, RecordAcquisitionInput, RecordProductionInput,
-    RecordProductionInputLine, RequirementFulfillmentState, RequirementKind,
-    RequirementTicketCreation, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording,
-    TicketKind, TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId,
-    TicketRecordingSummary, TicketStatus, ROOT_OCCURRENCE_PREFIX,
+    compare_reuse, compute_order_rollup, derive_operation_dag, derive_order_status,
+    derive_recording_summary, derive_requirement_state, derive_ticket_blockers, frozen_reuse,
+    intended_build_backed_runs, planned_root_output, requirement_to_prerequisite, reuse_by_type,
+    FrozenDemandEdge, NewOrderPlan, NewOrderRequirement, NewPlanReservation, NewPlanTicket,
+    NewTicket, NewTicketPrerequisite, OperationDependency, Order, OrderError, OrderId,
+    OrderRepository, OrderRequirement, OrderRequirementId, OrderRequirementRollup, OrderStatus,
+    PlanOperation, RecordAcquisitionInput, RecordProductionInput, RecordProductionInputLine,
+    RequirementFulfillmentState, RequirementKind, RequirementTicketCreation, ReservationShortfall,
+    ReuseChange, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind,
+    TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary,
+    TicketStatus, ROOT_OCCURRENCE_PREFIX,
 };
 use iskworks_core::{
     BuildId, BuildRecipe, ConnectedCharacterId, MarketScope, Money, PreviewBuildPlanCommand,
@@ -40,6 +42,7 @@ use views::*;
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/builds/:build_id/orders", post(create_order))
+        .route("/api/builds/:build_id/orders/preview", post(preview_order))
         .route("/api/orders", get(list_orders))
         .route(
             "/api/tickets",
