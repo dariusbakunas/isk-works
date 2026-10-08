@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://discord.gg/DvnnGUQNx
+    about: Ask on Discord.
+  - name: Security vulnerability
+    url: https://github.com/dariusbakunas/isk-works/security/advisories/new
+    about: Report privately. Never in a public issue.

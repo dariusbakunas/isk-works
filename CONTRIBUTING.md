@@ -4,11 +4,28 @@ Thanks for your interest in ISK Works. It is a one-maintainer project, so please
 
 ## Before you start
 
-- **Bugs and ideas**: open an issue. For bugs, include what you did, what you expected, and what
-  happened. If it involves numbers, include the item, the runs and your facility setup.
+- **Bugs and ideas**: open an issue with the bug report or feature request form. Questions go to
+  Discord (linked from the new-issue page).
 - **Pull requests**: open an issue first for anything bigger than a small fix, so we can agree on the
   approach before you spend time on it. Unsolicited large PRs may be closed.
 - **Security issues**: never in a public issue. See [SECURITY.md](SECURITY.md).
+
+## How issues are handled
+
+Issues are tracked on the [ISK Works project board](https://github.com/users/dariusbakunas/projects/4).
+Each one moves through these statuses:
+
+- **Triage**: new, not yet reviewed. New issues carry the `needs-triage` label.
+- **Backlog**: accepted, but not scheduled.
+- **Ready**: the problem is clear, the approach is decided, and there are acceptance criteria. Anyone,
+  human or coding agent, could implement it without other context.
+- **In progress**: someone is working on it.
+- **In review**: a PR is open.
+- **Done**: closed or merged.
+
+If you want to pick something up, choose a **Ready** issue (`good first issue` and `help wanted` are
+good starting points) and comment on it first so work isn't duplicated. Issues in Triage or Backlog
+may still change shape, so ask before starting on one.
 
 ## Development setup
 
