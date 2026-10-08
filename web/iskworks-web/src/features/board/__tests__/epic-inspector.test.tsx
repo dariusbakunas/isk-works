@@ -222,6 +222,14 @@ describe("EpicInspector", () => {
     expect(openBuild).toHaveAttribute("href", "/builds/build-1");
   });
 
+  it("Open build lands a version-3 Epic in its own Plan view", async () => {
+    industryApi.getOrder.mockResolvedValue({ ...orderDetailFixture(), planningSnapshotVersion: 3 });
+    renderInspector({ order: { ...orderFixture(), planningSnapshotVersion: 3 } });
+
+    const openBuild = await screen.findByRole("link", { name: "Open build" });
+    expect(openBuild).toHaveAttribute("href", "/builds/build-1?view=plan&epic=order-1");
+  });
+
   it("keeps frozen Epic economics readable when the source Build is gone", async () => {
     industryApi.getOrder.mockResolvedValue(
       orderDetailFixture({

@@ -287,7 +287,15 @@ export function EpicInspector({
         {order.sourceBuildId ? (
           <div className="space-y-1.5">
             <SectionHeading>Linked Build</SectionHeading>
-            <ButtonLink to={`/builds/${order.sourceBuildId}`}>Open build</ButtonLink>
+            {/* A version-3 Epic opens straight into its own Plan view; the
+                Build page falls back to free stock if it has since closed. */}
+            <ButtonLink
+              to={(order.planningSnapshotVersion ?? 1) >= 3
+                ? `/builds/${order.sourceBuildId}?view=plan&epic=${order.id}`
+                : `/builds/${order.sourceBuildId}`}
+            >
+              Open build
+            </ButtonLink>
           </div>
         ) : null}
 
