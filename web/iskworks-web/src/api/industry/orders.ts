@@ -1,3 +1,4 @@
+import { ApiError, type ApiErrorBody } from "../workspace";
 import { json, request } from "./request";
 import type { Money } from "./shared";
 import type { BlueprintSnapshot, PreviewBuildPlanCommand } from "./builds";
@@ -171,6 +172,9 @@ export interface OrderDetail extends Order {
   requirements: OrderRequirement[];
   // Absent for a version-1 Epic.
   productionPlan?: ProductionPlan;
+  // Create Epic only: types the new Epic reserved more of than the dialog
+  // previewed (stock arrived in between).
+  reuseIncreased?: ReuseChange[];
 }
 
 // Board-scoped listing: same derived status/rollup as `OrderDetail`
@@ -184,8 +188,63 @@ export interface OrderSummary extends Order {
 // The Epic freezes the *live* overlay (the same
 // `PreviewBuildPlanCommand` Materials/Graph/Worksheet already send), not the
 // Build's last-saved configuration -- send the editor's current overlay.
-export function createOrder(buildId: string, command: PreviewBuildPlanCommand): Promise<OrderDetail> {
-  return request(`/api/builds/${buildId}/orders`, json("POST", command));
+//
+// `reservation` reserves the Epic's planned inventory reuse, confirming the
+// per-type reuse the user previewed (`previewOrder`). Without it the Epic
+// reserves nothing.
+export function createOrder(
+  buildId: string,
+  command: PreviewBuildPlanCommand,
+  reservation?: CreateOrderReservation,
+): Promise<OrderDetail> {
+  return request(`/api/builds/${buildId}/orders`, json("POST", reservation ? { ...command, reservation } : command));
+}
+
+// What an Epic created from this overlay right now would reuse from free
+// inventory, per type. Persists nothing.
+export function previewOrder(buildId: string, command: PreviewBuildPlanCommand): Promise<EpicReusePreview> {
+  return request(`/api/builds/${buildId}/orders/preview`, json("POST", command));
+}
+
+export interface EpicReuseLine {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+}
+
+export interface EpicReusePreview {
+  reuse: EpicReuseLine[];
+}
+
+export interface CreateOrderReservation {
+  expectedReuse: { typeId: number; quantity: number }[];
+}
+
+export interface ReuseChange {
+  typeId: number;
+  expected: number;
+  now: number;
+}
+
+export interface ReservationShortfall {
+  typeId: number;
+  wanted: number;
+  free: number;
+}
+
+// 409 from Create Epic: free inventory changed since the preview. Carries
+// the fresh preview, so the dialog can refresh without another request.
+export interface ReservationDrift extends ApiErrorBody {
+  code: "reservation_drift";
+  preview: EpicReusePreview;
+  decreased: ReuseChange[];
+  shortfalls: ReservationShortfall[];
+}
+
+export function reservationDrift(error: unknown): ReservationDrift | null {
+  return error instanceof ApiError && error.body.code === "reservation_drift"
+    ? (error.body as ReservationDrift)
+    : null;
 }
 
 // Board filtering rule -- default `active` (archivedAt IS NULL). Filtered server-side (in-memory, small dataset),

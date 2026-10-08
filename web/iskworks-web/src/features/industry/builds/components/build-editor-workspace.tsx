@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import {
-  createOrder,
   exportBuildVerificationWorkbook,
   renameBuild,
   type Build,
+  type OrderDetail,
   type PreviewBuildPlanCommand,
 } from "../../../../api/industry";
 import { EmptyState, InlineAlert, PageHeader, Panel, StatusBadge } from "../../../../components/primitives";
@@ -20,6 +20,7 @@ import {
   parseRuns,
 } from "./planner-panels";
 import { BuildEditorHeader } from "./build-editor-header";
+import { CreateEpicDialog } from "./create-epic-dialog";
 import { BuildPageHeader } from "./build-page-header";
 import { BuildSettingsSummary } from "./build-settings-summary";
 import { BuildWorkspaceSummary } from "./build-workspace-summary";
@@ -189,7 +190,8 @@ export function BuildEditorWorkspace({
     else params.set("view", view);
     setSearchParams(params, { replace: true });
   }, [initialBuild, settingsParam, viewParam, view, selected, openBuildSettings, searchParams, setSearchParams]);
-  const [creatingOrder, setCreatingOrder] = useState(false);
+  // Non-null while the Create Epic dialog is open: the overlay it freezes.
+  const [epicCommand, setEpicCommand] = useState<PreviewBuildPlanCommand | null>(null);
   const [orderError, setOrderError] = useState("");
   const [exportingWorkbook, setExportingWorkbook] = useState(false);
   const [exportError, setExportError] = useState("");
@@ -237,7 +239,7 @@ export function BuildEditorWorkspace({
   // so fall back to a command built straight from the saved Build/its
   // draft planning (`buildCommandFromBuild`) rather than blocking Epic
   // creation on that resolution finishing.
-  async function handleCreateOrder() {
+  function handleCreateOrder() {
     if (!initialBuild) return;
     let command: PreviewBuildPlanCommand;
     try {
@@ -249,18 +251,19 @@ export function BuildEditorWorkspace({
       return;
     }
     setOrderError("");
-    setCreatingOrder(true);
-    try {
-      const order = await createOrder(initialBuild.id, command);
-      // Land on the Board with the new Epic's inspector already open --
-      // Board is the workspace the rest of this Epic's lifecycle happens
-      // on.
-      navigate(`/board?epic=${order.id}`);
-    } catch (requestError) {
-      setOrderError(apiMessage(requestError));
-      setCreatingOrder(false);
-    }
+    // The dialog previews the Epic's inventory reuse, offers to reserve
+    // it, and creates the Epic.
+    setEpicCommand(command);
   }
+
+  function handleEpicCreated(order: OrderDetail) {
+    setEpicCommand(null);
+    // Land on the Board with the new Epic's inspector already open --
+    // Board is the workspace the rest of this Epic's lifecycle happens
+    // on.
+    navigate(`/board?epic=${order.id}`);
+  }
+
 
   const identity = selected ? (
     <BuildEditorHeader
@@ -414,16 +417,25 @@ export function BuildEditorWorkspace({
             </button>
             <button
               className="iw-button-secondary"
-              disabled={creatingOrder}
-              onClick={() => void handleCreateOrder()}
+              disabled={epicCommand !== null}
+              onClick={handleCreateOrder}
               type="button"
             >
-              {creatingOrder ? "Creating Epic..." : "Create Epic"}
+              Create Epic
             </button>
           </div> : null}
         </div>
       ) : null}
       {orderError ? <InlineAlert title="Epic not created">{orderError}</InlineAlert> : null}
+      {initialBuild ? (
+        <CreateEpicDialog
+          buildId={initialBuild.id}
+          command={epicCommand}
+          onCancel={() => setEpicCommand(null)}
+          onCreated={handleEpicCreated}
+          open={epicCommand !== null}
+        />
+      ) : null}
       {exportError ? (
         <InlineAlert title="Verification workbook not generated">{exportError}</InlineAlert>
       ) : null}
