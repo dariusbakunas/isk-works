@@ -90,3 +90,25 @@ pub(super) async fn insert_requirement_allocations(
     }
     Ok(())
 }
+
+/// Releases every active allocation owned by `order_id`'s requirements
+/// (`released_at = now`): the claim is abandoned, nothing was used, so no
+/// ledger event is posted and no balance changes. Consumed rows stay as
+/// history. Returns how many rows were released.
+pub(super) async fn release_order_allocations(
+    tx: &mut Transaction<'_, Postgres>,
+    order_id: OrderId,
+    now: DateTime<Utc>,
+) -> Result<u64, OrderError> {
+    let result = sqlx::query(
+        "UPDATE inventory_allocations SET released_at = $1 \
+         WHERE released_at IS NULL AND consumed_at IS NULL \
+         AND order_requirement_id IN (SELECT id FROM order_requirements WHERE order_id = $2)",
+    )
+    .bind(now)
+    .bind(order_id.0)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    Ok(result.rows_affected())
+}

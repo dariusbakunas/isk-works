@@ -508,3 +508,100 @@ async fn epic_execution_plan_stages_the_frozen_plan_like_the_build_plan(pool: Pg
     assert_eq!(epic["nodes"][root_id]["ticketStatus"], "todo");
     assert!(epic["nodes"][component_id]["ticketDisplayId"].is_string());
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Releasing: cancel / archive free the Epic's reservations; restore
+// doesn't take them back.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn reserved_rifter_epic(pool: &PgPool, fx: &Fixture) -> String {
+    let build = rifter(fx).await;
+    seed_balance(pool, fx, 34, "Tritanium", 600, 600).await;
+    let (status, order) = create_reserving_order(fx, &build, &[(34, 600)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    order["id"].as_str().unwrap().to_string()
+}
+
+async fn released_count(pool: &PgPool) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM inventory_allocations WHERE released_at IS NOT NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn canceling_an_epic_releases_its_reservations_without_touching_inventory(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    let inventory_before = inventory_fingerprint(&pool).await;
+
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/cancel"),
+        Value::Null,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(active_allocations(&pool).await.is_empty());
+    assert_eq!(released_count(&pool).await, 1);
+    assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn archiving_releases_and_restoring_does_not_re_reserve(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    let inventory_before = inventory_fingerprint(&pool).await;
+
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/archive"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(active_allocations(&pool).await.is_empty());
+
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/restore"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(
+        active_allocations(&pool).await.is_empty(),
+        "restore reserves nothing"
+    );
+    assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_refused_cancel_releases_nothing(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    let (status, _) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/cancel"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let released = released_count(&pool).await;
+
+    let (status, _) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/cancel"),
+        Value::Null,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(released_count(&pool).await, released);
+}

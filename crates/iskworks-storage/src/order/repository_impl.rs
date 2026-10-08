@@ -1800,11 +1800,12 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Order, OrderError> {
-        // Organizational only: stamp `canceled_at`. An Order owns no
-        // inventory reservations, so there is nothing to release, and it
-        // never cascades onto its linked tickets -- a shared ticket may
-        // still be needed by other work.
+        // Stamp `canceled_at` and release the Epic's reservations back to
+        // free stock in one transaction (no ledger event: nothing was
+        // used). It never cascades onto linked tickets -- a shared ticket
+        // may still be needed by other work.
         let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
         let result = sqlx::query(
             "UPDATE orders SET canceled_at = $1, updated_at = $1 \
              WHERE workspace_id = $2 AND id = $3 \
@@ -1813,14 +1814,17 @@ impl OrderRepository for PgOrderRepository {
         .bind(now)
         .bind(workspace_id.0)
         .bind(order_id.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_error)?;
         if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
             return Err(self
                 .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCancelable)
                 .await?);
         }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
         self.get_order(workspace_id, order_id).await
     }
 
@@ -1829,7 +1833,10 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Order, OrderError> {
+        // Archiving releases the Epic's reservations too; restoring does
+        // not re-reserve (see `reserve_order_inventory`).
         let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
         let result = sqlx::query(
             "UPDATE orders SET archived_at = $1, updated_at = $1 \
              WHERE workspace_id = $2 AND id = $3 AND archived_at IS NULL",
@@ -1837,14 +1844,17 @@ impl OrderRepository for PgOrderRepository {
         .bind(now)
         .bind(workspace_id.0)
         .bind(order_id.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_error)?;
         if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
             return Err(self
                 .order_precondition_error(workspace_id, order_id, OrderError::OrderNotArchivable)
                 .await?);
         }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
         self.get_order(workspace_id, order_id).await
     }
 

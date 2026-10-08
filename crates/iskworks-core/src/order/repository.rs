@@ -851,10 +851,10 @@ pub trait OrderRepository: Send + Sync {
 
     /// Organizational only: stamps `canceled_at`. Valid any time before
     /// `completed_at` (requires `completed_at IS NULL AND canceled_at IS
-    /// NULL`) -- a purely stored-state precondition. Releases nothing (an
-    /// Order owns no reservations) and never touches linked tickets -- a
-    /// shared ticket may still be needed by other work, and Order status
-    /// never controls Ticket status.
+    /// NULL`) -- a purely stored-state precondition. Releases the Order's
+    /// active reservations in the same transaction (no ledger event) and
+    /// never touches linked tickets -- a shared ticket may still be needed
+    /// by other work, and Order status never controls Ticket status.
     async fn cancel_order(
         &self,
         workspace_id: WorkspaceId,
@@ -862,7 +862,9 @@ pub trait OrderRepository: Send + Sync {
     ) -> Result<Order, OrderError>;
 
     /// Orthogonal to workflow state -- valid from any status, requires
-    /// only `archived_at IS NULL`. Never touches `inventory_allocations`.
+    /// only `archived_at IS NULL`. Releases the Order's active
+    /// reservations in the same transaction; `restore_order` does not
+    /// re-reserve.
     async fn archive_order(
         &self,
         workspace_id: WorkspaceId,
