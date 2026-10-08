@@ -60,6 +60,8 @@ export function EpicPlanView({
   buildRevision,
   active,
   actions,
+  toolbar,
+  reloadKey = 0,
 }: {
   epicId: string;
   /** The Build's current revision, to flag edits made after the freeze. */
@@ -67,6 +69,10 @@ export function EpicPlanView({
   active: boolean;
   /** Per-requirement row action (e.g. create a ticket). */
   actions?: (requirement: OrderRequirement, line: EpicCoverageLine | undefined) => ReactNode;
+  /** Shown above the table (e.g. a Create ticket button). */
+  toolbar?: ReactNode;
+  /** Bump to reload after a change made from this view. */
+  reloadKey?: number;
 }) {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [coverage, setCoverage] = useState<Map<string, EpicCoverageLine>>(new Map());
@@ -89,7 +95,7 @@ export function EpicPlanView({
 
   useEffect(() => {
     if (active) void load();
-  }, [active, load]);
+  }, [active, load, reloadKey]);
 
   if (error) return <InlineAlert title="Epic not loaded">{error}</InlineAlert>;
   if (!order || order.id !== epicId) return <LoadingState>Loading Epic...</LoadingState>;
@@ -110,6 +116,7 @@ export function EpicPlanView({
         Read-only. This is the Epic&apos;s frozen plan with live reservations and ticket progress. Choose
         No Epic to edit the Build.
       </InlineAlert>
+      {toolbar ? <div className="flex justify-end">{toolbar}</div> : null}
       {changedSinceFreeze ? (
         <InlineAlert title="The Build has changed since this Epic was frozen" tone="warning">
           This view shows the plan as it was when the Epic was created, not the Build&apos;s current recipe,
