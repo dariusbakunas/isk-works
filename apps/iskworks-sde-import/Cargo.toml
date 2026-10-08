@@ -1,0 +1,13 @@
+[package]
+name = "iskworks-sde-import"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+clap.workspace = true
+iskworks-sde = { path = "../../crates/iskworks-sde" }
+iskworks-storage = { path = "../../crates/iskworks-storage" }
+sqlx.workspace = true
+tokio.workspace = true

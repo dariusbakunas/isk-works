@@ -1,0 +1,33 @@
+[package]
+name = "iskworks-app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+iskworks-core = { path = "../iskworks-core" }
+iskworks-esi = { path = "../iskworks-esi" }
+iskworks-sde = { path = "../iskworks-sde" }
+iskworks-storage = { path = "../iskworks-storage" }
+async-trait.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[features]
+# Test constructors and fakes used by iskworks-api's tests. Enabled only
+# through [dev-dependencies], so release builds never contain them.
+test-support = ["iskworks-esi/test-support"]
+
+[dev-dependencies]
+iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
+sqlx.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber.workspace = true
+uuid.workspace = true

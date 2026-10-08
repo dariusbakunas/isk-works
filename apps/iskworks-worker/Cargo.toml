@@ -1,0 +1,23 @@
+[package]
+name = "iskworks-worker"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+iskworks-app = { path = "../../crates/iskworks-app" }
+iskworks-core = { path = "../../crates/iskworks-core" }
+iskworks-esi = { path = "../../crates/iskworks-esi" }
+iskworks-storage = { path = "../../crates/iskworks-storage" }
+sqlx.workspace = true
+tokio = { workspace = true, features = ["signal", "time"] }
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+rust_decimal.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

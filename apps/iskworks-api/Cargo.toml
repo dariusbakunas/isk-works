@@ -1,0 +1,49 @@
+[package]
+name = "iskworks-api"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# `src/bin/backfill_observed_blueprints.rs` is a second binary (a one-off
+# maintenance CLI, run explicitly via `--bin backfill_observed_blueprints`)
+# -- without this, `cargo run -p iskworks-api` (what `make api` runs) can no
+# longer infer which binary to run.
+default-run = "iskworks-api"
+
+[features]
+# Local/agent-verification-only login bypass — see routes/dev_auth.rs.
+# Never enable in a release build: absent from `default`, and the Dockerfile
+# builds with a bare `cargo build --release` that never passes --features.
+dev-auth = []
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+clap.workspace = true
+csv.workspace = true
+iskworks-app = { path = "../../crates/iskworks-app" }
+iskworks-core = { path = "../../crates/iskworks-core" }
+iskworks-esi = { path = "../../crates/iskworks-esi" }
+iskworks-sde = { path = "../../crates/iskworks-sde" }
+iskworks-storage = { path = "../../crates/iskworks-storage" }
+serde.workspace = true
+serde_json.workspace = true
+rust_decimal.workspace = true
+rust_xlsxwriter.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tokio-util.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+calamine = "0.36"
+iskworks-app = { path = "../../crates/iskworks-app", features = ["test-support"] }
+iskworks-esi = { path = "../../crates/iskworks-esi", features = ["test-support"] }
+tokio = { workspace = true, features = ["test-util"] }
+tower.workspace = true
+zip.workspace = true

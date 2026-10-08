@@ -1,0 +1,7 @@
+CREATE TRIGGER build_completions_delete_immutable
+BEFORE DELETE ON build_completions
+FOR EACH ROW EXECUTE FUNCTION reject_completed_accounting_update();
+
+CREATE TRIGGER build_manufacturing_expenses_delete_immutable
+BEFORE DELETE ON build_manufacturing_expenses
+FOR EACH ROW EXECUTE FUNCTION reject_completed_accounting_update();

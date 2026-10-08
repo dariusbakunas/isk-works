@@ -1,0 +1,165 @@
+# Pull request and main-branch validation on GitHub-hosted runners.
+#
+# Security model: this runs untrusted fork code, so it must stay on
+# GitHub-hosted runners with a read-only token and no secrets. Never switch
+# the trigger to `pull_request_target`, and never add a self-hosted runner or
+# a secret here. Image publishing happens elsewhere, from trusted release tags.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI builds are always fresh: incremental state is pure overhead, and line
+  # tables (file:line in panics/backtraces) are all tests need.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  rust-lint:
+    name: Rust fmt and clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: lint
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  rust-test:
+    name: Rust tests (incl. Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iskworks
+          POSTGRES_PASSWORD: iskworks
+          POSTGRES_DB: iskworks
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iskworks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # #[sqlx::test] creates a throwaway database per test from this server.
+      DATABASE_URL: postgres://iskworks:iskworks@localhost:5432/iskworks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: test
+      - name: Unit and in-memory tests
+        run: cargo test --workspace
+      - name: dev-auth feature tests
+        run: cargo test -p iskworks-api --features dev-auth
+      - name: Postgres-backed tests
+        # Everything #[ignore]d except the two tests ignored for other reasons
+        # (a manual Excel artifact generator and a known-flaky log capture).
+        # --no-fail-fast so one run reports failures from every test binary.
+        run: >-
+          cargo test --workspace --no-fail-fast -- --ignored
+          --skip generate_realistic_workbook_artifact_for_manual_excel_verification
+          --skip successful_market_request_is_logged_at_debug
+
+  web:
+    name: Web check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web/iskworks-web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/iskworks-web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+  scripts:
+    name: CI and container scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash ci/test-web-runtime-config.sh
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The three Rust targets share one builder stage, so the workspace
+      # compiles once and the later targets reuse it.
+      - name: iskworks-api
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/rust.Dockerfile
+          target: iskworks-api
+          push: false
+          cache-from: type=gha,scope=rust
+          cache-to: type=gha,scope=rust,mode=max
+      - name: iskworks-worker
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/rust.Dockerfile
+          target: iskworks-worker
+          push: false
+          cache-from: type=gha,scope=rust
+      - name: iskworks-sde-import
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/rust.Dockerfile
+          target: iskworks-sde-import
+          push: false
+          cache-from: type=gha,scope=rust
+      - name: iskworks-web
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: web/iskworks-web
+          file: web/iskworks-web/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max

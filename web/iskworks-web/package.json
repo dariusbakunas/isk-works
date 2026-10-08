@@ -1,0 +1,41 @@
+{
+  "name": "iskworks-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test": "CI=1 vitest run --api=false",
+    "test:e2e": "playwright test",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@tailwindcss/vite": "4.1.12",
+    "@vitejs/plugin-react": "4.7.0",
+    "@xyflow/react": "^12.11.5",
+    "logrocket": "^12.3.0",
+    "logrocket-react": "^7.0.1",
+    "lucide-react": "0.487.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-markdown": "9.1.0",
+    "react-router": "7.18.4",
+    "recharts": "^3.10.1",
+    "tailwindcss": "4.1.12",
+    "vite": "6.4.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "@testing-library/jest-dom": "6.4.8",
+    "@testing-library/react": "16.0.1",
+    "@testing-library/user-event": "14.5.2",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "jsdom": "24.1.1",
+    "typescript": "5.6.3",
+    "vitest": "4.1.11"
+  }
+}

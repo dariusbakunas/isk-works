@@ -1,0 +1,3 @@
+# Changes to CI workflows need the maintainer's review (enable "Require review
+# from Code Owners" in branch protection).
+/.github/ @dariusbakunas

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS eve_connections_one_active_owner_idx;

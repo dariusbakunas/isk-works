@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: iskworks
+      POSTGRES_USER: iskworks
+      POSTGRES_PASSWORD: iskworks
+    ports:
+      - "5432:5432"
+    volumes:
+      - iskworks-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iskworks -d iskworks"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/rust.Dockerfile
+      target: iskworks-worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://iskworks:iskworks@db:5432/iskworks
+      RUST_LOG: ${RUST_LOG:-info}
+      # Optional: only needed to exercise character sync locally. Fixture
+      # mode (matching the API's ISKWORKS_ESI_MOCK dev workflow) needs no
+      # real EVE SSO app; real character sync needs the same client ID and
+      # encryption key the API uses, since it decrypts the same tokens.
+      ISKWORKS_ESI_MOCK: ${ISKWORKS_ESI_MOCK:-0}
+      ISKWORKS_ESI_CONTACT: ${ISKWORKS_ESI_CONTACT:-}
+      EVE_SSO_CLIENT_ID: ${EVE_SSO_CLIENT_ID:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      ISKWORKS_WORKER_MARKET_POLL_SECONDS: ${ISKWORKS_WORKER_MARKET_POLL_SECONDS:-5}
+      ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS:-900}
+      ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS:-21600}
+      ISKWORKS_WORKER_SYSTEM_INDEX_POLL_SECONDS: ${ISKWORKS_WORKER_SYSTEM_INDEX_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS:-3600}
+      ISKWORKS_WORKER_LEASE_SECONDS: ${ISKWORKS_WORKER_LEASE_SECONDS:-120}
+      ISKWORKS_WORKER_RETRY_SECONDS: ${ISKWORKS_WORKER_RETRY_SECONDS:-60}
+      ISKWORKS_WORKER_SOURCE_BATCH_SIZE: ${ISKWORKS_WORKER_SOURCE_BATCH_SIZE:-10}
+      ISKWORKS_WORKER_MARKET_ITEM_BATCH_SIZE: ${ISKWORKS_WORKER_MARKET_ITEM_BATCH_SIZE:-100}
+      ISKWORKS_WORKER_SYSTEM_BATCH_SIZE: ${ISKWORKS_WORKER_SYSTEM_BATCH_SIZE:-100}
+      ISKWORKS_WORKER_CHARACTER_SYNC_POLL_SECONDS: ${ISKWORKS_WORKER_CHARACTER_SYNC_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_CHARACTER_SYNC_BATCH_SIZE: ${ISKWORKS_WORKER_CHARACTER_SYNC_BATCH_SIZE:-50}
+      ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY: ${ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY:-4}
+      ISKWORKS_WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${ISKWORKS_WORKER_SHUTDOWN_TIMEOUT_SECONDS:-30}
+    restart: unless-stopped
+
+volumes:
+  iskworks-postgres:

@@ -1,0 +1,18 @@
+.env
+.env.*
+!.env.example
+target/
+node_modules/
+dist/
+coverage/
+.vite/
+.DS_Store
+.idea/
+.superpowers/
+.worktrees/
+
+# Maintainers' design notes and local agent settings: not part of the repo.
+# No trailing slashes: in a maintainer checkout these can be symlinks, and a
+# "dir/" pattern does not match a symlink.
+docs/superpowers
+.claude

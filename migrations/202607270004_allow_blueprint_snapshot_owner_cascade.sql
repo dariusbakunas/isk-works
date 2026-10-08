@@ -1,0 +1,5 @@
+DROP TRIGGER IF EXISTS build_blueprint_snapshots_immutable ON build_blueprint_snapshots;
+
+CREATE TRIGGER build_blueprint_snapshots_immutable
+BEFORE UPDATE ON build_blueprint_snapshots
+FOR EACH ROW EXECUTE FUNCTION prevent_blueprint_snapshot_mutation();

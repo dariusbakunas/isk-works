@@ -1,0 +1,225 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: iskworks-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iskworks}
+      POSTGRES_USER: ${POSTGRES_USER:-iskworks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - iskworks_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iskworks} -d ${POSTGRES_DB:-iskworks}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  traefik:
+    # v3.1 has a Docker-provider bug that hardcodes an ancient client API
+    # version (1.24), which Docker Engine 29+ rejects outright. Fixed
+    # upstream in v3.6 (traefik/traefik#12253, #12256) — stay on v3.6+.
+    image: traefik:v3.7.10
+    container_name: iskworks-traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.dnschallenge=true
+      - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=20
+      # By default lego verifies propagation by querying the domain's
+      # authoritative nameservers directly (raw DNS, port 53) rather than a
+      # normal recursive resolver. That query can get silently dropped by
+      # restrictive outbound firewalls/routers even though the record is
+      # genuinely there. Route the check through public recursive resolvers
+      # instead, which are far more likely to be reachable.
+      - --certificatesresolvers.le.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+    environment:
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:?set CF_DNS_API_TOKEN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  iskworks-api:
+    image: dariusbakunas/iskworks-api:${ISKWORKS_API_TAG:-latest}
+    container_name: iskworks-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iskworks}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-iskworks}
+      ISKWORKS_ESI_MOCK: "0"
+      # Authentication is mandatory for a public deployment. Hard-coded (not
+      # taken from .env) so it can never be omitted: the API exits non-zero
+      # at startup if EVE_SSO_CLIENT_ID / TOKEN_ENCRYPTION_KEY are missing,
+      # rather than serving one shared workspace unauthenticated.
+      ISKWORKS_AUTH_REQUIRED: "true"
+      # Invite-only onboarding for the alpha: a new EVE identity needs a
+      # valid invite code to provision a workspace. Existing users sign in
+      # normally. Defaults on; set ISKWORKS_INVITE_REQUIRED=false in .env to
+      # reopen registration. Mint codes with:
+      #   docker compose run --rm --entrypoint iskworks-admin iskworks-api invite create
+      # See docs/security/invite-only-alpha.md.
+      ISKWORKS_INVITE_REQUIRED: ${ISKWORKS_INVITE_REQUIRED:-true}
+      # Comma-separated EVE character ids who may open the in-app Admin
+      # section (create/list/disable invites). Empty = no admins; the CLI
+      # above remains the bootstrap path.
+      ISKWORKS_ADMIN_CHARACTER_IDS: ${ISKWORKS_ADMIN_CHARACTER_IDS:-}
+      # Non-production marker, e.g. "STAGE". When set, the web app shows a
+      # hazard-striped banner + viewport frame and prefixes the tab title, so
+      # a stage instance can't be mistaken for prod. Leave unset on prod.
+      ISKWORKS_ENVIRONMENT_LABEL: ${ISKWORKS_ENVIRONMENT_LABEL:-}
+      RUST_LOG: info
+      EVE_SSO_CLIENT_ID: ${EVE_SSO_CLIENT_ID:?set EVE_SSO_CLIENT_ID in .env}
+      # Sent to ESI in the User-Agent so CCP can contact this instance's
+      # operator instead of blocking it. Required; see deploy/README.md.
+      ISKWORKS_ESI_CONTACT: ${ISKWORKS_ESI_CONTACT:?set ISKWORKS_ESI_CONTACT in .env}
+      ISKWORKS_SOURCE_URL: ${ISKWORKS_SOURCE_URL:-}
+      EVE_SSO_REDIRECT_URI: https://${ISK_DOMAIN:?set ISK_DOMAIN in .env}/api/eve/oauth/callback
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?set TOKEN_ENCRYPTION_KEY in .env}
+      WEB_APP_URL: https://${ISK_DOMAIN:?set ISK_DOMAIN in .env}
+      ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS:-900}
+      ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS:-21600}
+      ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS:-3600}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=iskworks_edge
+      - traefik.http.routers.iskworks-api.rule=Host(`${ISK_DOMAIN:?set ISK_DOMAIN in .env}`) && PathPrefix(`/api`)
+      - traefik.http.routers.iskworks-api.entrypoints=websecure
+      - traefik.http.routers.iskworks-api.tls=true
+      - traefik.http.routers.iskworks-api.tls.certresolver=le
+      - traefik.http.routers.iskworks-api.priority=10
+      - traefik.http.routers.iskworks-api.middlewares=iskworks-security@docker,iskworks-api-ratelimit@docker
+      - traefik.http.services.iskworks-api.loadbalancer.server.port=8080
+      # The anonymous sign-in endpoints get a much tighter per-IP limit: each
+      # login start writes a pending-authorization row, and nothing else
+      # stands between them and the internet. (Not /api/auth/session --
+      # every page load calls that.)
+      - traefik.http.routers.iskworks-api-signin.rule=Host(`${ISK_DOMAIN:?set ISK_DOMAIN in .env}`) && (Path(`/api/auth/eve/login`) || PathPrefix(`/api/eve/oauth`))
+      - traefik.http.routers.iskworks-api-signin.entrypoints=websecure
+      - traefik.http.routers.iskworks-api-signin.tls=true
+      - traefik.http.routers.iskworks-api-signin.tls.certresolver=le
+      - traefik.http.routers.iskworks-api-signin.priority=20
+      - traefik.http.routers.iskworks-api-signin.service=iskworks-api
+      - traefik.http.routers.iskworks-api-signin.middlewares=iskworks-security@docker,iskworks-signin-ratelimit@docker
+      # Per client IP. Generous: the SPA fires bursts of parallel requests.
+      - traefik.http.middlewares.iskworks-api-ratelimit.ratelimit.average=30
+      - traefik.http.middlewares.iskworks-api-ratelimit.ratelimit.period=1s
+      - traefik.http.middlewares.iskworks-api-ratelimit.ratelimit.burst=200
+      - traefik.http.middlewares.iskworks-signin-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.iskworks-signin-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.iskworks-signin-ratelimit.ratelimit.burst=20
+      # Security headers for every response (API and web). frame-ancestors /
+      # X-Frame-Options stop the app being framed (clickjacking the admin
+      # actions). No script/style CSP yet: LogRocket and EVE's image CDN
+      # need allowlisting first, and a wrong policy breaks the app.
+      - traefik.http.middlewares.iskworks-security.headers.stsSeconds=31536000
+      - traefik.http.middlewares.iskworks-security.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.iskworks-security.headers.frameDeny=true
+      - traefik.http.middlewares.iskworks-security.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.iskworks-security.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.iskworks-security.headers.permissionsPolicy=camera=(), microphone=(), geolocation=()
+      - traefik.http.middlewares.iskworks-security.headers.contentSecurityPolicy=frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  iskworks-worker:
+    image: dariusbakunas/iskworks-worker:${ISKWORKS_WORKER_TAG:-latest}
+    container_name: iskworks-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iskworks}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-iskworks}
+      RUST_LOG: info
+      # Same EVE SSO app registration and encryption key as iskworks-api --
+      # character sync refreshes and decrypts the same connections' tokens
+      # that the API's OAuth flow encrypted, so these must match exactly.
+      ISKWORKS_ESI_MOCK: "0"
+      EVE_SSO_CLIENT_ID: ${EVE_SSO_CLIENT_ID:?set EVE_SSO_CLIENT_ID in .env}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?set TOKEN_ENCRYPTION_KEY in .env}
+      ISKWORKS_ESI_CONTACT: ${ISKWORKS_ESI_CONTACT:?set ISKWORKS_ESI_CONTACT in .env}
+      ISKWORKS_SOURCE_URL: ${ISKWORKS_SOURCE_URL:-}
+      ISKWORKS_WORKER_MARKET_POLL_SECONDS: ${ISKWORKS_WORKER_MARKET_POLL_SECONDS:-5}
+      ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS:-900}
+      ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS:-21600}
+      ISKWORKS_WORKER_SYSTEM_INDEX_POLL_SECONDS: ${ISKWORKS_WORKER_SYSTEM_INDEX_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS:-3600}
+      ISKWORKS_WORKER_LEASE_SECONDS: ${ISKWORKS_WORKER_LEASE_SECONDS:-120}
+      ISKWORKS_WORKER_RETRY_SECONDS: ${ISKWORKS_WORKER_RETRY_SECONDS:-60}
+      ISKWORKS_WORKER_SOURCE_BATCH_SIZE: ${ISKWORKS_WORKER_SOURCE_BATCH_SIZE:-10}
+      ISKWORKS_WORKER_MARKET_ITEM_BATCH_SIZE: ${ISKWORKS_WORKER_MARKET_ITEM_BATCH_SIZE:-100}
+      ISKWORKS_WORKER_SYSTEM_BATCH_SIZE: ${ISKWORKS_WORKER_SYSTEM_BATCH_SIZE:-100}
+      ISKWORKS_WORKER_CHARACTER_SYNC_POLL_SECONDS: ${ISKWORKS_WORKER_CHARACTER_SYNC_POLL_SECONDS:-30}
+      ISKWORKS_WORKER_CHARACTER_SYNC_BATCH_SIZE: ${ISKWORKS_WORKER_CHARACTER_SYNC_BATCH_SIZE:-50}
+      ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY: ${ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY:-4}
+      ISKWORKS_WORKER_SHUTDOWN_TIMEOUT_SECONDS: ${ISKWORKS_WORKER_SHUTDOWN_TIMEOUT_SECONDS:-30}
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  iskworks-web:
+    image: dariusbakunas/iskworks-web:${ISKWORKS_WEB_TAG:-latest}
+    container_name: iskworks-web
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=iskworks_edge
+      - traefik.http.routers.iskworks-web.rule=Host(`${ISK_DOMAIN:?set ISK_DOMAIN in .env}`)
+      - traefik.http.routers.iskworks-web.entrypoints=websecure
+      - traefik.http.routers.iskworks-web.tls=true
+      - traefik.http.routers.iskworks-web.tls.certresolver=le
+      - traefik.http.routers.iskworks-web.priority=1
+      # Defined on the iskworks-api container's labels.
+      - traefik.http.routers.iskworks-web.middlewares=iskworks-security@docker
+      - traefik.http.services.iskworks-web.loadbalancer.server.port=80
+    environment:
+      # Optional LogRocket session replay with YOUR OWN LogRocket app ID.
+      # Off unless both are set; see deploy/README.md.
+      LOGROCKET_APP_ID: ${LOGROCKET_APP_ID:-}
+      LOGROCKET_ENABLED: ${LOGROCKET_ENABLED:-false}
+      # Optional community links shown in the footer, About & Legal, and Help.
+      # Unset hides them; see deploy/README.md.
+      ISKWORKS_SUPPORT_URL: ${ISKWORKS_SUPPORT_URL:-}
+      ISKWORKS_SUPPORT_LABEL: ${ISKWORKS_SUPPORT_LABEL:-}
+      ISKWORKS_DONATION_CHARACTER: ${ISKWORKS_DONATION_CHARACTER:-}
+      ISKWORKS_SOURCE_URL: ${ISKWORKS_SOURCE_URL:-}
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  # Not started by `docker compose up`. Run on demand — see deploy/README.md:
+  #   SDE_ZIP_PATH=/path/to/sde.zip docker compose --profile tools run --rm iskworks-sde-import --path /data/sde.zip
+  iskworks-sde-import:
+    image: dariusbakunas/iskworks-sde-import:${ISKWORKS_SDE_IMPORT_TAG:-latest}
+    container_name: iskworks-sde-import
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-iskworks}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-iskworks}
+    volumes:
+      - ${SDE_ZIP_PATH:-/dev/null}:/data/sde.zip:ro
+    networks:
+      - iskworks_edge
+
+networks:
+  iskworks_edge:
+    name: iskworks_edge
+
+volumes:
+  iskworks_pg_data:
+  traefik_letsencrypt:

@@ -1,0 +1,7 @@
+node_modules
+dist
+test-results
+playwright-report
+*.log
+# Never bake local Vite env files (e.g. VITE_LOGROCKET_*) into the image.
+.env*

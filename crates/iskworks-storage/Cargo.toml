@@ -1,0 +1,25 @@
+[package]
+name = "iskworks-storage"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+iskworks-core = { path = "../iskworks-core" }
+iskworks-esi = { path = "../iskworks-esi" }
+iskworks-sde = { path = "../iskworks-sde" }
+rust_decimal.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-log = "0.2"

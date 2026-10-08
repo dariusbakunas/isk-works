@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/iskworks-app",
+  "crates/iskworks-core",
+  "crates/iskworks-esi",
+  "crates/iskworks-sde",
+  "crates/iskworks-storage",
+  "apps/iskworks-admin",
+  "apps/iskworks-api",
+  "apps/iskworks-worker",
+  "apps/iskworks-sde-import",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.78"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+async-trait = "0.1"
+aes-gcm = "0.10"
+axum = { version = "0.7", features = ["multipart"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rust_decimal = { version = "1", features = ["serde-str"] }
+rust_xlsxwriter = "0.99"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate", "rust_decimal", "json"] }
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tokio-util = "0.7"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+url = "2"
+zip = "2"
+jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

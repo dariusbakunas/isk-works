@@ -1,0 +1,8 @@
+target
+web/**/node_modules
+web/**/dist
+.git
+.idea
+.superpowers
+.claude
+*.log

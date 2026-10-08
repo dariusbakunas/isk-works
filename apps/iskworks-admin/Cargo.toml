@@ -1,0 +1,19 @@
+[package]
+name = "iskworks-admin"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "iskworks-admin"
+path = "src/main.rs"
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+iskworks-core = { path = "../../crates/iskworks-core" }
+iskworks-storage = { path = "../../crates/iskworks-storage" }
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true

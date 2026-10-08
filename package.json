@@ -1,0 +1,14 @@
+{
+  "name": "isk-works",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix web/iskworks-web run dev",
+    "check": "npm --prefix web/iskworks-web run check",
+    "test": "npm --prefix web/iskworks-web test",
+    "build": "npm --prefix web/iskworks-web run build",
+    "verify": "npm run check && npm test && npm run build"
+  }
+}

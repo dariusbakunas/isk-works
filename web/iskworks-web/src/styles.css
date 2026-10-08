@@ -1,0 +1,528 @@
+@import "tailwindcss";
+
+@theme {
+  /* Values below the accent/batch/reaction block are copied verbatim from
+     the `C` palette shared across every view of the design prototype --
+     that's the app's real design system, not a one-off exploration
+     palette, since all four view files (Characters, Opportunities,
+     Workflow, Graph) define the identical constants. muted maps to the
+     mock's mid-tone "dim" (#8a97ab); its dimmer "faint" (#5a6878) tier
+     doesn't have a single global equivalent here and is applied locally
+     where a mock specifically wants it (e.g. Characters' section-heading
+     labels). positive maps to the mock's "teal" (#3a9e8a, its dedicated
+     status-indicator color) rather than its "green" (#4a8f5a, used for
+     progress-bar fills and the Connect Character CTA) -- literal green is
+     applied locally for progress bars rather than promoted to a token. */
+  --color-background: #0c0f14;
+  --color-foreground: #c4cad4;
+  --color-panel: #101418;
+  --color-panel-strong: #131820;
+  --color-muted: #8a97ab;
+  --color-border: #1d2433;
+  --color-primary: #4a8fc4;
+  --color-primary-foreground: oklch(0.98 0.004 255);
+  --color-accent: oklch(0.76 0.15 76);
+  --color-danger: #9e3030;
+  --color-success: #3a9e8a;
+  --color-positive: #3a9e8a;
+  --color-warning: #c8952a;
+  --color-destructive: #9e3030;
+  /* Acquisition Run / Execution Batch brand accent -- deliberately a
+     distinct hue from every ticket status color and from --color-accent
+     (too close to --color-warning to reuse for this) so a batched ticket
+     or Run card never reads as a 5th status. */
+  --color-batch: oklch(0.62 0.1 200);
+  /* Reaction-subtype ticket badge -- the Board design uses a 4th hue
+     (blue/purple/amber/green) for the ACQ/RXN/MFG/ASM subtype badges,
+     distinct from ticket status colors; primary/warning/positive already
+     cover ACQ/MFG/ASM, this is the one genuinely missing hue. */
+  --color-reaction: oklch(0.6 0.16 310);
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.375rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.5rem;
+  --text-2xl: 1.25rem;
+  --text-2xl--line-height: 1.5rem;
+}
+
+/* Finance Analytics palette (the prototype's G / CAT constants). `static` keeps
+   every variable in the output: charts and swatches read them through inline
+   `var(--color-...)`, which Tailwind's usage scan does not see. Category colours
+   are assigned by category name, so a category keeps its colour in every chart. */
+@theme static {
+  --color-income: #3fb950;
+  --color-expense: #f85149;
+  --color-net: #58a6ff;
+  --color-faint: #4a5668;
+  --color-cat-1: #5b8af0;
+  --color-cat-2: #f0883e;
+  --color-cat-3: #bc8cff;
+  --color-cat-4: #3fb950;
+  --color-cat-5: #e3b341;
+  --color-cat-6: #52d9c0;
+  --color-cat-7: #ff7b72;
+  --color-cat-8: #8b9467;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+/* Faint glow from the bottom corners so the empty canvas isn't flat. Kept away
+   from the top so headers stay clean; page shells are transparent so it shows
+   in the gutters. Fixed so it doesn't scroll. */
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(
+      ellipse 60% 50% at 0% 100%,
+      color-mix(in oklch, var(--color-primary) 8%, transparent),
+      transparent
+    ),
+    radial-gradient(
+      ellipse 50% 45% at 100% 100%,
+      color-mix(in oklch, var(--color-batch) 6%, transparent),
+      transparent
+    );
+  background-attachment: fixed;
+  color: var(--color-foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.36 0.018 255) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.36 0.018 255);
+  border-radius: 3px;
+}
+
+@layer components {
+  .iw-panel {
+    @apply rounded-lg border border-border bg-panel;
+  }
+
+  .iw-panel-strong {
+    @apply rounded-lg border border-border bg-panel-strong;
+  }
+
+  .iw-dialog {
+    @apply rounded-lg border border-foreground/20 bg-panel-strong shadow-2xl;
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--color-primary) 12%, transparent),
+      0 24px 80px rgb(0 0 0 / 0.72);
+  }
+
+  .iw-page-container {
+    @apply w-full px-3 py-3 sm:px-4;
+  }
+
+  #app-right-rail:empty {
+    display: none;
+  }
+
+  @media (min-width: 64rem) {
+    .iw-app-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .iw-app-layout:has(> #app-right-rail:not(:empty)) {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    #app-right-rail:not(:empty) {
+      display: block;
+      min-width: 0;
+      border-left: 1px solid var(--color-border);
+      background: var(--color-panel);
+    }
+  }
+
+  .iw-title {
+    @apply text-2xl font-semibold leading-tight text-foreground;
+  }
+
+  .iw-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-normal text-primary;
+  }
+
+  .iw-muted {
+    @apply text-sm leading-5 text-muted;
+  }
+
+  .iw-button-primary {
+    @apply inline-flex min-h-8 items-center justify-center rounded-md border border-primary bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+  }
+
+  .iw-button-secondary {
+    @apply inline-flex min-h-8 items-center justify-center rounded-md border border-border bg-panel-strong px-2.5 py-1 text-xs font-semibold text-foreground transition hover:border-primary/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary;
+  }
+
+  .iw-button-danger {
+    @apply inline-flex min-h-8 items-center justify-center rounded-md border border-danger bg-danger/15 px-2.5 py-1 text-xs font-semibold text-foreground transition hover:bg-danger/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger;
+  }
+
+  .iw-icon-button {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border text-muted transition hover:border-danger/60 hover:text-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary;
+  }
+
+  .iw-input {
+    @apply min-h-9 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-panel-strong disabled:text-muted disabled:opacity-75;
+  }
+
+  .iw-badge {
+    @apply inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-semibold text-muted;
+  }
+
+  .iw-money {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .iw-money-fraction {
+    color: var(--color-muted);
+    font-size: 0.76em;
+  }
+
+  .iw-money-currency {
+    white-space: nowrap;
+  }
+
+  .finance-table [data-finance-column="time"] { width: 9.5rem; }
+  .finance-table [data-finance-column="character"] { width: 9rem; }
+  .finance-table [data-finance-column="transactionType"] { width: 7rem; }
+  .finance-table [data-finance-column="item"] { width: 15rem; }
+  .finance-table [data-finance-column="quantity"] { width: 6rem; }
+  .finance-table [data-finance-column="unitPrice"] { width: 8rem; }
+  .finance-table [data-finance-column="totalPrice"] { width: 9rem; }
+  .finance-table [data-finance-column="direction"] { width: 7rem; }
+  .finance-table [data-finance-column="counterparty"] { width: 10rem; }
+  .finance-table [data-finance-column="region"] { width: 8rem; }
+  .finance-table [data-finance-column="inventory"] { width: 6.5rem; }
+
+  .finance-date-field {
+    color-scheme: dark;
+  }
+
+  .finance-date-field::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset-inline-end: 0;
+    width: 2rem;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .iw-planner-inspector {
+      animation: iw-planner-inspector-enter 160ms ease-out;
+      transform-origin: right center;
+    }
+  }
+
+  @media (min-width: 64rem) and (prefers-reduced-motion: reduce) {
+    .iw-planner-inspector {
+      animation: none;
+    }
+  }
+}
+
+@keyframes iw-planner-inspector-enter {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* The single skill-level cell that is training right now (Skills tab).
+   Slow breathe between white and the accent blue so the eye lands on it
+   without competing with the row's green TRAINING treatment. */
+.iw-skill-cell-training {
+  animation: iw-skill-cell-training 2400ms ease-in-out infinite;
+}
+
+@keyframes iw-skill-cell-training {
+  0%,
+  100% {
+    background-color: #ffffff;
+  }
+
+  50% {
+    /* Matches SkillLevelBlocks' QUEUED_FILL so the breathe settles on the
+       same blue the queued tiles use. */
+    background-color: color-mix(in srgb, var(--color-primary) 80%, #ffffff);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iw-skill-cell-training {
+    animation: none;
+    background-color: var(--color-primary);
+  }
+}
+
+.iw-calendar {
+  --iw-calendar-skill: #8f7ac8;
+  --iw-calendar-planetary: #3a9e8a;
+  --iw-calendar-faint: #5a6878;
+  --iw-calendar-grid: #202938;
+}
+
+.iw-calendar-segment,
+.iw-calendar-view-switch {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-panel-strong);
+}
+
+.iw-calendar-segment button,
+.iw-calendar-view-switch button,
+.iw-calendar-character-trigger {
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.iw-calendar-segment button + button,
+.iw-calendar-view-switch button + button { border-left: 1px solid var(--color-border); }
+.iw-calendar-segment button[aria-pressed="true"],
+.iw-calendar-view-switch button[aria-pressed="true"] { background: color-mix(in srgb, var(--color-primary) 16%, transparent); color: var(--color-primary); }
+.iw-calendar-segment button:focus-visible,
+.iw-calendar-view-switch button:focus-visible,
+.iw-calendar-character-trigger:focus-visible,
+.iw-calendar-character-option:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+
+.iw-calendar-character-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-panel-strong);
+}
+
+.iw-calendar-character-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 240px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-panel-strong);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 45%);
+}
+
+.iw-calendar-character-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  color: var(--color-foreground);
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.iw-calendar-character-option:hover,
+.iw-calendar-character-option:focus-visible { background: var(--color-panel); }
+
+.iw-calendar-weekdays,
+.iw-calendar-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.iw-calendar-weekdays { border: 1px solid var(--iw-calendar-grid); border-bottom: 0; }
+.iw-calendar-weekdays > div { padding: 6px; color: var(--iw-calendar-faint); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.iw-calendar-month-grid { overflow: hidden; border: 1px solid var(--iw-calendar-grid); border-radius: 3px; }
+.iw-calendar-day { min-width: 0; min-height: 70px; padding: 4px; border-right: 1px solid var(--iw-calendar-grid); border-bottom: 1px solid var(--iw-calendar-grid); background: var(--color-panel); }
+.iw-calendar-day:nth-child(7n) { border-right: 0; }
+.iw-calendar-day[data-in-month="false"] { background: color-mix(in srgb, var(--color-background) 70%, var(--color-panel)); color: var(--iw-calendar-faint); }
+.iw-calendar-day[data-selected="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent); }
+.iw-calendar-day-number { display: grid; width: 18px; height: 18px; margin-bottom: 2px; place-items: center; border-radius: 50%; color: var(--color-muted); font-size: 0.625rem; }
+.iw-calendar-day[data-today="true"] .iw-calendar-day-number { background: var(--color-accent); color: var(--color-background); font-weight: 800; }
+.iw-calendar-day-events { display: grid; min-width: 0; gap: 2px; }
+.iw-calendar-chip { min-width: 0; overflow: hidden; border-radius: 2px; padding: 2px 4px 2px 6px; font-size: 0.625rem; line-height: 1rem; text-align: left; }
+.iw-calendar-chip-industry { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); }
+.iw-calendar-chip-skill { background: color-mix(in srgb, var(--iw-calendar-skill) 14%, transparent); color: var(--iw-calendar-skill); }
+.iw-calendar-chip-planetary { background: color-mix(in srgb, var(--iw-calendar-planetary) 14%, transparent); color: var(--iw-calendar-planetary); }
+.iw-calendar-chip[data-past="true"] { opacity: 0.5; }
+.iw-calendar-chip[aria-pressed="true"] { outline: 1px solid currentColor; outline-offset: -1px; }
+.iw-calendar-more { padding-left: 6px; color: var(--color-muted); font-size: 0.625rem; text-align: left; }
+.iw-calendar-empty { position: absolute; inset: 4.5rem 12% auto; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--color-border); border-radius: 3px; background: color-mix(in srgb, var(--color-panel-strong) 94%, transparent); padding: 12px; color: var(--color-muted); font-size: 0.6875rem; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); }
+.iw-calendar-agenda { display: none; }
+.iw-calendar-week { min-height: 300px; }
+.iw-calendar-week-grid { display: grid; max-height: min(38rem, calc(100vh - 14rem)); grid-template-columns: repeat(7, minmax(0, 1fr)); overflow-x: hidden; overflow-y: auto; border: 1px solid var(--iw-calendar-grid); border-radius: 3px; }
+.iw-calendar-week-day { min-width: 0; min-height: 300px; border-right: 1px solid var(--iw-calendar-grid); background: var(--color-panel); }
+.iw-calendar-week-day:last-child { border-right: 0; }
+.iw-calendar-week-day[data-today="true"] { background: color-mix(in srgb, var(--color-accent) 5%, var(--color-panel)); }
+.iw-calendar-week-day-header { position: sticky; z-index: 1; top: 0; display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-bottom: 1px solid var(--iw-calendar-grid); background: var(--color-panel); color: var(--iw-calendar-faint); }
+.iw-calendar-week-day-header span { font-size: 0.5625rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.iw-calendar-week-day-full-label { display: none; }
+.iw-calendar-week-day-header strong { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; color: var(--color-muted); font-size: 0.8125rem; font-weight: 500; }
+.iw-calendar-week-day[data-today="true"] .iw-calendar-week-day-header strong { border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent); background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent); font-weight: 800; }
+.iw-calendar-week-events { display: grid; align-content: start; gap: 8px; padding: 6px; }
+.iw-calendar-week-card { display: grid; min-width: 0; gap: 3px; border: 1px solid color-mix(in srgb, currentColor 28%, var(--color-border)); border-left: 3px solid currentColor; border-radius: 3px; padding: 5px 6px; background: color-mix(in srgb, currentColor 8%, var(--color-panel)); text-align: left; }
+.iw-calendar-week-card-industry { color: var(--color-primary); }
+.iw-calendar-week-card-skill { color: var(--iw-calendar-skill); }
+.iw-calendar-week-card-planetary { color: var(--iw-calendar-planetary); }
+.iw-calendar-week-card time { font-size: 0.625rem; font-weight: 700; }
+.iw-calendar-week-card-title { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--color-foreground); font-size: 0.6875rem; font-weight: 600; line-height: 1.2; }
+.iw-calendar-week-card-title svg { width: 10px; height: 10px; flex: none; color: currentColor; }
+.iw-calendar-week-card-title span,
+.iw-calendar-week-card-character span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-calendar-week-card-character { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--iw-calendar-faint); font-size: 0.625rem; }
+.iw-calendar-week-card[data-past="true"] { opacity: 0.5; }
+.iw-calendar-week-card[aria-pressed="true"] { outline: 1px solid currentColor; outline-offset: 1px; }
+.iw-calendar-week-empty-day { padding-top: 18px; color: var(--iw-calendar-grid); font-size: 0.6875rem; text-align: center; }
+.iw-calendar-year { min-width: 0; min-height: 300px; }
+.iw-calendar-year-grid { display: grid; min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.iw-calendar-year-month { display: block; min-width: 0; border: 1px solid var(--iw-calendar-grid); border-radius: 3px; padding: 8px; background: var(--color-panel); color: var(--color-foreground); text-align: left; }
+.iw-calendar-year-month:hover { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--iw-calendar-grid)); background: color-mix(in srgb, var(--color-primary) 3%, var(--color-panel)); }
+.iw-calendar-year-month:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.iw-calendar-year-month-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.iw-calendar-year-month-header > strong { font-size: 0.6875rem; font-weight: 700; }
+.iw-calendar-year-month-header > span { display: flex; gap: 7px; font-size: 0.5625rem; font-weight: 700; }
+.iw-calendar-year-month-header [data-kind="industry"] { color: var(--color-primary); }
+.iw-calendar-year-month-header [data-kind="skill"] { color: var(--iw-calendar-skill); }
+.iw-calendar-year-month-header [data-kind="planetary"] { color: var(--iw-calendar-planetary); }
+.iw-calendar-year-weekdays,
+.iw-calendar-year-days { display: grid; min-width: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.iw-calendar-year-weekdays { margin-bottom: 3px; }
+.iw-calendar-year-weekdays > span { overflow: hidden; color: var(--iw-calendar-faint); font-size: 0.5rem; font-weight: 700; text-align: center; text-overflow: clip; text-transform: uppercase; }
+.iw-calendar-year-day,
+.iw-calendar-year-day-placeholder { min-width: 0; height: 20px; }
+.iw-calendar-year-day { position: relative; display: grid; place-items: center; border-radius: 2px; color: var(--color-muted); font-size: 0.5625rem; line-height: 1; }
+.iw-calendar-year-day[data-past="true"] { opacity: 0.5; }
+.iw-calendar-year-day[data-today="true"] { outline: 1px solid color-mix(in srgb, var(--color-accent) 70%, transparent); background: color-mix(in srgb, var(--color-accent) 18%, transparent); color: var(--color-accent); font-weight: 800; opacity: 1; }
+.iw-calendar-year-markers { position: absolute; right: 1px; bottom: 1px; display: flex; gap: 1px; }
+.iw-calendar-year-markers > span { display: grid; width: 7px; height: 7px; place-items: center; border-radius: 50%; font-size: 0.375rem; font-weight: 900; line-height: 1; }
+.iw-calendar-year-markers [data-kind="industry"] { background: color-mix(in srgb, var(--color-primary) 24%, var(--color-panel)); color: var(--color-primary); }
+.iw-calendar-year-markers [data-kind="skill"] { background: color-mix(in srgb, var(--iw-calendar-skill) 24%, var(--color-panel)); color: var(--iw-calendar-skill); }
+.iw-calendar-year-markers [data-kind="planetary"] { background: color-mix(in srgb, var(--iw-calendar-planetary) 24%, var(--color-panel)); color: var(--iw-calendar-planetary); }
+
+@media (max-width: 69.999rem) and (min-width: 48rem) {
+  .iw-calendar-year-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 47.999rem) {
+  .iw-calendar-view-switch button { min-height: 28px; padding-inline: 7px; }
+  .iw-calendar-filters { flex-wrap: wrap; max-width: 100%; overflow: visible; padding-bottom: 2px; }
+  .iw-calendar-character-menu { right: 0; left: auto; }
+  .iw-calendar-month { width: 280px; max-width: 100%; margin-inline: auto; }
+  .iw-calendar-weekdays > div { padding: 4px 0; text-align: center; }
+  .iw-calendar-day { min-height: 40px; padding: 2px; }
+  .iw-calendar-day-number { margin: 0 auto; }
+  .iw-calendar-day-events { display: flex; justify-content: center; gap: 2px; }
+  .iw-calendar-chip { width: 5px; height: 5px; padding: 0; border-radius: 50%; font-size: 0; }
+  .iw-calendar-chip > * { display: none; }
+  .iw-calendar-more { display: none; }
+  .iw-calendar-empty { inset: 3.5rem 5% auto; }
+  .iw-calendar-agenda { display: grid; gap: 4px; }
+  .iw-calendar-agenda h2 { margin-top: 8px; color: var(--color-muted); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; }
+  .iw-calendar-agenda button { display: grid; gap: 1px; border: 1px solid var(--color-border); border-radius: 3px; padding: 8px; background: var(--color-panel); text-align: left; }
+  .iw-calendar-agenda button span { font-size: 0.75rem; font-weight: 600; }
+  .iw-calendar-agenda button small,
+  .iw-calendar-agenda p { color: var(--color-muted); font-size: 0.625rem; }
+  .iw-calendar-week-grid { display: grid; max-height: none; grid-template-columns: 1fr; overflow: visible; }
+  .iw-calendar-week-day { min-height: 0; border-right: 0; border-bottom: 1px solid var(--iw-calendar-grid); }
+  .iw-calendar-week-day:last-child { border-bottom: 0; }
+  .iw-calendar-week-day-header { position: static; display: flex; justify-content: space-between; padding: 7px 8px; }
+  .iw-calendar-week-day-short-label { display: none; }
+  .iw-calendar-week-day-full-label { display: inline; }
+  .iw-calendar-week-day-header strong { width: 22px; height: 22px; }
+  .iw-calendar-week-events { gap: 6px; padding: 7px 8px; }
+  .iw-calendar-week-card { padding: 7px 8px; }
+  .iw-calendar-week-empty-day { padding: 4px 0; }
+  .iw-calendar-year-grid { width: 280px; max-width: 100%; margin-inline: auto; grid-template-columns: minmax(0, 1fr); }
+  .iw-calendar-year-month { padding: 10px; }
+  .iw-calendar-year-day,
+  .iw-calendar-year-day-placeholder { height: 28px; }
+  .iw-calendar-year-weekdays > span { font-size: 0.5625rem; }
+  .iw-calendar-year-day { font-size: 0.625rem; }
+}
+
+/* Finance Analytics header: a switch-style toggle beside the segmented controls. */
+.iw-compare-toggle {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-panel-strong);
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+.iw-compare-toggle[aria-pressed="true"] { color: var(--color-foreground); }
+.iw-compare-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.iw-compare-toggle-track {
+  position: relative;
+  width: 22px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--color-border);
+  transition: background 120ms;
+}
+.iw-compare-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  transition: transform 120ms, background 120ms;
+}
+.iw-compare-toggle-track[data-on="true"] { background: color-mix(in srgb, var(--color-primary) 40%, transparent); }
+.iw-compare-toggle-track[data-on="true"]::after { background: var(--color-primary); transform: translateX(10px); }
+
+/* The viewport height left for the app: the non-production banner sits above
+   the shell and publishes its height as --iw-banner-h (unset on production).
+   Full-height layouts use this instead of 100vh so the footer stays in view. */
+:root { --iw-viewport-h: calc(100vh - var(--iw-banner-h, 0px)); }
+
+/* Non-production environment marker (see components/environment-banner.tsx):
+   hazard stripes so it can't be mistaken for ordinary chrome. */
+.iw-environment-banner {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--color-warning) 0 12px,
+    color-mix(in oklab, var(--color-warning) 75%, black) 12px 24px
+  );
+}
