@@ -21,7 +21,6 @@ import {
 } from "./planner-panels";
 import { BuildEditorHeader } from "./build-editor-header";
 import { CreateEpicDialog } from "./create-epic-dialog";
-import { EpicPlanPane } from "../epic-mode/epic-plan-pane";
 import { EpicSelector } from "../epic-mode/epic-selector";
 import { useBuildEpicSelection } from "../epic-mode/use-build-epic-selection";
 import { BuildPageHeader } from "./build-page-header";
@@ -474,15 +473,12 @@ export function BuildEditorWorkspace({
       ) : null}
       {sdeReady && initialBuild ? (
         <div hidden={view !== "plan"}>
-          {selectedEpicId ? (
-            <EpicPlanPane
-              active={view === "plan"}
-              buildRevision={initialBuild.revision}
-              epicId={selectedEpicId}
-            />
-          ) : (
-            <BuildStagesView active={view === "plan"} editor={editor} focusedProducerId={focusedProducer?.id} />
-          )}
+          <BuildStagesView
+            active={view === "plan"}
+            editor={editor}
+            epicId={selectedEpicId}
+            focusedProducerId={focusedProducer?.id}
+          />
         </div>
       ) : null}
       {sdeReady && initialBuild ? (

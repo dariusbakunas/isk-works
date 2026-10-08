@@ -1,4 +1,5 @@
 import { ApiError, type ApiErrorBody } from "../workspace";
+import type { ExecutionPlanProjection } from "./execution-plan";
 import { json, request } from "./request";
 import type { Money } from "./shared";
 import type { BlueprintSnapshot, PreviewBuildPlanCommand } from "./builds";
@@ -259,26 +260,6 @@ export function listOrders(archived: ArchivedFilter = "active"): Promise<OrderSu
 
 export function getOrder(id: string): Promise<OrderDetail> {
   return request(`/api/orders/${id}`);
-}
-
-// One frozen requirement's live inventory state in its Epic. `freeAvailable`
-// is the type's free stock, shared by every line of that type.
-export interface EpicCoverageLine {
-  requirementId: string;
-  reserved: number;
-  consumed: number;
-  remainingNeed: number;
-  freeAvailable: number;
-  freeCoverable: number;
-}
-
-export interface EpicCoverage {
-  orderId: string;
-  lines: EpicCoverageLine[];
-}
-
-export function getOrderCoverage(id: string): Promise<EpicCoverage> {
-  return request(`/api/orders/${id}/coverage`);
 }
 
 export function startOrder(id: string): Promise<OrderDetail> {
@@ -780,4 +761,40 @@ export function recordAcquisitionProgress(
 
 export function completeAcquisitionRun(runId: string): Promise<AcquisitionRun> {
   return request(`/api/acquisition-runs/${runId}/complete`, { method: "POST" });
+}
+
+// What an Epic holds and has done against one line of its frozen plan.
+export interface EpicStockProgress {
+  reserved: number;
+  consumed: number;
+  remainingNeed: number;
+}
+
+export interface EpicNodeProgress {
+  ticketId: string | null;
+  ticketDisplayId: string | null;
+  ticketStatus: TicketStatus | null;
+  // Stock held for (and used by) the steps this one feeds.
+  output: EpicStockProgress;
+}
+
+export interface EpicPlanOverlay {
+  orderId: string;
+  displayName: string;
+  sourceBuildRevision: number;
+  // By ExecutionNode id.
+  nodes: Record<string, EpicNodeProgress>;
+  // By acquisition type id.
+  acquisitions: Record<string, EpicStockProgress>;
+}
+
+// A version-3 Epic's frozen plan in the Build Plan view's own shape, plus
+// the Epic overlay. Selecting an Epic swaps the Plan's data, not its layout.
+export interface EpicExecutionPlan {
+  plan: ExecutionPlanProjection;
+  epic: EpicPlanOverlay;
+}
+
+export function getOrderExecutionPlan(id: string): Promise<EpicExecutionPlan> {
+  return request(`/api/orders/${id}/execution-plan`);
 }

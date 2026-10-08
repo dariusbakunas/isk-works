@@ -446,68 +446,6 @@ async fn get_json(fx: &Fixture, path: &str) -> (StatusCode, Value) {
     (status, body_json(response).await)
 }
 
-fn coverage_line<'a>(coverage: &'a Value, order: &Value, type_id: i64) -> &'a Value {
-    let requirement_id = requirement_of(order, type_id)["id"].clone();
-    coverage["lines"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|line| line["requirementId"] == requirement_id)
-        .unwrap_or_else(|| panic!("no coverage line for type {type_id}"))
-}
-
-#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
-#[sqlx::test(migrations = "../../migrations")]
-async fn epic_coverage_reports_held_needed_and_free_stock_per_requirement(pool: PgPool) {
-    let fx = fixture(&pool).await;
-    let build = rifter(&fx).await;
-    // Rifter: 1,000 Tritanium, 200 Pyerite. 600 Tritanium on hand, reserved
-    // by this Epic.
-    seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
-    let (status, order) = create_reserving_order(&fx, &build, &[(34, 600)]).await;
-    assert_eq!(status, StatusCode::CREATED, "body: {order}");
-    // Pyerite arrives after the Epic was created: free, not reserved.
-    seed_balance(&pool, &fx, 35, "Pyerite", 50, 50).await;
-
-    let order_id = order["id"].as_str().unwrap();
-    let (status, coverage) = get_json(&fx, &format!("/api/orders/{order_id}/coverage")).await;
-    assert_eq!(status, StatusCode::OK, "body: {coverage}");
-    assert_eq!(coverage["orderId"], order["id"]);
-
-    let tritanium = coverage_line(&coverage, &order, 34);
-    assert_eq!(tritanium["reserved"], 600);
-    assert_eq!(tritanium["consumed"], 0);
-    assert_eq!(tritanium["remainingNeed"], 400);
-    assert_eq!(
-        tritanium["freeAvailable"], 0,
-        "the Epic's own 600 are not free"
-    );
-    assert_eq!(tritanium["freeCoverable"], 0);
-
-    let pyerite = coverage_line(&coverage, &order, 35);
-    assert_eq!(pyerite["reserved"], 0);
-    assert_eq!(pyerite["remainingNeed"], 200);
-    assert_eq!(pyerite["freeAvailable"], 50);
-    assert_eq!(pyerite["freeCoverable"], 50);
-
-    // The Epic detail exposes each operation's ticket status, so finished
-    // stages can show as done.
-    let (status, detail) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        detail["productionPlan"]["operations"][0]["ticketStatus"],
-        "todo"
-    );
-}
-
-#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
-#[sqlx::test(migrations = "../../migrations")]
-async fn epic_coverage_of_an_unknown_epic_is_not_found(pool: PgPool) {
-    let fx = fixture(&pool).await;
-    let (status, _) = get_json(&fx, &format!("/api/orders/{}/coverage", Uuid::new_v4())).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // `GET /api/orders/:id/execution-plan`: the frozen Epic in the Plan view's
 // own shape, plus the Epic overlay.
@@ -558,7 +496,10 @@ async fn epic_execution_plan_stages_the_frozen_plan_like_the_build_plan(pool: Pg
     assert_eq!(tritanium["plannedInventoryQuantity"], 1_000);
     assert_eq!(tritanium["shortageQuantity"], 1_500);
     assert_eq!(tritanium["availableQuantity"], 0);
-    assert_eq!(tritanium["reservedQuantity"], 0, "the Epic's own hold is not someone else's");
+    assert_eq!(
+        tritanium["reservedQuantity"], 0,
+        "the Epic's own hold is not someone else's"
+    );
 
     let epic = &body["epic"];
     assert_eq!(epic["orderId"], order["id"]);

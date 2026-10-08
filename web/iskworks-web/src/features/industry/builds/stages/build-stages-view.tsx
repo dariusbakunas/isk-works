@@ -15,11 +15,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import type {
-  AcquisitionLine,
-  ExecutionNode,
-  ExecutionPlanProjection,
-  ExecutionStage,
+import {
+  bulkCreateTickets,
+  type AcquisitionLine,
+  type EpicNodeProgress,
+  type EpicStockProgress,
+  type ExecutionNode,
+  type ExecutionPlanProjection,
+  type ExecutionStage,
 } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import {
@@ -30,6 +33,9 @@ import {
 import { EmptyState, InlineAlert, Panel } from "../../../../components/primitives";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { focusExecutionPlan } from "../focused-producer-projection";
+import { EpicPlanHeader } from "../epic-mode/epic-plan-header";
+import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
+import { apiMessage } from "../../shared/api-error";
 
 import { CostAmount, ExecutionNodeRow, Quantity } from "./execution-node-row";
 import { costWarningLabel } from "./stage-warnings";
@@ -71,22 +77,50 @@ export function BuildStagesView({
   editor,
   active,
   focusedProducerId,
+  epicId = null,
 }: {
   editor: BuildWorksheetEditorModel;
   active: boolean;
   focusedProducerId?: string;
+  /** Show this Epic's frozen plan instead of the live draft: same layout,
+   * read-only, with each step's ticket and the Epic's reservations. */
+  epicId?: string | null;
 }) {
   const buildId = editor.initialBuild?.id ?? "";
-  const { plan: rootPlan, loading, refreshError, hardError, refetch } = useBuildExecutionPlan({
+  const epicMode = epicId !== null;
+  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode);
+  const [creatingTicketsFor, setCreatingTicketsFor] = useState<number | null>(null);
+  const [epicActionError, setEpicActionError] = useState("");
+  const { plan: rootPlan, loading, refreshError, hardError: draftError, refetch } = useBuildExecutionPlan({
     buildId,
     previewKey: editor.previewKey,
-    active,
+    active: active && !epicMode,
     linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
-  const plan = useMemo(
+  const draftPlan = useMemo(
     () => rootPlan && focusedProducerId ? focusExecutionPlan(rootPlan, focusedProducerId) : rootPlan,
     [rootPlan, focusedProducerId],
   );
+  const plan = epicMode ? (epicPlan.data?.plan ?? null) : draftPlan;
+  const epic = epicMode ? (epicPlan.data?.epic ?? null) : null;
+  const hardError = epicMode ? epicPlan.error : draftError;
+
+  // An Epic's Plan is read-only: rows don't open the (editing) inspector.
+  async function createTicketsForInput(typeId: number) {
+    if (!epicId) return;
+    const requirementIds = epicPlan.untrackedBuyRequirementIds.get(typeId) ?? [];
+    if (requirementIds.length === 0) return;
+    setCreatingTicketsFor(typeId);
+    setEpicActionError("");
+    try {
+      await bulkCreateTickets(epicId, requirementIds);
+      epicPlan.reload();
+    } catch (requestError) {
+      setEpicActionError(apiMessage(requestError));
+    } finally {
+      setCreatingTicketsFor(null);
+    }
+  }
 
   const [selection, setSelectionState] = useState<StagesSelection | null>(null);
   // The right rail holds one inspector at a time: selecting a Plan row
@@ -124,7 +158,7 @@ export function BuildStagesView({
   const { command, replan, sourcing, rootEditing } = usePlanInspector({
     editor,
     buildId,
-    plan,
+    plan: draftPlan,
     refetch,
     onProducerCreated: useCallback(
       (nodeId: string) => setSelection({ kind: "production", nodeId }),
@@ -183,23 +217,47 @@ export function BuildStagesView({
             </p>
           ) : null}
 
+          {epic ? (
+            <EpicPlanHeader
+              buildRevision={editor.initialBuild?.revision ?? null}
+              epic={epic}
+              onTicketCreated={epicPlan.reload}
+            />
+          ) : null}
+          {epicActionError ? (
+            <div className="mb-2">
+              <InlineAlert title="Tickets were not created">{epicActionError}</InlineAlert>
+            </div>
+          ) : null}
+
           {plan.warnings.length > 0 ? <StageWarningsBanner warnings={plan.warnings} /> : null}
 
           {plan.acquisitions.length > 0 ? (
             <AcquisitionSection
               acquisitions={plan.acquisitions}
-              onSelectAcquisition={(typeId) => setSelection({ kind: "acquisition", typeId })}
-              selectedTypeId={selection?.kind === "acquisition" ? selection.typeId : null}
+              epic={epic ? {
+                acquisitions: epic.acquisitions,
+                untrackedBuyRequirementIds: epicPlan.untrackedBuyRequirementIds,
+                creatingTicketsFor,
+                onCreateTickets: (typeId) => void createTicketsForInput(typeId),
+              } : undefined}
+              onSelectAcquisition={(typeId) => {
+                if (!epicMode) setSelection({ kind: "acquisition", typeId });
+              }}
+              selectedTypeId={!epicMode && selection?.kind === "acquisition" ? selection.typeId : null}
             />
           ) : null}
 
           {productionStages.map((stage) => (
             <NodeSection
               key={stage.index}
+              epicNodes={epic?.nodes}
               nodes={nodeList(stage, nodesById)}
-              onSelectNode={(nodeId) => setSelection({ kind: "production", nodeId })}
+              onSelectNode={(nodeId) => {
+                if (!epicMode) setSelection({ kind: "production", nodeId });
+              }}
               plan={plan}
-              selectedNodeId={selection?.kind === "production" ? selection.nodeId : null}
+              selectedNodeId={!epicMode && selection?.kind === "production" ? selection.nodeId : null}
               subtitle={stage.index === 0 ? "Earliest production" : undefined}
               title={`Stage ${stage.index + 1}`}
             />
@@ -208,15 +266,18 @@ export function BuildStagesView({
           {finalStage ? (
             <NodeSection
               emphasize
+              epicNodes={epic?.nodes}
               nodes={nodeList(finalStage, nodesById)}
-              onSelectNode={(nodeId) => setSelection({ kind: "production", nodeId })}
+              onSelectNode={(nodeId) => {
+                if (!epicMode) setSelection({ kind: "production", nodeId });
+              }}
               plan={plan}
-              selectedNodeId={selection?.kind === "production" ? selection.nodeId : null}
+              selectedNodeId={!epicMode && selection?.kind === "production" ? selection.nodeId : null}
               title="Final Production"
             />
           ) : null}
 
-          {command && active ? (
+          {command && active && !epicMode ? (
             <StagesInspector
               command={command}
               facilities={editor.allFacilities ?? []}
@@ -254,9 +315,12 @@ function NodeSection({
   selectedNodeId,
   onSelectNode,
   emphasize = false,
+  epicNodes,
 }: {
   title: string;
   subtitle?: string;
+  /** An Epic's Plan: each step's ticket and progress, by node id. */
+  epicNodes?: Record<string, EpicNodeProgress>;
   nodes: ExecutionNode[];
   plan: ExecutionPlanProjection;
   selectedNodeId: string | null;
@@ -286,7 +350,7 @@ function NodeSection({
       >
         <tbody>
           {nodes.map((node) => (
-            <ExecutionNodeRow key={node.id} node={node} plan={plan} showCost />
+            <ExecutionNodeRow epic={epicNodes?.[node.id]} key={node.id} node={node} plan={plan} showCost />
           ))}
         </tbody>
       </OperationalTable>
@@ -294,14 +358,26 @@ function NodeSection({
   );
 }
 
+interface EpicAcquisitionOverlay {
+  /** By type id. */
+  acquisitions: Record<string, EpicStockProgress>;
+  untrackedBuyRequirementIds: Map<number, string[]>;
+  creatingTicketsFor: number | null;
+  onCreateTickets: (typeId: number) => void;
+}
+
 function AcquisitionSection({
   acquisitions,
   selectedTypeId,
   onSelectAcquisition,
+  epic,
 }: {
   acquisitions: AcquisitionLine[];
   selectedTypeId: number | null;
   onSelectAcquisition: (typeId: number) => void;
+  /** An Epic's Plan: what the Epic holds and has used per input, and
+   * Create ticket for inputs nothing tracks yet. */
+  epic?: EpicAcquisitionOverlay;
 }) {
   return (
     <div className="mb-5">
@@ -318,18 +394,47 @@ function AcquisitionSection({
         selectedRowKey={selectedTypeId === null ? null : String(selectedTypeId)}
       >
         <tbody>
-          {acquisitions.map((line) => (
+          {acquisitions.map((line) => {
+            const held = epic?.acquisitions[String(line.typeId)];
+            const untracked = epic?.untrackedBuyRequirementIds.get(line.typeId)?.length ?? 0;
+            return (
             <OperationalTableRow
               cells={{
                 item: (
                   <span className="flex min-w-0 items-center gap-2">
                     <EveTypeImage size={24} typeId={line.typeId} typeName={line.typeName} />
                     <span className="min-w-0 truncate">{line.typeName}</span>
+                    {epic && untracked > 0 ? (
+                      <button
+                        className="iw-button-secondary ml-auto shrink-0 px-2 py-0.5 text-xs"
+                        disabled={epic.creatingTicketsFor !== null}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          epic.onCreateTickets(line.typeId);
+                        }}
+                        type="button"
+                      >
+                        {epic.creatingTicketsFor === line.typeId ? "Creating..." : "Create ticket"}
+                      </button>
+                    ) : null}
                   </span>
                 ),
                 required: <Quantity value={line.requiredQuantity} />,
+                // An Epic's input: its frozen planned use, with what the
+                // Epic holds and has used.
+                inventory: held ? (
+                  <span
+                    className="flex flex-col items-end leading-tight"
+                    title={`${held.reserved.toLocaleString()} reserved for this Epic · ${held.consumed.toLocaleString()} used`}
+                  >
+                    <Quantity value={line.plannedInventoryQuantity} />
+                    <span className="text-[11px] text-muted">
+                      {held.reserved.toLocaleString()} reserved · {held.consumed.toLocaleString()} used
+                    </span>
+                  </span>
+                ) :
                 // Free stock only; stock open Epics hold is noted, never used.
-                inventory: line.reservedQuantity > 0 ? (
+                line.reservedQuantity > 0 ? (
                   <span
                     className="flex flex-col items-end leading-tight"
                     title={`${line.availableQuantity.toLocaleString()} free · ${line.reservedQuantity.toLocaleString()} reserved by Epics`}
@@ -342,7 +447,15 @@ function AcquisitionSection({
                 ) : (
                   <Quantity value={line.plannedInventoryQuantity} />
                 ),
-                shortage: <Quantity className="text-warning" value={line.shortageQuantity} />,
+                // An Epic's shortage is what it still needs now, not the
+                // shortage frozen at creation.
+                shortage: held ? (
+                  <span title={`Frozen shortage ${line.shortageQuantity.toLocaleString()}`}>
+                    <Quantity className={held.remainingNeed > 0 ? "text-warning" : ""} value={held.remainingNeed} />
+                  </span>
+                ) : (
+                  <Quantity className="text-warning" value={line.shortageQuantity} />
+                ),
                 // The fresh (to-buy) price and cost for the shortage, from the
                 // cost projection -- "Unpriced" rather than a fabricated 0.
                 unitPrice: line.freshUnitPrice ? (
@@ -363,9 +476,10 @@ function AcquisitionSection({
               }}
               key={line.typeId}
               rowKey={String(line.typeId)}
-              status="warning"
+              status={held && held.remainingNeed === 0 ? "positive" : "warning"}
             />
-          ))}
+            );
+          })}
         </tbody>
       </OperationalTable>
     </div>
