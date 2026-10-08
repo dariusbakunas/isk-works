@@ -22,7 +22,7 @@ Rust API + Postgres backend, React/TypeScript frontend.
   - `src/hooks/` — shared hooks; `src/observability/` — LogRocket integration.
 - `migrations/` — sqlx Postgres migrations.
 - `docs/implementation/` — how individual features work; `docs/security/` — invite codes and session replay; `docs/esi-usage.md` — what ISK Works asks of ESI, for operators.
-- `docs/superpowers/` — maintainers' paired design docs and TDD plans (`specs/` + `plans/`, dated `YYYY-MM-DD-<slug>`). Not part of the public repo and gitignored; if your checkout has it, **check it before starting non-trivial work**, since a feature may already be specced and planned.
+- Design docs and TDD plans are not in this repo. Maintainers keep them in the private companion repo, checked out as a sibling: `../isk-works-internal/docs/superpowers/` (`specs/` + `plans/`, dated `YYYY-MM-DD-<slug>`). If you have that checkout, **check it before starting non-trivial work**, since a feature may already be specced and planned, and write new specs/plans there. Never add them to this repo (`docs/superpowers` stays gitignored as a guard).
 
 ## Build plans
 
