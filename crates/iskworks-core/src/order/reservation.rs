@@ -149,6 +149,54 @@ pub fn plan_epic_reservations(
         .collect())
 }
 
+/// Σ allocations owned by one requirement, by lifecycle (released rows
+/// don't count).
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct RequirementReservationTotals {
+    pub requirement_id: OrderRequirementId,
+    /// Active: held for this requirement, not yet used.
+    pub reserved: u64,
+    /// Used by a recording.
+    pub consumed: u64,
+}
+
+/// One requirement's live coverage in an Epic: what it holds, what it has
+/// used, what it still needs, and how much of that free stock could cover
+/// right now.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpicCoverageLine {
+    pub requirement_id: OrderRequirementId,
+    pub reserved: u64,
+    pub consumed: u64,
+    /// `required - reserved - consumed`, floored at `0`.
+    pub remaining_need: u64,
+    /// Free stock of the type (`physical - every active reservation`).
+    /// Shared by every line of the same type.
+    pub free_available: u64,
+    /// `min(remaining_need, free_available)`.
+    pub free_coverable: u64,
+}
+
+#[must_use]
+pub fn epic_coverage_line(
+    requirement_id: OrderRequirementId,
+    required: u64,
+    totals: Option<RequirementReservationTotals>,
+    free_available: u64,
+) -> EpicCoverageLine {
+    let (reserved, consumed) = totals.map_or((0, 0), |totals| (totals.reserved, totals.consumed));
+    let remaining_need = required.saturating_sub(reserved.saturating_add(consumed));
+    EpicCoverageLine {
+        requirement_id,
+        reserved,
+        consumed,
+        remaining_need,
+        free_available,
+        free_coverable: remaining_need.min(free_available),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,6 +373,43 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn coverage_line_counts_reserved_and_consumed_against_the_need() {
+        let id = OrderRequirementId::new();
+        let line = epic_coverage_line(
+            id,
+            1_000,
+            Some(RequirementReservationTotals {
+                requirement_id: id,
+                reserved: 300,
+                consumed: 200,
+            }),
+            150,
+        );
+        assert_eq!(line.remaining_need, 500);
+        assert_eq!(line.free_available, 150);
+        assert_eq!(line.free_coverable, 150);
+
+        let covered = epic_coverage_line(id, 100, None, 1_000);
+        assert_eq!((covered.reserved, covered.consumed), (0, 0));
+        assert_eq!(covered.remaining_need, 100);
+        assert_eq!(covered.free_coverable, 100);
+
+        // Over-held (e.g. recorded output beyond need) never underflows.
+        let over = epic_coverage_line(
+            id,
+            100,
+            Some(RequirementReservationTotals {
+                requirement_id: id,
+                reserved: 80,
+                consumed: 50,
+            }),
+            10,
+        );
+        assert_eq!(over.remaining_need, 0);
+        assert_eq!(over.free_coverable, 0);
     }
 
     #[test]

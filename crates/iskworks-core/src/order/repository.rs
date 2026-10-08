@@ -620,6 +620,14 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<Ticket>, OrderError>;
+    /// Per requirement of `order_id`: Σ its active (`reserved`) and
+    /// consumed allocations. A requirement with no allocation reports
+    /// zeros; every requirement of the order is present.
+    async fn requirement_reservation_totals(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
     async fn list_ticket_prerequisites(
         &self,
         ticket_id: TicketId,

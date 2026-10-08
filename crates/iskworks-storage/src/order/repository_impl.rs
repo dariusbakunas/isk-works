@@ -580,6 +580,39 @@ impl OrderRepository for PgOrderRepository {
         .collect()
     }
 
+    async fn requirement_reservation_totals(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
+        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT r.id, \
+               COALESCE(SUM(a.quantity) FILTER \
+                 (WHERE a.released_at IS NULL AND a.consumed_at IS NULL), 0)::bigint, \
+               COALESCE(SUM(a.quantity) FILTER \
+                 (WHERE a.released_at IS NULL AND a.consumed_at IS NOT NULL), 0)::bigint \
+             FROM order_requirements r \
+             JOIN orders o ON o.id = r.order_id \
+             LEFT JOIN inventory_allocations a ON a.order_requirement_id = r.id \
+             WHERE r.order_id = $1 AND o.workspace_id = $2 \
+             GROUP BY r.id",
+        )
+        .bind(order_id.0)
+        .bind(workspace_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?;
+        rows.into_iter()
+            .map(|(id, reserved, consumed)| {
+                Ok(RequirementReservationTotals {
+                    requirement_id: OrderRequirementId(id),
+                    reserved: u64_from_i64(reserved)?,
+                    consumed: u64_from_i64(consumed)?,
+                })
+            })
+            .collect()
+    }
+
     async fn list_ticket_prerequisites(
         &self,
         ticket_id: TicketId,
