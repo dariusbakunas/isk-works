@@ -1509,7 +1509,7 @@ describe("Build detail planning", () => {
     renderApp("/builds/build-ready?view=plan&epic=epic-1");
 
     expect(await screen.findByText("Epic: Manufacture Rifter")).toBeInTheDocument();
-    const epicPlan = screen.getByRole("table", { name: "Epic plan" });
+    const epicPlan = screen.getByRole("region", { name: "Epic plan" });
     const tritanium = within(epicPlan).getByText("Tritanium").closest("tr")!;
     expect(within(tritanium).getByText("20,000")).toBeInTheDocument();
     expect(within(tritanium).getByText("12,000")).toBeInTheDocument();

@@ -100,9 +100,13 @@ export function EpicPlanView({
   if (error) return <InlineAlert title="Epic not loaded">{error}</InlineAlert>;
   if (!order || order.id !== epicId) return <LoadingState>Loading Epic...</LoadingState>;
 
+  // Build order, like the Plan view: earliest stage first, the final
+  // product last. Stage numbers come from the frozen operation DAG (`0` =
+  // consumes nothing produced in this Epic).
+  const rootKey = order.productionPlan?.rootOccurrenceKey ?? null;
   const operations: PlanOperationView[] = [...(order.productionPlan?.operations ?? [])]
-    // Final product first, like the Plan view: highest stage on top.
-    .sort((a, b) => b.stage - a.stage || a.occurrenceKey.localeCompare(b.occurrenceKey));
+    .sort((a, b) => a.stage - b.stage || a.occurrenceKey.localeCompare(b.occurrenceKey));
+  const sections = epicPlanSections(operations, rootKey);
   const requirementsByOperation = new Map<string, OrderRequirement[]>();
   for (const requirement of order.requirements) {
     const key = requirement.operationOccurrenceKey ?? "";
@@ -123,67 +127,125 @@ export function EpicPlanView({
           sourcing or runs.
         </InlineAlert>
       ) : null}
-      <OperationalTable
-        ariaLabel="Epic plan"
-        columns={COLUMNS}
-        onSelectRow={() => undefined}
-        selectedRowKey={null}
-      >
-        {operations.map((operation) => {
-          const rows = requirementsByOperation.get(operation.occurrenceKey) ?? [];
-          const done = operation.ticketStatus === "complete";
-          return (
-            <OperationalTableGroup
-              groupKey={operation.occurrenceKey}
-              itemCount={rows.length}
-              key={operation.occurrenceKey}
-              label={operation.productName}
-              labelCase="normal"
-              leading={<EveTypeImage size={24} typeId={operation.productTypeId} typeName={operation.productName} />}
-              showCount={false}
-              status={done ? "positive" : "neutral"}
-              summary={(
-                <span className="text-xs text-muted">
-                  ×{operation.producedQuantity.toLocaleString()} · {operation.runs.toLocaleString()} run
-                  {operation.runs === 1 ? "" : "s"}
-                  {operation.ticketDisplayId
-                    ? ` · ${operation.ticketDisplayId}${operation.ticketStatus ? ` ${TICKET_STATUS_LABELS[operation.ticketStatus]}` : ""}`
-                    : " · No ticket"}
-                </span>
-              )}
-              emptyMessage="No inputs"
+      <section aria-label="Epic plan" className="space-y-5">
+        {sections.map((section) => (
+          <div
+            className={section.final ? "rounded-md border border-primary/30 p-2" : ""}
+            key={section.title}
+          >
+            <h3
+              className={section.final
+                ? "mb-2 flex items-baseline gap-2 text-sm font-semibold text-foreground"
+                : "mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wide text-muted"}
             >
-              {rows.map((requirement) => {
-                const line = coverage.get(requirement.id);
-                const needed = line?.remainingNeed ?? requirement.requiredQuantity;
-                return (
-                  <OperationalTableRow
-                    cells={{
-                      item: (
-                        <span className="flex min-w-0 items-center gap-2">
-                          <EveTypeImage size={24} typeId={requirement.typeId} typeName={requirement.capturedName} />
-                          <span className="min-w-0 truncate">{requirement.capturedName}</span>
-                          {actions ? <span className="ml-auto shrink-0">{actions(requirement, line)}</span> : null}
-                        </span>
-                      ),
-                      source: <span className="text-xs text-muted">{SOURCE_LABELS[requirement.kind]}</span>,
-                      required: <Quantity value={requirement.requiredQuantity} />,
-                      reserved: <Quantity value={line?.reserved ?? 0} />,
-                      used: <Quantity value={line?.consumed ?? 0} />,
-                      needed: <Quantity className={needed > 0 && !done ? "text-warning" : ""} value={needed} />,
-                      free: <Quantity className="text-muted" value={line?.freeCoverable ?? 0} />,
-                    }}
-                    interactive={false}
-                    key={requirement.id}
-                    rowKey={requirement.id}
-                    status={done || needed === 0 ? "positive" : "neutral"}
-                  />
-                );
-              })}
-            </OperationalTableGroup>
-          );
-        })}
-      </OperationalTable>
+              {section.title}
+              {section.subtitle ? (
+                <span className="text-[11px] font-normal normal-case text-muted">{section.subtitle}</span>
+              ) : null}
+            </h3>
+            <OperationalTable
+              ariaLabel={section.title}
+              columns={COLUMNS}
+              onSelectRow={() => undefined}
+              selectedRowKey={null}
+            >
+            {section.operations.map((operation) => {
+              const rows = requirementsByOperation.get(operation.occurrenceKey) ?? [];
+              const done = operation.ticketStatus === "complete";
+              return (
+                <OperationalTableGroup
+                  groupKey={operation.occurrenceKey}
+                  itemCount={rows.length}
+                  key={operation.occurrenceKey}
+                  label={operation.productName}
+                  labelCase="normal"
+                  leading={<EveTypeImage size={24} typeId={operation.productTypeId} typeName={operation.productName} />}
+                  showCount={false}
+                  status={done ? "positive" : "neutral"}
+                  summary={(
+                    <span className="text-xs text-muted">
+                      ×{operation.producedQuantity.toLocaleString()} · {operation.runs.toLocaleString()} run
+                      {operation.runs === 1 ? "" : "s"}
+                      {operation.ticketDisplayId
+                        ? ` · ${operation.ticketDisplayId}${operation.ticketStatus ? ` ${TICKET_STATUS_LABELS[operation.ticketStatus]}` : ""}`
+                        : " · No ticket"}
+                    </span>
+                  )}
+                  emptyMessage="No inputs"
+                >
+                  {rows.map((requirement) => {
+                    const line = coverage.get(requirement.id);
+                    const needed = line?.remainingNeed ?? requirement.requiredQuantity;
+                    return (
+                      <OperationalTableRow
+                        cells={{
+                          item: (
+                            <span className="flex min-w-0 items-center gap-2">
+                              <EveTypeImage size={24} typeId={requirement.typeId} typeName={requirement.capturedName} />
+                              <span className="min-w-0 truncate">{requirement.capturedName}</span>
+                              {actions ? <span className="ml-auto shrink-0">{actions(requirement, line)}</span> : null}
+                            </span>
+                          ),
+                          source: <span className="text-xs text-muted">{SOURCE_LABELS[requirement.kind]}</span>,
+                          required: <Quantity value={requirement.requiredQuantity} />,
+                          reserved: <Quantity value={line?.reserved ?? 0} />,
+                          used: <Quantity value={line?.consumed ?? 0} />,
+                          needed: <Quantity className={needed > 0 && !done ? "text-warning" : ""} value={needed} />,
+                          free: <Quantity className="text-muted" value={line?.freeCoverable ?? 0} />,
+                        }}
+                        interactive={false}
+                        key={requirement.id}
+                        rowKey={requirement.id}
+                        status={done || needed === 0 ? "positive" : "neutral"}
+                      />
+                    );
+                  })}
+                </OperationalTableGroup>
+              );
+            })}
+            </OperationalTable>
+          </div>
+        ))}
+      </section>
     </div>
   );
+}
+
+interface EpicPlanSection {
+  title: string;
+  subtitle?: string;
+  final: boolean;
+  operations: PlanOperationView[];
+}
+
+/**
+ * The Plan view's layout for an Epic's frozen operations: "Stage N" per
+ * dependency stage, earliest first, then the root operation as Final
+ * Production. `operations` must already be in build order.
+ */
+export function epicPlanSections(
+  operations: PlanOperationView[],
+  rootOccurrenceKey: string | null,
+): EpicPlanSection[] {
+  const byStage = new Map<number, PlanOperationView[]>();
+  const finals: PlanOperationView[] = [];
+  for (const operation of operations) {
+    if (operation.occurrenceKey === rootOccurrenceKey) {
+      finals.push(operation);
+      continue;
+    }
+    byStage.set(operation.stage, [...(byStage.get(operation.stage) ?? []), operation]);
+  }
+  const sections: EpicPlanSection[] = [...byStage.keys()]
+    .sort((a, b) => a - b)
+    .map((stage, index) => ({
+      title: `Stage ${index + 1}`,
+      subtitle: index === 0 ? "Earliest production" : undefined,
+      final: false,
+      operations: byStage.get(stage) ?? [],
+    }));
+  if (finals.length > 0) {
+    sections.push({ title: "Final Production", final: true, operations: finals });
+  }
+  return sections;
 }

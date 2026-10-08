@@ -78,7 +78,7 @@ const EPIC = {
 const EPIC_SUMMARY = { id: "epic-1", displayName: "Manufacture Muninn", status: "blocked" } as unknown as OrderSummary;
 
 function rowFor(name: string) {
-  return within(screen.getByRole("table", { name: "Epic plan" })).getByText(name).closest("tr")!;
+  return within(screen.getByRole("region", { name: "Epic plan" })).getByText(name).closest("tr")!;
 }
 
 describe("EpicPlanPane", () => {
@@ -95,7 +95,7 @@ describe("EpicPlanPane", () => {
     const user = userEvent.setup();
     render(<EpicPlanPane active buildRevision={1} epicId="epic-1" />);
 
-    await screen.findByRole("table", { name: "Epic plan" });
+    await screen.findByRole("region", { name: "Epic plan" });
     expect(within(rowFor("Pyerite")).queryByRole("button")).not.toBeInTheDocument();
     expect(within(rowFor("Fernite Carbide")).queryByRole("button")).not.toBeInTheDocument();
 
@@ -112,7 +112,7 @@ describe("EpicPlanPane", () => {
     const user = userEvent.setup();
     render(<EpicPlanPane active buildRevision={1} epicId="epic-1" />);
 
-    await screen.findByRole("table", { name: "Epic plan" });
+    await screen.findByRole("region", { name: "Epic plan" });
     const toolbarButtons = screen.getAllByRole("button", { name: "Create ticket" });
     // The Plan-level button is the one outside the table.
     const planLevel = toolbarButtons.find((button) => !button.closest("table"))!;

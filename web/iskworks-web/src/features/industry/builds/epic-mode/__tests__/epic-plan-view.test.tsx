@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EpicCoverage, OrderDetail, OrderRequirement, PlanOperationView } from "../../../../../api/industry/orders";
-import { EpicPlanView } from "../epic-plan-view";
+import { EpicPlanView, epicPlanSections } from "../epic-plan-view";
 
 vi.mock("../../../../../api/industry/orders", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../../api/industry/orders")>()),
@@ -91,7 +91,7 @@ describe("EpicPlanView", () => {
     vi.mocked(getOrderCoverage).mockResolvedValue(COVERAGE);
     render(<EpicPlanView active buildRevision={7} epicId="epic-1" />);
 
-    const table = await screen.findByRole("table", { name: "Epic plan" });
+    const table = await screen.findByRole("region", { name: "Epic plan" });
     const tritanium = within(table).getByText("Tritanium").closest("tr")!;
     expect(within(tritanium).getByText("1,000")).toBeInTheDocument();
     expect(within(tritanium).getByText("600")).toBeInTheDocument();
@@ -105,6 +105,35 @@ describe("EpicPlanView", () => {
     expect(screen.getByText("Epic: Manufacture Muninn")).toBeInTheDocument();
     expect(screen.queryByText(/changed since this Epic was frozen/)).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("lays operations out by stage in build order, final product last", async () => {
+    vi.mocked(getOrder).mockResolvedValue(epic());
+    vi.mocked(getOrderCoverage).mockResolvedValue(COVERAGE);
+    render(<EpicPlanView active buildRevision={7} epicId="epic-1" />);
+
+    const plan = await screen.findByRole("region", { name: "Epic plan" });
+    const headings = within(plan).getAllByRole("heading").map((heading) => heading.textContent);
+    expect(headings).toEqual(["Stage 1Earliest production", "Final Production"]);
+    expect(within(within(plan).getByRole("table", { name: "Stage 1" })).getByText(/T-0 Done/)).toBeInTheDocument();
+    expect(within(within(plan).getByRole("table", { name: "Final Production" })).getByText("Tritanium")).toBeInTheDocument();
+  });
+
+  it("numbers stages from the earliest, skipping none", () => {
+    const sections = epicPlanSections(
+      [
+        operation("reaction-a", "Fernite Carbide", 0),
+        operation("reaction-b", "Sylramic Fibers", 0),
+        operation("component", "Nanoelectrical Microprocessor", 2),
+        operation("root", "Muninn", 3),
+      ],
+      "root",
+    );
+    expect(sections.map((section) => [section.title, section.operations.map((op) => op.occurrenceKey)])).toEqual([
+      ["Stage 1", ["reaction-a", "reaction-b"]],
+      ["Stage 2", ["component"]],
+      ["Final Production", ["root"]],
+    ]);
   });
 
   it("flags a Build edited after the Epic was frozen", async () => {
