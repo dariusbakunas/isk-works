@@ -115,6 +115,10 @@ Migration `202607250008_create_industry_facilities.sql` adds:
 - `industry_system_cost_index_observations`
 - `industry_adjusted_price_observations`
 
+Adjusted-price observations cannot be altered, but only each type's latest is
+read, so the worker's `esi_gc` sweep deletes observations superseded by a newer
+one for the same type (migration `202610090002`).
+
 Archiving a profile keeps it readable but prevents it from being selected or
 used by the calculation service. Deleting a profile removes it and its rigs
 permanently; any Build draft planning input that selected it is reset to no

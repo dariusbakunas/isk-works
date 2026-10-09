@@ -64,6 +64,8 @@ Token writes use an optimistic token revision. A rotated refresh token is writte
 
 Asset snapshots start as `collecting`. Only a completely fetched and persisted snapshot is marked `complete` and atomically replaces the prior active snapshot. Incomplete runs are never active and never advance the checkpoint.
 
+Only the active snapshot is ever read, so completing a sync deletes the snapshot it replaces and the connection's earlier failed attempts (observations and hierarchy cascade). The worker's hourly `esi_gc` sweep (`ISKWORKS_WORKER_ESI_GC_POLL_SECONDS`) is the backstop: it deletes every snapshot that is neither its connection's active one nor its newest.
+
 Wallet observation identity is `(connection_id, source_transaction_id)`. Each wallet-purchase recording is an `inventory_event_sources` row tied to the wallet observation. At most one active recording of an accounting effect may exist per observation (a partial unique index); a reverted recording keeps its `reverted_at` and `reversal_event_id` as history, and the transaction can be recorded again.
 
 ## Configuration

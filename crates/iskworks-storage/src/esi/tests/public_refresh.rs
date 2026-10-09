@@ -491,7 +491,7 @@ async fn expired_system_index_claim_cannot_overwrite_a_newer_claim(pool: PgPool)
 
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
-async fn adjusted_price_observations_are_immutable(pool: PgPool) {
+async fn adjusted_price_observations_cannot_be_altered_but_can_be_pruned(pool: PgPool) {
     let now = crate::db_now();
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO industry_adjusted_price_observations (id,type_id,adjusted_price,observed_at,expires_at,source_checksum,source_url) VALUES ($1,34,1,$2,$2,'fixture','fixture')")
@@ -504,12 +504,57 @@ async fn adjusted_price_observations_are_immutable(pool: PgPool) {
     .execute(&pool)
     .await
     .is_err());
-    assert!(
-        sqlx::query("DELETE FROM industry_adjusted_price_observations WHERE id=$1")
-            .bind(id)
-            .execute(&pool)
-            .await
-            .is_err()
+    sqlx::query("DELETE FROM industry_adjusted_price_observations WHERE id=$1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn adjusted_price_sweep_keeps_only_each_types_latest_observation(pool: PgPool) {
+    let repository = PgEsiRepository::new(pool.clone());
+    let now = crate::db_now();
+    let at = |hours_ago: i64| now - chrono::Duration::hours(hours_ago);
+    for (type_id, price, observed_at) in [
+        (34, 1, at(18)),
+        (34, 2, at(12)),
+        (34, 3, at(6)),
+        (35, 10, at(12)),
+        (35, 20, at(6)),
+        // No longer listed by ESI: its last observation stays.
+        (36, 7, at(18)),
+    ] {
+        sqlx::query("INSERT INTO industry_adjusted_price_observations (id,type_id,adjusted_price,observed_at,expires_at,source_checksum,source_url) VALUES ($1,$2,$3,$4,$4,'fixture','fixture')")
+            .bind(Uuid::new_v4()).bind(type_id).bind(Decimal::from(price)).bind(observed_at)
+            .execute(&pool).await.unwrap();
+    }
+
+    let first = repository
+        .prune_superseded_adjusted_prices(2, 1)
+        .await
+        .unwrap();
+    assert_eq!((first.rows_deleted, first.drained), (2, false));
+    let rest = repository
+        .prune_superseded_adjusted_prices(2, 10)
+        .await
+        .unwrap();
+    assert_eq!((rest.rows_deleted, rest.drained), (1, true));
+
+    let left: Vec<(i64, Decimal)> = sqlx::query_as(
+        "SELECT type_id, adjusted_price FROM industry_adjusted_price_observations ORDER BY type_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        left,
+        vec![
+            (34, Decimal::from(3)),
+            (35, Decimal::from(20)),
+            (36, Decimal::from(7)),
+        ]
     );
 }
 

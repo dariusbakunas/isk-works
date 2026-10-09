@@ -592,10 +592,14 @@ impl PgEsiRepository {
             .execute(&mut *tx)
             .await
             .map_err(map_sqlx)?;
+        // Only the active snapshot is ever read, so the one this sync
+        // supersedes and any earlier failed attempts go now (observations
+        // and hierarchy cascade). Older leftovers are the retention sweep's.
         sqlx::query(
-            "UPDATE esi_asset_snapshots SET active = false WHERE connection_id = $1 AND active",
+            "DELETE FROM esi_asset_snapshots WHERE connection_id = $1 AND id <> $2 AND (active OR status <> 'complete')",
         )
         .bind(run.connection_id.0)
+        .bind(snapshot_id)
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
