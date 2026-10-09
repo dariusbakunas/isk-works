@@ -997,12 +997,14 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Order, OrderError> {
-        // Organizational only: stamp `completed_at`, nothing else. Final
-        // production output is posted by the root Manufacturing ticket's
-        // explicit `record_ticket_production`, never here. No inventory
-        // event, no allocation mutation, no balance/cost-basis change, no
-        // ticket mutation, no recording-completeness check.
+        // Stamp `completed_at` and release whatever the Epic still holds
+        // (actuals that differed from the plan, skipped or unrecorded
+        // work): a completed Epic has nothing left to use it for. No
+        // inventory event, no balance/cost-basis change, no ticket
+        // mutation, no recording-completeness check. Final production
+        // output is posted by the root ticket's `record_ticket_production`.
         let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
         let result = sqlx::query(
             "UPDATE orders SET completed_at = $1, updated_at = $1 \
              WHERE workspace_id = $2 AND id = $3 \
@@ -1011,14 +1013,17 @@ impl OrderRepository for PgOrderRepository {
         .bind(now)
         .bind(workspace_id.0)
         .bind(order_id.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_error)?;
         if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
             return Err(self
                 .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCompletable)
                 .await?);
         }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
         self.get_order(workspace_id, order_id).await
     }
 

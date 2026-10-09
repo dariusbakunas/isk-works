@@ -1206,3 +1206,52 @@ async fn reverting_a_purchase_another_epic_reserved_from_leaves_it_over_reserved
         "the other Epic still holds 500 that no longer exist (over-reserved)"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Completing an Epic releases whatever it still holds.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn completing_an_epic_releases_leftover_reservations(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await; // 600 Tritanium held
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    // The job actually used 450 of the 600 reserved.
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 450), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    sqlx::query("UPDATE orders SET started_at = now() WHERE id = $1::uuid")
+        .bind(&order_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let inventory_before = inventory_fingerprint(&pool).await;
+
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/complete"),
+        Value::Null,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert!(
+        active_allocations(&pool).await.is_empty(),
+        "the unused 150 are free again"
+    );
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![
+            (150, false, true, "epic_create".to_string()),
+            (450, true, false, "epic_create".to_string()),
+        ]
+    );
+    assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
+
+    // A completed Epic takes nothing back.
+    let (status, body) = reserve(&fx, &order_id).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "order_not_reservable");
+}
