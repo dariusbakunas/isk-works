@@ -691,9 +691,65 @@ export function recordTicketProduction(
     locationNote?: string;
     note?: string;
     effectiveAt?: string;
+    // Epics the user agreed to take reserved stock from, after a 409
+    // `insufficient_available`.
+    takeFrom?: { orderId: string; typeId: number }[];
   },
 ): Promise<RecordProductionResponse> {
   return request(`/api/tickets/${ticketId}/record-production`, json("POST", body));
+}
+
+export interface ReservationHolderView {
+  orderId: string;
+  displayName: string;
+  quantity: number;
+}
+
+// One input recording can't cover without another Epic's reserved stock.
+export interface AvailabilityShortage {
+  typeId: number;
+  typeName: string;
+  needed: number;
+  // Held by this ticket's own Epic.
+  own: number;
+  free: number;
+  holders: ReservationHolderView[];
+}
+
+// 409 from record-production: other Epics reserved stock it needs.
+export interface InsufficientAvailable extends ApiErrorBody {
+  code: "insufficient_available";
+  shortages: AvailabilityShortage[];
+}
+
+export function insufficientAvailable(error: unknown): InsufficientAvailable | null {
+  return error instanceof ApiError && error.body.code === "insufficient_available"
+    ? (error.body as InsufficientAvailable)
+    : null;
+}
+
+/** What to take, per holder in the order the server listed them, to cover
+ * each shortage: `needed - own - free`, capped at each holder's quantity. */
+export function proposedTakes(
+  shortages: AvailabilityShortage[],
+): { typeId: number; typeName: string; orderId: string; displayName: string; quantity: number }[] {
+  const takes = [];
+  for (const shortage of shortages) {
+    let missing = Math.max(0, shortage.needed - shortage.own - shortage.free);
+    for (const holder of shortage.holders) {
+      if (missing === 0) break;
+      const quantity = Math.min(missing, holder.quantity);
+      takes.push({
+        typeId: shortage.typeId,
+        typeName: shortage.typeName,
+        orderId: holder.orderId,
+        displayName: holder.displayName,
+        quantity,
+      });
+      missing -= quantity;
+    }
+  }
+  return takes;
 }
 
 export interface RevertTicketInventoryRecordingResponse {
