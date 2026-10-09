@@ -312,38 +312,68 @@ describe("EpicInspector", () => {
     expect(screen.queryByRole("link", { name: "Open build" })).not.toBeInTheDocument();
   });
 
-  it("reworded lifecycle controls use Epic language and never call ticket recording", async () => {
+  it("offers one Remove Epic action and no Cancel Epic", async () => {
     industryApi.getOrder.mockResolvedValue(orderDetailFixture());
-    industryApi.cancelOrder.mockResolvedValue(orderDetailFixture({ status: "canceled" }));
-    const user = userEvent.setup();
     renderInspector({ order: orderFixture({ status: "inProgress" }) });
 
     expect(await screen.findByRole("button", { name: "Mark Epic complete" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cancel Epic" }));
-
-    const dialog = await screen.findByRole("dialog", { name: "Cancel this Epic?" });
-    await user.click(within(dialog).getByRole("button", { name: "Cancel Epic" }));
-
-    await waitFor(() => expect(industryApi.cancelOrder).toHaveBeenCalledWith("order-1"));
+    expect(screen.getByRole("button", { name: "Remove Epic" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel Epic" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive Epic" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Epic" })).not.toBeInTheDocument();
   });
 
-  it("Delete Epic confirms, calls deleteOrder, and closes", async () => {
+  it("Remove Epic archives by default", async () => {
+    for (const mock of Object.values(industryApi)) mock.mockClear();
+    industryApi.getOrder.mockResolvedValue(orderDetailFixture());
+    industryApi.archiveOrder.mockResolvedValue(orderDetailFixture({ archivedAt: "2026-10-09T00:00:00Z" }));
+    const user = userEvent.setup();
+    const { onChanged } = renderInspector();
+
+    await user.click(await screen.findByRole("button", { name: "Remove Epic" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove this Epic?" });
+    expect(within(dialog).getByRole("radio", { name: /Archive/ })).toBeChecked();
+    expect(dialog).toHaveTextContent("stock the Epic reserved goes back to free inventory");
+    await user.click(within(dialog).getByRole("button", { name: "Archive Epic" }));
+
+    await waitFor(() => expect(industryApi.archiveOrder).toHaveBeenCalledWith("order-1"));
+    expect(industryApi.deleteOrder).not.toHaveBeenCalled();
+    expect(industryApi.cancelOrder).not.toHaveBeenCalled();
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("Remove Epic deletes only when Delete permanently is chosen, then closes", async () => {
+    for (const mock of Object.values(industryApi)) mock.mockClear();
     industryApi.getOrder.mockResolvedValue(orderDetailFixture());
     industryApi.deleteOrder.mockResolvedValue(undefined);
     const user = userEvent.setup();
     const { onChanged, onClose } = renderInspector();
 
-    await user.click(await screen.findByRole("button", { name: "Delete Epic" }));
-    const dialog = await screen.findByRole("dialog", { name: "Delete this Epic?" });
-    expect(dialog).toHaveTextContent("This removes the Epic and its frozen plan");
-    expect(dialog).toHaveTextContent("Its tickets will remain on the Board");
-    expect(dialog).toHaveTextContent("Inventory already recorded from those tickets will be kept");
-    expect(dialog).not.toHaveTextContent(/recordings.*removed/i);
+    await user.click(await screen.findByRole("button", { name: "Remove Epic" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove this Epic?" });
+    await user.click(within(dialog).getByRole("radio", { name: /Delete permanently/ }));
+    expect(dialog).toHaveTextContent("Removes the Epic and its frozen plan");
+    expect(dialog).toHaveTextContent("Its tickets stay on the Board");
+    expect(dialog).toHaveTextContent("inventory already recorded from them is kept");
     await user.click(within(dialog).getByRole("button", { name: "Delete Epic" }));
 
     await waitFor(() => expect(industryApi.deleteOrder).toHaveBeenCalledWith("order-1"));
+    expect(industryApi.archiveOrder).not.toHaveBeenCalled();
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("an archived Epic offers Restore, and Remove only deletes", async () => {
+    industryApi.getOrder.mockResolvedValue(orderDetailFixture({ archivedAt: "2026-10-08T00:00:00Z" }));
+    const user = userEvent.setup();
+    renderInspector({ order: orderFixture({ archivedAt: "2026-10-08T00:00:00Z" }) });
+
+    expect(await screen.findByRole("button", { name: "Restore Epic" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove Epic" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove this Epic?" });
+    expect(within(dialog).queryByRole("radio", { name: /Archive/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("radio", { name: /Delete permanently/ })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Delete Epic" })).toBeInTheDocument();
   });
 
   // Explicit organizational membership -- the Epic Inspector's Tickets list
