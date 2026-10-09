@@ -1016,3 +1016,193 @@ async fn reverting_does_not_hand_taken_stock_back_to_its_epic(pool: PgPool) {
             .unwrap();
     assert_eq!(physical, 1_000);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recorded output is reserved to the steps it feeds, up to what they still
+// need; overshoot stays free.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// `(type_id, quantity, active?)` of every `recorded_output` allocation.
+async fn recorded_output_allocations(pool: &PgPool) -> Vec<(i64, i64, bool)> {
+    sqlx::query_as(
+        "SELECT type_id, quantity, released_at IS NULL AND consumed_at IS NULL \
+         FROM inventory_allocations WHERE reason = 'recorded_output' ORDER BY type_id, quantity",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+async fn record_acquisition(fx: &Fixture, ticket_id: &str, quantity: u64) -> (StatusCode, Value) {
+    post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket_id}/record-acquisition"),
+        serde_json::json!({"idempotencyKey": Uuid::new_v4(), "quantity": quantity, "unitCost": "1"}),
+    )
+    .await
+}
+
+/// A Rifter Epic with no stock, and an Acquisition ticket for its 1,000
+/// Tritanium requirement.
+async fn tritanium_purchase_ticket(fx: &Fixture) -> (String, String) {
+    let build = rifter(fx).await;
+    let (status, order) = create_reserving_order(fx, &build, &[]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let order_id = order["id"].as_str().unwrap().to_string();
+    let requirement_id = requirement_of(&order, 34)["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (status, ticket) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/requirements/{requirement_id}/tickets"),
+        Value::Null,
+    )
+    .await;
+    assert!(status.is_success(), "create ticket: {status} {ticket}");
+    (order_id, ticket["id"].as_str().unwrap().to_string())
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_purchase_is_reserved_to_its_requirement_and_overshoot_stays_free(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (_order_id, ticket) = tritanium_purchase_ticket(&fx).await;
+
+    let (status, body) = record_acquisition(&fx, &ticket, 1_200).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        recorded_output_allocations(&pool).await,
+        vec![(34, 1_000, true)]
+    );
+    // The other 200 are free: a second Epic can count them.
+    let (status, second) = create_reserving_order(&fx, &rifter(&fx).await, &[(34, 200)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {second}");
+    assert_eq!(requirement_of(&second, 34)["reusedQuantity"], 200);
+}
+
+/// The Epic reserved 2,500 Tritanium + 300 Pyerite at creation; the
+/// component child ticket (5 runs) feeds the root's 5 Fabricated Component.
+async fn assembly_epic_with_stock(pool: &PgPool, fx: &Fixture) -> (String, String) {
+    let parent = assembly_with_built_component(fx, 1, 90100, &[]).await;
+    seed_balance(pool, fx, 34, "Tritanium", 2_500, 2_500).await;
+    seed_balance(pool, fx, 35, "Pyerite", 300, 300).await;
+    let expected: Vec<(i64, u64)> = preview_reuse(fx, &parent).await.into_iter().collect();
+    let (status, order) = create_reserving_order(fx, &parent, &expected).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let order_id = order["id"].as_str().unwrap().to_string();
+    let tickets = list_tickets(&fx.app).await;
+    let child = tickets
+        .iter()
+        .find(|ticket| ticket["orderId"] == order_id.as_str() && ticket["typeId"] == 90100)
+        .expect("component ticket");
+    (order_id, child["id"].as_str().unwrap().to_string())
+}
+
+async fn record_component(fx: &Fixture, ticket_id: &str, output: u64) -> (StatusCode, Value) {
+    post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket_id}/record-production"),
+        serde_json::json!({
+            "idempotencyKey": Uuid::new_v4(),
+            "runsCompleted": 5,
+            "output": {"typeId": 90100, "quantity": output},
+            "inputs": [{"typeId": 35, "quantity": 300}, {"typeId": 34, "quantity": 500}],
+            "installationCost": "0",
+        }),
+    )
+    .await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn production_output_is_reserved_to_the_step_it_feeds(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (_order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+
+    // One extra unit of run overshoot.
+    let (status, body) = record_component(&fx, &child, 6).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        recorded_output_allocations(&pool).await,
+        vec![(90100, 5, true)],
+        "the root's 5 reserved, the sixth stays free"
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reverting_a_recording_releases_its_output_reservation(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (_order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+    let (status, recording) = record_component(&fx, &child, 5).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {recording}");
+
+    let (status, body) = revert(&fx, &child, &recording).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        recorded_output_allocations(&pool).await,
+        vec![(90100, 5, false)]
+    );
+    // Its inputs are the Epic's again.
+    let pyerite: i64 = active_allocations(&pool)
+        .await
+        .iter()
+        .filter(|(type_id, _, _)| *type_id == 35)
+        .map(|(_, quantity, _)| quantity)
+        .sum();
+    assert_eq!(pyerite, 300);
+}
+
+/// D14: a canceled Epic reserves nothing for its recorded output.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_canceled_epics_output_stays_free(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+    let (status, _) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/cancel"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = record_component(&fx, &child, 5).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert!(recorded_output_allocations(&pool).await.is_empty());
+}
+
+/// D8: a reversal corrects the ledger even when another Epic had already
+/// reserved the reversed surplus -- that Epic is left over-reserved rather
+/// than the correction being refused.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reverting_a_purchase_another_epic_reserved_from_leaves_it_over_reserved(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (_order_id, ticket) = tritanium_purchase_ticket(&fx).await;
+    let (status, recording) = record_acquisition(&fx, &ticket, 1_500).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {recording}");
+    // Another Epic reserves the 500 surplus.
+    let (status, other) = create_reserving_order(&fx, &rifter(&fx).await, &[(34, 500)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {other}");
+
+    let (status, body) = revert(&fx, &ticket, &recording).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let physical: i64 =
+        sqlx::query_scalar("SELECT quantity FROM inventory_balances WHERE type_id = 34")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(physical, 0);
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 500, "epic_create".to_string())],
+        "the other Epic still holds 500 that no longer exist (over-reserved)"
+    );
+}

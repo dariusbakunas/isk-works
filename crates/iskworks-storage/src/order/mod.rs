@@ -3,12 +3,12 @@ use chrono::{DateTime, Utc};
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
     derive_operation_dag, derive_recording_summary, plan_capped_reservations,
-    plan_epic_reservations, reuse_by_type, AllocationReason, CappedReservationPlan,
-    FrozenDemandEdge, NewOrder, NewOrderPlan, NewOrderRequirement, NewPlanOperation, NewTicket,
-    NewTicketPrerequisite, Order, OrderError, OrderId, OrderPlanResult, OrderRepository,
-    OrderRequirement, OrderRequirementFulfillment, OrderRequirementFulfillmentId,
-    OrderRequirementId, PlanOperation, PlanOperationEvidence, PlanOperationId,
-    PlanRequirementEvidence, RecordAcquisitionInput, RecordAcquisitionOutcome,
+    plan_epic_reservations, plan_recorded_output, reuse_by_type, AllocationReason,
+    CappedReservationPlan, FrozenDemandEdge, NewOrder, NewOrderPlan, NewOrderRequirement,
+    NewPlanOperation, NewTicket, NewTicketPrerequisite, Order, OrderError, OrderId,
+    OrderPlanResult, OrderRepository, OrderRequirement, OrderRequirementFulfillment,
+    OrderRequirementFulfillmentId, OrderRequirementId, PlanOperation, PlanOperationEvidence,
+    PlanOperationId, PlanRequirementEvidence, RecordAcquisitionInput, RecordAcquisitionOutcome,
     RecordProductionInput, RecordProductionOutcome, RequirementKind, RequirementReservationTotals,
     RequirementTicketCreation, ReservationNeed, RevertTicketInventoryRecordingOutcome, Ticket,
     TicketId, TicketInventoryEffect, TicketInventoryRecording, TicketInventoryRecordingId,

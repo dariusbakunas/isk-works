@@ -225,6 +225,27 @@ pub fn plan_capped_reservations(
     }
 }
 
+/// Reserve a recording's output to the requirements it feeds: each gets
+/// `min(remaining need, output left)`, earliest consumer first (the same
+/// serving order as every other reservation). Whatever exceeds the
+/// combined need -- e.g. run-rounding overshoot -- is not reserved and stays
+/// free stock. `needs[].quantity` is each requirement's remaining need
+/// (`required - held`), `needs[].type_id` the output type.
+#[must_use]
+pub fn plan_recorded_output(
+    output_type_id: i64,
+    output_quantity: u64,
+    needs: &[ReservationNeed<'_>],
+    stages: &BTreeMap<String, u32>,
+) -> Vec<PlannedReservation> {
+    plan_capped_reservations(
+        needs,
+        stages,
+        &BTreeMap::from([(output_type_id, output_quantity)]),
+    )
+    .reservations
+}
+
 /// Σ allocations owned by one requirement, by lifecycle (released rows
 /// don't count).
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -571,6 +592,112 @@ mod tests {
         );
         assert!(plan.reservations.is_empty());
         assert_eq!(plan.shortfalls[0].free, 0);
+    }
+
+    fn need(
+        id: OrderRequirementId,
+        operation: &'static str,
+        quantity: u64,
+    ) -> ReservationNeed<'static> {
+        ReservationNeed {
+            requirement_id: id,
+            type_id: 16_673,
+            operation_occurrence_key: Some(operation),
+            quantity,
+        }
+    }
+
+    #[test]
+    fn recorded_output_fills_the_need_exactly() {
+        let root = OrderRequirementId::new();
+        let planned = plan_recorded_output(
+            16_673,
+            500,
+            &[need(root, "root", 500)],
+            &stages(&[("root", 1)]),
+        );
+        assert_eq!(
+            planned,
+            vec![PlannedReservation {
+                requirement_id: root,
+                type_id: 16_673,
+                quantity: 500
+            }]
+        );
+    }
+
+    /// The issue's Fernite case: run rounding produces more than the Epic
+    /// still needs; only the need is reserved, the overshoot stays free.
+    #[test]
+    fn recorded_output_overshoot_is_left_free() {
+        let root = OrderRequirementId::new();
+        let planned = plan_recorded_output(
+            16_673,
+            838_000,
+            &[need(root, "root", 837_814)],
+            &stages(&[("root", 1)]),
+        );
+        assert_eq!(planned.len(), 1);
+        assert_eq!(planned[0].quantity, 837_814);
+    }
+
+    #[test]
+    fn recorded_output_with_nothing_left_to_need_reserves_nothing() {
+        let root = OrderRequirementId::new();
+        assert!(plan_recorded_output(
+            16_673,
+            100,
+            &[need(root, "root", 0)],
+            &stages(&[("root", 1)])
+        )
+        .is_empty());
+        assert!(plan_recorded_output(16_673, 100, &[], &stages(&[])).is_empty());
+    }
+
+    /// Fan-in: one producer feeds two consumers at the same stage. The tie
+    /// breaks by operation key, then requirement id -- the same answer
+    /// whatever the input order.
+    #[test]
+    fn recorded_output_fan_in_tie_breaks_deterministically() {
+        let a = OrderRequirementId::new();
+        let b = OrderRequirementId::new();
+        let stage_map = stages(&[("op:a", 1), ("op:b", 1)]);
+        let forward = [need(b, "op:b", 300), need(a, "op:a", 300)];
+        let backward = [need(a, "op:a", 300), need(b, "op:b", 300)];
+        for needs in [forward, backward] {
+            let planned = plan_recorded_output(16_673, 400, &needs, &stage_map);
+            assert_eq!(
+                planned,
+                vec![
+                    PlannedReservation {
+                        requirement_id: a,
+                        type_id: 16_673,
+                        quantity: 300
+                    },
+                    PlannedReservation {
+                        requirement_id: b,
+                        type_id: 16_673,
+                        quantity: 100
+                    },
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn partial_output_goes_to_the_earliest_stage_first() {
+        let late = OrderRequirementId::new();
+        let early = OrderRequirementId::new();
+        let planned = plan_recorded_output(
+            16_673,
+            250,
+            &[need(late, "root", 500), need(early, "component", 200)],
+            &stages(&[("root", 2), ("component", 1)]),
+        );
+        assert_eq!(planned[0].requirement_id, early);
+        assert_eq!(planned[0].quantity, 200);
+        assert_eq!(planned[1].requirement_id, late);
+        assert_eq!(planned[1].quantity, 50);
     }
 
     #[test]
