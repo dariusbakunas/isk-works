@@ -170,14 +170,56 @@ describe("BuildStagesView with an Epic selected", () => {
     expect(screen.queryByText(/changed since this Epic was frozen/)).not.toBeInTheDocument();
   });
 
-  it("is read-only: rows don't open the inspector", async () => {
+  it("opens a read-only inspector: details shown, nothing editable", async () => {
+    const plan = epicPlan();
+    const consumer = {
+      nodeId: "root",
+      occurrenceId: "root",
+      quantity: 400,
+      buildId: "build-1",
+      dependencyId: "dep:root:16673",
+      fulfillmentScope: "missing" as const,
+      requiredQuantity: 500,
+      plannedInventoryQuantity: 100,
+    };
+    // Methods a draft would offer a switch for -- the Epic must not.
+    plan.plan.nodes[0] = {
+      ...plan.plan.nodes[0],
+      consumers: [consumer],
+      productionMethods: [{ mode: "reaction", reactionFormulaTypeId: 17_960 }],
+    };
+    plan.plan.acquisitions[0] = {
+      ...TRITANIUM,
+      consumers: [{ ...consumer, quantity: 400, freshCost: null, freshUnitPrice: null }],
+      productionMethods: [{ mode: "manufacturing", blueprintTypeId: 999 }],
+    };
+    plan.epic.nodes.reaction.output = { reserved: 200, consumed: 300, remainingNeed: 0 };
+    getOrderExecutionPlan.mockResolvedValue(plan);
     const user = userEvent.setup();
     render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
 
     await screen.findByText("Epic: Manufacture Muninn");
-    await user.click(within(rowFor("root")).getByText("Muninn"));
-    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Close item inspector/ })).not.toBeInTheDocument();
+    await user.click(within(rowFor("reaction")).getByText("Fernite Carbide"));
+
+    const close = await screen.findByRole("button", { name: "Close production inspector" });
+    const inspector = close.closest("aside, section, [role=dialog], [role=complementary]") ?? document.body;
+    const panel = within(inspector as HTMLElement);
+    expect(panel.getByText("T-7 · Done")).toBeInTheDocument();
+    expect(panel.getByText("Output used")).toBeInTheDocument();
+    expect(panel.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(panel.queryByRole("button", { name: /Create ticket|Edit build settings|Save/ })).not.toBeInTheDocument();
+    expect(panel.queryByText("Open producer Build")).not.toBeInTheDocument();
+    expect(panel.queryByRole("combobox")).not.toBeInTheDocument();
+
+    // An input's inspector shows what the Epic holds, without switches.
+    await user.click(within(rowFor("34")).getByText("Tritanium"));
+    const inputClose = await screen.findByRole("button", { name: "Close input inspector" });
+    const inputPanel = within(
+      (inputClose.closest("aside, section, [role=dialog], [role=complementary]") ?? document.body) as HTMLElement,
+    );
+    expect(inputPanel.getByText("Still needed")).toBeInTheDocument();
+    expect(inputPanel.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(inputPanel.queryByRole("button", { name: /Produce all/ })).not.toBeInTheDocument();
   });
 
   it("flags a Build edited after the Epic was frozen", async () => {

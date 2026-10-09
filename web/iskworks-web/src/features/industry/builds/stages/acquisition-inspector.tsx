@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import type {
   AcquisitionLine,
+  EpicStockProgress,
   ExecutionPlanProjection,
 } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
@@ -28,6 +29,8 @@ export function AcquisitionInspector({
   sourcing,
   rootBuildId,
   rootEditing,
+  readOnly = false,
+  epicStock = null,
 }: {
   line: AcquisitionLine;
   plan: ExecutionPlanProjection;
@@ -35,6 +38,11 @@ export function AcquisitionInspector({
   sourcing: PlanSourcing;
   rootBuildId: string;
   rootEditing: RootRowEditing | null;
+  /** An Epic's frozen plan: no sourcing switches, no price overrides, no
+   * links into the draft's producer Builds. */
+  readOnly?: boolean;
+  /** With `readOnly`: what the Epic holds and has used of this input. */
+  epicStock?: EpicStockProgress | null;
 }) {
   const nodesById = new Map(plan.nodes.map((node) => [node.id, node]));
   const methods = line.productionMethods ?? [];
@@ -78,7 +86,11 @@ export function AcquisitionInspector({
           label="Sourcing"
           summary={`${line.consumers.length} consumer${line.consumers.length === 1 ? "" : "s"}`}
         >
-          {methods.length === 0 ? (
+          {readOnly ? (
+            <p className="mb-2 text-[11px] text-muted">
+              Bought, as frozen when the Epic was created.
+            </p>
+          ) : methods.length === 0 ? (
             <p className="mb-2 text-[11px] text-muted">
               Buy only -- no published blueprint or reaction formula produces {line.typeName}.
             </p>
@@ -106,7 +118,7 @@ export function AcquisitionInspector({
                     key={`${consumer.nodeId}-${consumer.occurrenceId}-${index}`}
                   >
                     <p className="text-xs font-semibold">For {consumerName}</p>
-                    <SourcingSwitch
+                    {readOnly ? <span className="text-xs">Buy</span> : <SourcingSwitch
                       consumerName={consumerName}
                       current={null}
                       disabled={methods.length === 0}
@@ -114,13 +126,13 @@ export function AcquisitionInspector({
                       methods={methods}
                       onChange={(choice) => sourcing.change(consumer.buildId, line.typeId, choice)}
                       pending={Boolean(sourcing.pendingByEdge[key])}
-                    />
+                    />}
                   </li>
                 );
               })}
             </ul>
           )}
-          {multiEdge && methods.length > 0 ? (
+          {!readOnly && multiEdge && methods.length > 0 ? (
             // Explicitly multi-consumer: one visible action that switches
             // every consumer listed above; the per-consumer switches never
             // change another consumer.
@@ -191,6 +203,14 @@ export function AcquisitionInspector({
           {produced.length > 0 ? <SourcingSplit acquisition={line} nodesById={nodesById} produced={produced} /> : null}
         </InspectorSection>
 
+        {epicStock ? (
+          <InspectorSection defaultExpanded id="epic-stock" label="Epic">
+            <InspectorRow label="Reserved" value={qty(epicStock.reserved)} />
+            <InspectorRow label="Used" value={qty(epicStock.consumed)} />
+            <InspectorRow label="Still needed" value={qty(epicStock.remainingNeed)} />
+          </InspectorSection>
+        ) : null}
+
         <InspectorSection defaultExpanded id="pricing" label="Pricing">
           <InspectorRow
             label="Unit price"
@@ -224,7 +244,7 @@ export function AcquisitionInspector({
               <PricingBody onChange={rootEditing.onPricingChange} slice={rootPricing} />
             </div>
           ) : null}
-          {nestedConsumers.length > 0 ? (
+          {!readOnly && nestedConsumers.length > 0 ? (
             <p className="pt-1 text-[11px] text-muted">
               {rootPricing
                 ? "Other consumers are priced by their own Build's settings -- override there: "

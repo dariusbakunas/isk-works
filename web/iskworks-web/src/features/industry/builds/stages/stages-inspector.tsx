@@ -23,10 +23,13 @@
 import { ExternalLink } from "lucide-react";
 
 import type {
+  EpicNodeProgress,
+  EpicPlanOverlay,
   ExecutionNode,
   ExecutionOccurrence,
   ExecutionPlanProjection,
   PreviewBuildPlanCommand,
+  TicketStatus,
 } from "../../../../api/industry";
 import type { FacilityProfile } from "../../../../api/industry/facilities";
 import { EveTypeImage } from "../../../../components/eve-type-image";
@@ -53,6 +56,13 @@ export type StagesSelection =
 
 const money = (value: string | null) => (value != null ? <MoneyAmount value={value} /> : "Incomplete");
 
+const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  todo: "To do",
+  inProgress: "In progress",
+  complete: "Done",
+  canceled: "Canceled",
+};
+
 
 export function StagesInspector({
   plan,
@@ -66,6 +76,8 @@ export function StagesInspector({
   sourcing,
   onOpenBuildSettings,
   rootEditing = null,
+  readOnly = false,
+  epic = null,
 }: {
   plan: ExecutionPlanProjection;
   selection: StagesSelection | null;
@@ -76,8 +88,9 @@ export function StagesInspector({
   rootBuildId: string;
   /** The same live, unsaved overlay currently feeding this `plan` -- sent
    * back with a configuration edit so the server re-validates membership
-   * under the exact plan the user is looking at. */
-  command: PreviewBuildPlanCommand;
+   * under the exact plan the user is looking at. `null` when the draft's
+   * overlay isn't ready (only a read-only inspector renders then). */
+  command: PreviewBuildPlanCommand | null;
   /** Root-owned facility list (`editor.allFacilities`) -- Stages never
    * fetches its own copy. */
   facilities: FacilityProfile[];
@@ -94,8 +107,16 @@ export function StagesInspector({
    * override, per-component fulfillment scope) -- editable only on the
    * root's own demand edges / rows, `null` when unavailable. */
   rootEditing?: RootRowEditing | null;
+  /** An Epic's frozen plan: show everything, change nothing. Sourcing,
+   * scope, configuration and pricing render as plain values, and Build
+   * actions (settings, producer Build, ticket creation) are hidden. */
+  readOnly?: boolean;
+  /** With `readOnly`: the Epic's ticket and holdings per node / input. */
+  epic?: EpicPlanOverlay | null;
 }) {
   if (!selection) return null;
+  // A read-only inspector never edits the root's rows either.
+  const editing = readOnly ? null : rootEditing;
 
   if (selection.kind === "production") {
     const node = plan.nodes.find((candidate) => candidate.id === selection.nodeId);
@@ -111,8 +132,10 @@ export function StagesInspector({
         plan={plan}
         rootBuildId={rootBuildId}
         sourcing={sourcing}
-        onOpenBuildSettings={onOpenBuildSettings}
-        rootEditing={rootEditing}
+        onOpenBuildSettings={readOnly ? undefined : onOpenBuildSettings}
+        rootEditing={editing}
+        readOnly={readOnly}
+        epicNode={epic?.nodes[node.id] ?? null}
       />
     );
   }
@@ -121,11 +144,13 @@ export function StagesInspector({
   if (!line) return null;
   return (
     <AcquisitionInspector
+      epicStock={epic?.acquisitions[String(line.typeId)] ?? null}
       line={line}
       onClose={onClose}
       plan={plan}
+      readOnly={readOnly}
       rootBuildId={rootBuildId}
-      rootEditing={rootEditing}
+      rootEditing={editing}
       sourcing={sourcing}
     />
   );
@@ -143,18 +168,22 @@ function ProductionInspector({
   sourcing,
   onOpenBuildSettings,
   rootEditing,
+  readOnly,
+  epicNode,
 }: {
   node: ExecutionNode;
   plan: ExecutionPlanProjection;
   onClose: () => void;
   onSelect: (selection: StagesSelection) => void;
   rootBuildId: string;
-  command: PreviewBuildPlanCommand;
+  command: PreviewBuildPlanCommand | null;
   facilities: FacilityProfile[];
   onConfigurationSaved: () => void;
   sourcing: PlanSourcing;
   onOpenBuildSettings?: () => void;
   rootEditing: RootRowEditing | null;
+  readOnly: boolean;
+  epicNode: EpicNodeProgress | null;
 }) {
   // Dependency order only -- never readiness terminology. The root
   // always holds the unique maximum stage index (see
@@ -210,8 +239,9 @@ function ProductionInspector({
               Final production
             </p>
             <p className="mt-0.5 text-[11px] text-muted">
-              This is the Build itself. Its blueprint, facility and pricing are configured in
-              Build settings.
+              {readOnly
+                ? "This is the Epic's final product, as frozen when the Epic was created."
+                : "This is the Build itself. Its blueprint, facility and pricing are configured in Build settings."}
             </p>
             {onOpenBuildSettings ? (
               <button className="iw-button-secondary mt-2" onClick={onOpenBuildSettings} type="button">
@@ -258,17 +288,21 @@ function ProductionInspector({
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                         Source
                       </span>
-                      <SourcingSwitch
-                        consumerName={consumerName}
-                        current={currentMethod}
-                        disabled={false}
-                        error={sourcing.errorByEdge[key] ?? null}
-                        methods={node.productionMethods ?? []}
-                        onChange={(choice: SourcingChoice) =>
-                          sourcing.change(consumer.buildId, node.outputTypeId, choice)
-                        }
-                        pending={Boolean(sourcing.pendingByEdge[key])}
-                      />
+                      {readOnly ? (
+                        <span className="text-xs">{node.activity === "reaction" ? "React" : "Build"}</span>
+                      ) : (
+                        <SourcingSwitch
+                          consumerName={consumerName}
+                          current={currentMethod}
+                          disabled={false}
+                          error={sourcing.errorByEdge[key] ?? null}
+                          methods={node.productionMethods ?? []}
+                          onChange={(choice: SourcingChoice) =>
+                            sourcing.change(consumer.buildId, node.outputTypeId, choice)
+                          }
+                          pending={Boolean(sourcing.pendingByEdge[key])}
+                        />
+                      )}
                     </div>
                   </li>
                 );
@@ -287,7 +321,7 @@ function ProductionInspector({
               consumers above.
             </p>
           ) : null}
-          {isRoot ? (
+          {isRoot || readOnly || !command ? (
             <>
               <InspectorRow
                 label={node.activity === "reaction" ? "Reaction formula" : "Blueprint"}
@@ -299,10 +333,21 @@ function ProductionInspector({
                   <InspectorRow label="TE" value={node.effectiveTe ?? "—"} />
                 </>
               ) : null}
-              <InspectorRow label="Facility" value={node.facilityName ?? "No facility"} />
-              {!node.facilityId ? <MissingFacilityWarning /> : null}
+              {readOnly ? (
+                // The Epic froze no facility, only its cost evidence.
+                <InspectorRow label="Facility" value={node.facilityName ?? "Not recorded"} />
+              ) : (
+                <>
+                  <InspectorRow label="Facility" value={node.facilityName ?? "No facility"} />
+                  {!node.facilityId ? <MissingFacilityWarning /> : null}
+                </>
+              )}
               <p className="pt-1 text-[11px] text-muted">
-                Root configuration is edited in Build settings.
+                {readOnly
+                  ? "Frozen with the Epic. Choose No Epic to change the Build's configuration."
+                  : isRoot
+                    ? "Root configuration is edited in Build settings."
+                    : "Loading the Build's configuration..."}
               </p>
             </>
           ) : (
@@ -322,7 +367,7 @@ function ProductionInspector({
               rootBuildId={rootBuildId}
             />
           )}
-          {!isRoot && editableOccurrences.length === 1 ? (
+          {!isRoot && !readOnly && editableOccurrences.length === 1 ? (
             // The producer's own Build still owns its row-level exceptions
             // (its inputs' price overrides, its descendants' scope) --
             // reachable, not re-implemented here.
@@ -406,7 +451,9 @@ function ProductionInspector({
         </InspectorSection>
 
         <InspectorSection defaultExpanded id="ticket" label="Ticket">
-          {occurrences[0] ? (
+          {readOnly ? (
+            <EpicNodeTicket epicNode={epicNode} isRoot={isRoot} />
+          ) : occurrences[0] ? (
             <CreateOperationTicket
               activity={node.activity}
               buildId={occurrences[0].buildId}
@@ -419,5 +466,28 @@ function ProductionInspector({
 
       </InspectorCollapseProvider>
     </PlannerInspectorShell>
+  );
+}
+
+/** An Epic step's ticket, and (for an intermediate) what the Epic holds of
+ * its output for the steps it feeds. */
+function EpicNodeTicket({ epicNode, isRoot }: { epicNode: EpicNodeProgress | null; isRoot: boolean }) {
+  if (!epicNode) return <p className="text-xs text-muted">No Epic details.</p>;
+  return (
+    <>
+      <InspectorRow
+        label="Ticket"
+        value={epicNode.ticketDisplayId
+          ? `${epicNode.ticketDisplayId}${epicNode.ticketStatus ? ` · ${TICKET_STATUS_LABELS[epicNode.ticketStatus]}` : ""}`
+          : "No ticket"}
+      />
+      {!isRoot ? (
+        <>
+          <InspectorRow label="Output reserved" value={qty(epicNode.output.reserved)} />
+          <InspectorRow label="Output used" value={qty(epicNode.output.consumed)} />
+          <InspectorRow label="Still needed" value={qty(epicNode.output.remainingNeed)} />
+        </>
+      ) : null}
+    </>
   );
 }
