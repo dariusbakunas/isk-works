@@ -13,10 +13,11 @@ import { apiMessage } from "../../shared/api-error";
 import { InlineAlert } from "../../../../components/primitives";
 
 /**
- * Create Epic, with an opt-in (default on) "Reserve inventory" step.
+ * Create Epic. Every Epic reserves the stock its plan reuses, so other
+ * plans don't count it.
  *
- * Opens on a preview of what the Epic would reuse from free inventory.
- * Confirming with Reserve on sends that preview back as `expectedReuse`;
+ * Opens on a preview of what the Epic will reserve from free inventory.
+ * Confirming sends that preview back as `expectedReuse`;
  * if free stock dropped since, the server refuses with a drift body that
  * already carries the fresh preview, so Refresh needs no extra request.
  * If stock rose, the Epic is created and the increase is shown here before
@@ -36,7 +37,6 @@ export function CreateEpicDialog({
   onCreated: (order: OrderDetail) => void;
 }) {
   const [preview, setPreview] = useState<EpicReusePreview | null>(null);
-  const [reserve, setReserve] = useState(true);
   const [drift, setDrift] = useState<ReservationDrift | null>(null);
   const [created, setCreated] = useState<{ order: OrderDetail; increased: ReuseChange[] } | null>(null);
   const [error, setError] = useState("");
@@ -46,7 +46,6 @@ export function CreateEpicDialog({
     if (!open || !command) return;
     let cancelled = false;
     setPreview(null);
-    setReserve(true);
     setDrift(null);
     setCreated(null);
     setError("");
@@ -70,18 +69,14 @@ export function CreateEpicDialog({
   }
   const typeName = (typeId: number) => names.get(typeId) ?? `Type ${typeId}`;
 
-  async function submit(withReservation: boolean) {
+  async function submit() {
     if (!command || !preview) return;
     setBusy(true);
     setError("");
     try {
-      const order = await createOrder(
-        buildId,
-        command,
-        withReservation
-          ? { expectedReuse: preview.reuse.map(({ typeId, quantity }) => ({ typeId, quantity })) }
-          : undefined,
-      );
+      const order = await createOrder(buildId, command, {
+        expectedReuse: preview.reuse.map(({ typeId, quantity }) => ({ typeId, quantity })),
+      });
       if (order.reuseIncreased?.length) {
         setCreated({ order, increased: order.reuseIncreased });
         setBusy(false);
@@ -145,7 +140,9 @@ export function CreateEpicDialog({
                 <p className="iw-muted mt-2">This Epic uses no inventory. Everything will be bought or built.</p>
               ) : (
                 <>
-                  <p className="iw-muted mt-2">This Epic uses this free inventory:</p>
+                  <p className="iw-muted mt-2">
+                    This Epic reserves this free inventory, so other plans don&apos;t count it:
+                  </p>
                   <table className="mt-2 w-full text-sm" aria-label="Inventory this Epic uses">
                     <thead>
                       <tr className="iw-muted text-left text-xs">
@@ -166,23 +163,6 @@ export function CreateEpicDialog({
               )
             ) : null}
 
-            {preview && preview.reuse.length > 0 ? (
-              <label className="mt-3 flex items-start gap-2 text-sm">
-                <input
-                  checked={reserve}
-                  className="mt-0.5"
-                  disabled={busy || drift !== null}
-                  onChange={(event) => setReserve(event.target.checked)}
-                  type="checkbox"
-                />
-                <span>
-                  <span className="font-semibold">Reserve inventory</span>
-                  <span className="iw-muted block">
-                    Hold this stock for the Epic so other plans don&apos;t count it.
-                  </span>
-                </span>
-              </label>
-            ) : null}
 
             {drift ? (
               <div className="mt-3">
@@ -216,19 +196,14 @@ export function CreateEpicDialog({
                 Cancel
               </button>
               {drift ? (
-                <>
-                  <button className="iw-button-secondary" disabled={busy} onClick={() => void submit(false)} type="button">
-                    Create without reserving
-                  </button>
-                  <button className="iw-button-primary" disabled={busy} onClick={refresh} type="button">
-                    Refresh
-                  </button>
-                </>
+                <button className="iw-button-primary" disabled={busy} onClick={refresh} type="button">
+                  Refresh
+                </button>
               ) : (
                 <button
                   className="iw-button-primary"
                   disabled={busy || preview === null}
-                  onClick={() => void submit(reserve && preview !== null && preview.reuse.length > 0)}
+                  onClick={() => void submit()}
                   type="button"
                 >
                   {busy ? "Creating Epic..." : "Create Epic"}
