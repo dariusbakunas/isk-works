@@ -938,3 +938,81 @@ async fn a_canceled_epics_ticket_draws_free_stock_only(pool: PgPool) {
         "B's reservation is untouched"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Reverting a recording restores what it consumed.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn revert(fx: &Fixture, ticket_id: &str, recording: &Value) -> (StatusCode, Value) {
+    let recording_id = recording["recording"]["id"].as_str().unwrap();
+    post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket_id}/recordings/{recording_id}/revert"),
+        Value::Null,
+    )
+    .await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reverting_a_recording_restores_the_reservations_it_used(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await; // 600 Tritanium held
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    let (status, recording) =
+        record_rifter(&fx, &ticket, &[(34, 250), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {recording}");
+
+    let (status, body) = revert(&fx, &ticket, &recording).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let held: i64 = active_allocations(&pool)
+        .await
+        .iter()
+        .filter(|(type_id, _, _)| *type_id == 34)
+        .map(|(_, quantity, _)| quantity)
+        .sum();
+    assert_eq!(held, 600, "the Epic holds its full 600 again");
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![
+            (250, false, false, "epic_create".to_string()),
+            (350, false, false, "epic_create".to_string()),
+        ]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reverting_does_not_hand_taken_stock_back_to_its_epic(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (a, b) = two_epics_sharing_tritanium(&pool, &fx).await;
+    let ticket = root_ticket_id(&fx, &a).await;
+    let (status, recording) = record_rifter(
+        &fx,
+        &ticket,
+        &[(34, 1_000), (35, 200)],
+        serde_json::json!([{"orderId": b, "typeId": 34}]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {recording}");
+
+    let (status, body) = revert(&fx, &ticket, &recording).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![
+            (400, false, true, "epic_create".to_string()),
+            (600, false, false, "epic_create".to_string()),
+        ],
+        "A's 600 active again; B's 400 stays released, so it is free stock"
+    );
+    let physical: i64 =
+        sqlx::query_scalar("SELECT quantity FROM inventory_balances WHERE type_id = 34")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(physical, 1_000);
+}

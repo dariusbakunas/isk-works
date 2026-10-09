@@ -1757,6 +1757,7 @@ impl OrderRepository for PgOrderRepository {
         if updated.rows_affected() != 1 {
             return Err(OrderError::RecordingAlreadyReversed);
         }
+        super::reservations::unconsume_recording_allocations(&mut tx, recording_id).await?;
 
         let recorded = match recording.kind {
             TicketInventoryRecordingKind::Acquisition => {

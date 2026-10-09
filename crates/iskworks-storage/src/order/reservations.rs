@@ -437,3 +437,23 @@ async fn split_off_remainder(
     .map_err(map_error)?;
     Ok(())
 }
+
+/// Reverting a recording: every reservation it consumed becomes active
+/// again (the reversal returns that stock). Reservations taken from other
+/// Epics are not handed back to them -- the returned stock is free.
+/// No free-stock check: a reversal corrects the ledger to what physically
+/// happened, even if that leaves stock over-reserved.
+pub(super) async fn unconsume_recording_allocations(
+    tx: &mut Transaction<'_, Postgres>,
+    recording_id: TicketInventoryRecordingId,
+) -> Result<(), OrderError> {
+    sqlx::query(
+        "UPDATE inventory_allocations SET consumed_at = NULL, consumed_by_recording_id = NULL \
+         WHERE consumed_by_recording_id = $1",
+    )
+    .bind(recording_id.0)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    Ok(())
+}
