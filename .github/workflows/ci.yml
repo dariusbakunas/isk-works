@@ -50,7 +50,9 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16-alpine
+        # Docker's official image via AWS's public mirror: Docker Hub rate
+        # limits anonymous pulls from shared runners.
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: iskworks
           POSTGRES_PASSWORD: iskworks
