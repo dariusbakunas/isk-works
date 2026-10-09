@@ -71,41 +71,6 @@ pub fn intended_build_backed_runs(
     Ok(requested_runs.unwrap_or(persisted_runs))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn planned_root_output_is_runs_times_output_per_run() {
-        // Discrete-run semantics: no downstream required-quantity rounding.
-        // `.ok()` because `ApiError` is deliberately not `Debug`.
-        assert_eq!(planned_root_output(1, 1).ok(), Some(1));
-        assert_eq!(planned_root_output(10, 1).ok(), Some(10));
-        assert_eq!(planned_root_output(1, 500).ok(), Some(500));
-        assert_eq!(planned_root_output(3, 500).ok(), Some(1_500));
-    }
-
-    #[test]
-    fn planned_root_output_rejects_an_overflowing_product() {
-        assert!(planned_root_output(u64::MAX, 2).is_err());
-    }
-
-    #[test]
-    fn canonical_descendant_ticket_runs_must_be_explicit() {
-        let root = BuildId::new();
-        let producer = BuildId::new();
-        assert!(intended_build_backed_runs(Some(root), producer, 1, None,).is_err());
-        assert_eq!(
-            intended_build_backed_runs(Some(root), producer, 1, Some(12),).ok(),
-            Some(12),
-        );
-        assert_eq!(
-            intended_build_backed_runs(Some(root), root, 2, None).ok(),
-            Some(2),
-        );
-    }
-}
-
 /// [`OrderRequirement`] (already persisted under its Epic) ->
 /// [`NewTicketPrerequisite`]: the same frozen row mirrored onto a ticket
 /// created later, exactly as [`requirement_to_prerequisite`] mirrors it at
@@ -192,5 +157,40 @@ pub fn operation_ticket(
         own_installation_cost: operation.own_installation_cost,
         total_production_cost: operation.total_production_cost,
         plan_evidence: Some(operation.evidence.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn planned_root_output_is_runs_times_output_per_run() {
+        // Discrete-run semantics: no downstream required-quantity rounding.
+        // `.ok()` because `ApiError` is deliberately not `Debug`.
+        assert_eq!(planned_root_output(1, 1).ok(), Some(1));
+        assert_eq!(planned_root_output(10, 1).ok(), Some(10));
+        assert_eq!(planned_root_output(1, 500).ok(), Some(500));
+        assert_eq!(planned_root_output(3, 500).ok(), Some(1_500));
+    }
+
+    #[test]
+    fn planned_root_output_rejects_an_overflowing_product() {
+        assert!(planned_root_output(u64::MAX, 2).is_err());
+    }
+
+    #[test]
+    fn canonical_descendant_ticket_runs_must_be_explicit() {
+        let root = BuildId::new();
+        let producer = BuildId::new();
+        assert!(intended_build_backed_runs(Some(root), producer, 1, None,).is_err());
+        assert_eq!(
+            intended_build_backed_runs(Some(root), producer, 1, Some(12),).ok(),
+            Some(12),
+        );
+        assert_eq!(
+            intended_build_backed_runs(Some(root), root, 2, None).ok(),
+            Some(2),
+        );
     }
 }
