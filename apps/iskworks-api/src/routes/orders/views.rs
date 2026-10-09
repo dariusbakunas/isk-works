@@ -159,10 +159,17 @@ pub(super) fn production_plan_view(
 /// `fulfillments_per_requirement` must have exactly one entry per
 /// `requirements` element, in the same order (each entry the requirement's
 /// non-canceled linked tickets).
+///
+/// `held` is the stock the Epic holds per requirement (reserved + used,
+/// see `requirement_reservation_totals`); a requirement that holds its
+/// whole `required_quantity` is satisfied, however its tickets stand --
+/// that is how recorded producer output satisfies a Build/React
+/// requirement. Ticket status alone never does.
 pub(super) fn order_detail_response(
     order: &Order,
     requirements: Vec<OrderRequirement>,
     fulfillments_per_requirement: Vec<Vec<LinkedTicketRef>>,
+    held: &HashMap<OrderRequirementId, u64>,
 ) -> OrderDetailResponse {
     debug_assert_eq!(requirements.len(), fulfillments_per_requirement.len());
     let states: Vec<RequirementFulfillmentState> = requirements
@@ -174,7 +181,14 @@ pub(super) fn order_detail_response(
                 .filter(|ticket| !ticket.producer)
                 .map(|ticket| (ticket.status, ticket.allocated_quantity))
                 .collect();
+            let holds_all =
+                held.get(&requirement.id).copied().unwrap_or(0) >= requirement.required_quantity;
             match derive_requirement_state(requirement, &fulfillments) {
+                RequirementFulfillmentState::NeedsAction | RequirementFulfillmentState::Linked
+                    if holds_all =>
+                {
+                    RequirementFulfillmentState::Satisfied
+                }
                 RequirementFulfillmentState::NeedsAction
                     if linked.iter().any(|ticket| ticket.producer) =>
                 {

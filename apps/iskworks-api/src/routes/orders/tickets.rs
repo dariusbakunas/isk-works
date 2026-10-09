@@ -414,15 +414,62 @@ pub(super) async fn create_ticket_route(
     Ok((StatusCode::CREATED, Json(ticket)))
 }
 
+/// An Epic's requirements that hold their whole need in stock (reserved +
+/// used), keyed by `(operation_occurrence_key, type_id)` -- the identity a
+/// whole-tree ticket's prerequisite copies from its requirement. Empty for
+/// an Epic without reservations (versions 1 and 2).
+pub(super) async fn held_requirement_keys(
+    repository: &dyn OrderRepository,
+    workspace_id: iskworks_core::WorkspaceId,
+    order_id: OrderId,
+) -> Result<HashSet<(String, i64)>, ApiError> {
+    let held: HashMap<OrderRequirementId, u64> = repository
+        .requirement_reservation_totals(workspace_id, order_id)
+        .await?
+        .into_iter()
+        .map(|totals| (totals.requirement_id, totals.reserved + totals.consumed))
+        .collect();
+    if held.values().all(|quantity| *quantity == 0) {
+        return Ok(HashSet::new());
+    }
+    Ok(repository
+        .list_order_requirements(order_id)
+        .await?
+        .into_iter()
+        .filter(|requirement| {
+            held.get(&requirement.id).copied().unwrap_or(0) >= requirement.required_quantity
+        })
+        .filter_map(|requirement| {
+            requirement
+                .operation_occurrence_key
+                .map(|key| (key, requirement.type_id))
+        })
+        .collect())
+}
+
 /// Builds `derive_ticket_blockers`' input from an already-fetched
 /// prerequisite list: for each, its non-canceled fulfillments' identity/
 /// status -- the same N+1-acceptable-at-this-scale shape `fetch_order_detail`
-/// already uses for `LinkedTicketRef`.
+/// already uses for `LinkedTicketRef`. A prerequisite whose Epic
+/// requirement holds its whole need (`held`, see `held_requirement_keys`)
+/// is met: that is how a step's recorded output unblocks its consumer.
 pub(super) async fn ticket_blockers(
     repository: &dyn OrderRepository,
     workspace_id: iskworks_core::WorkspaceId,
+    held: &HashSet<(String, i64)>,
     prerequisites: &[TicketPrerequisite],
 ) -> Result<Vec<TicketBlockerRef>, ApiError> {
+    let prerequisites: Vec<TicketPrerequisite> = prerequisites
+        .iter()
+        .filter(|prerequisite| {
+            !prerequisite
+                .operation_occurrence_key
+                .as_ref()
+                .is_some_and(|key| held.contains(&(key.clone(), prerequisite.type_id)))
+        })
+        .cloned()
+        .collect();
+    let prerequisites = prerequisites.as_slice();
     let mut fulfillments_by_prerequisite = HashMap::with_capacity(prerequisites.len());
     for prerequisite in prerequisites {
         let links = repository
