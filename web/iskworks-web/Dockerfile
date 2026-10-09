@@ -1,6 +1,9 @@
 # Build context is this directory (web/iskworks-web) — the app is a
 # self-contained npm package, unlike the API which needs the repo root.
-FROM node:22-bookworm AS builder
+# Base images come from AWS's public mirror of Docker's official images
+# (same images as Docker Hub's `library/`), which avoids Docker Hub's
+# anonymous pull rate limit on shared CI runners.
+FROM public.ecr.aws/docker/library/node:22-bookworm AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -17,7 +20,7 @@ ENV VITE_APP_RELEASE=$VITE_APP_RELEASE
 
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM public.ecr.aws/docker/library/nginx:1.27-alpine AS runtime
 
 # Same-origin deployment: the SPA calls /api/* on its own domain (see
 # deploy/docker-compose.yml, which path-routes /api to iskworks-api on the
