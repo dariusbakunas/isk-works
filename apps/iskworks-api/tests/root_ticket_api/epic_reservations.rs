@@ -304,7 +304,12 @@ async fn create_reserving_order(
             .map(|(type_id, quantity)| serde_json::json!({"typeId": type_id, "quantity": quantity}))
             .collect::<Vec<_>>(),
     });
-    post_json(&fx.app, &format!("/api/builds/{}/orders", build.id.0), body).await
+    let (status, order) =
+        post_json(&fx.app, &format!("/api/builds/{}/orders", build.id.0), body).await;
+    if status == StatusCode::CREATED {
+        create_step_tickets(&fx.app, &order).await;
+    }
+    (status, order)
 }
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]

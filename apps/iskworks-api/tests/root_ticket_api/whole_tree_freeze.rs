@@ -285,7 +285,10 @@ async fn full_scope_build_ignores_inventory_and_still_gets_an_operation(pool: Pg
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(tickets, 2, "root + child production ticket");
+    assert_eq!(
+        tickets, 1,
+        "only the root is ticketed; the child step's ticket is created on demand"
+    );
 }
 
 /// A Build-resolved component fully covered by on-hand

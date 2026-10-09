@@ -251,3 +251,35 @@ async fn an_unknown_step_is_not_found(pool: PgPool) {
     assert_eq!(status, StatusCode::NOT_FOUND, "body: {body}");
     assert_eq!(body["error"]["code"], "operation_not_found");
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_epic_tickets_only_the_final_product(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let parent = assembly_with_built_component(&fx, 1, 90100, &[]).await;
+
+    // The raw route, without the fixtures' on-demand step tickets.
+    let (status, order) = post_json(
+        &fx.app,
+        &format!("/api/builds/{}/orders", parent.id.0),
+        command_json_for_build(&parent),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    assert_eq!(
+        order["productionPlan"]["operations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let tickets: Vec<Value> = list_tickets(&fx.app)
+        .await
+        .into_iter()
+        .filter(|ticket| ticket["orderId"] == order["id"])
+        .collect();
+    assert_eq!(tickets.len(), 1, "only the root: {tickets:?}");
+    assert_eq!(tickets[0]["typeId"], 90111);
+    assert!(tickets[0]["executionSnapshot"].is_object());
+}

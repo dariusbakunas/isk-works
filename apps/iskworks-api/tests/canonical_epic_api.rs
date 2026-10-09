@@ -327,13 +327,48 @@ fn command_json(build: &Build) -> Value {
 }
 
 async fn create_epic(fx: &Fixture, root: &Build) -> (StatusCode, Value) {
-    send(
+    let (status, order) = send(
         &fx.app,
         "POST",
         &format!("/api/builds/{}/orders", root.id.0),
         Some(command_json(root)),
     )
-    .await
+    .await;
+    if status == StatusCode::CREATED {
+        // Create Epic tickets only the root; create the other steps'
+        // tickets on demand, as a user now does.
+        let order_id = order["id"].as_str().unwrap().to_string();
+        let root_key = order["productionPlan"]["rootOccurrenceKey"]
+            .as_str()
+            .map(str::to_string);
+        for operation in order["productionPlan"]["operations"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+        {
+            let key = operation["occurrenceKey"].as_str().unwrap().to_string();
+            if Some(&key) == root_key.as_ref() {
+                continue;
+            }
+            let (step_status, body) = send(
+                &fx.app,
+                "POST",
+                &format!("/api/orders/{order_id}/operations/{key}/ticket"),
+                None,
+            )
+            .await;
+            assert!(
+                step_status.is_success(),
+                "create step ticket {key}: {step_status} {body}"
+            );
+        }
+        // The detail now names each operation's ticket.
+        let (detail_status, detail) =
+            send(&fx.app, "GET", &format!("/api/orders/{order_id}"), None).await;
+        assert_eq!(detail_status, StatusCode::OK, "{detail}");
+        return (status, detail);
+    }
+    (status, order)
 }
 
 async fn order_tickets(fx: &Fixture, order_id: &str) -> Vec<Value> {
