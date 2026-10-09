@@ -347,8 +347,38 @@ async fn create_order(app: &axum::Router, build: &Build) -> (StatusCode, Value) 
     let body = body_json(response).await;
     if status != StatusCode::CREATED {
         eprintln!("create_order failed: {status} {body}");
+    } else {
+        create_step_tickets(app, &body).await;
     }
     (status, body)
+}
+
+/// Create Epic tickets only the root; these fixtures exercise the other
+/// steps' tickets too, so create them the way a user now does -- on demand,
+/// one per frozen operation.
+async fn create_step_tickets(app: &axum::Router, order: &Value) {
+    let order_id = order["id"].as_str().unwrap();
+    let root = order["productionPlan"]["rootOccurrenceKey"].as_str();
+    for operation in order["productionPlan"]["operations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
+        let key = operation["occurrenceKey"].as_str().unwrap();
+        if Some(key) == root {
+            continue;
+        }
+        let (status, body) = post_json(
+            app,
+            &format!("/api/orders/{order_id}/operations/{key}/ticket"),
+            Value::Null,
+        )
+        .await;
+        assert!(
+            status.is_success(),
+            "create step ticket {key}: {status} {body}"
+        );
+    }
 }
 
 async fn list_tickets(app: &axum::Router) -> Vec<Value> {
@@ -412,6 +442,7 @@ async fn post_json(app: &axum::Router, path: &str, body: Value) -> (StatusCode, 
 mod epic_creation;
 mod epic_reservations;
 mod inventory_snapshot;
+mod operation_tickets;
 mod recursive_netting;
 mod whole_tree_freeze;
 

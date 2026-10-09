@@ -13,14 +13,14 @@ use iskworks_core::order::{
     frozen_reuse, intended_build_backed_runs, planned_root_output, project_frozen_execution_plan,
     requirement_to_prerequisite, reuse_by_type, EpicPlanOverlay, FrozenDemandEdge,
     FrozenPlanInventory, NewOrderPlan, NewOrderRequirement, NewPlanReservation, NewPlanTicket,
-    NewTicket, NewTicketPrerequisite, OperationDependency, Order, OrderError, OrderId,
-    OrderRepository, OrderRequirement, OrderRequirementId, OrderRequirementRollup, OrderStatus,
-    PlanOperation, RecordAcquisitionInput, RecordProductionInput, RecordProductionInputLine,
-    RequirementFulfillmentState, RequirementKind, RequirementReservationTotals,
-    RequirementTicketCreation, ReservationShortfall, ReuseChange, TakeFrom, Ticket,
-    TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind, TicketMetadataUpdate,
-    TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary, TicketStatus,
-    ROOT_OCCURRENCE_PREFIX,
+    NewTicket, NewTicketPrerequisite, OperationDependency, OperationTicketCreation, Order,
+    OrderError, OrderId, OrderRepository, OrderRequirement, OrderRequirementId,
+    OrderRequirementRollup, OrderStatus, PlanOperation, RecordAcquisitionInput,
+    RecordProductionInput, RecordProductionInputLine, RequirementFulfillmentState, RequirementKind,
+    RequirementReservationTotals, RequirementTicketCreation, ReservationShortfall, ReuseChange,
+    TakeFrom, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind,
+    TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary,
+    TicketStatus, ROOT_OCCURRENCE_PREFIX,
 };
 use iskworks_core::{
     BuildId, BuildRecipe, ConnectedCharacterId, MarketScope, Money, PreviewBuildPlanCommand,
@@ -90,6 +90,10 @@ pub(crate) fn router() -> Router<AppState> {
         .route(
             "/api/orders/:order_id/requirements/:requirement_id/tickets",
             post(create_ticket_for_requirement_route),
+        )
+        .route(
+            "/api/orders/:order_id/operations/:occurrence_key/ticket",
+            post(create_operation_ticket_route),
         )
         .route(
             "/api/orders/:order_id/requirements/:requirement_id/link",

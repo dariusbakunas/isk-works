@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
-    derive_operation_dag, derive_recording_summary, plan_capped_reservations,
+    derive_operation_dag, derive_recording_summary, operation_ticket, plan_capped_reservations,
     plan_epic_reservations, plan_recorded_output, reuse_by_type, AllocationReason,
     CappedReservationPlan, FrozenDemandEdge, NewOrder, NewOrderPlan, NewOrderRequirement,
-    NewPlanOperation, NewTicket, NewTicketPrerequisite, Order, OrderError, OrderId,
-    OrderPlanResult, OrderRepository, OrderRequirement, OrderRequirementFulfillment,
+    NewPlanOperation, NewTicket, NewTicketPrerequisite, OperationTicketCreation, Order, OrderError,
+    OrderId, OrderPlanResult, OrderRepository, OrderRequirement, OrderRequirementFulfillment,
     OrderRequirementFulfillmentId, OrderRequirementId, PlanOperation, PlanOperationEvidence,
     PlanOperationId, PlanRequirementEvidence, RecordAcquisitionInput, RecordAcquisitionOutcome,
     RecordProductionInput, RecordProductionOutcome, RequirementKind, RequirementReservationTotals,

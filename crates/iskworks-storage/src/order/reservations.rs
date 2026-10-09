@@ -626,3 +626,59 @@ pub(super) async fn reserve_recorded_output(
     }
     Ok(())
 }
+
+/// Claims `(order_id, occurrence_key)` for `ticket_id`
+/// (`order_operation_ticket_claims`). Returns `None` when the claim is now
+/// held for `ticket_id` -- newly taken, or re-pointed from a canceled
+/// ticket under a row lock -- and `Some(holder)` when an active ticket
+/// already holds it (nothing changed). `ticket_id`'s FK is deferred, so
+/// the claim can be taken before the ticket row is inserted.
+pub(super) async fn claim_operation(
+    tx: &mut Transaction<'_, Postgres>,
+    order_id: OrderId,
+    occurrence_key: &str,
+    ticket_id: TicketId,
+    now: DateTime<Utc>,
+) -> Result<Option<TicketId>, OrderError> {
+    let claimed = sqlx::query(
+        "INSERT INTO order_operation_ticket_claims (order_id, occurrence_key, ticket_id, claimed_at) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT (order_id, occurrence_key) DO NOTHING",
+    )
+    .bind(order_id.0)
+    .bind(occurrence_key)
+    .bind(ticket_id.0)
+    .bind(now)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?
+    .rows_affected()
+        == 1;
+    if claimed {
+        return Ok(None);
+    }
+    let (holder, status): (Uuid, String) = sqlx::query_as(
+        "SELECT c.ticket_id, t.status FROM order_operation_ticket_claims c \
+         JOIN tickets t ON t.id = c.ticket_id \
+         WHERE c.order_id = $1 AND c.occurrence_key = $2 FOR UPDATE OF c",
+    )
+    .bind(order_id.0)
+    .bind(occurrence_key)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    if status != "canceled" {
+        return Ok(Some(TicketId(holder)));
+    }
+    sqlx::query(
+        "UPDATE order_operation_ticket_claims SET ticket_id = $3, claimed_at = $4 \
+         WHERE order_id = $1 AND occurrence_key = $2",
+    )
+    .bind(order_id.0)
+    .bind(occurrence_key)
+    .bind(ticket_id.0)
+    .bind(now)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    Ok(None)
+}

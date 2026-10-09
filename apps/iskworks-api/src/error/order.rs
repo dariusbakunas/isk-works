@@ -3,6 +3,7 @@ use super::*;
 pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
     let (status, code, retryable) = match &error {
         OrderError::OrderNotFound => (StatusCode::NOT_FOUND, "order_not_found", false),
+        OrderError::OperationNotFound => (StatusCode::NOT_FOUND, "operation_not_found", false),
         OrderError::OrderRequirementNotFound => {
             (StatusCode::NOT_FOUND, "order_requirement_not_found", false)
         }

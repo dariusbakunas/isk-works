@@ -332,3 +332,35 @@ fn overlay_sums_the_epics_holdings_per_acquisition_and_per_producer() {
     assert_eq!(reaction.ticket_id, None);
     assert_eq!(overlay.nodes["root"].output, EpicStockProgress::default());
 }
+
+#[test]
+fn an_operation_ticket_is_built_from_the_frozen_operation_and_its_own_requirements() {
+    let (operations, requirements) = muninn();
+    let reaction = &operations[1];
+
+    let ticket = operation_ticket(&order(), reaction, &requirements);
+
+    assert_eq!(ticket.kind, TicketKind::Reaction);
+    assert_eq!(ticket.type_id, Some(16_673));
+    assert_eq!(ticket.captured_name, "Fernite Carbide");
+    assert_eq!(ticket.quantity, Some(503));
+    assert_eq!(ticket.produced_quantity, Some(503));
+    assert_eq!(ticket.order_id, Some(order().id));
+    assert_eq!(ticket.source_build_id, reaction.build_id);
+    assert_eq!(ticket.occurrence_key.as_deref(), Some("reaction"));
+    assert_eq!(ticket.total_production_cost, reaction.total_production_cost);
+    assert_eq!(
+        ticket.estimated_line_total,
+        reaction.material_component_cost
+    );
+    assert_eq!(ticket.plan_evidence.as_ref(), Some(&reaction.evidence));
+    assert_eq!(ticket.parent_ticket_id, None, "storage resolves the parent");
+    assert_eq!(ticket.execution_snapshot, None);
+    // Only the reaction's own inputs, mirrored with their frozen reuse.
+    let prerequisites: Vec<(i64, u64, u64)> = ticket
+        .prerequisites
+        .iter()
+        .map(|p| (p.type_id, p.required_quantity, p.reused_quantity))
+        .collect();
+    assert_eq!(prerequisites, vec![(35, 200, 0), (36, 50, 50)]);
+}

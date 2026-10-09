@@ -9,6 +9,15 @@ pub enum RequirementTicketCreation {
     AlreadyLinked(TicketId),
 }
 
+/// Outcome of `OrderRepository::create_operation_ticket`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum OperationTicketCreation {
+    /// The ticket was created for the operation.
+    Created(Box<Ticket>),
+    /// An active ticket already holds the operation; nothing was created.
+    AlreadyExists(TicketId),
+}
+
 /// One frozen material need to persist under an Order.
 ///
 /// The `fulfillment_scope` / `reused_quantity` / `reused_line_total` triple
@@ -418,6 +427,9 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
+    /// No frozen operation with that occurrence key in the Epic.
+    #[error("the Epic has no such production step")]
+    OperationNotFound,
     /// Reserving inventory for a completed, canceled or archived Epic.
     #[error("a completed, canceled or archived Epic can't reserve inventory")]
     OrderNotReservable,
@@ -686,6 +698,19 @@ pub trait OrderRepository: Send + Sync {
         new_ticket: NewTicket,
         allocated_quantity: u64,
     ) -> Result<RequirementTicketCreation, OrderError>;
+    /// Creates the ticket for one frozen operation of a version-3 Epic
+    /// (see `order::operation_ticket`), in one transaction. At most one
+    /// active (non-canceled) ticket per operation -- claimed in
+    /// `order_operation_ticket_claims`, so a concurrent or repeated request
+    /// gets `AlreadyExists` with the holder. The new ticket is linked under
+    /// its parent operation's ticket if that exists, and adopts existing
+    /// child operations' tickets that have no parent yet.
+    async fn create_operation_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+        occurrence_key: &str,
+    ) -> Result<OperationTicketCreation, OrderError>;
     async fn list_order_requirement_fulfillments(
         &self,
         order_requirement_id: OrderRequirementId,

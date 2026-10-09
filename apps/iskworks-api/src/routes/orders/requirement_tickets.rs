@@ -485,3 +485,25 @@ pub(super) async fn link_ticket_to_requirement(
         .await?;
     Ok(Json(ticket))
 }
+
+/// `POST /api/orders/:order_id/operations/:occurrence_key/ticket`: create
+/// the ticket for one frozen production step of a version-3 Epic (e.g.
+/// after its ticket was deleted or canceled). `201` with the new ticket,
+/// or `200` with the step's existing active ticket.
+pub(super) async fn create_operation_ticket_route(
+    State(state): State<AppState>,
+    Path((order_id, occurrence_key)): Path<(uuid::Uuid, String)>,
+) -> Result<(StatusCode, Json<Ticket>), ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let repository = state.order_repository()?;
+    match repository
+        .create_operation_ticket(workspace_id, OrderId(order_id), &occurrence_key)
+        .await?
+    {
+        OperationTicketCreation::Created(ticket) => Ok((StatusCode::CREATED, Json(*ticket))),
+        OperationTicketCreation::AlreadyExists(ticket_id) => Ok((
+            StatusCode::OK,
+            Json(repository.get_ticket(workspace_id, ticket_id).await?),
+        )),
+    }
+}

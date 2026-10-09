@@ -16,12 +16,14 @@ const postBuildExecutionPlan = vi.fn();
 const getOrderExecutionPlan = vi.fn();
 const getOrder = vi.fn();
 const bulkCreateTickets = vi.fn();
+const createOperationTicket = vi.fn();
 vi.mock("../../../../../api/industry", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   postBuildExecutionPlan: (...args: unknown[]) => postBuildExecutionPlan(...args),
   getOrderExecutionPlan: (...args: unknown[]) => getOrderExecutionPlan(...args),
   getOrder: (...args: unknown[]) => getOrder(...args),
   bulkCreateTickets: (...args: unknown[]) => bulkCreateTickets(...args),
+  createOperationTicket: (...args: unknown[]) => createOperationTicket(...args),
 }));
 
 function editorStub(revision = 4): BuildWorksheetEditorModel {
@@ -230,6 +232,32 @@ describe("BuildStagesView with an Epic selected", () => {
     await user.click(within(rowFor("34")).getByRole("button", { name: "Create ticket" }));
 
     expect(bulkCreateTickets).toHaveBeenCalledWith("epic-1", ["req-trit"]);
+    await waitFor(() => expect(getOrderExecutionPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it("creates a step's missing ticket from its inspector and reloads", async () => {
+    const plan = epicPlan();
+    plan.epic.nodes.reaction = {
+      ...plan.epic.nodes.reaction,
+      ticketId: null,
+      ticketDisplayId: null,
+      ticketStatus: null,
+    };
+    getOrderExecutionPlan.mockResolvedValue(plan);
+    createOperationTicket.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
+
+    await screen.findByRole("table", { name: "Final Production" });
+    expect(within(rowFor("reaction")).getByText("No ticket")).toBeInTheDocument();
+    await user.click(within(rowFor("reaction")).getByText("Fernite Carbide"));
+    const close = await screen.findByRole("button", { name: "Close production inspector" });
+    const panel = within(
+      (close.closest("aside, section, [role=dialog], [role=complementary]") ?? document.body) as HTMLElement,
+    );
+    await user.click(panel.getByRole("button", { name: "Create ticket" }));
+
+    expect(createOperationTicket).toHaveBeenCalledWith("epic-1", "reaction");
     await waitFor(() => expect(getOrderExecutionPlan).toHaveBeenCalledTimes(2));
   });
 });

@@ -447,6 +447,18 @@ impl OrderRepository for PgOrderRepository {
                 ticket_id_by_occurrence.insert(occurrence_key, new_ticket.id);
             }
 
+            // Each operation's ticket holds that operation's claim, so a
+            // later "create ticket for this step" sees it.
+            if let Some(occurrence_key) = new_ticket.occurrence_key.as_deref() {
+                super::reservations::claim_operation(
+                    &mut tx,
+                    order.id,
+                    occurrence_key,
+                    new_ticket.id,
+                    now,
+                )
+                .await?;
+            }
             let (display_id, _execution_snapshot, _plan_evidence) =
                 insert_ticket_row(&mut tx, &new_ticket, now).await?;
 
@@ -823,6 +835,72 @@ impl OrderRepository for PgOrderRepository {
 
         tx.commit().await.map_err(map_error)?;
         Ok(RequirementTicketCreation::Created(Box::new(ticket)))
+    }
+
+    async fn create_operation_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+        occurrence_key: &str,
+    ) -> Result<OperationTicketCreation, OrderError> {
+        let order = self.get_order(workspace_id, order_id).await?;
+        if order.planning_snapshot_version < 3 {
+            return Err(OrderError::FrozenPlanUnavailable);
+        }
+        let operations = self.list_order_plan_operations(order_id).await?;
+        let operation = operations
+            .iter()
+            .find(|operation| operation.occurrence_key == occurrence_key)
+            .ok_or(OrderError::OperationNotFound)?;
+        let requirements = self.list_order_requirements(order_id).await?;
+        let mut new_ticket = operation_ticket(&order, operation, &requirements);
+
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let now = crate::db_now();
+        if let Some(holder) = super::reservations::claim_operation(
+            &mut tx,
+            order_id,
+            occurrence_key,
+            new_ticket.id,
+            now,
+        )
+        .await?
+        {
+            return Ok(OperationTicketCreation::AlreadyExists(holder));
+        }
+
+        // Link under the parent operation's active ticket, if it has one.
+        if let Some(parent_key) = operation.parent_occurrence_key.as_deref() {
+            new_ticket.parent_ticket_id = sqlx::query_scalar::<_, Uuid>(
+                "SELECT c.ticket_id FROM order_operation_ticket_claims c \
+                 JOIN tickets t ON t.id = c.ticket_id \
+                 WHERE c.order_id = $1 AND c.occurrence_key = $2 AND t.status <> 'canceled'",
+            )
+            .bind(order_id.0)
+            .bind(parent_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_error)?
+            .map(TicketId);
+        }
+        let (ticket, _) = insert_ticket_with_prerequisites(&mut tx, new_ticket, now).await?;
+
+        // Adopt child operations' tickets created before this one.
+        sqlx::query(
+            "UPDATE tickets SET parent_ticket_id = $1 \
+             WHERE order_id = $2 AND parent_ticket_id IS NULL AND status <> 'canceled' \
+             AND occurrence_key IN (SELECT occurrence_key FROM order_plan_operations \
+                                    WHERE order_id = $2 AND parent_occurrence_key = $3)",
+        )
+        .bind(ticket.id.0)
+        .bind(order_id.0)
+        .bind(occurrence_key)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+
+        tx.commit().await.map_err(map_error)?;
+        Ok(OperationTicketCreation::Created(Box::new(ticket)))
     }
 
     async fn list_order_requirement_fulfillments(

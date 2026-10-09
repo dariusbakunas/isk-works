@@ -5,6 +5,7 @@ import {
   bulkCreateTickets,
   cancelOrder,
   completeOrder,
+  createOperationTicket,
   createTicketForRequirement,
   deleteOrder,
   getOrder,
@@ -146,6 +147,22 @@ export function EpicInspector({
 
   const needsActionRequirements = detail?.requirements.filter((requirement) => requirement.state === "needsAction") ?? [];
 
+  // Frozen production steps with no active ticket (deleted, canceled, or
+  // never created -- Create Epic tickets only the final product).
+  const untickedSteps = (detail?.productionPlan?.operations ?? []).filter(
+    (operation) => operation.ticketId === null,
+  );
+
+  async function createStepTickets(occurrenceKeys: string[]) {
+    await run(async () => {
+      for (const key of occurrenceKeys) {
+        await createOperationTicket(order.id, key);
+      }
+      loadDetail();
+      onChanged?.();
+    });
+  }
+
   async function reserveInventory() {
     setReserveResult(null);
     await run(async () => {
@@ -284,6 +301,40 @@ export function EpicInspector({
               detail.requirements.find((requirement) => requirement.typeId === typeId)?.capturedName
               ?? `Type ${typeId}`}
           />
+        ) : null}
+
+        {untickedSteps.length > 0 ? (
+          <div className="space-y-1.5">
+            <SectionHeading>Production steps without a ticket</SectionHeading>
+            <ul className="space-y-1">
+              {untickedSteps.map((operation) => (
+                <li className="flex items-center justify-between gap-2 text-xs" key={operation.occurrenceKey}>
+                  <span className="min-w-0 truncate">
+                    {operation.productName}
+                    <span className="text-muted"> ×{operation.producedQuantity.toLocaleString()}</span>
+                  </span>
+                  <button
+                    className="iw-button-secondary shrink-0 px-2 py-0.5 text-xs"
+                    disabled={busy}
+                    onClick={() => void createStepTickets([operation.occurrenceKey])}
+                    type="button"
+                  >
+                    Create ticket
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {untickedSteps.length > 1 ? (
+              <button
+                className="iw-button-secondary"
+                disabled={busy}
+                onClick={() => void createStepTickets(untickedSteps.map((operation) => operation.occurrenceKey))}
+                type="button"
+              >
+                Create all {untickedSteps.length} tickets
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="space-y-1.5">

@@ -502,6 +502,15 @@ export function createTicketForRequirement(orderId: string, requirementId: strin
   return request(`/api/orders/${orderId}/requirements/${requirementId}/tickets`, { method: "POST" });
 }
 
+// Creates the ticket for one frozen production step of a version-3 Epic
+// (e.g. after its ticket was deleted). Returns the step's existing active
+// ticket instead when it has one.
+export function createOperationTicket(orderId: string, occurrenceKey: string): Promise<Ticket> {
+  return request(`/api/orders/${orderId}/operations/${encodeURIComponent(occurrenceKey)}/ticket`, {
+    method: "POST",
+  });
+}
+
 export function bulkCreateTickets(orderId: string, requirementIds: string[]): Promise<Ticket[]> {
   return request(`/api/orders/${orderId}/tickets/bulk`, json("POST", { requirementIds }));
 }

@@ -26,12 +26,14 @@ use super::*;
 /// `expected_revenue` is sell-side evidence (an output sale price) the
 /// materials/cost projection never resolves.
 ///
-/// Every active operation (root + every descendant the allocator did not
-/// prune as fully-covered) gets exactly one Manufacturing/Reaction ticket,
-/// sized to its own `produced_quantity` (never the parent's consumed
-/// portion), parented to its owning operation's ticket. Acquisition tickets
-/// for `Buy` requirements are **not** generated eagerly here -- they go
-/// through the per-requirement / bulk creation routes below, which own the
+/// Only the root operation gets a ticket here (the final product, with
+/// the frozen execution snapshot). Every other active operation (each
+/// descendant the allocator did not prune as fully-covered) is frozen but
+/// has no ticket until one is created on demand
+/// (`POST /api/orders/:id/operations/:occurrence_key/ticket`), sized to its
+/// own `produced_quantity` and parented to its owning operation's ticket.
+/// Acquisition tickets for `Buy` requirements are likewise created on
+/// demand through the per-requirement / bulk routes below, which own the
 /// Acquisition batching-key semantics.
 ///
 /// Whole-tree shared `PlanningInventory`: guaranteed
@@ -149,7 +151,13 @@ pub(super) async fn create_order(
     // (new ids), the same "frozen requirement mirrored onto the ticket"
     // convention the root ticket already used.
     let mut plan_tickets = Vec::with_capacity(frozen.operations.len());
-    for operation in &frozen.operations {
+    // Only the root is ticketed up front; the other steps' tickets are
+    // created on demand from the frozen operations.
+    for operation in frozen
+        .operations
+        .iter()
+        .filter(|operation| operation.occurrence_key.starts_with(ROOT_OCCURRENCE_PREFIX))
+    {
         let prerequisites: Vec<NewTicketPrerequisite> = frozen
             .requirements
             .iter()
