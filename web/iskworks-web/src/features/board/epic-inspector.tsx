@@ -276,7 +276,7 @@ export function EpicInspector({
         {detail?.inventory && detail.inventory.plannedReuse > 0 ? (
           <InventorySection
             busy={busy}
-            canReserve={!order.canceledAt && !order.archivedAt}
+            canReserve={!order.canceledAt && !order.archivedAt && !order.completedAt}
             onReserve={() => void reserveInventory()}
             result={reserveResult}
             summary={detail.inventory}

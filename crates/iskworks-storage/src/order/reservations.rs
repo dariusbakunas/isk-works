@@ -126,7 +126,7 @@ pub(super) async fn top_up_order_reservations(
 ) -> Result<CappedReservationPlan, OrderError> {
     // Lock the Epic so a concurrent cancel/archive can't interleave.
     let order: Option<OrderReservationRow> = sqlx::query_as(
-        "SELECT owner_id, planning_snapshot_version, canceled_at, archived_at \
+        "SELECT owner_id, planning_snapshot_version, canceled_at, archived_at, completed_at \
          FROM orders WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
     )
     .bind(workspace_id.0)
@@ -138,7 +138,7 @@ pub(super) async fn top_up_order_reservations(
     if order.planning_snapshot_version < 3 {
         return Err(OrderError::FrozenPlanUnavailable);
     }
-    if order.canceled_at.is_some() || order.archived_at.is_some() {
+    if order.canceled_at.is_some() || order.archived_at.is_some() || order.completed_at.is_some() {
         return Err(OrderError::OrderNotReservable);
     }
     let owner_id = OwnerId(order.owner_id);
@@ -224,6 +224,7 @@ struct OrderReservationRow {
     planning_snapshot_version: i16,
     canceled_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -493,8 +494,8 @@ struct FedRequirementRow {
     held: i64,
 }
 
-/// Reserves a recording's output to the live (version-3, not canceled, not
-/// archived) Epic requirements it feeds, each up to its remaining need
+/// Reserves a recording's output to the live (version-3, not completed,
+/// canceled or archived) Epic requirements it feeds, each up to its remaining need
 /// (`required - held`), earliest consumer first. Overshoot stays free.
 /// Call with the output type's balance locked (both recording paths post
 /// the output under it).
@@ -525,7 +526,7 @@ pub(super) async fn reserve_recorded_output(
     if output_quantity == 0 {
         return Ok(());
     }
-    const LIVE: &str = "o.planning_snapshot_version >= 3 \
+    const LIVE: &str = "o.planning_snapshot_version >= 3 AND o.completed_at IS NULL \
          AND o.canceled_at IS NULL AND o.archived_at IS NULL";
     let held = "COALESCE((SELECT SUM(a.quantity) FROM inventory_allocations a \
          WHERE a.order_requirement_id = r.id AND a.released_at IS NULL), 0)::bigint AS held";
