@@ -228,19 +228,28 @@ pub(super) async fn create_ticket_for_requirement(
         return Err(OrderError::InvalidQuantity.into());
     }
 
-    // A version-3 Build/React requirement's
-    // producer was frozen exactly once, as one operation serving every
-    // requirement that names it. Its ticket is that operation's; minting a
-    // per-requirement ticket from a live re-plan (below) would duplicate
-    // the operation and re-net against live inventory. Refuse instead.
+    // A version-3 Build/React requirement's producer was frozen exactly
+    // once, as one operation serving every requirement that names it. Its
+    // ticket is that operation's: create it from the frozen operation (or
+    // get the one a concurrent request just made) -- never a
+    // per-requirement ticket from a live re-plan (below), which would
+    // duplicate the operation and re-net against live inventory.
     if order.planning_snapshot_version >= 3 && requirement.kind != RequirementKind::Buy {
-        return Err(OrderError::FrozenProducerTicketUnavailable {
-            occurrence_key: requirement
-                .child_occurrence_key
-                .clone()
-                .unwrap_or_else(|| format!("requirement:{}", requirement.id.0)),
-        }
-        .into());
+        let Some(child_occurrence_key) = requirement.child_occurrence_key.as_deref() else {
+            return Err(OrderError::FrozenProducerTicketUnavailable {
+                occurrence_key: format!("requirement:{}", requirement.id.0),
+            }
+            .into());
+        };
+        return match repository
+            .create_operation_ticket(workspace_id, order.id, child_occurrence_key)
+            .await?
+        {
+            OperationTicketCreation::Created(ticket) => Ok(*ticket),
+            OperationTicketCreation::AlreadyExists(ticket_id) => {
+                Ok(repository.get_ticket(workspace_id, ticket_id).await?)
+            }
+        };
     }
     let quantity = requirement.fresh_quantity;
     // The ticket represents only the fresh (still-to-source) portion, so its

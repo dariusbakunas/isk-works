@@ -20,6 +20,12 @@ pub(super) struct LinkedTicketRef {
     pub(super) display_id: String,
     pub(super) status: TicketStatus,
     pub(super) allocated_quantity: u64,
+    /// The requirement's producing step's ticket (a Build/React
+    /// requirement), not a fulfillment link. It puts the requirement in
+    /// hand (`linked`) whatever its workflow status -- status never
+    /// satisfies a frozen requirement.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(super) producer: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,6 +61,10 @@ pub(super) struct EpicInventorySummary {
     pub(super) reserved: u64,
     /// Σ consumed reservations.
     pub(super) used: u64,
+    /// Requirements that reuse stock.
+    pub(super) items_planned: u64,
+    /// Of those, the ones the Epic holds (or has used) all of.
+    pub(super) items_held: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -161,9 +171,17 @@ pub(super) fn order_detail_response(
         .map(|(requirement, linked)| {
             let fulfillments: Vec<(TicketStatus, u64)> = linked
                 .iter()
+                .filter(|ticket| !ticket.producer)
                 .map(|ticket| (ticket.status, ticket.allocated_quantity))
                 .collect();
-            derive_requirement_state(requirement, &fulfillments)
+            match derive_requirement_state(requirement, &fulfillments) {
+                RequirementFulfillmentState::NeedsAction
+                    if linked.iter().any(|ticket| ticket.producer) =>
+                {
+                    RequirementFulfillmentState::Linked
+                }
+                state => state,
+            }
         })
         .collect();
     let rollup = compute_order_rollup(&states);

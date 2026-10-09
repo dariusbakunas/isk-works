@@ -355,7 +355,13 @@ fn an_operation_ticket_is_built_from_the_frozen_operation_and_its_own_requiremen
     );
     assert_eq!(ticket.plan_evidence.as_ref(), Some(&reaction.evidence));
     assert_eq!(ticket.parent_ticket_id, None, "storage resolves the parent");
-    assert_eq!(ticket.execution_snapshot, None);
+    // The recording form prefills from the frozen operation's plan.
+    let snapshot = ticket
+        .execution_snapshot
+        .expect("a step ticket carries its frozen plan");
+    assert_eq!(snapshot.runs, reaction.runs);
+    assert_eq!(snapshot.material_value, reaction.material_component_cost);
+    assert_eq!(snapshot.facility, None);
     // Only the reaction's own inputs, mirrored with their frozen reuse.
     let prerequisites: Vec<(i64, u64, u64)> = ticket
         .prerequisites

@@ -1025,14 +1025,17 @@ async fn root_and_child_ticket_evidence_both_project_their_own_plan_operation(po
         );
     }
 
-    // Only the root carries the compatibility `executionSnapshot`;
-    // the child's execution identity lives solely in `planEvidence`.
+    // Both carry an `executionSnapshot` for the recording form: the
+    // root's from the root preview, the child's built from its own frozen
+    // operation (runs + installation evidence). The child's full execution
+    // identity still lives in `planEvidence`.
     assert!(
         !root_ticket["executionSnapshot"].is_null(),
         "root ticket must carry executionSnapshot: {root_ticket:?}"
     );
-    assert!(
-        child_ticket["executionSnapshot"].is_null(),
-        "child ticket must not carry a legacy executionSnapshot: {child_ticket:?}"
+    assert_eq!(
+        child_ticket["executionSnapshot"]["runs"],
+        serde_json::to_value(child_op.runs).unwrap(),
+        "child ticket's snapshot is its frozen operation's plan: {child_ticket:?}"
     );
 }

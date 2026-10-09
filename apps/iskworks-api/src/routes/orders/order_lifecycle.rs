@@ -621,6 +621,9 @@ pub(super) async fn fetch_order_detail(
     let repository = state.order_repository()?;
     let order = repository.get_order(workspace_id, order_id).await?;
     let requirements = repository.list_order_requirements(order_id).await?;
+    let order_tickets = repository
+        .list_tickets_for_order(workspace_id, order_id)
+        .await?;
 
     let mut fulfillments_per_requirement = Vec::with_capacity(requirements.len());
     for requirement in &requirements {
@@ -636,7 +639,30 @@ pub(super) async fn fetch_order_detail(
                     display_id: ticket.display_id,
                     status: ticket.status,
                     allocated_quantity: link.allocated_quantity,
+                    producer: false,
                 });
+            }
+        }
+        // A produced (Build/React) requirement is fulfilled by its frozen
+        // producer step's ticket, linked by occurrence key rather than a
+        // fulfillment row: count it, so the requirement reads as in hand
+        // (and later satisfied) once the step has a ticket.
+        if requirement.kind != RequirementKind::Buy {
+            if let Some(producer) = requirement.child_occurrence_key.as_deref().and_then(|key| {
+                order_tickets.iter().find(|ticket| {
+                    ticket.occurrence_key.as_deref() == Some(key)
+                        && ticket.status != TicketStatus::Canceled
+                })
+            }) {
+                if !linked.iter().any(|link| link.id == producer.id) {
+                    linked.push(LinkedTicketRef {
+                        id: producer.id,
+                        display_id: producer.display_id.clone(),
+                        status: producer.status,
+                        allocated_quantity: requirement.fresh_quantity,
+                        producer: true,
+                    });
+                }
             }
         }
         fulfillments_per_requirement.push(linked);
@@ -646,22 +672,30 @@ pub(super) async fn fetch_order_detail(
     let production_plan = if operations.is_empty() {
         None
     } else {
-        let tickets = repository
-            .list_tickets_for_order(workspace_id, order_id)
-            .await?;
-        production_plan_view(operations, &requirements, &tickets)?
+        production_plan_view(operations, &requirements, &order_tickets)?
     };
     let inventory = if order.planning_snapshot_version >= 3 {
         let mut summary = EpicInventorySummary {
             planned_reuse: requirements.iter().map(|r| r.reused_quantity).sum(),
             ..EpicInventorySummary::default()
         };
-        for totals in repository
+        let held: HashMap<OrderRequirementId, u64> = repository
             .requirement_reservation_totals(workspace_id, order_id)
             .await?
-        {
-            summary.reserved += totals.reserved;
-            summary.used += totals.consumed;
+            .into_iter()
+            .map(|totals| {
+                summary.reserved += totals.reserved;
+                summary.used += totals.consumed;
+                (totals.requirement_id, totals.reserved + totals.consumed)
+            })
+            .collect();
+        // Units of different items don't add up to anything meaningful;
+        // count items (requirements reusing stock) instead.
+        for requirement in requirements.iter().filter(|r| r.reused_quantity > 0) {
+            summary.items_planned += 1;
+            if held.get(&requirement.id).copied().unwrap_or(0) >= requirement.reused_quantity {
+                summary.items_held += 1;
+            }
         }
         Some(summary)
     } else {

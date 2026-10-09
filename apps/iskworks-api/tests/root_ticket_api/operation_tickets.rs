@@ -283,3 +283,71 @@ async fn create_epic_tickets_only_the_final_product(pool: PgPool) {
     assert_eq!(tickets[0]["typeId"], 90111);
     assert!(tickets[0]["executionSnapshot"].is_object());
 }
+
+/// "Needs action" on a BUILD requirement: creating its ticket makes (or
+/// returns) the producing step's ticket from the frozen plan -- with the
+/// plan the recording form prefills from -- and the requirement then reads
+/// as linked rather than still needing action.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_build_requirements_ticket_is_its_producing_steps_ticket(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let parent = assembly_with_built_component(&fx, 1, 90100, &[]).await;
+    let (status, order) = post_json(
+        &fx.app,
+        &format!("/api/builds/{}/orders", parent.id.0),
+        command_json_for_build(&parent),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let order_id = order["id"].as_str().unwrap();
+    let component = requirement_of(&order, 90100);
+    assert_eq!(component["state"], "needsAction");
+
+    let (status, ticket) = post_json(
+        &fx.app,
+        &format!(
+            "/api/orders/{order_id}/requirements/{}/tickets",
+            component["id"].as_str().unwrap()
+        ),
+        Value::Null,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {ticket}");
+    assert_eq!(ticket["typeId"], 90100);
+    assert_eq!(ticket["occurrenceKey"], component["childOccurrenceKey"]);
+    assert_eq!(
+        ticket["executionSnapshot"]["runs"], 5,
+        "the frozen plan, for recording"
+    );
+
+    // Asking again returns the same step ticket.
+    let (_, again) = post_json(
+        &fx.app,
+        &format!(
+            "/api/orders/{order_id}/requirements/{}/tickets",
+            component["id"].as_str().unwrap()
+        ),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(again["id"], ticket["id"]);
+
+    let (status, detail) = post_json_get(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let component = requirement_of(&detail, 90100);
+    assert_eq!(component["state"], "linked");
+    assert_eq!(component["linkedTickets"][0]["id"], ticket["id"]);
+}
+
+async fn post_json_get(fx: &Fixture, path: &str) -> (StatusCode, Value) {
+    let response = fx
+        .app
+        .clone()
+        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, body_json(response).await)
+}

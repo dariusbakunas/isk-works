@@ -565,7 +565,13 @@ async fn archiving_releases_and_restoring_does_not_re_reserve(pool: PgPool) {
     let (_, detail) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
     assert_eq!(
         detail["inventory"],
-        serde_json::json!({"plannedReuse": 600, "reserved": 600, "used": 0})
+        serde_json::json!({
+            "plannedReuse": 600,
+            "reserved": 600,
+            "used": 0,
+            "itemsPlanned": 1,
+            "itemsHeld": 1
+        })
     );
 
     let (status, body) = post_json(

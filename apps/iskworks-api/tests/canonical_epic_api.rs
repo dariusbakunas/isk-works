@@ -737,7 +737,8 @@ async fn workflow_status_has_no_side_effects_and_record_production_posts_once(po
             requirement["state"], "satisfied",
             "status never satisfies a frozen requirement: {requirement}"
         );
-        assert_eq!(requirement["state"], "needsAction", "{requirement}");
+        // In hand (the step has a ticket), but not satisfied by its status.
+        assert_eq!(requirement["state"], "linked", "{requirement}");
     }
 
     // Recording the one physical operation posts its output exactly once.
