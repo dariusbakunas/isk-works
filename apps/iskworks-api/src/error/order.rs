@@ -39,6 +39,11 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::ReservationShortfall(_) => {
             (StatusCode::CONFLICT, "reservation_shortfall", true)
         }
+        // `record-production` answers this with its own body (holders and
+        // item names); this is the generic fallback.
+        OrderError::InsufficientAvailable(_) => {
+            (StatusCode::CONFLICT, "insufficient_available", false)
+        }
         OrderError::OrderNotReservable => (StatusCode::CONFLICT, "order_not_reservable", false),
         OrderError::FrozenPlanUnavailable => {
             (StatusCode::CONFLICT, "frozen_plan_unavailable", false)

@@ -291,3 +291,90 @@ describe("ProductionRecordingForm — legacy ticket without a frozen snapshot", 
     expect(installInput()).toHaveValue("0");
   });
 });
+
+describe("ProductionRecordingForm when other Epics reserved the stock", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("names the holders and records after taking only the missing amount", async () => {
+    const { ApiError } = await import("../../../../api/workspace");
+    api.recordTicketProduction
+      .mockRejectedValueOnce(
+        new ApiError(409, {
+          code: "insufficient_available",
+          message: "Other Epics have reserved stock this recording needs.",
+          shortages: [
+            {
+              typeId: 34,
+              typeName: "Tritanium",
+              needed: 1000,
+              own: 600,
+              free: 100,
+              holders: [
+                { orderId: "epic-b", displayName: "Manufacture Sacrilege", quantity: 250 },
+                { orderId: "epic-c", displayName: "Manufacture Ishkur", quantity: 400 },
+              ],
+            },
+          ],
+        } as never),
+      )
+      .mockResolvedValueOnce({});
+    const onRecorded = vi.fn();
+    const user = userEvent.setup();
+    render(<ProductionRecordingForm onCancel={() => {}} onRecorded={onRecorded} ticket={ticket()} />);
+
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    expect(await screen.findByText("Reserved by other Epics")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Reserved by Manufacture Sacrilege \(250\), Reserved by Manufacture Ishkur \(400\)/),
+    ).toBeInTheDocument();
+    expect(onRecorded).not.toHaveBeenCalled();
+
+    // 1,000 needed - 600 own - 100 free = 300: all 250 from the first
+    // holder, the other 50 from the second.
+    await user.click(
+      screen.getByRole("button", {
+        name: "Take 250 Tritanium from Manufacture Sacrilege, 50 Tritanium from Manufacture Ishkur and record",
+      }),
+    );
+
+    await waitFor(() => expect(onRecorded).toHaveBeenCalled());
+    const [first, second] = api.recordTicketProduction.mock.calls;
+    expect(second[1].takeFrom).toEqual([
+      { orderId: "epic-b", typeId: 34 },
+      { orderId: "epic-c", typeId: 34 },
+    ]);
+    expect(second[1].idempotencyKey).toBe(first[1].idempotencyKey);
+    expect(first[1].takeFrom).toBeUndefined();
+  });
+
+  it("can back out without taking anything", async () => {
+    const { ApiError } = await import("../../../../api/workspace");
+    api.recordTicketProduction.mockRejectedValueOnce(
+      new ApiError(409, {
+        code: "insufficient_available",
+        message: "x",
+        shortages: [
+          {
+            typeId: 34,
+            typeName: "Tritanium",
+            needed: 1000,
+            own: 0,
+            free: 0,
+            holders: [{ orderId: "epic-b", displayName: "Manufacture Sacrilege", quantity: 1000 }],
+          },
+        ],
+      } as never),
+    );
+    const user = userEvent.setup();
+    render(<ProductionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
+
+    await user.click(screen.getByRole("button", { name: "Record" }));
+    await user.click(await screen.findByRole("button", { name: "Keep their reservations" }));
+
+    expect(screen.queryByText("Reserved by other Epics")).not.toBeInTheDocument();
+    expect(api.recordTicketProduction).toHaveBeenCalledTimes(1);
+  });
+});

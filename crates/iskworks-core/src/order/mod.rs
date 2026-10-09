@@ -20,6 +20,7 @@ use crate::{
 
 mod aggregate;
 mod allocation;
+mod consumption;
 mod freeze;
 mod frozen_execution_plan;
 mod plan;
@@ -31,6 +32,7 @@ mod ticket_plan;
 
 pub use aggregate::*;
 pub use allocation::*;
+pub use consumption::*;
 pub use freeze::*;
 pub use frozen_execution_plan::*;
 pub use plan::*;

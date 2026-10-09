@@ -340,6 +340,17 @@ pub struct RecordProductionInput {
     pub note: String,
     /// The posted events' `effective_at`.
     pub effective_at: DateTime<Utc>,
+    /// Epics the user agreed to take reserved stock from, per type, when
+    /// own reservations and free stock fall short (the "Take N from
+    /// EP-x?" confirmation). Empty: never take.
+    pub take_from: Vec<TakeFrom>,
+}
+
+/// Permission to take `type_id` from another Epic's reservations.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct TakeFrom {
+    pub order_id: OrderId,
+    pub type_id: i64,
 }
 
 /// Result of `record_ticket_production`.
@@ -410,6 +421,10 @@ pub enum OrderError {
     /// Reserving inventory for a canceled or archived Epic.
     #[error("a canceled or archived Epic can't reserve inventory")]
     OrderNotReservable,
+    /// Recording needs stock other Epics have reserved (beyond its own
+    /// reservations and free stock), and the caller didn't allow taking it.
+    #[error("not enough free inventory: other Epics have reserved what this recording needs")]
+    InsufficientAvailable(Vec<AvailabilityShortage>),
     /// Only version-3 Epics freeze a whole-tree plan the Plan view can show.
     #[error("this Epic was created before whole-tree plans and has no frozen plan to show")]
     FrozenPlanUnavailable,

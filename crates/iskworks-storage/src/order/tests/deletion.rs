@@ -598,6 +598,7 @@ async fn deletion_ownership_production_records_once_after_source_build_delete(po
         location_note: String::new(),
         note: String::new(),
         effective_at: crate::db_now(),
+        take_from: Vec::new(),
     };
     let first = order_repository
         .record_ticket_production(workspace_id, ticket.id, input.clone())

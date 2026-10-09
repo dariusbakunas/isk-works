@@ -1,6 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 
-import { recordTicketProduction, type TicketSummary } from "../../../api/industry";
+import {
+  insufficientAvailable,
+  proposedTakes,
+  recordTicketProduction,
+  type AvailabilityShortage,
+  type TicketSummary,
+} from "../../../api/industry";
 import { MoneyInput } from "../../../components/money-input/money-input";
 import type { MoneyInputResult } from "../../../components/money-input/parse-money-input";
 import { parseMoneyInput } from "../../../components/money-input/parse-money-input";
@@ -94,6 +100,7 @@ export function ProductionRecordingForm({
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [shortages, setShortages] = useState<AvailabilityShortage[] | null>(null);
 
   const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
 
@@ -135,13 +142,14 @@ export function ProductionRecordingForm({
     return "";
   }, [runsValid, inputsValid, outputValid, installValid]);
 
-  async function submit() {
+  async function submit(takeFrom?: { orderId: string; typeId: number }[]) {
     if (!canSubmit) {
       setError(validationHint || "Check the entered values.");
       return;
     }
     setBusy(true);
     setError("");
+    setShortages(null);
     try {
       await recordTicketProduction(ticket.id, {
         idempotencyKey: idempotencyKeyRef.current,
@@ -155,11 +163,19 @@ export function ProductionRecordingForm({
           installCostResult.status === "valid" ? (installCostResult.canonical as string) : "0",
         locationNote: locationNote.trim() || undefined,
         note: note.trim() || undefined,
+        takeFrom,
       });
       idempotencyKeyRef.current = newIdempotencyKey();
       onRecorded();
     } catch (requestError) {
-      setError(apiMessage(requestError));
+      // Other Epics reserved stock this recording needs: nothing was
+      // recorded, so offer to take it (same idempotency key on retry).
+      const shortage = insufficientAvailable(requestError);
+      if (shortage) {
+        setShortages(shortage.shortages);
+      } else {
+        setError(apiMessage(requestError));
+      }
     } finally {
       setBusy(false);
     }
@@ -302,6 +318,14 @@ export function ProductionRecordingForm({
       </label>
 
       {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
+      {shortages ? (
+        <ReservedByOtherEpics
+          busy={busy}
+          onCancel={() => setShortages(null)}
+          onTake={(takeFrom) => void submit(takeFrom)}
+          shortages={shortages}
+        />
+      ) : null}
 
       <div className="flex justify-end gap-2">
         <button className="iw-button-secondary" disabled={busy} onClick={onCancel} type="button">
@@ -312,5 +336,53 @@ export function ProductionRecordingForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Recording would use stock other Epics reserved: say who holds what and
+ * offer to take just the missing amount from them. */
+function ReservedByOtherEpics({
+  shortages,
+  busy,
+  onTake,
+  onCancel,
+}: {
+  shortages: AvailabilityShortage[];
+  busy: boolean;
+  onTake: (takeFrom: { orderId: string; typeId: number }[]) => void;
+  onCancel: () => void;
+}) {
+  const takes = proposedTakes(shortages);
+  const takeLabel = takes
+    .map((take) => `${take.quantity.toLocaleString()} ${take.typeName} from ${take.displayName}`)
+    .join(", ");
+  return (
+    <div className="space-y-1.5">
+      <InlineAlert title="Reserved by other Epics" tone="warning">
+        {shortages.map((shortage) => (
+          <span className="block" key={shortage.typeId}>
+            {shortage.typeName}: needs {shortage.needed.toLocaleString()}, this Epic holds{" "}
+            {shortage.own.toLocaleString()} and {shortage.free.toLocaleString()} is free.{" "}
+            {shortage.holders
+              .map((holder) => `Reserved by ${holder.displayName} (${holder.quantity.toLocaleString()})`)
+              .join(", ")}
+            .
+          </span>
+        ))}
+      </InlineAlert>
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="iw-button-primary"
+          disabled={busy}
+          onClick={() => onTake(takes.map(({ orderId, typeId }) => ({ orderId, typeId })))}
+          type="button"
+        >
+          Take {takeLabel} and record
+        </button>
+        <button className="iw-button-secondary" disabled={busy} onClick={onCancel} type="button">
+          Keep their reservations
+        </button>
+      </div>
+    </div>
   );
 }

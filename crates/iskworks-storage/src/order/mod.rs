@@ -25,7 +25,7 @@ use iskworks_core::{
 };
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres, Transaction};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use crate::inventory::PgInventoryRepository;

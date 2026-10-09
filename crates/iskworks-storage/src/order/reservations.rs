@@ -1,8 +1,11 @@
 use super::*;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use iskworks_core::order::PlannedReservation;
+use iskworks_core::order::{
+    plan_input_consumption, AllocationUse, ConsumptionPlan, HeldAllocation, InputAvailability,
+    InventoryAllocationId, PlannedReservation, TakeFrom,
+};
 
 /// Locks the `inventory_balances` rows of `type_ids` (`FOR UPDATE`, sorted
 /// `type_id` order -- the lock order every multi-balance inventory writer
@@ -231,4 +234,226 @@ struct RequirementReservationRow {
     operation_occurrence_key: Option<String>,
     child_occurrence_key: Option<String>,
     dependency_id: Option<String>,
+}
+
+/// One active allocation of a type, with the Epic that owns it.
+#[derive(sqlx::FromRow)]
+struct HeldRow {
+    id: Uuid,
+    order_id: Option<Uuid>,
+    quantity: i64,
+    created_at: DateTime<Utc>,
+}
+
+/// Plans where each input type of a production recording draws from (see
+/// `order::plan_input_consumption`). Call with every touched balance
+/// already locked: free stock is measured here, before anything is
+/// consumed, and every allocation of the input types is locked (`FOR
+/// UPDATE`, by id). `order_id` / `occurrence_key` identify the consuming
+/// ticket's own requirements; a ticket outside an Epic has none.
+///
+/// # Errors
+///
+/// [`OrderError::InsufficientInventory`] if a type is short with no Epic
+/// holding any of it (the stock isn't there); otherwise
+/// [`OrderError::InsufficientAvailable`] with every short type.
+pub(super) async fn plan_recording_draws(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_id: WorkspaceId,
+    owner_id: OwnerId,
+    consumer: Option<(OrderId, &str)>,
+    quantities: &BTreeMap<i64, u64>,
+    take_from: &[TakeFrom],
+) -> Result<BTreeMap<i64, ConsumptionPlan>, OrderError> {
+    let mut plans = BTreeMap::new();
+    let mut shortages = Vec::new();
+    for (&type_id, &quantity) in quantities {
+        let physical: Option<i64> = sqlx::query_scalar(
+            "SELECT quantity FROM inventory_balances \
+             WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(map_error)?;
+        let held: Vec<HeldRow> = sqlx::query_as(
+            "SELECT a.id, r.order_id, a.quantity, a.created_at \
+             FROM inventory_allocations a \
+             LEFT JOIN order_requirements r ON r.id = a.order_requirement_id \
+             WHERE a.workspace_id = $1 AND a.owner_id = $2 AND a.type_id = $3 \
+             AND a.released_at IS NULL AND a.consumed_at IS NULL \
+             ORDER BY a.id FOR UPDATE OF a",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(map_error)?;
+        let own_ids: BTreeSet<Uuid> = match consumer {
+            Some((order_id, occurrence_key)) => sqlx::query_scalar(
+                "SELECT a.id FROM inventory_allocations a \
+                 JOIN order_requirements r ON r.id = a.order_requirement_id \
+                 WHERE r.order_id = $1 AND r.operation_occurrence_key = $2 AND a.type_id = $3 \
+                 AND a.released_at IS NULL AND a.consumed_at IS NULL",
+            )
+            .bind(order_id.0)
+            .bind(occurrence_key)
+            .bind(type_id)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(map_error)?
+            .into_iter()
+            .collect(),
+            None => BTreeSet::new(),
+        };
+
+        let active: u64 = held
+            .iter()
+            .map(|row| u64_from_i64(row.quantity))
+            .sum::<Result<u64, _>>()?;
+        let free_before = u64_from_i64(physical.unwrap_or(0))?.saturating_sub(active);
+        // Serving order: oldest reservation first.
+        let mut ordered: Vec<&HeldRow> = held.iter().collect();
+        ordered.sort_by_key(|row| (row.created_at, row.id));
+        let to_held = |row: &HeldRow| -> Result<HeldAllocation, OrderError> {
+            Ok(HeldAllocation {
+                id: InventoryAllocationId(row.id),
+                // A legacy ticket-owned row has no Epic; it can't be named
+                // in `take_from` (nil never matches a real Epic).
+                order_id: OrderId(row.order_id.unwrap_or(Uuid::nil())),
+                quantity: u64_from_i64(row.quantity)?,
+            })
+        };
+        let own: Vec<HeldAllocation> = ordered
+            .iter()
+            .filter(|row| own_ids.contains(&row.id))
+            .map(|row| to_held(row))
+            .collect::<Result<_, _>>()?;
+        let others: Vec<HeldAllocation> = ordered
+            .iter()
+            .filter(|row| !own_ids.contains(&row.id))
+            .map(|row| to_held(row))
+            .collect::<Result<_, _>>()?;
+        let permitted: BTreeSet<OrderId> = take_from
+            .iter()
+            .filter(|take| take.type_id == type_id)
+            .map(|take| take.order_id)
+            .collect();
+
+        match plan_input_consumption(
+            InputAvailability {
+                type_id,
+                quantity,
+                own: &own,
+                free_before,
+                others: &others,
+            },
+            &permitted,
+        ) {
+            Ok(plan) => {
+                plans.insert(type_id, plan);
+            }
+            Err(shortage) => shortages.push(shortage),
+        }
+    }
+    if shortages.is_empty() {
+        Ok(plans)
+    } else if shortages.iter().any(|shortage| shortage.holders.is_empty()) {
+        // No Epic holds what's missing: the stock simply isn't there.
+        Err(OrderError::InsufficientInventory)
+    } else {
+        Err(OrderError::InsufficientAvailable(shortages))
+    }
+}
+
+/// Applies planned draws for `recording_id`: own reservations become
+/// consumed by it; taken reservations are released from their Epic (the
+/// taken stock is then consumed like free stock). A partial use splits the
+/// row: the used part keeps the row, the remainder becomes a new active
+/// row with the same owner, reason and source.
+pub(super) async fn apply_recording_draws(
+    tx: &mut Transaction<'_, Postgres>,
+    plans: &BTreeMap<i64, ConsumptionPlan>,
+    recording_id: TicketInventoryRecordingId,
+    now: DateTime<Utc>,
+) -> Result<(), OrderError> {
+    for plan in plans.values() {
+        for draw in &plan.own {
+            split_off_remainder(tx, draw, now).await?;
+            sqlx::query(
+                "UPDATE inventory_allocations \
+                 SET quantity = $2, consumed_at = $3, consumed_by_recording_id = $4 \
+                 WHERE id = $1",
+            )
+            .bind(draw.id.0)
+            .bind(i64_from_u64(draw.used)?)
+            .bind(now)
+            .bind(recording_id.0)
+            .execute(&mut **tx)
+            .await
+            .map_err(map_error)?;
+        }
+        for draw in &plan.taken {
+            split_off_remainder(tx, draw, now).await?;
+            sqlx::query(
+                "UPDATE inventory_allocations SET quantity = $2, released_at = $3 WHERE id = $1",
+            )
+            .bind(draw.id.0)
+            .bind(i64_from_u64(draw.used)?)
+            .bind(now)
+            .execute(&mut **tx)
+            .await
+            .map_err(map_error)?;
+        }
+    }
+    Ok(())
+}
+
+async fn split_off_remainder(
+    tx: &mut Transaction<'_, Postgres>,
+    draw: &AllocationUse,
+    now: DateTime<Utc>,
+) -> Result<(), OrderError> {
+    if draw.remainder == 0 {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO inventory_allocations \
+         (id, workspace_id, owner_id, type_id, quantity, order_requirement_id, \
+          ticket_prerequisite_id, created_at, reason, source_recording_id) \
+         SELECT $2, workspace_id, owner_id, type_id, $3, order_requirement_id, \
+                ticket_prerequisite_id, $4, reason, source_recording_id \
+         FROM inventory_allocations WHERE id = $1",
+    )
+    .bind(draw.id.0)
+    .bind(Uuid::new_v4())
+    .bind(i64_from_u64(draw.remainder)?)
+    .bind(now)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    Ok(())
+}
+
+/// Reverting a recording: every reservation it consumed becomes active
+/// again (the reversal returns that stock). Reservations taken from other
+/// Epics are not handed back to them -- the returned stock is free.
+/// No free-stock check: a reversal corrects the ledger to what physically
+/// happened, even if that leaves stock over-reserved.
+pub(super) async fn unconsume_recording_allocations(
+    tx: &mut Transaction<'_, Postgres>,
+    recording_id: TicketInventoryRecordingId,
+) -> Result<(), OrderError> {
+    sqlx::query(
+        "UPDATE inventory_allocations SET consumed_at = NULL, consumed_by_recording_id = NULL \
+         WHERE consumed_by_recording_id = $1",
+    )
+    .bind(recording_id.0)
+    .execute(&mut **tx)
+    .await
+    .map_err(map_error)?;
+    Ok(())
 }

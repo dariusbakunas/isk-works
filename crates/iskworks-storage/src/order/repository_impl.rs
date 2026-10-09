@@ -1360,6 +1360,34 @@ impl OrderRepository for PgOrderRepository {
             .map_err(map_error)?;
         }
 
+        // Decide where each input type draws from, under those locks: the
+        // ticket's own Epic reservations first, then free stock, then only
+        // Epics the caller allowed. Refuse (rolling back the recording) if
+        // that would use stock another Epic is counting on.
+        let (consumer_order_id, consumer_occurrence_key): (Option<Uuid>, Option<String>) =
+            sqlx::query_as("SELECT order_id, occurrence_key FROM tickets WHERE id = $1")
+                .bind(ticket_id.0)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(map_error)?;
+        let mut input_quantities: BTreeMap<i64, u64> = BTreeMap::new();
+        for line in &input.inputs {
+            *input_quantities.entry(line.type_id).or_insert(0) += line.quantity;
+        }
+        let draws = super::reservations::plan_recording_draws(
+            &mut tx,
+            workspace_id,
+            owner_id,
+            consumer_order_id
+                .zip(consumer_occurrence_key.as_deref())
+                .map(|(order_id, key)| (OrderId(order_id), key)),
+            &input_quantities,
+            &input.take_from,
+        )
+        .await?;
+        super::reservations::apply_recording_draws(&mut tx, &draws, recording_id, recorded_at)
+            .await?;
+
         // Consume each actual input at the balance's current weighted
         // average; sum the real ledger basis removed.
         let mut consumed_basis = Decimal::ZERO;
@@ -1729,6 +1757,7 @@ impl OrderRepository for PgOrderRepository {
         if updated.rows_affected() != 1 {
             return Err(OrderError::RecordingAlreadyReversed);
         }
+        super::reservations::unconsume_recording_allocations(&mut tx, recording_id).await?;
 
         let recorded = match recording.kind {
             TicketInventoryRecordingKind::Acquisition => {
