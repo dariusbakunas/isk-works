@@ -281,6 +281,7 @@ export function BuildEditorWorkspace({
     <BuildEditorHeader
       epicSelector={initialBuild && !focusedProducer ? (
         <EpicSelector
+          buildRevision={initialBuild.revision}
           disabled={epicSelection.loading}
           epics={epicSelection.epics}
           onSelect={(epicId) => epicSelection.selectEpic(epicId, (params) => {

@@ -1537,7 +1537,8 @@ describe("Build detail planning", () => {
 
     renderApp("/builds/build-ready?view=plan&epic=epic-1");
 
-    expect(await screen.findByText("Epic: Manufacture Rifter")).toBeInTheDocument();
+    expect(await screen.findByText("Read-only · choose No Epic to edit")).toBeInTheDocument();
+    expect(screen.queryByText("Build changed since this Epic")).not.toBeInTheDocument();
     // The Plan's own layout, showing the Epic's data.
     const inputs = screen.getByRole("table", { name: "Inputs to Source" });
     const tritanium = within(inputs).getByText("Tritanium").closest("tr")!;

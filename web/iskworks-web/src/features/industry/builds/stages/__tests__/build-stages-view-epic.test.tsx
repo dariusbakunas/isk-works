@@ -151,7 +151,7 @@ describe("BuildStagesView with an Epic selected", () => {
   it("renders the Epic's frozen plan in the Plan's own layout", async () => {
     render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
 
-    expect(await screen.findByText("Epic: Manufacture Muninn")).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Final Production" })).toBeInTheDocument();
     const headings = [...document.querySelectorAll("h3")].map((el) => el.textContent ?? "");
     expect(headings[0]).toMatch(/^Inputs to Source/);
     expect(headings[1]).toMatch(/^Stage 1/);
@@ -167,7 +167,6 @@ describe("BuildStagesView with an Epic selected", () => {
     const tritanium = rowFor("34");
     expect(within(tritanium).getByText("600 reserved · 0 used")).toBeInTheDocument();
     expect(within(tritanium).getByText("400")).toBeInTheDocument();
-    expect(screen.queryByText(/changed since this Epic was frozen/)).not.toBeInTheDocument();
   });
 
   it("opens a read-only inspector: details shown, nothing editable", async () => {
@@ -198,7 +197,7 @@ describe("BuildStagesView with an Epic selected", () => {
     const user = userEvent.setup();
     render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
 
-    await screen.findByText("Epic: Manufacture Muninn");
+    await screen.findByRole("table", { name: "Final Production" });
     await user.click(within(rowFor("reaction")).getByText("Fernite Carbide"));
 
     const close = await screen.findByRole("button", { name: "Close production inspector" });
@@ -222,17 +221,12 @@ describe("BuildStagesView with an Epic selected", () => {
     expect(inputPanel.queryByRole("button", { name: /Produce all/ })).not.toBeInTheDocument();
   });
 
-  it("flags a Build edited after the Epic was frozen", async () => {
-    render(<BuildStagesView active editor={editorStub(9)} epicId="epic-1" />);
-    expect(await screen.findByText("The Build has changed since this Epic was frozen")).toBeInTheDocument();
-  });
-
   it("creates an input's tickets in the Epic and reloads", async () => {
     bulkCreateTickets.mockResolvedValue([]);
     const user = userEvent.setup();
     render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
 
-    await screen.findByText("Epic: Manufacture Muninn");
+    await screen.findByRole("table", { name: "Final Production" });
     await user.click(within(rowFor("34")).getByRole("button", { name: "Create ticket" }));
 
     expect(bulkCreateTickets).toHaveBeenCalledWith("epic-1", ["req-trit"]);

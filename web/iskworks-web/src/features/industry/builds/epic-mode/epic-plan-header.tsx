@@ -12,17 +12,15 @@ interface EditorData {
 }
 
 /**
- * Above the Plan when an Epic is selected: which Epic, that the view is
- * read-only, whether the Build changed since the freeze, and a Create
- * ticket that starts with this Epic chosen.
+ * Above the Plan when an Epic is selected: a Create ticket that starts with
+ * this Epic chosen. (The read-only notice lives with the Epic selector, so
+ * it shows on every tab.)
  */
 export function EpicPlanHeader({
   epic,
-  buildRevision,
   onTicketCreated,
 }: {
   epic: EpicPlanOverlay;
-  buildRevision: number | null;
   onTicketCreated: () => void;
 }) {
   const [editorData, setEditorData] = useState<EditorData | null>(null);
@@ -44,23 +42,11 @@ export function EpicPlanHeader({
 
   return (
     <div className="mb-3 space-y-2">
-      <div className="flex flex-wrap items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <InlineAlert title={`Epic: ${epic.displayName}`} tone="info">
-            Read-only. The Epic&apos;s frozen plan with live reservations and ticket progress. Choose No Epic
-            to edit the Build.
-          </InlineAlert>
-        </div>
+      <div className="flex justify-end">
         <button className="iw-button-secondary" disabled={opening} onClick={() => void openEditor()} type="button">
           Create ticket
         </button>
       </div>
-      {buildRevision !== null && epic.sourceBuildRevision !== buildRevision ? (
-        <InlineAlert title="The Build has changed since this Epic was frozen" tone="warning">
-          This shows the plan as it was when the Epic was created, not the Build&apos;s current recipe, sourcing
-          or runs.
-        </InlineAlert>
-      ) : null}
       {error ? <InlineAlert title="Ticket was not created">{error}</InlineAlert> : null}
       {editorData ? (
         <TicketEditor

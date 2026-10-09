@@ -220,7 +220,6 @@ export function BuildStagesView({
 
           {epic ? (
             <EpicPlanHeader
-              buildRevision={editor.initialBuild?.revision ?? null}
               epic={epic}
               onTicketCreated={epicPlan.reload}
             />
