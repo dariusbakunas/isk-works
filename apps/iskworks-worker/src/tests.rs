@@ -43,6 +43,20 @@ fn market_gc_settings_default_to_hourly_and_are_configurable() {
 }
 
 #[test]
+fn esi_gc_defaults_to_hourly_and_is_configurable() {
+    assert_eq!(
+        WorkerConfig::default().esi_gc_poll_interval,
+        Duration::from_secs(3600)
+    );
+    let config = WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_WORKER_ESI_GC_POLL_SECONDS" => Some("600".to_string()),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(config.esi_gc_poll_interval, Duration::from_secs(600));
+}
+
+#[test]
 fn configuration_can_change_market_polling_without_changing_freshness() {
     let config = WorkerConfig::from_lookup(|name| match name {
         "ISKWORKS_WORKER_MARKET_POLL_SECONDS" => Some("2".to_string()),

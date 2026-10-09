@@ -4,7 +4,10 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use iskworks_app::{CharacterSyncService, MarketAccessResolver, PublicMarketService};
 use iskworks_esi::EsiTransport;
-use iskworks_storage::{AuthPurgeOutcome, PgAuthMaintenance, PgEsiRepository, PgMarketRepository};
+use iskworks_storage::{
+    AuthPurgeOutcome, EsiObservationPruneOutcome, PgAuthMaintenance, PgEsiRepository,
+    PgMarketRepository,
+};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
@@ -107,6 +110,33 @@ impl<T: EsiTransport + 'static> EvidenceWorker<T> {
             .prune_orphaned_market_observations(older_than, BATCHES_PER_CHUNK, MAX_CHUNKS_PER_PASS)
             .await
             .map_err(|error| error.to_string())
+    }
+
+    /// One retention pass over ESI observations only read at their latest:
+    /// superseded asset snapshots, then superseded adjusted prices. Chunked
+    /// like the market GC so the backlog left by earlier releases drains
+    /// over several passes.
+    pub async fn sweep_superseded_esi_observations(
+        &self,
+    ) -> Result<(EsiObservationPruneOutcome, EsiObservationPruneOutcome), String> {
+        // A snapshot is one character's whole asset list (up to tens of
+        // thousands of rows with their hierarchy), so keep chunks small.
+        const SNAPSHOTS_PER_CHUNK: i64 = 5;
+        const MAX_SNAPSHOT_CHUNKS_PER_PASS: u32 = 400;
+        // One adjusted-price refresh is ~16k rows.
+        const PRICES_PER_CHUNK: i64 = 20_000;
+        const MAX_PRICE_CHUNKS_PER_PASS: u32 = 500;
+        let assets = self
+            .esi_repository
+            .prune_superseded_asset_snapshots(SNAPSHOTS_PER_CHUNK, MAX_SNAPSHOT_CHUNKS_PER_PASS)
+            .await
+            .map_err(|error| error.to_string())?;
+        let prices = self
+            .esi_repository
+            .prune_superseded_adjusted_prices(PRICES_PER_CHUNK, MAX_PRICE_CHUNKS_PER_PASS)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok((assets, prices))
     }
 
     /// One market pass: due app-wide public coverage first (one regional
