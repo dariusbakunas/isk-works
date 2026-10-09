@@ -133,3 +133,26 @@ describe("useBuildEpicSelection", () => {
     expect(isSelectableEpic(epic("x"), "build-1")).toBe(true);
   });
 });
+
+describe("EpicSelector notes", () => {
+  const epics = [epic("epic-a", { sourceBuildRevision: 4 })];
+
+  it("says nothing with No Epic selected", () => {
+    render(<EpicSelector buildRevision={4} epics={epics} onSelect={vi.fn()} selectedEpicId={null} />);
+    expect(screen.queryByText(/Read-only/)).not.toBeInTheDocument();
+  });
+
+  it("notes the page is read-only while an Epic is shown", () => {
+    render(<EpicSelector buildRevision={4} epics={epics} onSelect={vi.fn()} selectedEpicId="epic-a" />);
+    expect(screen.getByText("Read-only · choose No Epic to edit")).toBeInTheDocument();
+    expect(screen.queryByText("Build changed since this Epic")).not.toBeInTheDocument();
+  });
+
+  it("flags a Build edited after the Epic was frozen", () => {
+    render(<EpicSelector buildRevision={9} epics={epics} onSelect={vi.fn()} selectedEpicId="epic-a" />);
+    expect(screen.getByText("Build changed since this Epic")).toHaveAttribute(
+      "title",
+      expect.stringContaining("as it was when the Epic was created"),
+    );
+  });
+});

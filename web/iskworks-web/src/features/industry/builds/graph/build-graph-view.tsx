@@ -78,10 +78,13 @@ export function BuildGraphView({
   editor,
   active,
   focusedProducerId,
+  readOnly = false,
 }: {
   editor: BuildWorksheetEditorModel;
   active: boolean;
   focusedProducerId?: string;
+  /** An Epic is selected: the inspector shows values and changes nothing. */
+  readOnly?: boolean;
 }) {
   const buildId = editor.initialBuild?.id ?? "";
   const graph = useBuildGraph({
@@ -213,7 +216,8 @@ export function BuildGraphView({
           };
         }
         let onNodeBuyBuild: (() => void) | undefined;
-        if (node.data.nodeType === "acquisition") {
+        // Read-only (an Epic is selected): no "Build" switch on the card.
+        if (node.data.nodeType === "acquisition" && !readOnly) {
           const buyNode = node.data.node;
           const recipe = buyNode.buildableRecipe;
           if (recipe != null) {
@@ -259,6 +263,7 @@ export function BuildGraphView({
       linkedBuildPending,
       linkedBuildErrors,
       sourcing,
+      readOnly,
     ],
   );
 
@@ -519,6 +524,7 @@ export function BuildGraphView({
       ) : null}
 
       <GraphInspector
+        readOnly={readOnly}
         active={active}
         allFacilities={editor.allFacilities ?? []}
         allowMarketPolicyOverride={editor.source?.kind !== "manual"}

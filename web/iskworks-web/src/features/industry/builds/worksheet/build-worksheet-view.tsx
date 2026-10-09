@@ -13,7 +13,7 @@ import { BuildWorksheetTable } from "./build-worksheet-table";
 import { useBuildWorksheet } from "./use-build-worksheet";
 import { rowKeyForTarget, scopeAcquisitionToConsumer, selectionForTarget, targetForRow, type WorksheetTarget } from "./worksheet-selection";
 
-export function BuildWorksheetView({ active, editor, focusedProducerId }: { active: boolean; editor: BuildWorksheetEditorModel; focusedProducerId?: string }) {
+export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly = false }: { active: boolean; editor: BuildWorksheetEditorModel; focusedProducerId?: string; /** An Epic is selected: the inspector shows values and changes nothing. */ readOnly?: boolean }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const includeDownstream = searchParams.get("downstream") === "1";
@@ -104,6 +104,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId }: { acti
           selectedRowKey={rowKeyForTarget(rows, target)}
           worksheet={worksheet}
         />{command && active && inspectorPlan ? <StagesInspector
+          readOnly={readOnly}
           command={command}
           facilities={editor.allFacilities ?? []}
           onClose={() => setTarget(null)}

@@ -33,7 +33,6 @@ import {
 import { EmptyState, InlineAlert, Panel } from "../../../../components/primitives";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { focusExecutionPlan } from "../focused-producer-projection";
-import { EpicPlanHeader } from "../epic-mode/epic-plan-header";
 import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
 import { apiMessage } from "../../shared/api-error";
 
@@ -78,6 +77,7 @@ export function BuildStagesView({
   active,
   focusedProducerId,
   epicId = null,
+  epicRefreshKey = 0,
 }: {
   editor: BuildWorksheetEditorModel;
   active: boolean;
@@ -85,10 +85,13 @@ export function BuildStagesView({
   /** Show this Epic's frozen plan instead of the live draft: same layout,
    * read-only, with each step's ticket and the Epic's reservations. */
   epicId?: string | null;
+  /** Bump to reload the Epic's plan after a change made elsewhere (e.g. a
+   * ticket added from the Build toolbar). */
+  epicRefreshKey?: number;
 }) {
   const buildId = editor.initialBuild?.id ?? "";
   const epicMode = epicId !== null;
-  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode);
+  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode, epicRefreshKey);
   const [creatingTicketsFor, setCreatingTicketsFor] = useState<number | null>(null);
   const [epicActionError, setEpicActionError] = useState("");
   const { plan: rootPlan, loading, refreshError, hardError: draftError, refetch } = useBuildExecutionPlan({
@@ -105,7 +108,8 @@ export function BuildStagesView({
   const epic = epicMode ? (epicPlan.data?.epic ?? null) : null;
   const hardError = epicMode ? epicPlan.error : draftError;
 
-  // An Epic's Plan is read-only: rows don't open the (editing) inspector.
+  // An Epic's Plan is read-only: its inspector shows everything and edits
+  // nothing.
   async function createTicketsForInput(typeId: number) {
     if (!epicId) return;
     const requirementIds = epicPlan.untrackedBuyRequirementIds.get(typeId) ?? [];
@@ -217,13 +221,6 @@ export function BuildStagesView({
             </p>
           ) : null}
 
-          {epic ? (
-            <EpicPlanHeader
-              buildRevision={editor.initialBuild?.revision ?? null}
-              epic={epic}
-              onTicketCreated={epicPlan.reload}
-            />
-          ) : null}
           {epicActionError ? (
             <div className="mb-2">
               <InlineAlert title="Tickets were not created">{epicActionError}</InlineAlert>
@@ -241,10 +238,8 @@ export function BuildStagesView({
                 creatingTicketsFor,
                 onCreateTickets: (typeId) => void createTicketsForInput(typeId),
               } : undefined}
-              onSelectAcquisition={(typeId) => {
-                if (!epicMode) setSelection({ kind: "acquisition", typeId });
-              }}
-              selectedTypeId={!epicMode && selection?.kind === "acquisition" ? selection.typeId : null}
+              onSelectAcquisition={(typeId) => setSelection({ kind: "acquisition", typeId })}
+              selectedTypeId={selection?.kind === "acquisition" ? selection.typeId : null}
             />
           ) : null}
 
@@ -253,11 +248,9 @@ export function BuildStagesView({
               key={stage.index}
               epicNodes={epic?.nodes}
               nodes={nodeList(stage, nodesById)}
-              onSelectNode={(nodeId) => {
-                if (!epicMode) setSelection({ kind: "production", nodeId });
-              }}
+              onSelectNode={(nodeId) => setSelection({ kind: "production", nodeId })}
               plan={plan}
-              selectedNodeId={!epicMode && selection?.kind === "production" ? selection.nodeId : null}
+              selectedNodeId={selection?.kind === "production" ? selection.nodeId : null}
               subtitle={stage.index === 0 ? "Earliest production" : undefined}
               title={`Stage ${stage.index + 1}`}
             />
@@ -268,17 +261,17 @@ export function BuildStagesView({
               emphasize
               epicNodes={epic?.nodes}
               nodes={nodeList(finalStage, nodesById)}
-              onSelectNode={(nodeId) => {
-                if (!epicMode) setSelection({ kind: "production", nodeId });
-              }}
+              onSelectNode={(nodeId) => setSelection({ kind: "production", nodeId })}
               plan={plan}
-              selectedNodeId={!epicMode && selection?.kind === "production" ? selection.nodeId : null}
+              selectedNodeId={selection?.kind === "production" ? selection.nodeId : null}
               title="Final Production"
             />
           ) : null}
 
-          {command && active && !epicMode ? (
+          {active && (epicMode || command) ? (
             <StagesInspector
+              epic={epic}
+              readOnly={epicMode}
               command={command}
               facilities={editor.allFacilities ?? []}
               onClose={() => setSelection(null)}
