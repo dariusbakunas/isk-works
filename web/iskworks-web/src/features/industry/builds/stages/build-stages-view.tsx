@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 
 import {
   bulkCreateTickets,
+  createOperationTicket,
   type AcquisitionLine,
   type EpicNodeProgress,
   type EpicStockProgress,
@@ -272,6 +273,10 @@ export function BuildStagesView({
             <StagesInspector
               epic={epic}
               readOnly={epicMode}
+              onCreateStepTicket={epicId ? async (nodeId) => {
+                await createOperationTicket(epicId, nodeId);
+                epicPlan.reload();
+              } : undefined}
               command={command}
               facilities={editor.allFacilities ?? []}
               onClose={() => setSelection(null)}

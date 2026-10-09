@@ -16,6 +16,7 @@ const industryApi = vi.hoisted(() => ({
   createTicketForRequirement: vi.fn(),
   bulkCreateTickets: vi.fn(),
   reserveOrderInventory: vi.fn(),
+  createOperationTicket: vi.fn(),
 }));
 
 vi.mock("../../../api/industry", async () => {
@@ -254,6 +255,47 @@ describe("EpicInspector", () => {
     renderInspector({ order: orderFixture({ archivedAt: "2026-10-08T00:00:00Z" }) });
     expect(await screen.findByText("Reserved 0 of 600 planned from stock")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reserve inventory" })).not.toBeInTheDocument();
+  });
+
+  it("lists production steps without a ticket and creates them on demand", async () => {
+    const step = (key: string, name: string, ticketId: string | null) => ({
+      id: `op-${key}`,
+      occurrenceKey: key,
+      parentOccurrenceKey: null,
+      buildId: null,
+      productTypeId: 1,
+      productName: name,
+      runs: 5,
+      producedQuantity: 5,
+      stage: 0,
+      ticketId,
+      ticketDisplayId: ticketId ? "T-1" : null,
+      ticketStatus: ticketId ? "todo" : null,
+      servedRequirementIds: [],
+    });
+    industryApi.getOrder.mockResolvedValue(orderDetailFixture({
+      productionPlan: {
+        rootOccurrenceKey: "root:1",
+        dependencies: [],
+        operations: [
+          step("build:a", "Fernite Carbide", null),
+          step("build:b", "Sylramic Fibers", null),
+          step("root:1", "Muninn", "ticket-root"),
+        ],
+      },
+    } as unknown as Partial<OrderDetail>));
+    industryApi.createOperationTicket.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderInspector();
+
+    expect(await screen.findByText("Production steps without a ticket")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Create ticket" })).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Create all 2 tickets" }));
+
+    await waitFor(() => expect(industryApi.createOperationTicket).toHaveBeenCalledTimes(2));
+    expect(industryApi.createOperationTicket).toHaveBeenCalledWith("order-1", "build:a");
+    expect(industryApi.createOperationTicket).toHaveBeenCalledWith("order-1", "build:b");
   });
 
   it("Open build is a real navigation link, distinct from every other row's inspect-in-place click", async () => {

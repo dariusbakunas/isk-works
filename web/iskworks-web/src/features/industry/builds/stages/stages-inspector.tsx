@@ -20,6 +20,7 @@
 // caller is responsible for clearing the stale selection; see
 // `build-stages-view.tsx`).
 
+import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 
 import type {
@@ -39,6 +40,7 @@ import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
 import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { PricingBody } from "../../inspector/unified-item-inspector";
+import { apiMessage } from "../../shared/api-error";
 
 import type { RootRowEditing } from "./root-row-editing";
 
@@ -78,6 +80,7 @@ export function StagesInspector({
   rootEditing = null,
   readOnly = false,
   epic = null,
+  onCreateStepTicket,
 }: {
   plan: ExecutionPlanProjection;
   selection: StagesSelection | null;
@@ -113,6 +116,8 @@ export function StagesInspector({
   readOnly?: boolean;
   /** With `readOnly`: the Epic's ticket and holdings per node / input. */
   epic?: EpicPlanOverlay | null;
+  /** With `readOnly`: create the ticket for an Epic step that has none. */
+  onCreateStepTicket?: (nodeId: string) => Promise<void>;
 }) {
   if (!selection) return null;
   // A read-only inspector never edits the root's rows either.
@@ -136,6 +141,7 @@ export function StagesInspector({
         rootEditing={editing}
         readOnly={readOnly}
         epicNode={epic?.nodes[node.id] ?? null}
+        onCreateStepTicket={onCreateStepTicket ? () => onCreateStepTicket(node.id) : undefined}
       />
     );
   }
@@ -170,6 +176,7 @@ function ProductionInspector({
   rootEditing,
   readOnly,
   epicNode,
+  onCreateStepTicket,
 }: {
   node: ExecutionNode;
   plan: ExecutionPlanProjection;
@@ -184,6 +191,7 @@ function ProductionInspector({
   rootEditing: RootRowEditing | null;
   readOnly: boolean;
   epicNode: EpicNodeProgress | null;
+  onCreateStepTicket?: () => Promise<void>;
 }) {
   // Dependency order only -- never readiness terminology. The root
   // always holds the unique maximum stage index (see
@@ -452,7 +460,7 @@ function ProductionInspector({
 
         <InspectorSection defaultExpanded id="ticket" label="Ticket">
           {readOnly ? (
-            <EpicNodeTicket epicNode={epicNode} isRoot={isRoot} />
+            <EpicNodeTicket epicNode={epicNode} isRoot={isRoot} onCreate={onCreateStepTicket} />
           ) : occurrences[0] ? (
             <CreateOperationTicket
               activity={node.activity}
@@ -471,8 +479,32 @@ function ProductionInspector({
 
 /** An Epic step's ticket, and (for an intermediate) what the Epic holds of
  * its output for the steps it feeds. */
-function EpicNodeTicket({ epicNode, isRoot }: { epicNode: EpicNodeProgress | null; isRoot: boolean }) {
+function EpicNodeTicket({
+  epicNode,
+  isRoot,
+  onCreate,
+}: {
+  epicNode: EpicNodeProgress | null;
+  isRoot: boolean;
+  onCreate?: () => Promise<void>;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
   if (!epicNode) return <p className="text-xs text-muted">No Epic details.</p>;
+
+  async function create() {
+    if (!onCreate) return;
+    setCreating(true);
+    setError("");
+    try {
+      await onCreate();
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <>
       <InspectorRow
@@ -481,6 +513,13 @@ function EpicNodeTicket({ epicNode, isRoot }: { epicNode: EpicNodeProgress | nul
           ? `${epicNode.ticketDisplayId}${epicNode.ticketStatus ? ` · ${TICKET_STATUS_LABELS[epicNode.ticketStatus]}` : ""}`
           : "No ticket"}
       />
+      {!epicNode.ticketDisplayId && onCreate ? (
+        // The step's ticket, built from the Epic's frozen step.
+        <button className="iw-button-secondary mt-1" disabled={creating} onClick={() => void create()} type="button">
+          {creating ? "Creating..." : "Create ticket"}
+        </button>
+      ) : null}
+      {error ? <p className="mt-1 text-[11px] text-danger">{error}</p> : null}
       {!isRoot ? (
         <>
           <InspectorRow label="Output reserved" value={qty(epicNode.output.reserved)} />
