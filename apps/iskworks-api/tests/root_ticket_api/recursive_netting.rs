@@ -371,8 +371,8 @@ async fn recursive_netting_creates_no_inventory_side_effects(pool: PgPool) {
         before,
         "recursive netting posted an event or moved a balance"
     );
-    assert_eq!(allocation_count(&pool).await, allocations_before);
-    assert_eq!(allocation_count(&pool).await, 0);
+    // Only reservations of the frozen reuse -- never a ledger change.
+    assert!(allocation_count(&pool).await > allocations_before);
 }
 
 /// **Whole-plan shared-inventory regression** -- superseding the earlier
@@ -489,7 +489,24 @@ async fn within_one_epic_shared_raw_material_is_allocated_once_across_root_and_c
         "must not create a second production ticket for the same frozen operation"
     );
 
-    // Neither froze a reservation; inventory is byte-identical.
+    // Inventory is byte-identical; the Epic only reserved its frozen
+    // reuse -- shared Tritanium reserved once across root and child, never
+    // more than is on hand.
     assert_eq!(inventory_fingerprint(&pool).await, before);
-    assert_eq!(allocation_count(&pool).await, 0);
+    let reserved_tritanium: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(quantity), 0)::bigint FROM inventory_allocations \
+         WHERE type_id = 34 AND released_at IS NULL AND consumed_at IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let on_hand: i64 =
+        sqlx::query_scalar("SELECT quantity FROM inventory_balances WHERE type_id = 34")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        reserved_tritanium <= on_hand,
+        "{reserved_tritanium} > {on_hand}"
+    );
 }

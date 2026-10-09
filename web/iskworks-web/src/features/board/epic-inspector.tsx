@@ -5,7 +5,6 @@ import {
   bulkCreateTickets,
   cancelOrder,
   completeOrder,
-  createOperationTicket,
   createTicketForRequirement,
   deleteOrder,
   getOrder,
@@ -147,22 +146,6 @@ export function EpicInspector({
 
   const needsActionRequirements = detail?.requirements.filter((requirement) => requirement.state === "needsAction") ?? [];
 
-  // Frozen production steps with no active ticket (deleted, canceled, or
-  // never created -- Create Epic tickets only the final product).
-  const untickedSteps = (detail?.productionPlan?.operations ?? []).filter(
-    (operation) => operation.ticketId === null,
-  );
-
-  async function createStepTickets(occurrenceKeys: string[]) {
-    await run(async () => {
-      for (const key of occurrenceKeys) {
-        await createOperationTicket(order.id, key);
-      }
-      loadDetail();
-      onChanged?.();
-    });
-  }
-
   async function reserveInventory() {
     setReserveResult(null);
     await run(async () => {
@@ -290,51 +273,17 @@ export function EpicInspector({
           ) : null}
         </dl>
 
-        {detail?.inventory && detail.inventory.plannedReuse > 0 ? (
+        {detail?.inventory && detail.inventory.itemsPlanned > 0 ? (
           <InventorySection
             busy={busy}
             canReserve={!order.canceledAt && !order.archivedAt && !order.completedAt}
             onReserve={() => void reserveInventory()}
             result={reserveResult}
             summary={detail.inventory}
-            typeName={(typeId) =>
+            typeName={(typeId: number) =>
               detail.requirements.find((requirement) => requirement.typeId === typeId)?.capturedName
               ?? `Type ${typeId}`}
           />
-        ) : null}
-
-        {untickedSteps.length > 0 ? (
-          <div className="space-y-1.5">
-            <SectionHeading>Production steps without a ticket</SectionHeading>
-            <ul className="space-y-1">
-              {untickedSteps.map((operation) => (
-                <li className="flex items-center justify-between gap-2 text-xs" key={operation.occurrenceKey}>
-                  <span className="min-w-0 truncate">
-                    {operation.productName}
-                    <span className="text-muted"> ×{operation.producedQuantity.toLocaleString()}</span>
-                  </span>
-                  <button
-                    className="iw-button-secondary shrink-0 px-2 py-0.5 text-xs"
-                    disabled={busy}
-                    onClick={() => void createStepTickets([operation.occurrenceKey])}
-                    type="button"
-                  >
-                    Create ticket
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {untickedSteps.length > 1 ? (
-              <button
-                className="iw-button-secondary"
-                disabled={busy}
-                onClick={() => void createStepTickets(untickedSteps.map((operation) => operation.occurrenceKey))}
-                type="button"
-              >
-                Create all {untickedSteps.length} tickets
-              </button>
-            ) : null}
-          </div>
         ) : null}
 
         <div className="space-y-1.5">
@@ -503,9 +452,10 @@ export function EpicInspector({
   );
 }
 
-/** What the Epic holds of the stock its plan reuses, and the explicit
- * "Reserve inventory" (e.g. after restoring an archived Epic, whose
- * reservations were released). */
+/** How many of the items the Epic planned to take from stock it holds
+ * (counted per item -- units of different items don't add up), and the
+ * explicit "Reserve inventory" (e.g. after restoring an archived Epic,
+ * whose reservations were released). */
 function InventorySection({
   summary,
   canReserve,
@@ -514,25 +464,25 @@ function InventorySection({
   onReserve,
   typeName,
 }: {
-  summary: { plannedReuse: number; reserved: number; used: number };
+  summary: { itemsPlanned: number; itemsHeld: number };
   typeName: (typeId: number) => string;
   canReserve: boolean;
   busy: boolean;
   result: ReserveInventoryResult | null;
   onReserve: () => void;
 }) {
-  const held = summary.reserved + summary.used;
-  const missing = Math.max(0, summary.plannedReuse - held);
+  const missing = summary.itemsPlanned - summary.itemsHeld;
   return (
     <div className="space-y-1.5">
       <SectionHeading>Inventory</SectionHeading>
       <p className="text-xs text-foreground">
-        Reserved {held.toLocaleString()} of {summary.plannedReuse.toLocaleString()} planned from stock
+        Stock reserved for {summary.itemsHeld.toLocaleString()} of {summary.itemsPlanned.toLocaleString()}{" "}
+        item{summary.itemsPlanned === 1 ? "" : "s"} planned from stock
       </p>
-      <ProgressBar percent={(held / summary.plannedReuse) * 100} tone={missing === 0 ? "positive" : "warning"} />
-      {summary.used > 0 ? (
-        <p className="text-[10px] text-muted">{summary.used.toLocaleString()} already used</p>
-      ) : null}
+      <ProgressBar
+        percent={(summary.itemsHeld / summary.itemsPlanned) * 100}
+        tone={missing === 0 ? "positive" : "warning"}
+      />
       {canReserve && missing > 0 ? (
         <button className="iw-button-secondary" disabled={busy} onClick={onReserve} type="button">
           Reserve inventory

@@ -42,10 +42,10 @@ async fn live_projection_and_frozen_epic_match_exactly(pool: PgPool) {
     assert_eq!(status, StatusCode::CREATED, "order: {order}");
     let order_id: Uuid = order["id"].as_str().unwrap().parse().unwrap();
 
-    // Zero inventory side effects: balances/events/allocations
-    // byte-identical before and after Create Epic.
+    // Zero ledger side effects: balances/events byte-identical before
+    // and after Create Epic; it only reserves its frozen reuse.
     assert_eq!(inventory_fingerprint(&pool).await, before);
-    assert_eq!(allocation_count(&pool).await, allocations_before);
+    assert!(allocation_count(&pool).await > allocations_before);
 
     let order_repository = PgOrderRepository::new(pool.clone());
     let operations = order_repository
@@ -358,7 +358,8 @@ async fn fully_covered_build_operation_is_pruned_entirely(pool: PgPool) {
 async fn two_epics_diverge_when_live_state_changes_between_them(pool: PgPool) {
     let fx = fixture(&pool).await;
     let parent = assembly_with_built_component(&fx, 1, 90100, &[]).await;
-    seed_balance(&pool, &fx, 34, "Tritanium", 2_200, 6_600).await; // avg 3
+    // Enough for both Epics: each reserves 2,500 (root 2,000 + child 500).
+    seed_balance(&pool, &fx, 34, "Tritanium", 5_000, 15_000).await; // avg 3
     seed_balance(&pool, &fx, 35, "Pyerite", 5_000, 15_000).await;
 
     let (status, order_a) = create_order(&fx.app, &parent).await;
@@ -367,7 +368,7 @@ async fn two_epics_diverge_when_live_state_changes_between_them(pool: PgPool) {
 
     // Change the live inventory basis for Tritanium between the two Epics.
     sqlx::query(
-        "UPDATE inventory_balances SET total_historical_cost = 13200 \
+        "UPDATE inventory_balances SET total_historical_cost = 30000 \
          WHERE workspace_id = $1 AND type_id = 34", // avg now 6, was 3
     )
     .bind(fx.workspace_id.0)
@@ -420,8 +421,8 @@ async fn two_epics_diverge_when_live_state_changes_between_them(pool: PgPool) {
         })
         .unwrap();
 
-    // Both froze the full 2000 reused (same physical stock, no reservation
-    // -- both Epics may plan against it), but at DIFFERENT unit bases.
+    // Both froze the full 2000 reused (each from its own free stock), but
+    // at DIFFERENT unit bases.
     assert_eq!(a_root_trit.reused_quantity, 2000);
     assert_eq!(b_root_trit.reused_quantity, 2000);
     assert_eq!(
@@ -1025,14 +1026,17 @@ async fn root_and_child_ticket_evidence_both_project_their_own_plan_operation(po
         );
     }
 
-    // Only the root carries the compatibility `executionSnapshot`;
-    // the child's execution identity lives solely in `planEvidence`.
+    // Both carry an `executionSnapshot` for the recording form: the
+    // root's from the root preview, the child's built from its own frozen
+    // operation (runs + installation evidence). The child's full execution
+    // identity still lives in `planEvidence`.
     assert!(
         !root_ticket["executionSnapshot"].is_null(),
         "root ticket must carry executionSnapshot: {root_ticket:?}"
     );
-    assert!(
-        child_ticket["executionSnapshot"].is_null(),
-        "child ticket must not carry a legacy executionSnapshot: {child_ticket:?}"
+    assert_eq!(
+        child_ticket["executionSnapshot"]["runs"],
+        serde_json::to_value(child_op.runs).unwrap(),
+        "child ticket's snapshot is its frozen operation's plan: {child_ticket:?}"
     );
 }

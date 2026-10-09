@@ -87,7 +87,7 @@ describe("CreateEpicDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  it("previews reuse and reserves it by default", async () => {
+  it("previews the stock the Epic reserves and reserves it", async () => {
     const user = userEvent.setup();
     const calls = stubFetch([() => respond(ORDER, 201)]);
     const { onCreated } = renderDialog();
@@ -95,7 +95,8 @@ describe("CreateEpicDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Create Epic" });
     expect(await within(dialog).findByText("Tritanium")).toBeInTheDocument();
     expect(within(dialog).getByText("800")).toBeInTheDocument();
-    expect(within(dialog).getByRole("checkbox", { name: /Reserve inventory/ })).toBeChecked();
+    // Every Epic reserves: there is no opt-out.
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "Create Epic" }));
 
@@ -105,20 +106,6 @@ describe("CreateEpicDialog", () => {
       buildId: "build-1",
       reservation: { expectedReuse: [{ typeId: 34, quantity: 800 }] },
     });
-  });
-
-  it("creates without a reservation when Reserve is unticked", async () => {
-    const user = userEvent.setup();
-    const calls = stubFetch([() => respond(ORDER, 201)]);
-    renderDialog();
-
-    const dialog = screen.getByRole("dialog", { name: "Create Epic" });
-    await user.click(await within(dialog).findByRole("checkbox", { name: /Reserve inventory/ }));
-    await user.click(within(dialog).getByRole("button", { name: "Create Epic" }));
-
-    await waitFor(() => expect(calls.some((call) => call.url.endsWith("/orders"))).toBe(true));
-    const create = calls.find((call) => call.url.endsWith("/orders"));
-    expect(create?.body).not.toHaveProperty("reservation");
   });
 
   it("shows the drift and refreshes from the 409 body without another request", async () => {
@@ -149,19 +136,17 @@ describe("CreateEpicDialog", () => {
     });
   });
 
-  it("offers to create without reserving after a drift", async () => {
+  it("offers only Refresh after a drift, never creating without reserving", async () => {
     const user = userEvent.setup();
-    const calls = stubFetch([() => respond(DRIFT, 409), () => respond(ORDER, 201)]);
-    const { onCreated } = renderDialog();
+    stubFetch([() => respond(DRIFT, 409)]);
+    renderDialog();
 
     const dialog = screen.getByRole("dialog", { name: "Create Epic" });
     await within(dialog).findByText("Tritanium");
     await user.click(within(dialog).getByRole("button", { name: "Create Epic" }));
-    await user.click(await within(dialog).findByRole("button", { name: "Create without reserving" }));
 
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-    const creates = calls.filter((call) => call.url.endsWith("/orders"));
-    expect(creates[1].body).not.toHaveProperty("reservation");
+    expect(await within(dialog).findByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /without reserving/ })).not.toBeInTheDocument();
   });
 
   it("shows a reuse increase before opening the Epic", async () => {

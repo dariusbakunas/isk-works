@@ -396,16 +396,21 @@ async fn create_epic_accepts_more_reuse_than_previewed_and_reports_it(pool: PgPo
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
-async fn create_epic_without_a_reservation_request_reserves_nothing(pool: PgPool) {
+async fn create_epic_without_a_preview_still_reserves(pool: PgPool) {
     let fx = fixture(&pool).await;
     let build = rifter(&fx).await;
     seed_balance(&pool, &fx, 34, "Tritanium", 600, 600).await;
 
+    // A bare command (no previewed reuse to compare against).
     let (status, order) = create_order(&fx.app, &build).await;
 
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(requirement_of(&order, 34)["reusedQuantity"], 600);
-    assert_eq!(allocation_count(&pool).await, 0);
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 600, "epic_create".to_string())],
+        "every Epic holds what it plans to reuse"
+    );
 }
 
 /// The freeze draws root and child demand from one shared pool, so an
@@ -565,7 +570,13 @@ async fn archiving_releases_and_restoring_does_not_re_reserve(pool: PgPool) {
     let (_, detail) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
     assert_eq!(
         detail["inventory"],
-        serde_json::json!({"plannedReuse": 600, "reserved": 600, "used": 0})
+        serde_json::json!({
+            "plannedReuse": 600,
+            "reserved": 600,
+            "used": 0,
+            "itemsPlanned": 1,
+            "itemsHeld": 1
+        })
     );
 
     let (status, body) = post_json(

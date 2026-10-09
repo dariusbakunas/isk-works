@@ -111,9 +111,11 @@ pub fn persisted_requirement_to_prerequisite(
 /// and reservations to it). `parent_ticket_id` is left for storage to
 /// resolve from the parent operation's ticket.
 ///
-/// The root's frozen execution snapshot and market scope live only on the
-/// root ticket Create Epic made, so a root ticket made here has neither;
-/// recording it takes actual values, as for any snapshot-less ticket.
+/// Its execution snapshot -- what the recording form prefills from -- is
+/// the frozen operation's: runs, installation cost evidence and material
+/// value. The freeze kept no blueprint, facility or duration, so those are
+/// empty (the root ticket Create Epic made carries the fuller root
+/// snapshot and market scope; a root ticket made here has neither extra).
 #[must_use]
 pub fn operation_ticket(
     order: &Order,
@@ -148,7 +150,7 @@ pub fn operation_ticket(
         price_source_id: None,
         notes: String::new(),
         assignee_character_id: None,
-        execution_snapshot: None,
+        execution_snapshot: Some(operation_execution_snapshot(operation)),
         prerequisites,
         occurrence_key: Some(operation.occurrence_key.clone()),
         parent_ticket_id: None,
@@ -157,6 +159,47 @@ pub fn operation_ticket(
         own_installation_cost: operation.own_installation_cost,
         total_production_cost: operation.total_production_cost,
         plan_evidence: Some(operation.evidence.clone()),
+    }
+}
+
+/// The intended plan for one frozen operation, in the shape a ticket's
+/// execution snapshot takes: its runs, the frozen installation-cost
+/// evidence (total = the operation's own installation cost) and material
+/// value.
+#[must_use]
+pub fn operation_execution_snapshot(operation: &PlanOperation) -> crate::TaskExecutionSnapshot {
+    let installation_cost = operation
+        .evidence
+        .installation
+        .as_ref()
+        .map(|installation| crate::InstallationCostBreakdown {
+            complete: installation.complete,
+            estimated_item_value: installation.estimated_item_value,
+            system_cost_index: installation
+                .system_cost_index
+                .as_deref()
+                .and_then(|value| value.parse().ok()),
+            unmodified_system_index_cost: installation.unmodified_system_index_cost,
+            job_cost_reduction_percent: installation
+                .job_cost_reduction_percent
+                .parse()
+                .unwrap_or_default(),
+            system_index_cost: installation.system_index_cost,
+            facility_tax: installation.facility_tax,
+            scc_surcharge: installation.scc_surcharge,
+            alliance_surcharge: installation.alliance_surcharge,
+            fixed_supplemental_cost: installation.fixed_supplemental_cost,
+            total: operation.own_installation_cost,
+            warnings: Vec::new(),
+            formula_version: installation.formula_version.clone(),
+        });
+    crate::TaskExecutionSnapshot {
+        runs: operation.runs,
+        blueprint: None,
+        facility: None,
+        duration_seconds: None,
+        installation_cost,
+        material_value: operation.material_component_cost,
     }
 }
 

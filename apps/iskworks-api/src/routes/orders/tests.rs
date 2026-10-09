@@ -102,6 +102,7 @@ fn a_linked_in_progress_ticket_moves_a_requirement_out_of_needs_action() {
         display_id: "ISK-1000".to_string(),
         status: TicketStatus::InProgress,
         allocated_quantity: 50,
+        producer: false,
     }]];
     let response = order_detail_response(&order, requirements, fulfillments);
 

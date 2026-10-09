@@ -214,22 +214,17 @@ async fn creating_an_epic_touches_no_inventory(pool: PgPool) {
         before,
         "Epic creation posted an event or changed a balance"
     );
-    assert_eq!(
-        allocation_count(&pool).await,
-        allocations_before,
-        "Epic creation created an inventory_allocations row"
-    );
-    assert_eq!(allocation_count(&pool).await, 0);
+    // It reserves what it reuses (Tritanium + Pyerite) -- a claim, not a
+    // ledger change.
+    assert_eq!(allocation_count(&pool).await, allocations_before + 2);
 }
 
-/// Double-planning is intentional: two Epics created back to
-/// back each freeze an intent to reuse the *same* 1,000 units, because a
-/// frozen `reusedQuantity` is planning evidence, not a reservation. Neither
-/// reserves; availability never drops. Do NOT "fix" this by re-introducing
-/// an allocation write on Epic creation.
+/// No double-planning: every Epic reserves what it freezes as reuse, so a
+/// second Epic created right after the first freezes only the stock the
+/// first left free (issue #4).
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
-async fn two_epics_may_freeze_the_same_stock_without_reserving_it(pool: PgPool) {
+async fn a_second_epic_freezes_only_the_stock_the_first_left_free(pool: PgPool) {
     let fx = fixture(&pool).await;
     let build = rifter(&fx).await;
     // Only 1.5x one build's Tritanium need on hand.
@@ -241,9 +236,9 @@ async fn two_epics_may_freeze_the_same_stock_without_reserving_it(pool: PgPool) 
     assert_eq!(status_b, StatusCode::CREATED);
 
     assert_eq!(requirement_of(&order_a, 34)["reusedQuantity"], 1000);
-    assert_eq!(requirement_of(&order_b, 34)["reusedQuantity"], 1000);
+    assert_eq!(requirement_of(&order_b, 34)["reusedQuantity"], 500);
 
-    assert_eq!(allocation_count(&pool).await, 0);
+    assert_eq!(allocation_count(&pool).await, 2);
     let events: i64 = sqlx::query_scalar("SELECT COUNT(*)::bigint FROM inventory_events")
         .fetch_one(&pool)
         .await

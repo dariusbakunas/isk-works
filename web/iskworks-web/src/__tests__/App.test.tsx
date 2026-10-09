@@ -1245,10 +1245,9 @@ describe("Create Build planning", () => {
     const createEpicButton = await screen.findByRole("button", { name: "Create Epic" }, { timeout: 3000 });
     await user.click(createEpicButton);
 
-    // The dialog previews the inventory the Epic uses, with Reserve on.
+    // The dialog previews the inventory the Epic reserves.
     const dialog = await screen.findByRole("dialog", { name: "Create Epic" });
     expect(await within(dialog).findByText("Hydrocarbons")).toBeInTheDocument();
-    expect(within(dialog).getByRole("checkbox", { name: /Reserve inventory/ })).toBeChecked();
     await user.click(within(dialog).getByRole("button", { name: "Create Epic" }));
 
     await waitFor(() => expect(planBuildRequestBody).not.toBeNull());

@@ -182,9 +182,14 @@ export interface OrderDetail extends Order {
 }
 
 export interface EpicInventorySummary {
+  // Units, summed across items -- not comparable between items.
   plannedReuse: number;
   reserved: number;
   used: number;
+  // Items (requirements) the Epic planned to take from stock, and how many
+  // of them it holds (or has used) in full.
+  itemsPlanned: number;
+  itemsHeld: number;
 }
 
 export interface ReserveInventoryResult {
