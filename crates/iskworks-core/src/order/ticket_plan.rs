@@ -105,3 +105,92 @@ mod tests {
         );
     }
 }
+
+/// [`OrderRequirement`] (already persisted under its Epic) ->
+/// [`NewTicketPrerequisite`]: the same frozen row mirrored onto a ticket
+/// created later, exactly as [`requirement_to_prerequisite`] mirrors it at
+/// Epic creation.
+#[must_use]
+pub fn persisted_requirement_to_prerequisite(
+    requirement: &OrderRequirement,
+) -> NewTicketPrerequisite {
+    NewTicketPrerequisite {
+        id: TicketPrerequisiteId::new(),
+        type_id: requirement.type_id,
+        captured_name: requirement.captured_name.clone(),
+        kind: requirement.kind,
+        source_build_id: requirement.source_build_id,
+        required_quantity: requirement.required_quantity,
+        fulfillment_scope: requirement.fulfillment_scope,
+        reused_quantity: requirement.reused_quantity,
+        estimated_unit_cost: requirement.estimated_unit_cost,
+        estimated_line_total: requirement.estimated_line_total,
+        reused_line_total: requirement.reused_line_total,
+        operation_occurrence_key: requirement.operation_occurrence_key.clone(),
+        child_occurrence_key: requirement.child_occurrence_key.clone(),
+        inventory_unit_basis: requirement.inventory_unit_basis,
+        child_produced_quantity: requirement.child_produced_quantity,
+        child_consumed_quantity: requirement.child_consumed_quantity,
+        child_surplus_quantity: requirement.child_surplus_quantity,
+        child_surplus_retained_basis: requirement.child_surplus_retained_basis,
+        child_consumed_cost: requirement.child_consumed_cost,
+        dependency_id: requirement.dependency_id.clone(),
+        price_evidence: requirement.price_evidence.clone(),
+    }
+}
+
+/// The ticket for one frozen operation of a version-3 Epic, built from its
+/// persisted rows -- the same ticket Create Epic would have made for it:
+/// the operation's product, quantity and costs, its own requirements as
+/// prerequisites, and its occurrence key (which is what links recordings
+/// and reservations to it). `parent_ticket_id` is left for storage to
+/// resolve from the parent operation's ticket.
+///
+/// The root's frozen execution snapshot and market scope live only on the
+/// root ticket Create Epic made, so a root ticket made here has neither;
+/// recording it takes actual values, as for any snapshot-less ticket.
+#[must_use]
+pub fn operation_ticket(
+    order: &Order,
+    operation: &PlanOperation,
+    requirements: &[OrderRequirement],
+) -> NewTicket {
+    let prerequisites = requirements
+        .iter()
+        .filter(|requirement| {
+            requirement.operation_occurrence_key.as_deref()
+                == Some(operation.occurrence_key.as_str())
+        })
+        .map(persisted_requirement_to_prerequisite)
+        .collect();
+    NewTicket {
+        id: TicketId::new(),
+        workspace_id: order.workspace_id,
+        owner_id: order.owner_id,
+        order_id: Some(order.id),
+        kind: match operation.activity {
+            crate::build_materials::MaterialActivity::Manufacturing => TicketKind::Manufacturing,
+            crate::build_materials::MaterialActivity::Reaction => TicketKind::Reaction,
+        },
+        type_id: Some(operation.product_type_id),
+        captured_name: operation.product_name.clone(),
+        quantity: Some(operation.produced_quantity),
+        source_build_id: operation.build_id,
+        estimated_unit_cost: None,
+        estimated_line_total: operation.material_component_cost,
+        market_region_id: None,
+        market_location_id: None,
+        price_source_id: None,
+        notes: String::new(),
+        assignee_character_id: None,
+        execution_snapshot: None,
+        prerequisites,
+        occurrence_key: Some(operation.occurrence_key.clone()),
+        parent_ticket_id: None,
+        produced_quantity: Some(operation.produced_quantity),
+        material_component_cost: operation.material_component_cost,
+        own_installation_cost: operation.own_installation_cost,
+        total_production_cost: operation.total_production_cost,
+        plan_evidence: Some(operation.evidence.clone()),
+    }
+}
