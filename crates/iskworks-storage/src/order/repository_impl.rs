@@ -1203,6 +1203,22 @@ impl OrderRepository for PgOrderRepository {
             .await
             .map_err(map_error)?;
 
+        // The purchase is reserved to the Epic requirements this ticket
+        // fulfills, up to what they still need; the rest stays free.
+        super::reservations::reserve_recorded_output(
+            &mut tx,
+            super::reservations::RecordedOutput {
+                workspace_id,
+                owner_id,
+                feeds: super::reservations::OutputFeeds::Acquisition { ticket_id },
+                type_id,
+                quantity: input.quantity,
+                recording_id,
+                now: recorded_at,
+            },
+        )
+        .await?;
+
         let recorded = recorded_quantity_sum(&mut tx, ticket_id).await?;
         tx.commit().await.map_err(map_error)?;
 
@@ -1449,6 +1465,29 @@ impl OrderRepository for PgOrderRepository {
             )
             .await?;
             event_ids.push(output_event.0);
+
+            // The output is reserved to the steps this ticket's operation
+            // feeds, up to what they still need; overshoot stays free.
+            if let (Some(order_id), Some(occurrence_key)) =
+                (consumer_order_id, consumer_occurrence_key.as_deref())
+            {
+                super::reservations::reserve_recorded_output(
+                    &mut tx,
+                    super::reservations::RecordedOutput {
+                        workspace_id,
+                        owner_id,
+                        feeds: super::reservations::OutputFeeds::Production {
+                            order_id: OrderId(order_id),
+                            occurrence_key,
+                        },
+                        type_id: input.output_type_id,
+                        quantity: input.output_quantity,
+                        recording_id,
+                        now: recorded_at,
+                    },
+                )
+                .await?;
+            }
         }
 
         sqlx::query(
@@ -1757,7 +1796,7 @@ impl OrderRepository for PgOrderRepository {
         if updated.rows_affected() != 1 {
             return Err(OrderError::RecordingAlreadyReversed);
         }
-        super::reservations::unconsume_recording_allocations(&mut tx, recording_id).await?;
+        super::reservations::undo_recording_allocations(&mut tx, recording_id, reverted_at).await?;
 
         let recorded = match recording.kind {
             TicketInventoryRecordingKind::Acquisition => {
