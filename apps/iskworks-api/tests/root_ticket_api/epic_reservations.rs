@@ -719,3 +719,222 @@ async fn a_canceled_epic_cannot_reserve(pool: PgPool) {
     assert_eq!(body["error"]["code"], "order_not_reservable");
     assert!(active_allocations(&pool).await.is_empty());
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recording production: own reservations first, then free stock, and
+// never another Epic's reservation without `takeFrom`.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn root_ticket_id(fx: &Fixture, order_id: &str) -> String {
+    let tickets = list_tickets(&fx.app).await;
+    root_ticket_for_order(&tickets, order_id)["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn record_rifter(
+    fx: &Fixture,
+    ticket_id: &str,
+    inputs: &[(i64, u64)],
+    take_from: Value,
+) -> (StatusCode, Value) {
+    post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket_id}/record-production"),
+        serde_json::json!({
+            "idempotencyKey": Uuid::new_v4(),
+            "runsCompleted": 1,
+            "output": {"typeId": 5876, "quantity": 1},
+            "inputs": inputs
+                .iter()
+                .map(|(type_id, quantity)| serde_json::json!({"typeId": type_id, "quantity": quantity}))
+                .collect::<Vec<_>>(),
+            "installationCost": "0",
+            "takeFrom": take_from,
+        }),
+    )
+    .await
+}
+
+/// `(quantity, consumed?, released?, reason)` of every Tritanium allocation.
+async fn tritanium_allocations(pool: &PgPool) -> Vec<(i64, bool, bool, String)> {
+    sqlx::query_as(
+        "SELECT quantity, consumed_at IS NOT NULL, released_at IS NOT NULL, reason \
+         FROM inventory_allocations WHERE type_id = 34 ORDER BY quantity, reason",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// Epic A reserves 600 Tritanium + 200 Pyerite; 400 more Tritanium then
+/// arrives and Epic B reserves it. Physical Tritanium: 1,000, all reserved.
+async fn two_epics_sharing_tritanium(pool: &PgPool, fx: &Fixture) -> (String, String) {
+    let build = rifter(fx).await;
+    seed_balance(pool, fx, 34, "Tritanium", 600, 600).await;
+    seed_balance(pool, fx, 35, "Pyerite", 200, 200).await;
+    let (status, a) = create_reserving_order(fx, &build, &[(34, 600), (35, 200)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {a}");
+    sqlx::query(
+        "UPDATE inventory_balances SET quantity = 1000, total_historical_cost = 1000 WHERE type_id = 34",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    let (status, b) = create_reserving_order(fx, &build, &[(34, 400)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {b}");
+    (
+        a["id"].as_str().unwrap().to_string(),
+        b["id"].as_str().unwrap().to_string(),
+    )
+}
+
+/// The spec's worked example: A needs 1,000, holds 600, nothing is free,
+/// and B holds the other 400. Recording must not silently use B's 400.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recording_refuses_to_use_another_epics_reservation(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (a, b) = two_epics_sharing_tritanium(&pool, &fx).await;
+    let ticket = root_ticket_id(&fx, &a).await;
+    let inventory_before = inventory_fingerprint(&pool).await;
+
+    let (status, body) = record_rifter(
+        &fx,
+        &ticket,
+        &[(34, 1_000), (35, 200)],
+        serde_json::json!([]),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = &body["error"];
+    assert_eq!(error["code"], "insufficient_available");
+    assert_eq!(error["shortages"].as_array().unwrap().len(), 1);
+    let shortage = &error["shortages"][0];
+    assert_eq!(shortage["typeId"], 34);
+    assert_eq!(shortage["typeName"], "Tritanium");
+    assert_eq!(shortage["needed"], 1_000);
+    assert_eq!(shortage["own"], 600);
+    assert_eq!(shortage["free"], 0);
+    assert_eq!(shortage["holders"][0]["orderId"], b.as_str());
+    assert_eq!(shortage["holders"][0]["quantity"], 400);
+    assert!(shortage["holders"][0]["displayName"].is_string());
+    // Nothing was recorded.
+    assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
+    assert_eq!(active_allocations(&pool).await.len(), 3);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recording_takes_from_a_named_epic_when_allowed(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (a, b) = two_epics_sharing_tritanium(&pool, &fx).await;
+    let ticket = root_ticket_id(&fx, &a).await;
+
+    let (status, body) = record_rifter(
+        &fx,
+        &ticket,
+        &[(34, 1_000), (35, 200)],
+        serde_json::json!([{"orderId": b, "typeId": 34}]),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![
+            (400, false, true, "epic_create".to_string()),
+            (600, true, false, "epic_create".to_string()),
+        ],
+        "A's 600 consumed by the recording; B's 400 released to it"
+    );
+    assert!(active_allocations(&pool).await.is_empty());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recording_uses_own_reservations_first_then_free_stock(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await; // 600 Tritanium held
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    sqlx::query(
+        "UPDATE inventory_balances SET quantity = 1000, total_historical_cost = 1000 WHERE type_id = 34",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let ticket = root_ticket_id(&fx, &order_id).await;
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 700), (35, 200)], serde_json::json!([])).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![(600, true, false, "epic_create".to_string())],
+        "own 600 consumed, the other 100 came from free stock"
+    );
+    let left: i64 =
+        sqlx::query_scalar("SELECT quantity FROM inventory_balances WHERE type_id = 34")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(left, 300);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recording_part_of_a_reservation_splits_it(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await; // 600 Tritanium held
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 250), (35, 200)], serde_json::json!([])).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        tritanium_allocations(&pool).await,
+        vec![
+            (250, true, false, "epic_create".to_string()),
+            (350, false, false, "epic_create".to_string()),
+        ]
+    );
+}
+
+/// D14: a canceled Epic holds nothing, so its ticket draws free stock only
+/// -- and still can't use another Epic's reservation.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_canceled_epics_ticket_draws_free_stock_only(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (a, b) = two_epics_sharing_tritanium(&pool, &fx).await;
+    let (status, _) = post_json(&fx.app, &format!("/api/orders/{a}/cancel"), Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    let ticket = root_ticket_id(&fx, &a).await;
+
+    let (status, body) = record_rifter(
+        &fx,
+        &ticket,
+        &[(34, 1_000), (35, 200)],
+        serde_json::json!([]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let shortage = &body["error"]["shortages"][0];
+    assert_eq!(shortage["own"], 0);
+    assert_eq!(shortage["free"], 600);
+    assert_eq!(shortage["holders"][0]["orderId"], b.as_str());
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 600), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert_eq!(
+        active_allocations(&pool).await,
+        vec![(34, 400, "epic_create".to_string())],
+        "B's reservation is untouched"
+    );
+}

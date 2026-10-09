@@ -612,6 +612,7 @@ fn production_input(
         location_note: String::new(),
         note: String::new(),
         effective_at: crate::db_now(),
+        take_from: Vec::new(),
     }
 }
 
