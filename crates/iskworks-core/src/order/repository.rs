@@ -418,8 +418,8 @@ pub enum OrderError {
     /// removed).
     #[error("not enough free inventory to reserve this Epic's planned reuse")]
     ReservationShortfall(Vec<ReservationShortfall>),
-    /// Reserving inventory for a canceled or archived Epic.
-    #[error("a canceled or archived Epic can't reserve inventory")]
+    /// Reserving inventory for a completed, canceled or archived Epic.
+    #[error("a completed, canceled or archived Epic can't reserve inventory")]
     OrderNotReservable,
     /// Recording needs stock other Epics have reserved (beyond its own
     /// reservations and free stock), and the caller didn't allow taking it.
@@ -648,7 +648,8 @@ pub trait OrderRepository: Send + Sync {
     /// requirement, reserve up to `reused_quantity - held` (held = active
     /// + consumed) from free stock, in serving order, under the balance
     /// lock. Partial by design; what free stock can't cover comes back as
-    /// shortfalls. Version-3, open (not canceled, not archived) Epics only.
+    /// shortfalls. Version-3, open (not completed, canceled or archived)
+    /// Epics only.
     async fn reserve_order_inventory(
         &self,
         workspace_id: WorkspaceId,
@@ -729,9 +730,10 @@ pub trait OrderRepository: Send + Sync {
     /// Organizational only: stamps `completed_at`. Requires `started_at IS
     /// NOT NULL AND completed_at IS NULL AND canceled_at IS NULL`.
     ///
-    /// **Mutates no inventory** -- no `Consumption`, no `ProductionOutput`,
-    /// no `inventory_allocations` change, no balance/cost-basis change, no
-    /// ticket mutation, no recording-completeness check. Final production
+    /// **Posts no inventory** -- no `Consumption`, no `ProductionOutput`,
+    /// no balance/cost-basis change, no ticket mutation, no
+    /// recording-completeness check. Releases whatever reservations the
+    /// Order still holds, in the same transaction. Final production
     /// output is posted by the root Manufacturing ticket's explicit
     /// `record_ticket_production`. Workflow status and recording state are
     /// independent (Complete Order + unrecorded root ticket, or open Order +
