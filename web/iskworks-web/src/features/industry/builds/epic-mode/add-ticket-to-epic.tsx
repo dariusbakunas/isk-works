@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { listCharacters, type CharacterRosterEntry } from "../../../../api/characters";
-import { listBuilds, listOrders, type Build, type EpicPlanOverlay, type OrderSummary } from "../../../../api/industry";
-import { InlineAlert } from "../../../../components/primitives";
+import { listBuilds, listOrders, type Build, type OrderSummary } from "../../../../api/industry";
 import { TicketEditor } from "../../../board/ticket-editor";
 import { apiMessage } from "../../shared/api-error";
 
@@ -12,16 +11,16 @@ interface EditorData {
 }
 
 /**
- * Above the Plan when an Epic is selected: a Create ticket that starts with
- * this Epic chosen. (The read-only notice lives with the Epic selector, so
- * it shows on every tab.)
+ * "Add ticket to Epic": the Build toolbar's action while an Epic is
+ * selected (in place of Create Epic). Opens the ticket editor -- any kind
+ * of ticket -- with the Epic already chosen.
  */
-export function EpicPlanHeader({
-  epic,
-  onTicketCreated,
+export function AddTicketToEpicButton({
+  epicId,
+  onCreated,
 }: {
-  epic: EpicPlanOverlay;
-  onTicketCreated: () => void;
+  epicId: string;
+  onCreated: () => void;
 }) {
   const [editorData, setEditorData] = useState<EditorData | null>(null);
   const [opening, setOpening] = useState(false);
@@ -41,26 +40,30 @@ export function EpicPlanHeader({
   }
 
   return (
-    <div className="mb-3 space-y-2">
-      <div className="flex justify-end">
-        <button className="iw-button-secondary" disabled={opening} onClick={() => void openEditor()} type="button">
-          Create ticket
-        </button>
-      </div>
-      {error ? <InlineAlert title="Ticket was not created">{error}</InlineAlert> : null}
+    <>
+      <button
+        className="iw-button-secondary"
+        disabled={opening}
+        onClick={() => void openEditor()}
+        title={error || "Create a ticket in this Epic"}
+        type="button"
+      >
+        {opening ? "Opening..." : "Add ticket to Epic"}
+      </button>
+      {error ? <span className="text-xs text-danger" role="alert">{error}</span> : null}
       {editorData ? (
         <TicketEditor
           builds={editorData.builds}
           characters={editorData.characters}
-          initialEpicId={epic.orderId}
+          initialEpicId={epicId}
           onClose={() => setEditorData(null)}
           onCreated={() => {
             setEditorData(null);
-            onTicketCreated();
+            onCreated();
           }}
           orders={editorData.orders}
         />
       ) : null}
-    </div>
+    </>
   );
 }

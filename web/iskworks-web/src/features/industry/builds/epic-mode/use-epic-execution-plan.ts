@@ -26,7 +26,12 @@ function untrackedBuys(requirements: OrderRequirement[]): Map<number, string[]> 
 }
 
 /** An Epic's frozen plan for the Plan tab, loaded while the tab is active. */
-export function useEpicExecutionPlan(epicId: string | null, active: boolean): EpicExecutionPlanState {
+export function useEpicExecutionPlan(
+  epicId: string | null,
+  active: boolean,
+  /** Bump to reload after an outside change. */
+  refreshKey = 0,
+): EpicExecutionPlanState {
   const [data, setData] = useState<EpicExecutionPlan | null>(null);
   const [untracked, setUntracked] = useState<Map<number, string[]>>(new Map());
   const [error, setError] = useState("");
@@ -53,7 +58,7 @@ export function useEpicExecutionPlan(epicId: string | null, active: boolean): Ep
     return () => {
       cancelled = true;
     };
-  }, [epicId, active, reloadKey]);
+  }, [epicId, active, reloadKey, refreshKey]);
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), []);
   return { data: data?.epic.orderId === epicId ? data : null, untrackedBuyRequirementIds: untracked, error, reload };

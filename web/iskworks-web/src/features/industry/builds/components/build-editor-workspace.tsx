@@ -21,6 +21,7 @@ import {
 } from "./planner-panels";
 import { BuildEditorHeader } from "./build-editor-header";
 import { CreateEpicDialog } from "./create-epic-dialog";
+import { AddTicketToEpicButton } from "../epic-mode/add-ticket-to-epic";
 import { EpicSelector } from "../epic-mode/epic-selector";
 import { useBuildEpicSelection } from "../epic-mode/use-build-epic-selection";
 import { BuildPageHeader } from "./build-page-header";
@@ -196,6 +197,8 @@ export function BuildEditorWorkspace({
   // has Epics; a focused child producer always shows free stock.
   const epicSelection = useBuildEpicSelection(focusedProducer ? null : initialBuild?.id ?? null);
   const selectedEpicId = epicSelection.selectedEpicId;
+  // Reloads the Epic's Plan after a ticket is added from the toolbar.
+  const [epicRefreshKey, setEpicRefreshKey] = useState(0);
   // An Epic's view is read-only: selecting one closes Build settings.
   const closeInspector = editor.closeInspector;
   const buildSettingsOpen = editor.inspectorMode?.kind === "buildSettings";
@@ -445,14 +448,22 @@ export function BuildEditorWorkspace({
             >
               {exportingWorkbook ? "Exporting..." : "Export verification workbook"}
             </button>
-            <button
-              className="iw-button-secondary"
-              disabled={epicCommand !== null}
-              onClick={handleCreateOrder}
-              type="button"
-            >
-              Create Epic
-            </button>
+            {selectedEpicId ? (
+              // An Epic is shown: add work to it rather than freeze another.
+              <AddTicketToEpicButton
+                epicId={selectedEpicId}
+                onCreated={() => setEpicRefreshKey((key) => key + 1)}
+              />
+            ) : (
+              <button
+                className="iw-button-secondary"
+                disabled={epicCommand !== null}
+                onClick={handleCreateOrder}
+                type="button"
+              >
+                Create Epic
+              </button>
+            )}
           </div> : null}
         </div>
       ) : null}
@@ -494,6 +505,7 @@ export function BuildEditorWorkspace({
             active={view === "plan"}
             editor={editor}
             epicId={selectedEpicId}
+            epicRefreshKey={epicRefreshKey}
             focusedProducerId={focusedProducer?.id}
           />
         </div>

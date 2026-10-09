@@ -33,7 +33,6 @@ import {
 import { EmptyState, InlineAlert, Panel } from "../../../../components/primitives";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { focusExecutionPlan } from "../focused-producer-projection";
-import { EpicPlanHeader } from "../epic-mode/epic-plan-header";
 import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
 import { apiMessage } from "../../shared/api-error";
 
@@ -78,6 +77,7 @@ export function BuildStagesView({
   active,
   focusedProducerId,
   epicId = null,
+  epicRefreshKey = 0,
 }: {
   editor: BuildWorksheetEditorModel;
   active: boolean;
@@ -85,10 +85,13 @@ export function BuildStagesView({
   /** Show this Epic's frozen plan instead of the live draft: same layout,
    * read-only, with each step's ticket and the Epic's reservations. */
   epicId?: string | null;
+  /** Bump to reload the Epic's plan after a change made elsewhere (e.g. a
+   * ticket added from the Build toolbar). */
+  epicRefreshKey?: number;
 }) {
   const buildId = editor.initialBuild?.id ?? "";
   const epicMode = epicId !== null;
-  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode);
+  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode, epicRefreshKey);
   const [creatingTicketsFor, setCreatingTicketsFor] = useState<number | null>(null);
   const [epicActionError, setEpicActionError] = useState("");
   const { plan: rootPlan, loading, refreshError, hardError: draftError, refetch } = useBuildExecutionPlan({
@@ -218,12 +221,6 @@ export function BuildStagesView({
             </p>
           ) : null}
 
-          {epic ? (
-            <EpicPlanHeader
-              epic={epic}
-              onTicketCreated={epicPlan.reload}
-            />
-          ) : null}
           {epicActionError ? (
             <div className="mb-2">
               <InlineAlert title="Tickets were not created">{epicActionError}</InlineAlert>

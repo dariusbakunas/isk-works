@@ -1540,7 +1540,7 @@ describe("Build detail planning", () => {
     expect(await screen.findByText("Read-only · choose No Epic to edit")).toBeInTheDocument();
     expect(screen.queryByText("Build changed since this Epic")).not.toBeInTheDocument();
     // The Plan's own layout, showing the Epic's data.
-    const inputs = screen.getByRole("table", { name: "Inputs to Source" });
+    const inputs = await screen.findByRole("table", { name: "Inputs to Source" });
     const tritanium = within(inputs).getByText("Tritanium").closest("tr")!;
     expect(within(tritanium).getByText("20,000 reserved · 0 used")).toBeInTheDocument();
     expect(within(tritanium).getByText("12,000")).toBeInTheDocument();
@@ -1551,6 +1551,9 @@ describe("Build detail planning", () => {
     // The Build itself can't be edited while an Epic is shown.
     expect(screen.getByRole("button", { name: /Edit build settings/ })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Edit blueprint" })).not.toBeInTheDocument();
+    // Add work to the shown Epic instead of freezing another one.
+    expect(screen.queryByRole("button", { name: "Create Epic" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add ticket to Epic" })).toBeInTheDocument();
   });
 
   test("opens a saved draft in the worksheet planner", async () => {
