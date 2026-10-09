@@ -84,10 +84,10 @@ pub(super) async fn create_order(
         }
         None => Vec::new(),
     };
-    let preview = request
-        .reservation
-        .is_some()
-        .then(|| EpicReusePreview::of(&frozen.requirements));
+    // Every Epic reserves what its frozen plan reuses: an Epic that froze
+    // reuse without holding it would let the next plan count the same
+    // stock (the double-planning reservations exist to prevent).
+    let preview = EpicReusePreview::of(&frozen.requirements);
     let root_operation = frozen
         .operations
         .first()
@@ -271,7 +271,7 @@ pub(super) async fn create_order(
             operations: frozen.operations,
             requirements: frozen.requirements,
             tickets: plan_tickets,
-            reservation: request.reservation.as_ref().map(|_| NewPlanReservation {
+            reservation: Some(NewPlanReservation {
                 stages: dag.stages.clone(),
             }),
         })
@@ -279,11 +279,7 @@ pub(super) async fn create_order(
     let plan_result = match plan_result {
         Ok(plan_result) => plan_result,
         Err(OrderError::ReservationShortfall(shortfalls)) => {
-            return Ok(reservation_drift_response(
-                preview.expect("a shortfall implies a reservation request"),
-                Vec::new(),
-                shortfalls,
-            ));
+            return Ok(reservation_drift_response(preview, Vec::new(), shortfalls));
         }
         Err(error) => return Err(error.into()),
     };
@@ -311,14 +307,16 @@ pub(super) async fn create_order(
 }
 
 /// `POST /api/builds/:build_id/orders` body: the live overlay command
-/// (flattened, so a bare command still works) plus an optional request to
-/// reserve the Epic's frozen reuse.
+/// (flattened, so a bare command still works) plus, optionally, the reuse
+/// the client previewed. The Epic always reserves its frozen reuse.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct CreateOrderRequest {
     #[serde(flatten)]
     command: PreviewBuildPlanCommand,
-    /// Absent: the Epic is created without reserving anything.
+    /// The previewed reuse to hold the freeze to (less reuse now -> 409
+    /// drift). Absent: nothing to compare; the Epic still reserves, and a
+    /// shortfall under the lock is still a 409.
     #[serde(default)]
     reservation: Option<CreateOrderReservation>,
 }
