@@ -21,6 +21,7 @@ mod character_sync;
 mod connections;
 mod error;
 mod planetary;
+mod retention;
 mod sync_runs;
 mod wallet;
 mod wallet_recording;
@@ -31,6 +32,7 @@ mod tests;
 mod wallet_recording_tests;
 
 use error::*;
+pub use retention::EsiObservationPruneOutcome;
 
 #[derive(Clone)]
 pub struct PgEsiRepository {

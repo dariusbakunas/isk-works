@@ -37,7 +37,10 @@ pub use auth::{
     AuthPurgeOutcome, OwnerHashCheck, PendingLoginAuthorization, PgAuthMaintenance,
     PgSessionRepository, PgUserRepository,
 };
-pub use esi::{FacilityLabel, PendingAuthorization, PgEsiRepository, StoredRefreshToken};
+pub use esi::{
+    EsiObservationPruneOutcome, FacilityLabel, PendingAuthorization, PgEsiRepository,
+    StoredRefreshToken,
+};
 pub use facility::{KnownStructure, PgFacilityRepository};
 pub use finance::PgFinanceRepository;
 pub use industry::PgIndustryRepository;

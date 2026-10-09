@@ -153,6 +153,39 @@ async fn market_gc_loop<T: EsiTransport + 'static>(
     .await
 }
 
+async fn esi_gc_loop<T: EsiTransport + 'static>(
+    worker: Arc<EvidenceWorker<T>>,
+    interval: Duration,
+    cancel: CancellationToken,
+) {
+    poll_loop(
+        "esi_gc",
+        interval,
+        cancel,
+        PassMode::DropOnCancel,
+        move |_cancel| {
+            let worker = Arc::clone(&worker);
+            async move {
+                match worker.sweep_superseded_esi_observations().await {
+                    Ok((assets, prices))
+                        if assets.rows_deleted == 0 && prices.rows_deleted == 0 =>
+                    {
+                        tracing::trace!("no superseded ESI observations to prune")
+                    }
+                    Ok((assets, prices)) => tracing::info!(
+                        asset_snapshots = assets.rows_deleted,
+                        adjusted_prices = prices.rows_deleted,
+                        drained = assets.drained && prices.drained,
+                        "pruned superseded ESI observations"
+                    ),
+                    Err(error) => tracing::warn!(%error, "ESI observation GC pass failed"),
+                }
+            }
+        },
+    )
+    .await
+}
+
 async fn adjusted_price_loop<T: EsiTransport + 'static>(
     worker: Arc<EvidenceWorker<T>>,
     interval: Duration,
@@ -270,6 +303,11 @@ where
         config.market_gc_poll_interval,
         cancel.clone(),
     ));
+    let esi_gc = tokio::spawn(esi_gc_loop(
+        Arc::clone(&worker),
+        config.esi_gc_poll_interval,
+        cancel.clone(),
+    ));
     let auth_gc = tokio::spawn(auth_gc_loop(
         Arc::clone(&worker),
         config.auth_gc_poll_interval,
@@ -299,6 +337,7 @@ where
         let _ = tokio::join!(
             market,
             market_gc,
+            esi_gc,
             auth_gc,
             adjusted_price,
             system_index,
@@ -324,6 +363,8 @@ pub struct WorkerConfig {
     /// A batch must be older than this before the GC sweep will touch it,
     /// so an in-flight refresh is never raced.
     pub market_gc_grace: Duration,
+    /// How often superseded asset snapshots and adjusted prices are pruned.
+    pub esi_gc_poll_interval: Duration,
     /// How often expired sessions and stale pending OAuth authorizations
     /// are purged (`PgAuthMaintenance`).
     pub auth_gc_poll_interval: Duration,
@@ -349,6 +390,7 @@ impl Default for WorkerConfig {
             market_freshness: Duration::from_secs(15 * 60),
             market_gc_poll_interval: Duration::from_secs(60 * 60),
             market_gc_grace: Duration::from_secs(60 * 60),
+            esi_gc_poll_interval: Duration::from_secs(60 * 60),
             auth_gc_poll_interval: Duration::from_secs(60 * 60),
             adjusted_price_poll_interval: Duration::from_secs(30),
             adjusted_price_freshness: Duration::from_secs(6 * 60 * 60),
@@ -393,6 +435,11 @@ impl WorkerConfig {
             &mut lookup,
             "ISKWORKS_WORKER_MARKET_GC_GRACE_SECONDS",
             config.market_gc_grace,
+        )?;
+        config.esi_gc_poll_interval = duration_setting(
+            &mut lookup,
+            "ISKWORKS_WORKER_ESI_GC_POLL_SECONDS",
+            config.esi_gc_poll_interval,
         )?;
         config.auth_gc_poll_interval = duration_setting(
             &mut lookup,
