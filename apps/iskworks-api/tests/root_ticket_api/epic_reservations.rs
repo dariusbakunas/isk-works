@@ -1148,6 +1148,72 @@ async fn production_output_is_reserved_to_the_step_it_feeds(pool: PgPool) {
     );
 }
 
+/// The root ticket's blocker types and the Epic's component requirement
+/// state, read the way the Board and the Epic inspector read them.
+async fn component_progress(fx: &Fixture, order_id: &str) -> (Vec<i64>, Value) {
+    let tickets = list_tickets(&fx.app).await;
+    let root = tickets
+        .iter()
+        .find(|ticket| ticket["orderId"] == order_id && ticket["typeId"] != 90100)
+        .expect("root ticket");
+    let blockers = root["blockedBy"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|blocker| blocker["typeId"].as_i64().unwrap())
+        .collect();
+    let (status, order) = get_json(fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(status, StatusCode::OK, "body: {order}");
+    (blockers, requirement_of(&order, 90100)["state"].clone())
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recorded_step_output_unblocks_the_ticket_it_feeds(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+    let (blockers, state) = component_progress(&fx, &order_id).await;
+    assert_eq!(blockers, vec![90100]);
+    assert_eq!(state, "linked");
+
+    let (status, body) = record_component(&fx, &child, 5).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let (blockers, state) = component_progress(&fx, &order_id).await;
+    assert!(blockers.is_empty(), "still blocked by {blockers:?}");
+    assert_eq!(state, "satisfied");
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_short_recording_keeps_the_consumer_blocked(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+
+    let (status, body) = record_component(&fx, &child, 4).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    let (blockers, state) = component_progress(&fx, &order_id).await;
+    assert_eq!(blockers, vec![90100]);
+    assert_eq!(state, "linked");
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn reverting_the_output_blocks_the_consumer_again(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, child) = assembly_epic_with_stock(&pool, &fx).await;
+    let (status, recording) = record_component(&fx, &child, 5).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {recording}");
+
+    let (status, body) = revert(&fx, &child, &recording).await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+
+    let (blockers, state) = component_progress(&fx, &order_id).await;
+    assert_eq!(blockers, vec![90100]);
+    assert_eq!(state, "linked");
+}
+
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
 async fn reverting_a_recording_releases_its_output_reservation(pool: PgPool) {

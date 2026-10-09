@@ -296,10 +296,13 @@ pub(super) async fn create_order(
         &plan_result.requirements,
         &plan_result.tickets,
     )?;
+    // Create Epic reserves only the frozen reuse, which never exceeds a
+    // requirement's need (a fully reused one is already InventorySatisfied).
     let mut response = order_detail_response(
         &plan_result.order,
         plan_result.requirements,
         empty_fulfillments,
+        &HashMap::new(),
     );
     response.production_plan = production_plan;
     response.reuse_increased = reuse_increased;
@@ -540,11 +543,23 @@ pub(super) async fn list_order_tickets(
     let tickets = repository.list_tickets(workspace_id, owner_id).await?;
 
     let mut summaries = Vec::with_capacity(tickets.len());
+    let mut held_by_order: HashMap<OrderId, HashSet<(String, i64)>> = HashMap::new();
+    let no_holdings = HashSet::new();
     for ticket in tickets {
         let prerequisites = repository.list_ticket_prerequisites(ticket.id).await?;
+        if let Some(order_id) = ticket.order_id {
+            if let std::collections::hash_map::Entry::Vacant(entry) = held_by_order.entry(order_id)
+            {
+                entry.insert(held_requirement_keys(&*repository, workspace_id, order_id).await?);
+            }
+        }
+        let held = ticket
+            .order_id
+            .and_then(|order_id| held_by_order.get(&order_id))
+            .unwrap_or(&no_holdings);
         // Derived independently of `ticket.status` -- dependency state is
         // reported, workflow state is user-controlled.
-        let blocked_by = ticket_blockers(&*repository, workspace_id, &prerequisites).await?;
+        let blocked_by = ticket_blockers(&*repository, workspace_id, held, &prerequisites).await?;
         // Derived recording summary. Acquisition: requested = ticket
         // quantity, recorded = Σ recorded_quantity. Manufacturing/Reaction:
         // requested = execution_snapshot.runs (frozen at creation for the
@@ -672,12 +687,13 @@ pub(super) async fn fetch_order_detail(
     } else {
         production_plan_view(operations, &requirements, &order_tickets)?
     };
+    let mut held: HashMap<OrderRequirementId, u64> = HashMap::new();
     let inventory = if order.planning_snapshot_version >= 3 {
         let mut summary = EpicInventorySummary {
             planned_reuse: requirements.iter().map(|r| r.reused_quantity).sum(),
             ..EpicInventorySummary::default()
         };
-        let held: HashMap<OrderRequirementId, u64> = repository
+        held = repository
             .requirement_reservation_totals(workspace_id, order_id)
             .await?
             .into_iter()
@@ -699,7 +715,8 @@ pub(super) async fn fetch_order_detail(
     } else {
         None
     };
-    let mut response = order_detail_response(&order, requirements, fulfillments_per_requirement);
+    let mut response =
+        order_detail_response(&order, requirements, fulfillments_per_requirement, &held);
     response.production_plan = production_plan;
     response.inventory = inventory;
     Ok(response)
