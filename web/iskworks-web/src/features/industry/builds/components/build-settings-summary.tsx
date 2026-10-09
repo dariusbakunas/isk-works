@@ -32,6 +32,7 @@ export function BuildSettingsSummary({
   sources,
   updating,
   onEdit,
+  editDisabledReason,
 }: {
   /** The Blueprint/Recipe cell -- rendered first, ahead of these settings
    * chips, but owned by the caller since Blueprint keeps its own dialog. */
@@ -52,6 +53,9 @@ export function BuildSettingsSummary({
   sources: PriceSource[];
   updating: boolean;
   onEdit: () => void;
+  /** Why Build settings can't be edited right now (e.g. an Epic is
+   * selected); disables the button and explains on hover. */
+  editDisabledReason?: string;
 }) {
   const manufacturingFacility = manufacturingFacilities.find((facility) => facility.id === manufacturingFacilityId);
   const reactionFacility = reactionFacilities.find((facility) => facility.id === reactionFacilityId);
@@ -78,7 +82,9 @@ export function BuildSettingsSummary({
         <button
           className="iw-button-secondary ml-auto shrink-0"
           data-build-settings-trigger
+          disabled={editDisabledReason !== undefined}
           onClick={onEdit}
+          title={editDisabledReason}
           type="button"
         >
           <Settings2 aria-hidden="true" className="h-3.5 w-3.5" />

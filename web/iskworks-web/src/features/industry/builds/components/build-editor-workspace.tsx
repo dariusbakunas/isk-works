@@ -196,6 +196,12 @@ export function BuildEditorWorkspace({
   // has Epics; a focused child producer always shows free stock.
   const epicSelection = useBuildEpicSelection(focusedProducer ? null : initialBuild?.id ?? null);
   const selectedEpicId = epicSelection.selectedEpicId;
+  // An Epic's view is read-only: selecting one closes Build settings.
+  const closeInspector = editor.closeInspector;
+  const buildSettingsOpen = editor.inspectorMode?.kind === "buildSettings";
+  useEffect(() => {
+    if (selectedEpicId !== null && buildSettingsOpen) closeInspector?.();
+  }, [selectedEpicId, buildSettingsOpen, closeInspector]);
   // Non-null while the Create Epic dialog is open: the overlay it freezes.
   const [epicCommand, setEpicCommand] = useState<PreviewBuildPlanCommand | null>(null);
   const [orderError, setOrderError] = useState("");
@@ -322,7 +328,9 @@ export function BuildEditorWorkspace({
                     : "Available blueprint";
                 })()
               : `${selectedName ?? "Manual blueprint"} · ME ${blueprintMe} · TE ${blueprintTe}`}
-          onEdit={selected.kind === "manufacturing" ? () => setBlueprintDialogOpen(true) : undefined}
+          onEdit={selected.kind === "manufacturing" && selectedEpicId === null
+            ? () => setBlueprintDialogOpen(true)
+            : undefined}
         />
       )}
       manufacturingFacilities={manufacturing.facilities}
@@ -338,6 +346,9 @@ export function BuildEditorWorkspace({
       sources={sources}
       updating={previewPending || previewUpdating}
       onEdit={openBuildSettings}
+      editDisabledReason={selectedEpicId !== null
+        ? "An Epic is selected. Choose No Epic to edit the Build."
+        : undefined}
     />
   ) : null;
 
@@ -468,7 +479,12 @@ export function BuildEditorWorkspace({
         // pan/zoom survive a tab round trip. `active` gates fetching and
         // the right-rail inspector portal.
         <div hidden={view !== "graph"}>
-          <BuildGraphView active={view === "graph"} editor={editor} focusedProducerId={focusedProducer?.id} />
+          <BuildGraphView
+            active={view === "graph"}
+            editor={editor}
+            focusedProducerId={focusedProducer?.id}
+            readOnly={selectedEpicId !== null}
+          />
         </div>
       ) : null}
       {sdeReady && initialBuild ? (
@@ -488,7 +504,12 @@ export function BuildEditorWorkspace({
       ) : null}
       {sdeReady && initialBuild ? (
         <div hidden={view !== "worksheet"}>
-          <BuildWorksheetView active={view === "worksheet"} editor={editor} focusedProducerId={focusedProducer?.id} />
+          <BuildWorksheetView
+            active={view === "worksheet"}
+            editor={editor}
+            focusedProducerId={focusedProducer?.id}
+            readOnly={selectedEpicId !== null}
+          />
         </div>
       ) : null}
       {

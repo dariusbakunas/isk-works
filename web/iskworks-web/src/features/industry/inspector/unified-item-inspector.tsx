@@ -45,10 +45,25 @@ import {
 export function UnifiedItemInspector({
   model,
   actions,
+  readOnly = false,
 }: {
   model: InspectorModel;
   actions: InspectorActions;
+  /** Show every value, change nothing (an Epic is selected): editable
+   * bodies render disabled, and the settings footer and "Open linked
+   * build" are hidden. Close and section toggles still work. */
+  readOnly?: boolean;
 }) {
+  // Disabling a fieldset disables every form control inside it, so the
+  // current choices stay visible but can't be changed.
+  const editable = (body: ReactNode) =>
+    readOnly ? (
+      <fieldset className="m-0 min-w-0 border-0 p-0" disabled>
+        {body}
+      </fieldset>
+    ) : (
+      body
+    );
   const sections: Partial<Record<(typeof INSPECTOR_SECTION_ORDER)[number], ReactNode>> = {
     quantities: model.quantities ? (
       <InspectorSection defaultExpanded id="quantities" label="Quantities" summary={model.quantities.summary}>
@@ -62,12 +77,12 @@ export function UnifiedItemInspector({
     ) : null,
     sourcing: model.sourcing ? (
       <InspectorSection defaultExpanded id="sourcing" label="Sourcing" summary={model.sourcing.summary}>
-        <SourcingBody name={model.identity.name} slice={model.sourcing} actions={actions.sourcing} />
+        {editable(<SourcingBody name={model.identity.name} slice={model.sourcing} actions={actions.sourcing} />)}
       </InspectorSection>
     ) : null,
     blueprint: model.blueprint ? (
       <InspectorSection defaultExpanded id="blueprint" label="Blueprint" summary={model.blueprint.summary}>
-        <BlueprintBody slice={model.blueprint} actions={actions.blueprint} />
+        {editable(<BlueprintBody slice={model.blueprint} actions={actions.blueprint} />)}
       </InspectorSection>
     ) : null,
     recipe: model.recipe ? (
@@ -77,7 +92,7 @@ export function UnifiedItemInspector({
     ) : null,
     facility: model.facility ? (
       <InspectorSection defaultExpanded id="facility" label="Facility" summary={model.facility.summary}>
-        <FacilityBody slice={model.facility} actions={actions.facility} />
+        {editable(<FacilityBody slice={model.facility} actions={actions.facility} />)}
       </InspectorSection>
     ) : null,
     cost: model.cost ? (
@@ -88,9 +103,9 @@ export function UnifiedItemInspector({
     pricing: model.pricing ? (
       <InspectorSection defaultExpanded id="pricing" label="Pricing" summary={model.pricing.summary}>
         {model.pricing.kind === "root" ? (
-          <RootPricingBody slice={model.pricing} actions={actions.pricing} />
+          editable(<RootPricingBody slice={model.pricing} actions={actions.pricing} />)
         ) : (
-          <PricingBody slice={model.pricing} onChange={actions.pricing?.onChange} />
+          editable(<PricingBody slice={model.pricing} onChange={actions.pricing?.onChange} />)
         )}
       </InspectorSection>
     ) : null,
@@ -139,7 +154,7 @@ export function UnifiedItemInspector({
       ) : null}
       <WarningBadges warnings={model.warnings} />
       {INSPECTOR_SECTION_ORDER.map((id) => (sections[id] ? <div key={id}>{sections[id]}</div> : null))}
-      {actions.openLinkedBuild ? (
+      {actions.openLinkedBuild && !readOnly ? (
         <div className="px-3 py-2">
           <button
             aria-label={`Open linked build for ${model.identity.name}`}
@@ -157,7 +172,7 @@ export function UnifiedItemInspector({
           <div className="mt-3">{actions.calculationEvidence}</div>
         </details>
       ) : null}
-      {actions.footer}
+      {readOnly ? null : actions.footer}
     </div>
   );
 }

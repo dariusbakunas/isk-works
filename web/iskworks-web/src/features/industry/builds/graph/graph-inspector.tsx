@@ -66,6 +66,7 @@ function costComponentLine(value: string | null): string {
 }
 
 function NodeInspectorBody({
+  readOnly,
   selectedNode,
   editor,
   nodeWarnings,
@@ -115,6 +116,7 @@ function NodeInspectorBody({
   onClose: () => void;
   onScope: ((scope: "missing" | "full") => void) | undefined;
   fulfillmentScope: "missing" | "full" | undefined;
+  readOnly: boolean;
 }) {
   const { nodeType } = selectedNode.data;
   const isRoot = nodeType === "root";
@@ -124,7 +126,7 @@ function NodeInspectorBody({
   // one shared editor via the same canonical builder.
   if (isRoot) {
     const root = buildRootInspector(editor, { onClose });
-    return <UnifiedItemInspector actions={root.actions} model={root.model} />;
+    return <UnifiedItemInspector actions={root.actions} model={root.model} readOnly={readOnly} />;
   }
 
   const acqNode = nodeType === "acquisition" ? selectedNode.data.node : null;
@@ -192,7 +194,7 @@ function NodeInspectorBody({
     </>
   );
 
-  return <UnifiedItemInspector actions={{ ...actions, footer, onClose }} model={model} />;
+  return <UnifiedItemInspector actions={{ ...actions, footer, onClose }} model={model} readOnly={readOnly} />;
 }
 
 function PlanSummary({
@@ -264,6 +266,7 @@ export function GraphInspector({
   allowMarketPolicyOverride,
   sourcingPending,
   allFacilities,
+  readOnly = false,
 }: {
   active: boolean;
   projection: BuildGraphProjection | null;
@@ -300,6 +303,8 @@ export function GraphInspector({
   /** A BUY <-> BUILD switch is in flight. */
   sourcingPending: boolean;
   allFacilities: FacilityProfile[];
+  /** An Epic is selected: show values, change nothing. */
+  readOnly?: boolean;
 }) {
   const titleId = useId();
 
@@ -357,6 +362,7 @@ export function GraphInspector({
     body = (
       <InspectorCollapseProvider>
         <NodeInspectorBody
+          readOnly={readOnly}
           allFacilities={allFacilities}
           allowMarketPolicyOverride={allowMarketPolicyOverride}
           detailError={isRoot ? null : nodeDetailError}

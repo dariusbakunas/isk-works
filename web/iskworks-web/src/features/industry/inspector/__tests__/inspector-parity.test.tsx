@@ -498,3 +498,53 @@ describe("linked Build inspector is identical from Worksheet and Graph", () => {
     }
   });
 });
+
+describe("UnifiedItemInspector read-only (an Epic is selected)", () => {
+  it("shows the current choices but disables every control in them", async () => {
+    const onPricingChange = vi.fn();
+    const graph = buildGraphInspector(
+      {
+        nodeType: "acquisition",
+        depth: 1,
+        node: {
+          graphNodeId: "buy:root:34",
+          parentBuildId: "root",
+          typeId: 34,
+          typeName: "Tritanium",
+          requiredQuantity: 100,
+          missingQuantity: 80,
+          buildableRecipe: null,
+          estimatedCost: "500.0000",
+          costState: "known",
+          warning: null,
+        },
+      } as unknown as BuildGraphNodeData,
+      {
+        worksheetItem: rawMaterial(),
+        allowMarketPolicyOverride: true,
+        rootTypeId: 500,
+        handlers: { onPricingChange },
+      },
+    );
+    const onClose = vi.fn();
+    render(
+      <InspectorCollapseProvider>
+        <UnifiedItemInspector
+          actions={{ ...graph.actions, onClose, footer: <button type="button">Build settings footer</button> }}
+          model={graph.model}
+          readOnly
+        />
+      </InspectorCollapseProvider>,
+    );
+
+    const pricing = screen.getByRole("region", { name: "Pricing" });
+    const manual = within(pricing).getByRole("radio", { name: "Manual price" });
+    expect(manual).toBeDisabled();
+    await userEvent.click(manual);
+    expect(onPricingChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Build settings footer" })).not.toBeInTheDocument();
+    // Closing still works.
+    const close = screen.getAllByRole("button").find((button) => /close/i.test(button.getAttribute("aria-label") ?? ""));
+    expect(close).toBeEnabled();
+  });
+});

@@ -1547,6 +1547,9 @@ describe("Build detail planning", () => {
     expect(screen.getByText("T-1 · To do")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Epic" })).toHaveValue("epic-1");
     expect(screen.getByLabelText("Runs")).toBeDisabled();
+    // The Build itself can't be edited while an Epic is shown.
+    expect(screen.getByRole("button", { name: /Edit build settings/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Edit blueprint" })).not.toBeInTheDocument();
   });
 
   test("opens a saved draft in the worksheet planner", async () => {
