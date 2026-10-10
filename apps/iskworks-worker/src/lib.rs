@@ -27,10 +27,43 @@ enum PassMode {
     DropOnCancel,
 }
 
+/// Whether a pass's work succeeded, for the loop metrics. A pass that
+/// found nothing due is `Ok`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PassResult {
+    Ok,
+    Failed,
+}
+
+impl PassResult {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// Records a finished pass of loop `name`. A pass dropped on shutdown
+/// never finishes and isn't recorded.
+fn record_pass(name: &'static str, result: PassResult, started: std::time::Instant) {
+    metrics::counter!(
+        "iskworks_worker_loop_runs_total",
+        "loop" => name,
+        "result" => result.label()
+    )
+    .increment(1);
+    metrics::histogram!("iskworks_worker_loop_duration_seconds", "loop" => name)
+        .record(started.elapsed().as_secs_f64());
+    metrics::gauge!("iskworks_worker_loop_last_run_timestamp_seconds", "loop" => name)
+        .set(Utc::now().timestamp() as f64);
+}
+
 /// Shared skeleton for the worker's periodic loops: fire immediately, then
 /// every `interval`, running `run_pass` each time. Observes `cancel` both
 /// while waiting for the next tick and (for `DropOnCancel` passes) while the
-/// pass runs, and never starts another pass once cancelled.
+/// pass runs, and never starts another pass once cancelled. Each finished
+/// pass is recorded (see `record_pass`).
 async fn poll_loop<F, Fut>(
     name: &'static str,
     interval: Duration,
@@ -39,7 +72,7 @@ async fn poll_loop<F, Fut>(
     mut run_pass: F,
 ) where
     F: FnMut(CancellationToken) -> Fut,
-    Fut: Future<Output = ()>,
+    Fut: Future<Output = PassResult>,
 {
     let mut ticks = tokio::time::interval(interval);
     loop {
@@ -53,16 +86,18 @@ async fn poll_loop<F, Fut>(
         if cancel.is_cancelled() {
             break;
         }
-        match mode {
+        let started = std::time::Instant::now();
+        let result = match mode {
             PassMode::Cooperative => run_pass(cancel.clone()).await,
             PassMode::DropOnCancel => {
                 tokio::select! {
                     biased;
                     () = cancel.cancelled() => break,
-                    () = run_pass(cancel.clone()) => {}
+                    result = run_pass(cancel.clone()) => result,
                 }
             }
-        }
+        };
+        record_pass(name, result, started);
     }
     tracing::info!(worker = name, "worker loop stopped");
 }
@@ -83,8 +118,12 @@ async fn market_loop<T: EsiTransport + 'static>(
                 match worker.refresh_due_market(Utc::now(), &cancel).await {
                     Ok(0) => tracing::trace!("no market evidence is due"),
                     Ok(count) => tracing::info!(count, "market evidence refresh pass completed"),
-                    Err(error) => tracing::warn!(%error, "market evidence refresh pass failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "market evidence refresh pass failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -114,8 +153,12 @@ async fn auth_gc_loop<T: EsiTransport + 'static>(
                         link_authorizations = outcome.link_authorizations,
                         "purged expired auth rows"
                     ),
-                    Err(error) => tracing::warn!(%error, "auth purge pass failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "auth purge pass failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -147,8 +190,12 @@ async fn market_gc_loop<T: EsiTransport + 'static>(
                         drained = outcome.drained,
                         "pruned orphaned market observations"
                     ),
-                    Err(error) => tracing::warn!(%error, "market observation GC pass failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "market observation GC pass failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -180,8 +227,12 @@ async fn esi_gc_loop<T: EsiTransport + 'static>(
                         drained = assets.drained && prices.drained,
                         "pruned superseded ESI observations"
                     ),
-                    Err(error) => tracing::warn!(%error, "ESI observation GC pass failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "ESI observation GC pass failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -204,8 +255,12 @@ async fn adjusted_price_loop<T: EsiTransport + 'static>(
                 match worker.refresh_due_adjusted_prices(Utc::now()).await {
                     Ok(false) => tracing::trace!("adjusted-price evidence is not due"),
                     Ok(true) => tracing::info!("adjusted-price evidence refreshed"),
-                    Err(error) => tracing::warn!(%error, "adjusted-price refresh failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "adjusted-price refresh failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -230,8 +285,12 @@ async fn system_index_loop<T: EsiTransport + 'static>(
                     Ok(count) => {
                         tracing::info!(count, "system-index evidence refresh pass completed")
                     }
-                    Err(error) => tracing::warn!(%error, "system-index refresh failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "system-index refresh failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )
@@ -257,8 +316,12 @@ async fn character_sync_loop<T: EsiTransport + 'static>(
                 {
                     Ok(0) => tracing::trace!("no character sources are due"),
                     Ok(count) => tracing::info!(count, "character sync pass completed"),
-                    Err(error) => tracing::warn!(%error, "character sync pass failed"),
+                    Err(error) => {
+                        tracing::warn!(%error, "character sync pass failed");
+                        return PassResult::Failed;
+                    }
                 }
+                PassResult::Ok
             }
         },
     )

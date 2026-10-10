@@ -1656,6 +1656,7 @@ dependencies = [
  "iskworks-storage",
  "metrics",
  "metrics-exporter-prometheus",
+ "metrics-util",
  "rust_decimal",
  "sqlx",
  "tokio",
