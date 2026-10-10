@@ -1,4 +1,6 @@
 use super::*;
+use crate::sync_metrics::{record_sync_run, SyncResult};
+use iskworks_core::EsiSyncStatus;
 
 impl EsiApplicationService {
     pub async fn sync(
@@ -12,14 +14,14 @@ impl EsiApplicationService {
                 retry_after_seconds,
             })?;
         let (connection, token) = self.refresh(id).await?;
+        let assets = || recorded_sync("assets", self.sync_assets(&connection, &token));
+        let wallet = || recorded_sync("wallet_transactions", self.sync_wallet(&connection, &token));
         match kind {
-            EsiSyncKind::Assets => Ok(vec![self.sync_assets(&connection, &token).await?]),
-            EsiSyncKind::WalletTransactions => {
-                Ok(vec![self.sync_wallet(&connection, &token).await?])
-            }
+            EsiSyncKind::Assets => Ok(vec![assets().await?]),
+            EsiSyncKind::WalletTransactions => Ok(vec![wallet().await?]),
             EsiSyncKind::AllSupported => {
-                let assets = self.sync_assets(&connection, &token).await?;
-                let wallet = self.sync_wallet(&connection, &token).await?;
+                let assets = assets().await?;
+                let wallet = wallet().await?;
                 Ok(vec![assets, wallet])
             }
         }
@@ -445,4 +447,93 @@ pub(super) async fn lookup_entity_names(
         }
     }
     lookup
+}
+
+/// Runs one manual import and records it as a sync run of `kind`
+/// (`CharacterSyncService` records the worker's own runs of the same
+/// imports, which don't come through here).
+async fn recorded_sync(
+    kind: &'static str,
+    run: impl std::future::Future<Output = Result<EsiSyncRun, EsiApplicationError>>,
+) -> Result<EsiSyncRun, EsiApplicationError> {
+    let started = std::time::Instant::now();
+    let outcome = run.await;
+    let result = match &outcome {
+        Ok(run) => match run.status {
+            EsiSyncStatus::Succeeded => SyncResult::Success,
+            EsiSyncStatus::PartiallySucceeded => SyncResult::Incomplete,
+            EsiSyncStatus::Pending | EsiSyncStatus::Running | EsiSyncStatus::Failed => {
+                SyncResult::Failed
+            }
+        },
+        Err(_) => SyncResult::Failed,
+    };
+    record_sync_run(kind, result, started);
+    outcome
+}
+
+#[cfg(test)]
+mod metrics_tests {
+    use super::*;
+    use crate::sync_metrics::test_support::Recorded;
+    use iskworks_core::EsiSyncRunId;
+    use metrics_util::debugging::DebuggingRecorder;
+
+    fn run(status: EsiSyncStatus) -> EsiSyncRun {
+        EsiSyncRun {
+            id: EsiSyncRunId::new(),
+            connection_id: ConnectedCharacterId::new(),
+            requested_kind: EsiSyncKind::Assets,
+            status,
+            phase: String::new(),
+            started_at: chrono::Utc::now(),
+            completed_at: None,
+            cache_expires_at: None,
+            imported_count: 0,
+            unchanged_count: 0,
+            skipped_count: 0,
+            error_count: 0,
+            error_code: None,
+            summary: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_imports_are_recorded_by_how_they_ended() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+
+        for status in [
+            EsiSyncStatus::Succeeded,
+            EsiSyncStatus::PartiallySucceeded,
+            EsiSyncStatus::Failed,
+        ] {
+            let _ = recorded_sync("assets", async move { Ok(run(status)) }).await;
+        }
+        let _ = recorded_sync("wallet_transactions", async {
+            Err(EsiApplicationError::Protocol(EsiError::TemporaryFailure))
+        })
+        .await;
+
+        let recorded = Recorded::take(&snapshotter);
+        let runs = |kind: &str, result: &str| {
+            recorded.counter(
+                "iskworks_esi_sync_runs_total",
+                &[("kind", kind), ("result", result)],
+            )
+        };
+        assert_eq!(runs("assets", "success"), 1);
+        assert_eq!(runs("assets", "incomplete"), 1);
+        assert_eq!(runs("assets", "failed"), 1);
+        assert_eq!(runs("wallet_transactions", "failed"), 1);
+        assert!(recorded.has(
+            "iskworks_esi_sync_last_success_timestamp_seconds",
+            &[("kind", "assets")]
+        ));
+        assert!(!recorded.has(
+            "iskworks_esi_sync_last_success_timestamp_seconds",
+            &[("kind", "wallet_transactions")]
+        ));
+    }
 }

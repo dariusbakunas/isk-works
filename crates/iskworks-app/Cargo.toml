@@ -10,6 +10,7 @@ iskworks-core = { path = "../iskworks-core" }
 iskworks-esi = { path = "../iskworks-esi" }
 iskworks-sde = { path = "../iskworks-sde" }
 iskworks-storage = { path = "../iskworks-storage" }
+metrics.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
@@ -26,6 +27,7 @@ tracing.workspace = true
 test-support = ["iskworks-esi/test-support"]
 
 [dev-dependencies]
+metrics-util.workspace = true
 iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
 sqlx.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

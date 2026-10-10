@@ -1347,3 +1347,45 @@ fn a_failed_source_waits_at_least_as_long_as_esi_asked() {
     let forbidden = SourceFailure::from(EsiError::AccessDenied);
     assert_eq!(forbidden.retry_floor(now), now + retry_interval());
 }
+
+#[tokio::test]
+async fn every_source_refresh_is_recorded_by_kind_and_result() {
+    use crate::sync_metrics::test_support::Recorded;
+    use metrics_util::debugging::DebuggingRecorder;
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let _guard = metrics::set_default_local_recorder(&recorder);
+    let scopes = all_scopes()
+        .into_iter()
+        .filter(|scope| scope != LOCATION_SCOPE)
+        .collect();
+    let (_, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        connection(scopes),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let recorded = Recorded::take(&snapshotter);
+    let runs = |kind: &str, result: &str| {
+        recorded.counter(
+            "iskworks_esi_sync_runs_total",
+            &[("kind", kind), ("result", result)],
+        )
+    };
+    assert_eq!(runs("location", "failed"), 1);
+    assert_eq!(runs("skills", "success"), 1);
+    assert_eq!(runs("assets", "success"), 1);
+    assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 8);
+    assert_eq!(
+        recorded.histogram_count("iskworks_esi_sync_duration_seconds", &[]),
+        8
+    );
+    let last_success = "iskworks_esi_sync_last_success_timestamp_seconds";
+    assert!(recorded.has(last_success, &[("kind", "skills")]));
+    assert!(!recorded.has(last_success, &[("kind", "location")]));
+}
