@@ -9,11 +9,12 @@ import {
   withEpicParam,
 } from "./epic-url-state";
 
-/** An Epic the Plan view can show: open (not canceled, not archived),
+/** An Epic the Plan view can show: open (not completed, canceled or archived),
  * created from this Build, with a version-3 frozen plan. */
 export function isSelectableEpic(order: OrderSummary, buildId: string): boolean {
   return (
     order.sourceBuildId === buildId
+    && order.completedAt === null
     && order.canceledAt === null
     && order.archivedAt === null
     && (order.planningSnapshotVersion ?? 1) >= 3

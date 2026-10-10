@@ -16,11 +16,11 @@ use iskworks_core::order::{
     NewTicket, NewTicketPrerequisite, OperationDependency, OperationTicketCreation, Order,
     OrderError, OrderId, OrderRepository, OrderRequirement, OrderRequirementId,
     OrderRequirementRollup, OrderStatus, PlanOperation, RecordAcquisitionInput,
-    RecordProductionInput, RecordProductionInputLine, RequirementFulfillmentState, RequirementKind,
-    RequirementReservationTotals, RequirementTicketCreation, ReservationShortfall, ReuseChange,
-    TakeFrom, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind,
-    TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary,
-    TicketStatus, ROOT_OCCURRENCE_PREFIX,
+    RecordProductionInput, RecordProductionInputLine, RecordingState, RequirementFulfillmentState,
+    RequirementKind, RequirementReservationTotals, RequirementTicketCreation, ReservationShortfall,
+    ReuseChange, TakeFrom, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording,
+    TicketKind, TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId,
+    TicketRecordingSummary, TicketStatus, ROOT_OCCURRENCE_PREFIX,
 };
 use iskworks_core::{
     BuildId, BuildRecipe, ConnectedCharacterId, MarketScope, Money, PreviewBuildPlanCommand,
