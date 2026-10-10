@@ -202,7 +202,7 @@ describe("EpicInspector", () => {
       orderDetailFixture({
         requirements: [
           requirementFixture({ id: "req-1", state: "needsAction" }),
-          requirementFixture({ id: "req-2", capturedName: "Pyerite", state: "needsAction" }),
+          requirementFixture({ id: "req-2", typeId: 35, capturedName: "Pyerite", state: "needsAction" }),
         ],
       }),
     );
@@ -213,6 +213,64 @@ describe("EpicInspector", () => {
     await user.click(await screen.findByRole("button", { name: "Create 2 tickets" }));
 
     await waitFor(() => expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-1", "req-2"]));
+  });
+
+  it("lists each item once, as the Plan view does", async () => {
+    const fibers = (id: string, consumer: string) =>
+      requirementFixture({
+        id,
+        typeId: 57_478,
+        capturedName: "Sylramic Fibers",
+        kind: "react",
+        state: "needsAction",
+        operationOccurrenceKey: consumer,
+        childOccurrenceKey: "reaction:sylramic",
+      });
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({
+        requirements: [
+          fibers("req-a", "manufacturing:a"),
+          fibers("req-b", "manufacturing:b"),
+          requirementFixture({ id: "req-trit", state: "needsAction" }),
+          requirementFixture({ id: "req-trit-2", state: "needsAction", operationOccurrenceKey: "manufacturing:b" }),
+        ],
+      }),
+    );
+    industryApi.bulkCreateTickets.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderInspector();
+
+    await screen.findByText("Needs Action");
+    expect(screen.getAllByText("Sylramic Fibers")).toHaveLength(1);
+    expect(screen.getAllByText("Tritanium")).toHaveLength(1);
+
+    // One ticket per row: the fibers step, and one Tritanium purchase.
+    await user.click(screen.getByRole("button", { name: "Create 2 tickets" }));
+    await waitFor(() =>
+      expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-a", "req-trit", "req-trit-2"]),
+    );
+  });
+
+  it("a bought item's row creates one purchase for all of its uses", async () => {
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({
+        requirements: [
+          requirementFixture({ id: "req-trit", state: "needsAction" }),
+          requirementFixture({ id: "req-trit-2", state: "needsAction", operationOccurrenceKey: "manufacturing:b" }),
+        ],
+      }),
+    );
+    industryApi.bulkCreateTickets.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderInspector();
+
+    await screen.findByText("Needs Action");
+    expect(screen.queryByRole("button", { name: /Create \d+ tickets/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create ticket" }));
+
+    await waitFor(() =>
+      expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-trit", "req-trit-2"]),
+    );
   });
 
   it("shows how much of the planned reuse the Epic holds and reserves the rest on request", async () => {

@@ -96,4 +96,28 @@ describe("OperationRequirements", () => {
     render(<OperationRequirements acquisitions={[]} nodes={[]} onSelect={vi.fn()} requirements={[]} />);
     expect(screen.getByText("No direct material requirements.")).toBeInTheDocument();
   });
+
+  it("labels a requirement fully covered by stock Inventory, not its sourcing", () => {
+    render(
+      <OperationRequirements
+        acquisitions={[]}
+        nodes={[]}
+        onSelect={vi.fn()}
+        requirements={[
+          requirement({
+            typeName: "Hydrogen Fuel Block",
+            requiredQuantity: 392,
+            plannedInventoryQuantity: 392,
+            shortageQuantity: 0,
+          }),
+          requirement({ typeId: 35, typeName: "Pyerite", dependencyId: "dep-35" }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Inventory")).toBeInTheDocument();
+    // A requirement with a shortage keeps its sourcing label.
+    expect(screen.getAllByText("Buy")).toHaveLength(1);
+  });
 });
+

@@ -185,6 +185,17 @@ pub(super) async fn create_ticket_for_requirement(
     market_scope: Option<MarketScope>,
     price_source_id: Option<iskworks_core::PriceSourceId>,
 ) -> Result<Ticket, ApiError> {
+    if requirement.kind == RequirementKind::Buy {
+        return create_buy_ticket(
+            state,
+            workspace_id,
+            owner_id,
+            &[requirement],
+            market_scope,
+            price_source_id,
+        )
+        .await;
+    }
     let repository = state.order_repository()?;
     let existing_links = repository
         .list_order_requirement_fulfillments(requirement.id)
@@ -252,19 +263,7 @@ pub(super) async fn create_ticket_for_requirement(
         };
     }
     let quantity = requirement.fresh_quantity;
-    // The ticket represents only the fresh (still-to-source) portion, so its
-    // estimate is that portion's own cost -- the requirement's blended
-    // `estimated_line_total` minus the frozen inventory `reused_line_total`,
-    // never the blend (which also priced stock this ticket won't buy).
-    // Degenerates to the full estimate for a `Full`-scoped requirement or one
-    // with nothing reused (`reused_line_total` is then `None`).
-    let fresh_line_total = match (
-        requirement.estimated_line_total,
-        requirement.reused_line_total,
-    ) {
-        (Some(total), Some(reused)) => Some(total.checked_sub(reused)?),
-        (total, _) => total,
-    };
+    let fresh_line_total = fresh_line_total(requirement)?;
     let fresh_unit_cost = fresh_line_total
         .map(|total| total.checked_div_quantity(quantity))
         .transpose()?;
@@ -272,9 +271,8 @@ pub(super) async fn create_ticket_for_requirement(
     // time -- never re-resolves it against the Order's *current* build graph,
     // which may have changed since (e.g. the component was relinked to a
     // different build). See `RequirementKindResolver`'s own doc.
-    let (kind, source_build_id, prerequisites, execution_snapshot) = match requirement.kind {
-        RequirementKind::Buy => (TicketKind::Acquisition, None, Vec::new(), None),
-        RequirementKind::Build | RequirementKind::React => {
+    let (kind, source_build_id, prerequisites, execution_snapshot) = {
+        {
             let source_build_id = requirement
                 .source_build_id
                 .ok_or(OrderError::OrderRequirementNotFound)?;
@@ -338,6 +336,136 @@ pub(super) async fn create_ticket_for_requirement(
     // gives once the winner has committed.
     match repository
         .create_ticket_for_order_requirement(requirement.id, new_ticket, quantity)
+        .await?
+    {
+        RequirementTicketCreation::Created(ticket) => Ok(*ticket),
+        RequirementTicketCreation::AlreadyLinked(ticket_id) => {
+            Ok(repository.get_ticket(workspace_id, ticket_id).await?)
+        }
+    }
+}
+
+/// The fresh (still-to-source) portion's own estimated cost: the
+/// requirement's blended `estimated_line_total` minus the frozen inventory
+/// `reused_line_total`, never the blend (which also priced stock a ticket
+/// won't buy). Degenerates to the full estimate for a `Full`-scoped
+/// requirement or one with nothing reused (`reused_line_total` is `None`).
+fn fresh_line_total(requirement: &OrderRequirement) -> Result<Option<Money>, ApiError> {
+    Ok(
+        match (
+            requirement.estimated_line_total,
+            requirement.reused_line_total,
+        ) {
+            (Some(total), Some(reused)) => Some(total.checked_sub(reused)?),
+            (total, _) => total,
+        },
+    )
+}
+
+/// One acquisition ticket buying an item for every given Buy requirement
+/// of it (all the same type): its quantity is their fresh total, and it is
+/// linked to each with that requirement's fresh share -- a recorded
+/// purchase is then reserved across them in build order. Requirements that
+/// already have an active ticket are left to it; if they all do, the first
+/// such ticket is returned instead (idempotent, like a single create).
+pub(super) async fn create_buy_ticket(
+    state: &AppState,
+    workspace_id: iskworks_core::WorkspaceId,
+    owner_id: iskworks_core::OwnerId,
+    requirements: &[&OrderRequirement],
+    market_scope: Option<MarketScope>,
+    price_source_id: Option<iskworks_core::PriceSourceId>,
+) -> Result<Ticket, ApiError> {
+    let repository = state.order_repository()?;
+    let mut existing = None;
+    let mut pending = Vec::with_capacity(requirements.len());
+    for requirement in requirements {
+        let mut active = None;
+        for link in repository
+            .list_order_requirement_fulfillments(requirement.id)
+            .await?
+        {
+            let ticket = repository.get_ticket(workspace_id, link.ticket_id).await?;
+            if ticket.status != TicketStatus::Canceled {
+                active = Some(ticket);
+                break;
+            }
+        }
+        match active {
+            Some(ticket) => {
+                existing.get_or_insert(ticket);
+            }
+            None => pending.push(*requirement),
+        }
+    }
+    if pending.is_empty() {
+        return existing.ok_or_else(|| OrderError::OrderRequirementNotFound.into());
+    }
+    // Fully inventory-covered (`InventorySatisfied`) requirements need no
+    // purchase, and `tickets.quantity` must be positive besides.
+    pending.retain(|requirement| requirement.fresh_quantity > 0);
+    let Some(first) = pending.first() else {
+        return Err(OrderError::InvalidQuantity.into());
+    };
+    if pending.iter().any(|requirement| {
+        requirement.kind != RequirementKind::Buy || requirement.type_id != first.type_id
+    }) {
+        return Err(OrderError::TicketTypeMismatch.into());
+    }
+
+    let quantity = pending
+        .iter()
+        .map(|requirement| requirement.fresh_quantity)
+        .fold(0, u64::saturating_add);
+    let mut line_total = Some(Money::zero());
+    for requirement in &pending {
+        line_total = match (line_total, fresh_line_total(requirement)?) {
+            (Some(sum), Some(total)) => Some(sum.checked_add(total)?),
+            _ => None,
+        };
+    }
+    let unit_cost = line_total
+        .map(|total| total.checked_div_quantity(quantity))
+        .transpose()?;
+
+    let new_ticket = NewTicket {
+        id: TicketId::new(),
+        workspace_id,
+        owner_id,
+        // Explicit Epic membership -- this ticket is generated work
+        // belonging to the Order whose requirements it fulfills.
+        order_id: Some(first.order_id),
+        kind: TicketKind::Acquisition,
+        type_id: Some(first.type_id),
+        captured_name: first.captured_name.clone(),
+        quantity: Some(quantity),
+        source_build_id: None,
+        estimated_unit_cost: unit_cost,
+        estimated_line_total: line_total,
+        market_region_id: market_scope.map(|scope| scope.region_id),
+        market_location_id: market_scope.and_then(|scope| scope.location_id),
+        price_source_id,
+        notes: String::new(),
+        assignee_character_id: None,
+        execution_snapshot: None,
+        prerequisites: Vec::new(),
+        occurrence_key: None,
+        parent_ticket_id: None,
+        produced_quantity: None,
+        material_component_cost: None,
+        own_installation_cost: None,
+        total_production_cost: None,
+        plan_evidence: None,
+    };
+    let links: Vec<(OrderRequirementId, u64)> = pending
+        .iter()
+        .map(|requirement| (requirement.id, requirement.fresh_quantity))
+        .collect();
+    // Create + link in one transaction, guarded by the database's
+    // one-active-ticket-per-requirement claims: a request that lost a race
+    // to a concurrent create gets the winner's ticket back.
+    match repository
+        .create_ticket_for_order_requirements(new_ticket, &links)
         .await?
     {
         RequirementTicketCreation::Created(ticket) => Ok(*ticket),
@@ -416,10 +544,35 @@ pub(super) async fn bulk_create_tickets(
         .map(OrderRequirementId)
         .collect();
     let mut tickets = Vec::with_capacity(requested_ids.len());
-    for requirement in all_requirements
-        .iter()
-        .filter(|requirement| requested_ids.contains(&requirement.id))
-    {
+    // One purchase per item: every requested Buy requirement of a type
+    // shares one acquisition ticket.
+    let mut buys_by_type: BTreeMap<i64, Vec<&OrderRequirement>> = BTreeMap::new();
+    for requirement in all_requirements.iter().filter(|requirement| {
+        requested_ids.contains(&requirement.id)
+            && requirement.kind == RequirementKind::Buy
+            && requirement.fresh_quantity > 0
+    }) {
+        buys_by_type
+            .entry(requirement.type_id)
+            .or_default()
+            .push(requirement);
+    }
+    for requirements in buys_by_type.values() {
+        tickets.push(
+            create_buy_ticket(
+                &state,
+                workspace_id,
+                owner_id,
+                requirements,
+                market_scope,
+                price_source_id,
+            )
+            .await?,
+        );
+    }
+    for requirement in all_requirements.iter().filter(|requirement| {
+        requested_ids.contains(&requirement.id) && requirement.kind != RequirementKind::Buy
+    }) {
         // An `InventorySatisfied` requirement (fully covered by frozen
         // inventory reuse) has nothing left to do: skip it
         // silently rather than let `create_ticket_for_requirement`'s

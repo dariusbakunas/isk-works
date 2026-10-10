@@ -143,7 +143,8 @@ export function EpicInspector({
   for (const ticket of linkedTickets) kindBreakdown[ticket.kind] += 1;
   const recordedCount = linkedTickets.filter((ticket) => ticket.recording?.state === "recorded").length;
 
-  const needsActionRequirements = detail?.requirements.filter((requirement) => requirement.state === "needsAction") ?? [];
+  const needsActionItems = needsActionRows(detail?.requirements ?? []);
+  const needsActionRequirementIds = needsActionItems.flatMap((row) => row.requirementIds);
 
   async function reserveInventory() {
     setReserveResult(null);
@@ -199,11 +200,15 @@ export function EpicInspector({
     });
   }
 
-  async function createTicket(requirementId: string) {
+  async function createRowTickets(row: NeedsActionRow) {
     setRowError("");
-    setRowBusyId(requirementId);
+    setRowBusyId(row.key);
     try {
-      await createTicketForRequirement(order.id, requirementId);
+      if (row.requirementIds.length === 1) {
+        await createTicketForRequirement(order.id, row.requirementIds[0]);
+      } else {
+        await bulkCreateTickets(order.id, row.requirementIds);
+      }
       loadDetail();
       onChanged?.();
     } catch (requestError) {
@@ -340,38 +345,38 @@ export function EpicInspector({
           ) : null}
         </div>
 
-        {needsActionRequirements.length > 0 ? (
+        {needsActionItems.length > 0 ? (
           <div className="space-y-1.5">
             <SectionHeading>Needs Action</SectionHeading>
-            {needsActionRequirements.length > 1 ? (
+            {needsActionItems.length > 1 ? (
               <button
                 className="iw-button-secondary w-full"
                 disabled={rowBusyId !== null}
-                onClick={() => void createAllTickets(needsActionRequirements.map((requirement) => requirement.id))}
+                onClick={() => void createAllTickets(needsActionRequirementIds)}
                 type="button"
               >
-                {rowBusyId === "__bulk__" ? "Creating…" : `Create ${needsActionRequirements.length} tickets`}
+                {rowBusyId === "__bulk__" ? "Creating…" : `Create ${needsActionItems.length} tickets`}
               </button>
             ) : null}
             <div className="space-y-1">
-              {needsActionRequirements.map((requirement) => {
-                const kindMeta = requirementKindMeta[requirement.kind];
+              {needsActionItems.map((row) => {
+                const kindMeta = requirementKindMeta[row.kind];
                 return (
                   <div
                     className="flex items-center gap-1.5 rounded-[2px] border border-border bg-panel px-2 py-1.5 text-[11px]"
-                    key={requirement.id}
+                    key={row.key}
                   >
                     <Badge square tone={kindMeta.tone}>
                       {kindMeta.label}
                     </Badge>
-                    <span className="min-w-0 flex-1 truncate text-foreground">{requirement.capturedName}</span>
+                    <span className="min-w-0 flex-1 truncate text-foreground">{row.name}</span>
                     <button
                       className="iw-button-secondary shrink-0 px-1.5 py-0.5 text-[10px]"
                       disabled={rowBusyId !== null}
-                      onClick={() => void createTicket(requirement.id)}
+                      onClick={() => void createRowTickets(row)}
                       type="button"
                     >
-                      {rowBusyId === requirement.id ? "Creating…" : "Create ticket"}
+                      {rowBusyId === row.key ? "Creating…" : "Create ticket"}
                     </button>
                   </div>
                 );
@@ -415,6 +420,41 @@ export function EpicInspector({
       />
     </PlannerInspectorShell>
   );
+}
+
+interface NeedsActionRow {
+  key: string;
+  kind: OrderDetail["requirements"][number]["kind"];
+  name: string;
+  /** The requirements its one ticket will serve. */
+  requirementIds: string[];
+}
+
+/** Requirements still needing a ticket, one row per item -- as the Plan
+ * view lists them -- and one ticket per row. A bought item used by several
+ * consumers is several requirements sharing one purchase ticket (the bulk
+ * endpoint makes one per type); a produced item is several requirements
+ * but one production step (`childOccurrenceKey`), whose one ticket serves
+ * them all. */
+function needsActionRows(requirements: OrderDetail["requirements"]): NeedsActionRow[] {
+  const rows = new Map<string, NeedsActionRow>();
+  for (const requirement of requirements) {
+    if (requirement.state !== "needsAction") continue;
+    const step = requirement.kind === "buy" ? null : requirement.childOccurrenceKey;
+    const key = step ? `step:${step}` : requirement.kind === "buy" ? `buy:${requirement.typeId}` : requirement.id;
+    const row = rows.get(key);
+    if (!row) {
+      rows.set(key, {
+        key,
+        kind: requirement.kind,
+        name: requirement.capturedName,
+        requirementIds: [requirement.id],
+      });
+    } else if (!step) {
+      row.requirementIds.push(requirement.id);
+    }
+  }
+  return [...rows.values()];
 }
 
 /** How many of the items the Epic planned to take from stock it holds

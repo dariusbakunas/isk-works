@@ -697,6 +697,22 @@ pub trait OrderRepository: Send + Sync {
         order_requirement_id: OrderRequirementId,
         new_ticket: NewTicket,
         allocated_quantity: u64,
+    ) -> Result<RequirementTicketCreation, OrderError> {
+        self.create_ticket_for_order_requirements(
+            new_ticket,
+            &[(order_requirement_id, allocated_quantity)],
+        )
+        .await
+    }
+    /// `create_ticket_for_order_requirement` for one ticket serving several
+    /// requirements of its type (one purchase covering every use of an
+    /// item), each linked with its own `allocated_quantity`, all in one
+    /// transaction. If any requirement is already held by an active ticket,
+    /// nothing is created and `AlreadyLinked` names that ticket.
+    async fn create_ticket_for_order_requirements(
+        &self,
+        new_ticket: NewTicket,
+        links: &[(OrderRequirementId, u64)],
     ) -> Result<RequirementTicketCreation, OrderError>;
     /// Creates the ticket for one frozen operation of a version-3 Epic
     /// (see `order::operation_ticket`), in one transaction. At most one
