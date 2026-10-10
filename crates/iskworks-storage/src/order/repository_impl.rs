@@ -1105,6 +1105,34 @@ impl OrderRepository for PgOrderRepository {
         self.get_order(workspace_id, order_id).await
     }
 
+    async fn complete_finished_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Option<Order>, OrderError> {
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let result = sqlx::query(
+            "UPDATE orders SET started_at = COALESCE(started_at, $1), completed_at = $1, \
+             updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 \
+             AND completed_at IS NULL AND canceled_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
+            return Ok(None);
+        }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
+        self.get_order(workspace_id, order_id).await.map(Some)
+    }
+
     async fn start_ticket(
         &self,
         workspace_id: WorkspaceId,
