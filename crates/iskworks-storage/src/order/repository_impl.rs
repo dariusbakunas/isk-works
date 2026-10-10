@@ -739,52 +739,62 @@ impl OrderRepository for PgOrderRepository {
         })
     }
 
-    async fn create_ticket_for_order_requirement(
+    async fn create_ticket_for_order_requirements(
         &self,
-        order_requirement_id: OrderRequirementId,
         new_ticket: NewTicket,
-        allocated_quantity: u64,
+        links: &[(OrderRequirementId, u64)],
     ) -> Result<RequirementTicketCreation, OrderError> {
-        if allocated_quantity == 0 {
+        if links.is_empty() || links.iter().any(|(_, quantity)| *quantity == 0) {
             return Err(OrderError::InvalidQuantity);
         }
-        let allocated_quantity_db = i64_from_u64(allocated_quantity)?;
+        // Claim in id order so two overlapping creates can't deadlock.
+        let mut links = links.to_vec();
+        links.sort_by_key(|(requirement_id, _)| requirement_id.0);
+        links.dedup_by_key(|(requirement_id, _)| requirement_id.0);
         let mut tx = self.pool.begin().await.map_err(map_error)?;
         let now = crate::db_now();
 
-        let requirement_type_id: Option<i64> =
-            sqlx::query_scalar("SELECT type_id FROM order_requirements WHERE id = $1")
-                .bind(order_requirement_id.0)
-                .fetch_optional(&mut *tx)
+        let requirement_ids: Vec<Uuid> = links.iter().map(|(id, _)| id.0).collect();
+        let type_ids: Vec<i64> =
+            sqlx::query_scalar("SELECT type_id FROM order_requirements WHERE id = ANY($1)")
+                .bind(&requirement_ids)
+                .fetch_all(&mut *tx)
                 .await
                 .map_err(map_error)?;
-        let requirement_type_id =
-            requirement_type_id.ok_or(OrderError::OrderRequirementNotFound)?;
-        if new_ticket.type_id != Some(requirement_type_id) {
+        if type_ids.len() != links.len() {
+            return Err(OrderError::OrderRequirementNotFound);
+        }
+        if type_ids
+            .iter()
+            .any(|type_id| new_ticket.type_id != Some(*type_id))
+        {
             return Err(OrderError::TicketTypeMismatch);
         }
 
-        // Claim the requirement first. The primary key is the uniqueness
-        // guarantee: a concurrent claimer blocks here until this
-        // transaction ends, then sees the committed claim (or none, if we
-        // rolled back). `ticket_id`'s FK is deferred to commit, so the
-        // ticket row is only inserted once the claim is ours.
-        let claimed = sqlx::query(
-            r#"
-            INSERT INTO order_requirement_ticket_claims (order_requirement_id, ticket_id, claimed_at)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (order_requirement_id) DO NOTHING
-            "#,
-        )
-        .bind(order_requirement_id.0)
-        .bind(new_ticket.id.0)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?
-        .rows_affected()
-            == 1;
-        if !claimed {
+        for (order_requirement_id, _) in &links {
+            // Claim the requirement first. The primary key is the
+            // uniqueness guarantee: a concurrent claimer blocks here until
+            // this transaction ends, then sees the committed claim (or none,
+            // if we rolled back). `ticket_id`'s FK is deferred to commit, so
+            // the ticket row is only inserted once every claim is ours.
+            let claimed = sqlx::query(
+                r#"
+                INSERT INTO order_requirement_ticket_claims (order_requirement_id, ticket_id, claimed_at)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (order_requirement_id) DO NOTHING
+                "#,
+            )
+            .bind(order_requirement_id.0)
+            .bind(new_ticket.id.0)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_error)?
+            .rows_affected()
+                == 1;
+            if claimed {
+                continue;
+            }
             // Already claimed. Lock the claim (serializing with anyone else
             // re-pointing it) and look at its ticket: an active one wins;
             // a canceled one frees the requirement for this new ticket.
@@ -802,6 +812,7 @@ impl OrderRepository for PgOrderRepository {
             .await
             .map_err(map_error)?;
             if ticket_status_from_str(&holder_status)? != TicketStatus::Canceled {
+                tx.rollback().await.map_err(map_error)?;
                 return Ok(RequirementTicketCreation::AlreadyLinked(TicketId(holder)));
             }
             sqlx::query(
@@ -817,21 +828,23 @@ impl OrderRepository for PgOrderRepository {
         }
 
         let (ticket, _) = insert_ticket_with_prerequisites(&mut tx, new_ticket, now).await?;
-        sqlx::query(
-            r#"
-            INSERT INTO order_requirement_fulfillments (
-              id, order_requirement_id, ticket_id, allocated_quantity, linked_at
-            ) VALUES ($1, $2, $3, $4, $5)
-            "#,
-        )
-        .bind(Uuid::new_v4())
-        .bind(order_requirement_id.0)
-        .bind(ticket.id.0)
-        .bind(allocated_quantity_db)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
+        for (order_requirement_id, allocated_quantity) in &links {
+            sqlx::query(
+                r#"
+                INSERT INTO order_requirement_fulfillments (
+                  id, order_requirement_id, ticket_id, allocated_quantity, linked_at
+                ) VALUES ($1, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(order_requirement_id.0)
+            .bind(ticket.id.0)
+            .bind(i64_from_u64(*allocated_quantity)?)
+            .bind(now)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_error)?;
+        }
 
         tx.commit().await.map_err(map_error)?;
         Ok(RequirementTicketCreation::Created(Box::new(ticket)))

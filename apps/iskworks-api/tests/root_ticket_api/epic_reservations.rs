@@ -1427,3 +1427,86 @@ async fn recording_alone_does_not_complete_the_epic(pool: PgPool) {
 
     assert!(epic_completed_at(&fx, &order_id).await.is_null());
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// One purchase per item: every use of a bought item shares one ticket.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Root: 5 Fabricated Component + 2,000 Tritanium; child (5 runs): 300
+/// Pyerite + 500 Tritanium. No stock, so both Tritanium uses are bought.
+async fn tritanium_bought_twice(fx: &Fixture) -> (String, Vec<String>) {
+    let parent = assembly_with_built_component(fx, 1, 90100, &[]).await;
+    let (status, order) = create_reserving_order(fx, &parent, &[]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    let ids: Vec<String> = order["requirements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|requirement| requirement["typeId"] == 34)
+        .map(|requirement| requirement["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids.len(), 2, "one Tritanium requirement per use");
+    (order["id"].as_str().unwrap().to_string(), ids)
+}
+
+async fn bulk_create(fx: &Fixture, order_id: &str, ids: &[String]) -> Vec<Value> {
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/tickets/bulk"),
+        serde_json::json!({ "requirementIds": ids }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    body.as_array().unwrap().clone()
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn every_use_of_a_bought_item_shares_one_purchase_ticket(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, ids) = tritanium_bought_twice(&fx).await;
+
+    let tickets = bulk_create(&fx, &order_id, &ids).await;
+
+    assert_eq!(tickets.len(), 1, "body: {tickets:?}");
+    assert_eq!(tickets[0]["kind"], "acquisition");
+    assert_eq!(tickets[0]["quantity"], 2_500);
+    let (_, order) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    for requirement in order["requirements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|requirement| requirement["typeId"] == 34)
+    {
+        assert_eq!(requirement["state"], "linked", "{requirement}");
+        assert_eq!(requirement["linkedTickets"][0]["id"], tickets[0]["id"]);
+    }
+
+    // Asking again creates nothing new.
+    let again = bulk_create(&fx, &order_id, &ids).await;
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0]["id"], tickets[0]["id"]);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_shared_purchase_is_reserved_across_every_use(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (order_id, ids) = tritanium_bought_twice(&fx).await;
+    let ticket = bulk_create(&fx, &order_id, &ids).await[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (status, body) = record_acquisition(&fx, &ticket, 2_500).await;
+
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    let mut held: Vec<i64> = recorded_output_allocations(&pool)
+        .await
+        .into_iter()
+        .filter(|(type_id, _, active)| *type_id == 34 && *active)
+        .map(|(_, quantity, _)| quantity)
+        .collect();
+    held.sort_unstable();
+    assert_eq!(held, vec![500, 2_000]);
+}
