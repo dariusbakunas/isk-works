@@ -33,6 +33,7 @@ async fn completed_asset_snapshot_resolves_its_container_hierarchy(pool: PgPool)
                 asset(4, 99, "item"),
             ],
             None,
+            0,
         )
         .await
         .unwrap();
@@ -150,7 +151,7 @@ async fn completing_an_asset_snapshot_deletes_the_snapshots_it_supersedes(pool: 
         .await
         .unwrap();
     repository
-        .complete_assets(&run, 1, &[stock(9)], None)
+        .complete_assets(&run, 1, &[stock(9)], None, 0)
         .await
         .unwrap();
     let run = repository
@@ -158,7 +159,7 @@ async fn completing_an_asset_snapshot_deletes_the_snapshots_it_supersedes(pool: 
         .await
         .unwrap();
     repository
-        .complete_assets(&run, 1, &[stock(1), stock(2)], None)
+        .complete_assets(&run, 1, &[stock(1), stock(2)], None, 0)
         .await
         .unwrap();
     let run = repository
@@ -174,7 +175,7 @@ async fn completing_an_asset_snapshot_deletes_the_snapshots_it_supersedes(pool: 
         .await
         .unwrap();
     repository
-        .complete_assets(&run, 1, &[stock(1), stock(2), stock(3)], None)
+        .complete_assets(&run, 1, &[stock(1), stock(2), stock(3)], None, 0)
         .await
         .unwrap();
 
@@ -208,7 +209,7 @@ async fn asset_snapshot_sweep_clears_the_backlog_but_keeps_each_connections_newe
         .await
         .unwrap();
     repository
-        .complete_assets(&run, 1, &[stock(1), stock(2)], None)
+        .complete_assets(&run, 1, &[stock(1), stock(2)], None, 0)
         .await
         .unwrap();
     // A failed sync newer than the active snapshot is what the sync status

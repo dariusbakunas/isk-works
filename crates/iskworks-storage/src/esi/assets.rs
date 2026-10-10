@@ -542,6 +542,7 @@ impl PgEsiRepository {
         pages: u32,
         observations: &[AssetObservation],
         etag: Option<&str>,
+        skipped_blueprints: u64,
     ) -> Result<SyncCompletion, InventoryError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let snapshot_id = Uuid::new_v4();
@@ -625,14 +626,26 @@ impl PgEsiRepository {
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
-        finalize_run(
-            &mut tx,
-            run.id,
-            observations.len() as u64,
-            0,
-            "Asset snapshot synchronized.",
-        )
-        .await?;
+        let summary = match skipped_blueprints {
+            0 => "Asset snapshot synchronized.".to_string(),
+            1 => "Asset snapshot synchronized. 1 blueprint skipped: ESI reported an invalid ME/TE."
+                .to_string(),
+            n => format!(
+                "Asset snapshot synchronized. {n} blueprints skipped: ESI reported an invalid ME/TE."
+            ),
+        };
+        finalize_run(&mut tx, run.id, observations.len() as u64, 0, &summary).await?;
+        if skipped_blueprints > 0 {
+            sqlx::query("UPDATE esi_sync_runs SET skipped_count = $2 WHERE id = $1")
+                .bind(run.id.0)
+                .bind(
+                    i64::try_from(skipped_blueprints)
+                        .map_err(|_| InventoryError::ArithmeticOverflow)?,
+                )
+                .execute(&mut *tx)
+                .await
+                .map_err(map_sqlx)?;
+        }
         tx.commit().await.map_err(map_sqlx)?;
         Ok(SyncCompletion {
             imported: observations.len() as u64,
@@ -650,15 +663,24 @@ impl PgEsiRepository {
     /// runs -- `EsiSyncService` fetches every page before calling it and
     /// propagates any page error first -- so an absent blueprint is a real
     /// disappearance, not a partial sync.
+    ///
+    /// `retained_item_ids` are blueprints ESI did report but the caller
+    /// could not use (e.g. out-of-range ME/TE): their existing rows are kept
+    /// as they were rather than deleted as gone.
     pub async fn complete_blueprints(
         &self,
         connection: &ConnectedCharacter,
         observations: &[iskworks_esi::BlueprintAssetObservation],
+        retained_item_ids: &[i64],
     ) -> Result<(), InventoryError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let observed_at = crate::db_now();
 
-        let seen_item_ids: Vec<i64> = observations.iter().map(|o| o.item_id).collect();
+        let seen_item_ids: Vec<i64> = observations
+            .iter()
+            .map(|o| o.item_id)
+            .chain(retained_item_ids.iter().copied())
+            .collect();
         sqlx::query(
             r#"DELETE FROM blueprint_observations
                WHERE workspace_id=$1 AND owner_id=$2 AND connection_id=$3

@@ -1260,3 +1260,177 @@ async fn the_sync_dispatcher_runs_the_services_asset_sync(pool: sqlx::PgPool) {
         Err(EsiApplicationError::Protocol(EsiError::TemporaryFailure))
     ));
 }
+
+fn blueprint(
+    item_id: i64,
+    material_efficiency: i16,
+    time_efficiency: i16,
+) -> BlueprintAssetObservation {
+    BlueprintAssetObservation {
+        item_id,
+        type_id: 691,
+        location_id: 60_003_760,
+        location_flag: "Hangar".to_string(),
+        material_efficiency,
+        time_efficiency,
+        runs: -1,
+        quantity: -1,
+        raw: json!({}),
+    }
+}
+
+/// One page of assets (always changed) and a configurable blueprint page.
+struct BlueprintPageTransport {
+    blueprints: Vec<BlueprintAssetObservation>,
+}
+
+#[async_trait::async_trait]
+impl EsiTransport for BlueprintPageTransport {
+    async fn exchange_code(
+        &self,
+        _code: &str,
+        _verifier: &PkceVerifier,
+    ) -> Result<AuthenticatedToken, EsiError> {
+        unimplemented!("test never exchanges an OAuth code")
+    }
+
+    async fn refresh(&self, _refresh_token: &str) -> Result<RefreshedToken, EsiError> {
+        unimplemented!("test passes its own token")
+    }
+
+    async fn assets(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _page: u32,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<AssetObservation>, EsiError> {
+        Ok(EsiResponse {
+            records: vec![asset(1_100_000_000_001, 60_003_760, "station")],
+            not_modified: false,
+            metadata: EsiResponseMetadata {
+                pages: Some(1),
+                ..EsiResponseMetadata::default()
+            },
+        })
+    }
+
+    async fn blueprints(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _page: u32,
+    ) -> Result<EsiResponse<BlueprintAssetObservation>, EsiError> {
+        Ok(EsiResponse {
+            records: self.blueprints.clone(),
+            not_modified: false,
+            metadata: EsiResponseMetadata {
+                pages: Some(1),
+                ..EsiResponseMetadata::default()
+            },
+        })
+    }
+
+    async fn wallet_transactions(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _from_id: Option<i64>,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<WalletTransactionObservation>, EsiError> {
+        unimplemented!("test never reads wallet transactions")
+    }
+
+    async fn structure(
+        &self,
+        _access_token: &str,
+        _structure_id: i64,
+    ) -> Result<StructureInformation, EsiError> {
+        unimplemented!("test never resolves structures")
+    }
+
+    async fn industry_systems(
+        &self,
+    ) -> Result<EsiResponse<iskworks_esi::IndustrySystemCostIndex>, EsiError> {
+        unimplemented!("test never reads cost indices")
+    }
+}
+
+/// `(eve_item_id, material_efficiency, time_efficiency)` of every stored blueprint.
+async fn stored_blueprints(pool: &sqlx::PgPool) -> Vec<(i64, i16, i16)> {
+    sqlx::query_as(
+        "SELECT eve_item_id, material_efficiency, time_efficiency \
+         FROM blueprint_observations ORDER BY eve_item_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+async fn sync_blueprints(
+    pool: &sqlx::PgPool,
+    blueprints: Vec<BlueprintAssetObservation>,
+) -> Result<EsiSyncRun, EsiApplicationError> {
+    let (workspace_id, esi_repository) = market_access_fixture(pool).await;
+    let connection_id =
+        market_access_connection(pool, workspace_id, "refresh-token", 9402, false).await;
+    let connection = esi_repository.get_connection(connection_id).await.unwrap();
+    let service = EsiApplicationService::new_for_tests(
+        esi_repository,
+        Arc::new(BlueprintPageTransport { blueprints }),
+    );
+    EsiSyncDispatcher::sync_assets(&service, &connection, "access-token").await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_out_of_range_blueprint_is_skipped_without_failing_the_sync(pool: sqlx::PgPool) {
+    let run = sync_blueprints(
+        &pool,
+        vec![
+            blueprint(1, 10, 20),
+            blueprint(2, 11, 0),
+            blueprint(3, -1, 0),
+            blueprint(4, 0, 21),
+        ],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(run.status, iskworks_core::EsiSyncStatus::Succeeded);
+    assert_eq!(run.imported_count, 1, "the asset snapshot is imported");
+    assert_eq!(run.skipped_count, 3);
+    assert!(
+        run.summary.contains("3 blueprints skipped"),
+        "summary: {}",
+        run.summary
+    );
+    assert_eq!(stored_blueprints(&pool).await, vec![(1, 10, 20)]);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_blueprint_turning_invalid_keeps_its_last_good_row(pool: sqlx::PgPool) {
+    let (workspace_id, esi_repository) = market_access_fixture(&pool).await;
+    let connection_id =
+        market_access_connection(&pool, workspace_id, "refresh-token", 9403, false).await;
+    let connection = esi_repository.get_connection(connection_id).await.unwrap();
+    let sync = |blueprints| {
+        let service = EsiApplicationService::new_for_tests(
+            esi_repository.clone(),
+            Arc::new(BlueprintPageTransport { blueprints }),
+        );
+        let connection = connection.clone();
+        async move { EsiSyncDispatcher::sync_assets(&service, &connection, "access-token").await }
+    };
+    sync(vec![blueprint(1, 5, 10), blueprint(2, 8, 16)])
+        .await
+        .unwrap();
+
+    let run = sync(vec![blueprint(1, 11, 10)]).await.unwrap();
+
+    assert_eq!(run.status, iskworks_core::EsiSyncStatus::Succeeded);
+    assert_eq!(run.skipped_count, 1);
+    // Item 1 keeps its last good values; item 2 is gone for real.
+    assert_eq!(stored_blueprints(&pool).await, vec![(1, 5, 10)]);
+}

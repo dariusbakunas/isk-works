@@ -1577,3 +1577,37 @@ async fn validate_token_rejects_a_token_for_another_client() {
         "{result:?}"
     );
 }
+
+fn blueprint_with(material_efficiency: i16, time_efficiency: i16) -> BlueprintAssetObservation {
+    BlueprintAssetObservation {
+        item_id: 1,
+        type_id: 691,
+        location_id: 60_003_760,
+        location_flag: "Hangar".to_string(),
+        material_efficiency,
+        time_efficiency,
+        runs: -1,
+        quantity: -1,
+        raw: serde_json::json!({}),
+    }
+}
+
+#[test]
+fn blueprint_efficiency_must_be_within_the_games_ranges() {
+    assert!(blueprint_with(0, 0).efficiency_in_range());
+    assert!(blueprint_with(10, 20).efficiency_in_range());
+    assert!(!blueprint_with(11, 20).efficiency_in_range());
+    assert!(!blueprint_with(-1, 0).efficiency_in_range());
+    assert!(!blueprint_with(10, 21).efficiency_in_range());
+    assert!(!blueprint_with(0, -2).efficiency_in_range());
+}
+
+#[test]
+fn an_out_of_range_blueprint_still_parses_so_the_caller_can_skip_it() {
+    let parsed = parse_blueprint(serde_json::json!({
+        "item_id": 1, "type_id": 691, "location_id": 60_003_760, "location_flag": "Hangar",
+        "material_efficiency": 11, "time_efficiency": 20, "runs": -1, "quantity": -1,
+    }))
+    .unwrap();
+    assert!(!parsed.efficiency_in_range());
+}
