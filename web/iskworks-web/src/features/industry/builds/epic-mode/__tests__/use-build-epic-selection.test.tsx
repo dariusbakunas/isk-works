@@ -75,6 +75,7 @@ describe("useBuildEpicSelection", () => {
       epic("epic-b", { createdAt: "2026-10-09T10:00:00Z" }),
       epic("other-build", { sourceBuildId: "build-2" }),
       epic("canceled", { canceledAt: "2026-10-08T11:00:00Z" }),
+      epic("completed", { completedAt: "2026-10-08T11:00:00Z" }),
       epic("legacy", { planningSnapshotVersion: 2 }),
     ]);
   });
@@ -130,6 +131,7 @@ describe("useBuildEpicSelection", () => {
   it("treats an Epic from another Build as not selectable", () => {
     expect(isSelectableEpic(epic("x", { sourceBuildId: "build-2" }), "build-1")).toBe(false);
     expect(isSelectableEpic(epic("x", { archivedAt: "2026-10-08T11:00:00Z" }), "build-1")).toBe(false);
+    expect(isSelectableEpic(epic("x", { completedAt: "2026-10-08T11:00:00Z" }), "build-1")).toBe(false);
     expect(isSelectableEpic(epic("x"), "build-1")).toBe(true);
   });
 });
