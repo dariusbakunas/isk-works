@@ -5,6 +5,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { App } from "../App";
 
+// About section contents: sections start expanded here (see the double).
+vi.mock("../features/industry/inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../features/industry/inspector/__tests__/expanded-inspector-collapse");
+  return expandedInspectorCollapse();
+});
+
+
 const configuredWorkspace = {
   configured: true,
   workspace: {

@@ -39,6 +39,7 @@ import { apiMessage } from "../../shared/api-error";
 
 import { CostAmount, ExecutionNodeRow, Quantity } from "./execution-node-row";
 import { costWarningLabel } from "./stage-warnings";
+import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
 import { StagesInspector, type StagesSelection } from "./stages-inspector";
 import { useBuildExecutionPlan } from "./use-build-execution-plan";
 import { usePlanInspector } from "./use-plan-inspector";
@@ -270,28 +271,33 @@ export function BuildStagesView({
           ) : null}
 
           {active && (epicMode || command) ? (
-            <StagesInspector
-              epic={epic}
-              readOnly={epicMode}
-              onCreateStepTicket={epicId ? async (nodeId) => {
-                await createOperationTicket(epicId, nodeId);
-                epicPlan.reload();
-              } : undefined}
-              command={command}
-              facilities={editor.allFacilities ?? []}
-              onClose={() => setSelection(null)}
-              onSelect={setSelection}
-              // The inspector stays open on the same producer (resolved
-              // by stable node id against the re-projected plan) so the
-              // effect of a facility / ME change is visible in place.
-              onConfigurationSaved={replan}
-              plan={plan}
-              rootBuildId={buildId}
-              selection={selection}
-              sourcing={sourcing}
-              onOpenBuildSettings={editor.openBuildSettings}
-              rootEditing={rootEditing}
-            />
+            // One collapse store for every Plan inspector, above any one
+            // selection: sections the user expanded stay expanded while
+            // they click through production steps and inputs.
+            <InspectorCollapseProvider>
+              <StagesInspector
+                epic={epic}
+                readOnly={epicMode}
+                onCreateStepTicket={epicId ? async (nodeId) => {
+                  await createOperationTicket(epicId, nodeId);
+                  epicPlan.reload();
+                } : undefined}
+                command={command}
+                facilities={editor.allFacilities ?? []}
+                onClose={() => setSelection(null)}
+                onSelect={setSelection}
+                // The inspector stays open on the same producer (resolved
+                // by stable node id against the re-projected plan) so the
+                // effect of a facility / ME change is visible in place.
+                onConfigurationSaved={replan}
+                plan={plan}
+                rootBuildId={buildId}
+                selection={selection}
+                sourcing={sourcing}
+                onOpenBuildSettings={editor.openBuildSettings}
+                rootEditing={rootEditing}
+              />
+            </InspectorCollapseProvider>
           ) : null}
         </>
       )}

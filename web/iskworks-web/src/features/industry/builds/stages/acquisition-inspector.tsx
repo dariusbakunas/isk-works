@@ -10,7 +10,6 @@ import type {
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { MoneyAmount } from "../../../../components/money";
 import { Badge } from "../../../../components/primitives";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
 import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { PricingBody } from "../../inspector/unified-item-inspector";
@@ -66,7 +65,7 @@ export function AcquisitionInspector({
       returnFocusRowKey={String(line.typeId)}
       title={line.typeName}
     >
-      <InspectorCollapseProvider>
+      <>
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <EveTypeImage size={32} typeId={line.typeId} typeName={line.typeName} />
           <Badge square tone="warning">BUY</Badge>
@@ -81,7 +80,6 @@ export function AcquisitionInspector({
         </div>
 
         <InspectorSection
-          defaultExpanded
           id="sourcing"
           label="Sourcing"
           summary={`${line.consumers.length} consumer${line.consumers.length === 1 ? "" : "s"}`}
@@ -171,7 +169,7 @@ export function AcquisitionInspector({
           ) : null}
         </InspectorSection>
 
-        <InspectorSection defaultExpanded id="requirement" label="Requirement">
+        <InspectorSection id="requirement" label="Requirement">
           {line.consumers.map((consumer, index) => {
             const consumerName = nodesById.get(consumer.nodeId)?.outputTypeName ?? "Unknown";
             return (
@@ -204,14 +202,14 @@ export function AcquisitionInspector({
         </InspectorSection>
 
         {epicStock ? (
-          <InspectorSection defaultExpanded id="epic-stock" label="Epic">
+          <InspectorSection id="epic-stock" label="Epic">
             <InspectorRow label="Reserved" value={qty(epicStock.reserved)} />
             <InspectorRow label="Used" value={qty(epicStock.consumed)} />
             <InspectorRow label="Still needed" value={qty(epicStock.remainingNeed)} />
           </InspectorSection>
         ) : null}
 
-        <InspectorSection defaultExpanded id="pricing" label="Pricing">
+        <InspectorSection id="pricing" label="Pricing">
           <InspectorRow
             label="Unit price"
             value={line.freshUnitPrice != null ? <MoneyAmount value={line.freshUnitPrice} /> : "Unpriced"}
@@ -266,7 +264,7 @@ export function AcquisitionInspector({
             </p>
           ) : null}
         </InspectorSection>
-      </InspectorCollapseProvider>
+      </>
     </PlannerInspectorShell>
   );
 }

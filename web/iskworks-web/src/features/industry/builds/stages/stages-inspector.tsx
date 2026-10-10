@@ -36,7 +36,6 @@ import type { FacilityProfile } from "../../../../api/industry/facilities";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { MoneyAmount } from "../../../../components/money";
 import { Badge } from "../../../../components/primitives";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
 import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { PricingBody } from "../../inspector/unified-item-inspector";
@@ -231,7 +230,7 @@ function ProductionInspector({
       returnFocusRowKey={node.id}
       title={node.outputTypeName}
     >
-      <InspectorCollapseProvider>
+      <>
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <EveTypeImage size={32} typeId={node.outputTypeId} typeName={node.outputTypeName} />
           <Badge square tone={node.activity === "reaction" ? "reaction" : "primary"}>
@@ -263,7 +262,6 @@ function ProductionInspector({
           // Production configuration is NOT here -- it belongs to the one
           // producer below, shown once however many consumers it serves.
           <InspectorSection
-            defaultExpanded
             id="used-by"
             label="Used by / Sourcing"
             summary={`${node.consumers.length} consumer${node.consumers.length === 1 ? "" : "s"}`}
@@ -322,7 +320,7 @@ function ProductionInspector({
         {/* Producer ownership: blueprint/formula, ME/TE and facility belong
             to this one operation -- one configuration however many
             consumers it serves. */}
-        <InspectorSection defaultExpanded id="configuration" label="Production configuration">
+        <InspectorSection id="configuration" label="Production configuration">
           {!isRoot && node.consumers.length > 1 ? (
             <p className="mb-2 text-[11px] text-muted">
               One configuration for this operation -- it applies to all {node.consumers.length}{" "}
@@ -389,7 +387,7 @@ function ProductionInspector({
           ) : null}
         </InspectorSection>
 
-        <InspectorSection defaultExpanded id="production" label="Production">
+        <InspectorSection id="production" label="Production">
           {boughtToo ? (
             <SourcingSplit acquisition={boughtToo} nodesById={nodesById} produced={[node]} />
           ) : null}
@@ -412,7 +410,7 @@ function ProductionInspector({
         </InspectorSection>
 
         {occurrences.length === 1 ? (
-          <InspectorSection defaultExpanded id="requirements" label="Requirements">
+          <InspectorSection id="requirements" label="Requirements">
             <OperationRequirements
               acquisitions={plan.acquisitions}
               nodes={plan.nodes}
@@ -426,7 +424,7 @@ function ProductionInspector({
           // The root output row's sale-price exception (the Worksheet's
           // output-row pricing). Produced operations never carry a
           // purchase-price override -- their cost is the production cost.
-          <InspectorSection defaultExpanded id="output-pricing" label="Output pricing">
+          <InspectorSection id="output-pricing" label="Output pricing">
             <InspectorRow
               label="Effective unit price"
               value={rootOutputPricing.unitPrice != null ? <MoneyAmount value={rootOutputPricing.unitPrice} /> : "Unpriced"}
@@ -436,7 +434,7 @@ function ProductionInspector({
           </InspectorSection>
         ) : null}
 
-        <InspectorSection defaultExpanded id="economics" label="Economics">
+        <InspectorSection id="economics" label="Economics">
           <InspectorRow label="Material/component" value={money(node.materialComponentCost)} />
           <InspectorRow label="Own installation" value={money(node.ownInstallationCost)} />
           <InspectorRow label="Total production" value={money(node.totalProductionCost)} />
@@ -458,7 +456,7 @@ function ProductionInspector({
           ) : null}
         </InspectorSection>
 
-        <InspectorSection defaultExpanded id="ticket" label="Ticket">
+        <InspectorSection id="ticket" label="Ticket">
           {readOnly ? (
             <EpicNodeTicket epicNode={epicNode} isRoot={isRoot} onCreate={onCreateStepTicket} />
           ) : occurrences[0] ? (
@@ -472,7 +470,7 @@ function ProductionInspector({
           ) : null}
         </InspectorSection>
 
-      </InspectorCollapseProvider>
+      </>
     </PlannerInspectorShell>
   );
 }
