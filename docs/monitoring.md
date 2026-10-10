@@ -71,5 +71,29 @@ ESI's error budget is per IP. If it runs dry, every request from the host is ref
 
 `group` is ESI's `X-Ratelimit-Group` name. Before ESI has named a route's group, the label is the route's URL path with IDs replaced by `{}`.
 
+### Sync runs and SSO
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `iskworks_esi_sync_runs_total` | counter | `kind`, `result` (`success`/`incomplete`/`failed`) | Finished sync runs. |
+| `iskworks_esi_sync_duration_seconds` | histogram | `kind` | How long each run took. |
+| `iskworks_esi_sync_last_success_timestamp_seconds` | gauge | `kind` | Unix time of this process's last successful run of `kind`. |
+| `iskworks_esi_token_refresh_total` | counter | `result` (`success`/`reauth_required`/`failed`) | EVE SSO access-token refreshes. `reauth_required` means the character must be reconnected. |
+
+- `kind` is a character data source: `character_info`, `location`, `skills`, `wallet`, `industry_jobs`, `assets`, `wallet_transactions` or `planets`.
+- The worker records its scheduled refreshes. The API records the manual "Sync now" and asset/wallet import buttons.
+- To tell the two apart, use the scrape job, e.g. `max by (kind) (...)` across both for "last success anywhere".
+- A sync that can't start because its token refresh failed counts only in `token_refresh_total`.
+
+### Worker loops
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `iskworks_worker_loop_runs_total` | counter | `loop`, `result` (`ok`/`failed`) | Finished passes. `failed` means the pass itself errored, e.g. it couldn't query the database. A pass where individual ESI fetches failed is still `ok`; those failures show in `iskworks_esi_requests_total`. |
+| `iskworks_worker_loop_duration_seconds` | histogram | `loop` | Pass duration. |
+| `iskworks_worker_loop_last_run_timestamp_seconds` | gauge | `loop` | Unix time the loop last finished a pass. |
+
+`loop` is one of `market`, `adjusted_price`, `system_index`, `character_sync`, `market_gc`, `esi_gc` or `auth_gc`.
+
 Histograms named `*_duration_seconds` share these buckets: 10 ms, 25 ms,
 50 ms, 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min.
