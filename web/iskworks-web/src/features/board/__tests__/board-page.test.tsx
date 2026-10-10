@@ -555,6 +555,55 @@ describe("BoardPage", () => {
     expect(screen.getByText("ISK-1000")).toBeInTheDocument();
   });
 
+  it("marks the card whose ticket the inspector shows, and only that one", async () => {
+    industryApi.listTickets.mockResolvedValue([
+      ticketFixture({ id: "t1", displayId: "ISK-1000", status: "todo", kind: "manufacturing" }),
+      ticketFixture({ id: "t2", displayId: "ISK-1001", status: "todo", capturedName: "Isogen", kind: "manufacturing" }),
+    ]);
+    renderPage();
+    const lanes = await boardLanes();
+    const card = (displayId: string) => lanes.getByText(displayId).closest('[role="button"]') as HTMLElement;
+    expect(document.querySelector('[aria-current="true"]')).toBeNull();
+
+    await userEvent.click(card("ISK-1000"));
+    await screen.findByRole("heading", { name: "Tritanium" });
+    expect(card("ISK-1000")).toHaveAttribute("aria-current", "true");
+    expect(card("ISK-1001")).not.toHaveAttribute("aria-current");
+
+    await userEvent.click(card("ISK-1001"));
+    await screen.findByRole("heading", { name: "Isogen" });
+    expect(card("ISK-1001")).toHaveAttribute("aria-current", "true");
+    expect(card("ISK-1000")).not.toHaveAttribute("aria-current");
+
+    await userEvent.click(screen.getByRole("button", { name: "Close ticket details" }));
+    expect(document.querySelector('[aria-current="true"]')).toBeNull();
+  });
+
+  it("moves the mark from an Epic card to its ticket when the ticket is opened from the Epic", async () => {
+    industryApi.listOrders.mockResolvedValue([
+      orderFixture({ id: "order-1", displayName: "Manufacture Ishtar", sourceBuildId: "build-1" }),
+    ]);
+    industryApi.listTickets.mockResolvedValue([
+      ticketFixture({ id: "ticket-1", displayId: "ISK-1000", orderId: "order-1", kind: "manufacturing" }),
+    ]);
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({ id: "order-1", displayName: "Manufacture Ishtar", sourceBuildId: "build-1" }),
+    );
+
+    renderPage();
+    const lanes = await boardLanes();
+    await userEvent.click(lanes.getByText("Manufacture Ishtar"));
+    const inspector = await screen.findByRole("complementary", { name: "Manufacture Ishtar" });
+    const marked = () => [...lanes.getAllByRole("button")].filter((el) => el.getAttribute("aria-current") === "true");
+    expect(marked()).toHaveLength(1);
+    expect(marked()[0]).toHaveTextContent("Manufacture Ishtar");
+
+    await userEvent.click(within(inspector).getByText("ISK-1000"));
+    await screen.findByRole("heading", { name: "Tritanium" });
+    expect(marked()).toHaveLength(1);
+    expect(marked()[0]).toHaveTextContent("ISK-1000");
+  });
+
   it("groups unbatched Acquisition tickets into one ACQ GROUP card by price source, and batched ones render via the Run card instead", async () => {
     industryApi.listTickets.mockResolvedValue([
       ticketFixture({ id: "t1", displayId: "ISK-1000", status: "todo", acquisitionRunId: "run-1" }),

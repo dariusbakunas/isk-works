@@ -649,10 +649,15 @@ export function BoardPage() {
               <div className="flex flex-col gap-1.5 p-1.5">
                 {laneCardCount === 0 ? <p className="iw-muted text-xs">No tickets.</p> : null}
                 {laneOrderCards.map((order) => (
-                  <OrderCard key={order.id} onOpen={openEpic} order={order} />
+                  <OrderCard
+                    // A ticket opened from the Epic takes over the rail;
+                    // the Epic stays only as "Back".
+                    active={order.id === openOrderId && openTicketId === null}
+                    key={order.id} onOpen={openEpic} order={order} />
                 ))}
                 {laneRunCards.map(({ run, tickets }) => (
                   <OrderAcquisitionRunCard
+                    active={run.id === openRunId}
                     key={run.id}
                     onOpen={setOpenRunId}
                     priceSourceName={
@@ -664,6 +669,7 @@ export function BoardPage() {
                 ))}
                 {nonAcqTickets.map((ticket) => (
                   <OrderTicketCard
+                    active={ticket.id === openTicketId}
                     assignee={
                       ticket.assigneeCharacterId
                         ? (view.characterById.get(ticket.assigneeCharacterId) ?? null)
@@ -686,6 +692,7 @@ export function BoardPage() {
                   const key = `${group.key}:${lane.status}`;
                   return (
                     <OrderAcqGroupCard
+                      activeTicketId={openTicketId}
                       group={group}
                       key={key}
                       expanded={expandedGroups.has(key)}

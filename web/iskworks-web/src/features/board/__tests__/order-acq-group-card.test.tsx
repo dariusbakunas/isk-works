@@ -306,3 +306,35 @@ describe("OrderAcqGroupCard expanded state", () => {
     expect(screen.getByText("ISK-2000").closest("[draggable]")).toHaveAttribute("draggable", "false");
   });
 });
+
+describe("OrderAcqGroupCard inspected ticket", () => {
+  const tickets = [
+    ticketFixture({ id: "t1", displayId: "ISK-2000" }),
+    ticketFixture({ id: "t2", displayId: "ISK-2001", capturedName: "Pyerite", typeId: 35 }),
+  ];
+  const marked = () => [...document.querySelectorAll('[aria-current="true"]')];
+
+  it("marks the group while collapsed", () => {
+    render(
+      <OrderAcqGroupCard activeTicketId="t2" expanded={false} group={groupFrom(tickets)} onToggleExpand={() => {}} />,
+    );
+
+    expect(marked()).toHaveLength(1);
+    expect(marked()[0]).toHaveTextContent("ACQ GROUP");
+  });
+
+  it("marks the ticket's own row once expanded", () => {
+    render(<OrderAcqGroupCard activeTicketId="t2" expanded group={groupFrom(tickets)} onToggleExpand={() => {}} />);
+
+    expect(marked()).toHaveLength(1);
+    expect(marked()[0]).toHaveTextContent("ISK-2001");
+  });
+
+  it("marks nothing when the inspected ticket is elsewhere", () => {
+    render(
+      <OrderAcqGroupCard activeTicketId="other" expanded={false} group={groupFrom(tickets)} onToggleExpand={() => {}} />,
+    );
+
+    expect(marked()).toHaveLength(0);
+  });
+});

@@ -8,6 +8,7 @@ import { acquisitionPricingIdentity } from "./acquisition-pricing";
 import { acquisitionRunStatusMeta } from "./ticket-meta";
 import { consolidateOrderTicketsByType } from "./order-ticket-consolidation";
 import { useAcquisitionPricingDescriptor } from "./use-acquisition-pricing-descriptor";
+import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 const ITEM_PREVIEW_LIMIT = 3;
 
@@ -20,9 +21,12 @@ export function OrderAcquisitionRunCard({
   run,
   tickets,
   priceSourceName,
+  active = false,
   onOpen,
 }: {
   run: AcquisitionRun;
+  /** The run the Board's drawer is showing. */
+  active?: boolean;
   tickets: Ticket[];
   /** Resolved name of the run's manual price list, when it has one. */
   priceSourceName?: string | null;
@@ -40,10 +44,13 @@ export function OrderAcquisitionRunCard({
   const isComplete = run.status === "complete";
   const previewItems = items.slice(0, ITEM_PREVIEW_LIMIT);
   const remainingItems = items.length - previewItems.length;
+  const ref = useScrollIntoViewWhenActive<HTMLButtonElement>(active);
 
   return (
     <button
-      className={`relative block w-full overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-4 pr-2.5 text-left text-sm hover:border-batch/70 ${isComplete ? "border-border opacity-70" : "border-batch/40"}`}
+      aria-current={active ? "true" : undefined}
+      className={`relative block w-full overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-4 pr-2.5 text-left text-sm hover:border-batch/70 ${isComplete ? "border-border opacity-70" : "border-batch/40"} ${active ? ACTIVE_CARD_CLASS : ""}`}
+      ref={ref}
       onClick={() => onOpen?.(run.id)}
       type="button"
     >

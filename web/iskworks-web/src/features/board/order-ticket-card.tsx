@@ -8,6 +8,7 @@ import { CharacterName } from "../../observability/private";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
+import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 // A small, secondary "how much of this has actually been recorded" line --
 // item quantities for Acquisition, runs for Manufacturing/Reaction. It is
@@ -52,6 +53,7 @@ export function OrderTicketCard({
   assignee,
   selectable = false,
   selected = false,
+  active = false,
   onToggleSelect,
   onOpen,
   onDragStart,
@@ -64,6 +66,8 @@ export function OrderTicketCard({
   assignee?: { characterName: string; eveCharacterId: number } | null;
   selectable?: boolean;
   selected?: boolean;
+  /** The ticket the Board's inspector is showing. */
+  active?: boolean;
   onToggleSelect?: (ticketId: string) => void;
   onOpen?: (ticketId: string) => void;
   onDragStart?: (ticketId: string) => void;
@@ -87,10 +91,13 @@ export function OrderTicketCard({
   // (checkbox clicks own that gesture) and for a batched ticket (must move
   // through its Run).
   const draggable = !selectable && isTicketDraggable(ticket);
+  const ref = useScrollIntoViewWhenActive<HTMLDivElement>(active);
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[2px] border bg-panel py-1.5 pl-3 pr-1.5 text-sm ${blocked ? "border-danger/50" : "border-border"} ${selectable && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      aria-current={active ? "true" : undefined}
+      className={`relative overflow-hidden rounded-[2px] border bg-panel py-1.5 pl-3 pr-1.5 text-sm ${blocked ? "border-danger/50" : "border-border"} ${selectable && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${active ? ACTIVE_CARD_CLASS : ""}`}
+      ref={ref}
       draggable={draggable}
       onClick={selectable ? undefined : () => onOpen?.(ticket.id)}
       onDragEnd={draggable ? () => onDragEnd?.() : undefined}
