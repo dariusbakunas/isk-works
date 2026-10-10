@@ -84,4 +84,5 @@ manual "sync now" is limited to once a minute per character.
    below the defaults. Shorter intervals don't give you fresher data, because
    ESI serves cached responses anyway. They only spend your rate limit.
 5. **Check the logs** for `ESI error limit is nearly exhausted`. If you see it
-   often, something is wrong; please open an issue.
+   often, something is wrong; please open an issue. To watch ESI traffic
+   continuously, turn on the Prometheus metrics (see `docs/monitoring.md`).
