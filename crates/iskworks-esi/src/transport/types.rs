@@ -174,6 +174,22 @@ pub struct BlueprintAssetObservation {
     pub raw: Value,
 }
 
+impl BlueprintAssetObservation {
+    /// Highest material efficiency a blueprint can be researched to.
+    pub const MAX_MATERIAL_EFFICIENCY: i16 = 10;
+    /// Highest time efficiency a blueprint can be researched to.
+    pub const MAX_TIME_EFFICIENCY: i16 = 20;
+
+    /// Whether ME and TE are within the game's ranges (`0..=10`, `0..=20`).
+    /// ESI has been seen to report a blueprint outside them; such a record
+    /// is unusable, not a reason to fail the rest of the sync.
+    #[must_use]
+    pub fn efficiency_in_range(&self) -> bool {
+        (0..=Self::MAX_MATERIAL_EFFICIENCY).contains(&self.material_efficiency)
+            && (0..=Self::MAX_TIME_EFFICIENCY).contains(&self.time_efficiency)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct WalletTransactionObservation {
     pub transaction_id: i64,
