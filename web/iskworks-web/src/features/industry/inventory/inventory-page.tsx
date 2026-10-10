@@ -1,5 +1,5 @@
 import { ChevronsDown, ChevronsUp, Download, MoreHorizontal, PackagePlus, Plus, Scale, Search, ShoppingCart, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { exportInventory, getInventoryItem, listInventory, type InventoryItem } from "../../../api/inventory";
@@ -68,17 +68,32 @@ export function InventoryPage() {
     }
   }
 
+  // Only the latest load may update the list: a slower response for a
+  // scope or price source the user already switched away from (or a refresh
+  // overtaken by another) is dropped instead of overwriting newer data.
+  const latestLoad = useRef(0);
+
   function load() {
+    const request = ++latestLoad.current;
     setState({ status: "loading" });
     Promise.all([listInventory(sourceId || undefined, scope), listPriceSources()])
       .then(([items, loadedSources]) => {
+        if (request !== latestLoad.current) return;
         setState({ status: "ready", data: items });
         setSources(loadedSources);
       })
-      .catch((error) => setState({ status: "error", message: apiMessage(error) }));
+      .catch((error) => {
+        if (request !== latestLoad.current) return;
+        setState({ status: "error", message: apiMessage(error) });
+      });
   }
 
-  useEffect(load, [sourceId, scope]);
+  useEffect(() => {
+    load();
+    return () => {
+      latestLoad.current += 1;
+    };
+  }, [sourceId, scope]);
 
   const items = state.status === "ready" ? state.data : [];
   const visibleItems = useMemo(

@@ -247,6 +247,43 @@ describe("InventoryPage", () => {
     expect(api.listInventory).toHaveBeenCalledWith(undefined, "tracked");
   });
 
+  test("a slow scope response that arrives after switching scopes is ignored", async () => {
+    const phantom = item({
+      typeId: 44,
+      typeName: "Caldari Navy Mjolnir Heavy Missile",
+      groupName: "Ammo",
+      quantity: 0,
+      reservedQuantity: 0,
+      availableQuantity: 0,
+      esiObservedQuantity: 50,
+    });
+    let resolveUntracked: (items: InventoryItem[]) => void = () => {};
+    let resolveTracked: (items: InventoryItem[]) => void = () => {};
+    api.listInventory.mockImplementation((_priceSourceId, scope) =>
+      scope === "untracked"
+        ? new Promise((resolve) => (resolveUntracked = resolve))
+        : new Promise((resolve) => (resolveTracked = resolve)),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    resolveTracked([tritanium, pyerite, zydrine, rifter]);
+    await screen.findByRole("table", { name: "Inventory" });
+
+    // Untracked starts loading; Tracked is clicked before it finishes.
+    await user.click(screen.getByRole("tab", { name: "Untracked observed" }));
+    const untracked = resolveUntracked;
+    await user.click(screen.getByRole("tab", { name: "Tracked" }));
+    resolveTracked([tritanium, pyerite, zydrine, rifter]);
+    await screen.findByRole("table", { name: "Inventory" });
+    // The slower untracked response lands last.
+    untracked([phantom]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await expandAll(user);
+    expect(screen.getByRole("row", { name: /Tritanium/ })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /Caldari Navy Mjolnir Heavy Missile/ })).not.toBeInTheDocument();
+  });
+
   test("a ?item= deep-link outside the current scope is fetched directly so the inspector still opens", async () => {
     const untrackedItem = { ...item({ typeId: 44, typeName: "Zydrite Ore", groupName: "Ore", quantity: 0, reservedQuantity: 0, availableQuantity: 0, esiObservedQuantity: 12 }), events: [], reservations: [] };
     api.getInventoryItem.mockImplementation((typeId: number) =>
