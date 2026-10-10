@@ -13,6 +13,13 @@ import type {
 import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor";
 import { BuildStagesView } from "../build-stages-view";
 
+// About section contents: sections start expanded here (see the double).
+vi.mock("../../../inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../../../inspector/__tests__/expanded-inspector-collapse");
+  return expandedInspectorCollapse();
+});
+
+
 const postBuildExecutionPlan = vi.fn();
 vi.mock("../../../../../api/industry", async (importOriginal) => ({
   ...(await importOriginal<object>()),

@@ -24,6 +24,13 @@ import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor
 import { rootRowEditing, type RootRowEditing } from "../root-row-editing";
 import { StagesInspector, type StagesSelection } from "../stages-inspector";
 
+// About section contents: sections start expanded here (see the double).
+vi.mock("../../../inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../../../inspector/__tests__/expanded-inspector-collapse");
+  return expandedInspectorCollapse();
+});
+
+
 const updateDescendantProductionConfiguration = vi.fn();
 const listBlueprintObservations = vi.fn();
 vi.mock("../../../../../api/industry", async (importOriginal) => ({
