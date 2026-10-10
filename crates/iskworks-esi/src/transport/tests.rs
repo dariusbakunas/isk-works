@@ -1772,4 +1772,38 @@ mod metrics_recording {
             2
         );
     }
+
+    #[tokio::test]
+    async fn token_refreshes_are_counted_by_result() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (base_url, server) = spawn_scripted_esi(vec![INVALID_GRANT, UNAVAILABLE]).await;
+        let transport = HttpEsiTransport::new(
+            "client-id".to_string(),
+            "http://localhost/callback".to_string(),
+            format!("{base_url}/token"),
+            format!("{base_url}/jwks"),
+            base_url,
+            "issuer".to_string(),
+        );
+
+        assert_eq!(
+            transport.refresh("revoked").await,
+            Err(EsiError::AuthorizationRequired)
+        );
+        assert_eq!(
+            transport.refresh("refresh-token").await,
+            Err(EsiError::TemporaryFailure)
+        );
+        server.await.unwrap();
+
+        let recorded = Recorded::take(&snapshotter);
+        let refreshes = |result: &str| {
+            recorded.counter("iskworks_esi_token_refresh_total", &[("result", result)])
+        };
+        assert_eq!(refreshes("reauth_required"), 1);
+        assert_eq!(refreshes("failed"), 1);
+        assert_eq!(refreshes("success"), 0);
+    }
 }
