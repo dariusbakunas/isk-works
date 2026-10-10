@@ -2,6 +2,7 @@ import type { OrderSummary } from "../../api/industry";
 import { Badge, ProgressBar } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { orderStatusMeta } from "./order-meta";
+import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 // An Epic (backend: Order) opens the Epic Inspector in the Board's own
 // right rail rather than navigating to a dedicated page -- the Board is the
@@ -10,14 +11,26 @@ import { orderStatusMeta } from "./order-meta";
 // OrderTicketCard, not a `Ticket` with an `isOrder` flag: Order and Ticket
 // stay genuinely separate types on the Board, sharing only the same
 // derived status/lane vocabulary.
-export function OrderCard({ order, onOpen }: { order: OrderSummary; onOpen?: (orderId: string) => void }) {
+export function OrderCard({
+  order,
+  active = false,
+  onOpen,
+}: {
+  order: OrderSummary;
+  /** The Epic the Board's inspector is showing. */
+  active?: boolean;
+  onOpen?: (orderId: string) => void;
+}) {
+  const ref = useScrollIntoViewWhenActive<HTMLDivElement>(active);
   const status = orderStatusMeta[order.status];
   const percentSatisfied = order.rollup.total === 0 ? 100 : (order.rollup.satisfied / order.rollup.total) * 100;
   const isComplete = order.status === "complete";
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-4 pr-2.5 text-sm hover:border-primary/70 ${isComplete ? "border-border opacity-70" : "border-primary/40"}`}
+      aria-current={active ? "true" : undefined}
+      className={`relative overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-4 pr-2.5 text-sm hover:border-primary/70 ${isComplete ? "border-border opacity-70" : "border-primary/40"} ${active ? ACTIVE_CARD_CLASS : ""}`}
+      ref={ref}
       onClick={() => onOpen?.(order.id)}
       role="button"
       tabIndex={0}

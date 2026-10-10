@@ -10,6 +10,7 @@ import type { OrderAcquisitionGroup } from "./order-acq-group";
 import { isBatchableOrderTicket } from "./order-ticket-card";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
 import { useAcquisitionPricingDescriptor } from "./use-acquisition-pricing-descriptor";
+import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 function PricingIcon({ icon }: { icon: AcquisitionPricingIcon }) {
   if (icon === "location") return <MapPin aria-hidden="true" size={9} />;
@@ -41,6 +42,7 @@ export function OrderAcqGroupCard({
   onToggleSelect,
   onSelectAll,
   onOpenTicket,
+  activeTicketId = null,
   onTicketDragStart,
   onTicketDragEnd,
 }: {
@@ -56,6 +58,8 @@ export function OrderAcqGroupCard({
   onToggleSelect?: (ticketId: string) => void;
   onSelectAll?: (ticketIds: string[]) => void;
   onOpenTicket?: (ticketId: string) => void;
+  /** The ticket the Board's inspector is showing, if any. */
+  activeTicketId?: string | null;
   onTicketDragStart?: (ticketId: string) => void;
   onTicketDragEnd?: () => void;
 }) {
@@ -92,10 +96,16 @@ export function OrderAcqGroupCard({
     group.tickets.map((ticket) => ticket.actualLineTotal ?? ticket.estimatedLineTotal),
   ).value;
 
+  // The inspected ticket is marked on its own row when the group is
+  // expanded, and on the group itself when collapsed.
+  const containsActive = activeTicketId !== null && group.tickets.some((ticket) => ticket.id === activeTicketId);
+  const ref = useScrollIntoViewWhenActive<HTMLDivElement>(containsActive);
+
   return (
-    <div>
+    <div ref={ref}>
       <div
-        className={`relative overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-3.5 pr-2 text-sm ${isComplete ? "border-border opacity-70" : "border-primary/40"}`}
+        aria-current={containsActive && !expanded ? "true" : undefined}
+        className={`relative overflow-hidden rounded-[2px] border bg-panel-strong py-2 pl-3.5 pr-2 text-sm ${isComplete ? "border-border opacity-70" : "border-primary/40"} ${containsActive && !expanded ? ACTIVE_CARD_CLASS : ""}`}
         onClick={selecting ? undefined : onToggleExpand}
         onKeyDown={
           selecting
@@ -205,7 +215,8 @@ export function OrderAcqGroupCard({
             const draggable = !selecting && isTicketDraggable(ticket);
             return (
               <div
-                className={`relative overflow-hidden rounded-[2px] border border-border bg-panel py-1.5 pl-3 pr-1.5 text-sm ${selecting && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+                aria-current={ticket.id === activeTicketId ? "true" : undefined}
+                className={`relative overflow-hidden rounded-[2px] border border-border bg-panel py-1.5 pl-3 pr-1.5 text-sm ${selecting && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${ticket.id === activeTicketId ? ACTIVE_CARD_CLASS : ""}`}
                 draggable={draggable}
                 key={ticket.id}
                 onClick={selecting ? undefined : () => onOpenTicket?.(ticket.id)}
