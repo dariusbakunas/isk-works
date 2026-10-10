@@ -24,6 +24,8 @@ const sourcePresentation: Record<ExecutionRequirement["resolution"], { label: st
   unresolved: { label: "Unresolved", tone: "danger" },
 };
 
+const inventoryPresentation: { label: string; tone: Tone } = { label: "Inventory", tone: "positive" };
+
 export function OperationRequirements({ acquisitions, requirements, nodes, onSelect }: Props) {
   if (requirements.length === 0) {
     return <p className="text-[11px] text-muted">No direct material requirements.</p>;
@@ -43,7 +45,12 @@ export function OperationRequirements({ acquisitions, requirements, nodes, onSel
           : requirement.resolution === "buy" && acquisitionTypeIds.has(requirement.typeId)
             ? { kind: "acquisition", typeId: requirement.typeId }
             : null;
-        const source = sourcePresentation[requirement.resolution];
+        // Fully covered by stock: nothing is bought or built for it here,
+        // whatever its sourcing says.
+        const fromInventory = requirement.requiredQuantity > 0
+          && requirement.shortageQuantity === 0
+          && requirement.plannedInventoryQuantity >= requirement.requiredQuantity;
+        const source = fromInventory ? inventoryPresentation : sourcePresentation[requirement.resolution];
         const content = (
           <>
             <div className="flex items-start justify-between gap-2">
