@@ -4,6 +4,7 @@ mod client_identity;
 mod crypto;
 mod downtime;
 mod error_limit;
+mod metrics;
 mod oauth;
 mod rate_limit;
 #[cfg(any(test, feature = "test-support"))]

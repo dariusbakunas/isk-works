@@ -1611,3 +1611,122 @@ fn an_out_of_range_blueprint_still_parses_so_the_caller_can_skip_it() {
     .unwrap();
     assert!(!parsed.efficiency_in_range());
 }
+
+mod metrics_recording {
+    use super::*;
+    use crate::metrics::test_support::Recorded;
+    use metrics_util::debugging::DebuggingRecorder;
+
+    const NOT_MODIFIED: &str =
+        "HTTP/1.1 304 Not Modified\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+    const INVALID_GRANT: &str = concat!(
+        "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: 25\r\nconnection: close\r\n\r\n",
+        r#"{"error":"invalid_grant"}"#
+    );
+
+    #[tokio::test]
+    async fn every_request_is_counted_under_its_route_and_outcome() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (base_url, server) =
+            spawn_scripted_esi(vec![EMPTY_LIST, NOT_MODIFIED, UNAVAILABLE, INVALID_GRANT]).await;
+        let transport = HttpEsiTransport::new(
+            "client-id".to_string(),
+            "http://localhost/callback".to_string(),
+            format!("{base_url}/token"),
+            format!("{base_url}/jwks"),
+            base_url,
+            "issuer".to_string(),
+        );
+
+        transport.market_prices().await.unwrap();
+        transport
+            .regional_market_orders(10_000_002, 34, 1, Some("\"etag\""))
+            .await
+            .unwrap();
+        assert!(transport.industry_systems().await.is_err());
+        assert!(transport.refresh("refresh-token").await.is_err());
+        server.await.unwrap();
+        // Nothing listens on port 9: no response at all.
+        let unreachable = HttpEsiTransport::public("http://127.0.0.1:9".to_string());
+        assert!(unreachable.universe_names(&[1]).await.is_err());
+
+        let recorded = Recorded::take(&snapshotter);
+        let requests = |route: &str, outcome: &str, status_class: &str| {
+            recorded.counter(
+                "iskworks_esi_requests_total",
+                &[
+                    ("route", route),
+                    ("outcome", outcome),
+                    ("status_class", status_class),
+                ],
+            )
+        };
+        assert_eq!(requests("/markets/prices/", "ok", "2xx"), 1);
+        assert_eq!(
+            requests("/markets/{region_id}/orders/", "not_modified", "3xx"),
+            1
+        );
+        assert_eq!(requests("/industry/systems/", "server_error", "5xx"), 1);
+        assert_eq!(requests("sso:token", "client_error", "4xx"), 1);
+        assert_eq!(requests("/universe/names/", "transport_error", "none"), 1);
+        assert_eq!(
+            recorded.counter("iskworks_esi_requests_total", &[]),
+            5,
+            "nothing else was counted"
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_pages_fetched_total",
+                &[("route", "/markets/{region_id}/orders/")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.histogram_count("iskworks_esi_request_duration_seconds", &[]),
+            5
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_a_guard_refuses_is_counted_as_blocked() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (base_url, server) = spawn_scripted_esi(vec![
+            "HTTP/1.1 429 Too Many Requests\r\nretry-after: 45\r\nx-ratelimit-group: market-order\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+        ])
+        .await;
+        let transport = HttpEsiTransport::public(base_url);
+
+        for _ in 0..2 {
+            assert!(transport
+                .regional_market_orders(10_000_002, 34, 1, None)
+                .await
+                .is_err());
+        }
+        server.await.unwrap();
+
+        let recorded = Recorded::take(&snapshotter);
+        let route = ("route", "/markets/{region_id}/orders/");
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_requests_total",
+                &[route, ("outcome", "rate_limited")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_requests_total",
+                &[route, ("outcome", "blocked"), ("status_class", "none")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.histogram_count("iskworks_esi_request_duration_seconds", &[route]),
+            1
+        );
+    }
+}

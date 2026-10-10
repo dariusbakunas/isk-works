@@ -1581,6 +1581,8 @@ dependencies = [
  "base64",
  "chrono",
  "jsonwebtoken",
+ "metrics",
+ "metrics-util",
  "rand 0.8.7",
  "reqwest",
  "rust_decimal",
@@ -1895,7 +1897,9 @@ dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
  "hashbrown 0.16.1",
+ "indexmap",
  "metrics",
+ "ordered-float",
  "quanta",
  "rand 0.9.5",
  "rand_xoshiro",
@@ -2024,6 +2028,15 @@ name = "opaque-debug"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
+
+[[package]]
+name = "ordered-float"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "p256"

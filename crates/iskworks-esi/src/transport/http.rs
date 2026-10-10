@@ -159,13 +159,10 @@ impl HttpEsiTransport {
     }
 
     async fn token_request(&self, form: &[(&str, &str)]) -> Result<TokenResponse, EsiError> {
-        let response = self
-            .client
-            .post(&self.token_url)
-            .form(form)
-            .send()
-            .await
-            .map_err(|_| EsiError::TemporaryFailure)?;
+        let timer = RequestTimer::start(EsiRoute::SsoToken);
+        let response = self.client.post(&self.token_url).form(form).send().await;
+        timer.sent(&response);
+        let response = response.map_err(|_| EsiError::TemporaryFailure)?;
         let status = response.status();
         if status == StatusCode::BAD_REQUEST {
             // OAuth reports a revoked/expired refresh token as 400
@@ -242,11 +239,10 @@ impl HttpEsiTransport {
                 return Ok(cached.keys);
             }
         }
-        let keys: JwkSet = self
-            .client
-            .get(&self.jwks_url)
-            .send()
-            .await
+        let timer = RequestTimer::start(EsiRoute::SsoJwks);
+        let response = self.client.get(&self.jwks_url).send().await;
+        timer.sent(&response);
+        let keys: JwkSet = response
             .map_err(|_| EsiError::TemporaryFailure)?
             .json()
             .await
@@ -259,11 +255,27 @@ impl HttpEsiTransport {
     }
 
     /// Gate every ESI request: the error budget must not be nearly spent,
-    /// and Tranquility must not be in its daily downtime.
-    async fn before_request(&self, url: &str, caller: Caller) -> Result<(), EsiError> {
-        self.error_limit.check()?;
-        self.rate_limit.check(url, caller)?;
-        self.downtime_gate().await
+    /// and Tranquility must not be in its daily downtime. A request let
+    /// through gets the timer that records it; a refused one is recorded
+    /// as blocked.
+    async fn before_request(
+        &self,
+        route: EsiRoute,
+        url: &str,
+        caller: Caller,
+    ) -> Result<RequestTimer, EsiError> {
+        let gate = async {
+            self.error_limit.check()?;
+            self.rate_limit.check(url, caller)?;
+            self.downtime_gate().await
+        };
+        match gate.await {
+            Ok(()) => Ok(RequestTimer::start(route)),
+            Err(error) => {
+                RequestTimer::blocked(route);
+                Err(error)
+            }
+        }
     }
 
     /// Feeds every ESI response to the error-limit and rate-limit guards.
@@ -302,12 +314,14 @@ impl HttpEsiTransport {
                 retry_after_seconds: Some(retry_after_seconds),
             }),
             DowntimeDecision::Probe => {
-                let healthy = match self
+                let timer = RequestTimer::start(EsiRoute::Status);
+                let response = self
                     .client
                     .get(format!("{}/latest/status/", self.esi_base_url))
                     .send()
-                    .await
-                {
+                    .await;
+                timer.sent(&response);
+                let healthy = match response {
                     Ok(response) => {
                         self.error_limit
                             .observe(response.status(), response.headers());
@@ -336,20 +350,20 @@ impl HttpEsiTransport {
 
     async fn get_json(
         &self,
+        route: EsiRoute,
         url: String,
         access_token: &str,
         etag: Option<&str>,
     ) -> Result<reqwest::Response, EsiError> {
         let caller = rate_limit::caller(Some(access_token));
-        self.before_request(&url, caller).await?;
+        let timer = self.before_request(route, &url, caller).await?;
         let mut request = self.client.get(&url).bearer_auth(access_token);
         if let Some(etag) = etag {
             request = request.header(header::IF_NONE_MATCH, etag);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|_| EsiError::TemporaryFailure)?;
+        let response = request.send().await;
+        timer.sent(&response);
+        let response = response.map_err(|_| EsiError::TemporaryFailure)?;
         self.observe_response(&url, caller, &response);
         if response.status() == StatusCode::NOT_MODIFIED || response.status().is_success() {
             Ok(response)
@@ -358,14 +372,15 @@ impl HttpEsiTransport {
         }
     }
 
-    async fn get_public_json(&self, url: String) -> Result<reqwest::Response, EsiError> {
-        self.before_request(&url, None).await?;
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|_| EsiError::TemporaryFailure)?;
+    async fn get_public_json(
+        &self,
+        route: EsiRoute,
+        url: String,
+    ) -> Result<reqwest::Response, EsiError> {
+        let timer = self.before_request(route, &url, None).await?;
+        let response = self.client.get(&url).send().await;
+        timer.sent(&response);
+        let response = response.map_err(|_| EsiError::TemporaryFailure)?;
         self.observe_response(&url, None, &response);
         if response.status().is_success() {
             Ok(response)
@@ -376,17 +391,14 @@ impl HttpEsiTransport {
 
     async fn post_public_json<T: Serialize + ?Sized>(
         &self,
+        route: EsiRoute,
         url: String,
         body: &T,
     ) -> Result<reqwest::Response, EsiError> {
-        self.before_request(&url, None).await?;
-        let response = self
-            .client
-            .post(&url)
-            .json(body)
-            .send()
-            .await
-            .map_err(|_| EsiError::TemporaryFailure)?;
+        let timer = self.before_request(route, &url, None).await?;
+        let response = self.client.post(&url).json(body).send().await;
+        timer.sent(&response);
+        let response = response.map_err(|_| EsiError::TemporaryFailure)?;
         self.observe_response(&url, None, &response);
         if response.status().is_success() {
             Ok(response)
@@ -447,6 +459,7 @@ impl EsiTransport for HttpEsiTransport {
             Some(base) => format!("{base}/revoke"),
             None => return Err(EsiError::Configuration("token URL has no /token suffix")),
         };
+        let timer = RequestTimer::start(EsiRoute::SsoRevoke);
         let response = self
             .client
             .post(revoke_url)
@@ -456,8 +469,9 @@ impl EsiTransport for HttpEsiTransport {
                 ("client_id", &self.client_id),
             ])
             .send()
-            .await
-            .map_err(|_| EsiError::TemporaryFailure)?;
+            .await;
+        timer.sent(&response);
+        let response = response.map_err(|_| EsiError::TemporaryFailure)?;
         if response.status().is_success() {
             Ok(())
         } else {
@@ -474,6 +488,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<AssetObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterAssets,
                 format!(
                     "{}/latest/characters/{character_id}/assets/?page={page}",
                     self.esi_base_url
@@ -513,6 +528,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<BlueprintAssetObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterBlueprints,
                 format!(
                     "{}/latest/characters/{character_id}/blueprints/?page={page}",
                     self.esi_base_url
@@ -550,7 +566,14 @@ impl EsiTransport for HttpEsiTransport {
         if let Some(from_id) = from_id {
             url.push_str(&format!("?from_id={from_id}"));
         }
-        let response = self.get_json(url, access_token, etag).await?;
+        let response = self
+            .get_json(
+                EsiRoute::CharacterWalletTransactions,
+                url,
+                access_token,
+                etag,
+            )
+            .await?;
         let metadata = metadata(&response);
         if response.status() == StatusCode::NOT_MODIFIED {
             return Ok(EsiResponse {
@@ -581,6 +604,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<WalletBalanceObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterWallet,
                 format!(
                     "{}/latest/characters/{character_id}/wallet/",
                     self.esi_base_url
@@ -609,6 +633,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<WalletJournalObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterWalletJournal,
                 format!(
                     "{}/latest/characters/{character_id}/wallet/journal/?page={page}",
                     self.esi_base_url
@@ -637,7 +662,11 @@ impl EsiTransport for HttpEsiTransport {
             return Ok(Vec::new());
         }
         let response = self
-            .post_public_json(format!("{}/latest/universe/names/", self.esi_base_url), ids)
+            .post_public_json(
+                EsiRoute::UniverseNames,
+                format!("{}/latest/universe/names/", self.esi_base_url),
+                ids,
+            )
             .await?;
         let values: Vec<Value> = response
             .json()
@@ -653,6 +682,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<StructureInformation, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::UniverseStructure,
                 format!(
                     "{}/latest/universe/structures/{structure_id}/",
                     self.esi_base_url
@@ -676,7 +706,10 @@ impl EsiTransport for HttpEsiTransport {
 
     async fn industry_systems(&self) -> Result<EsiResponse<IndustrySystemCostIndex>, EsiError> {
         let response = self
-            .get_public_json(format!("{}/latest/industry/systems/", self.esi_base_url))
+            .get_public_json(
+                EsiRoute::IndustrySystems,
+                format!("{}/latest/industry/systems/", self.esi_base_url),
+            )
             .await?;
         let metadata = metadata(&response);
         let values: Vec<Value> = response
@@ -696,7 +729,10 @@ impl EsiTransport for HttpEsiTransport {
 
     async fn market_prices(&self) -> Result<EsiResponse<AdjustedPrice>, EsiError> {
         let response = self
-            .get_public_json(format!("{}/latest/markets/prices/", self.esi_base_url))
+            .get_public_json(
+                EsiRoute::MarketPrices,
+                format!("{}/latest/markets/prices/", self.esi_base_url),
+            )
             .await?;
         let metadata = metadata(&response);
         let values: Vec<Value> = response
@@ -726,12 +762,16 @@ impl EsiTransport for HttpEsiTransport {
             "{}/latest/markets/{region_id}/orders/?order_type=all&page={page}&type_id={type_id}",
             self.esi_base_url
         );
-        self.before_request(&url, None).await?;
+        let timer = self
+            .before_request(EsiRoute::RegionMarketOrders, &url, None)
+            .await?;
         let mut request = self.client.get(&url);
         if let Some(etag) = etag {
             request = request.header(header::IF_NONE_MATCH, etag);
         }
-        let response = request.send().await.map_err(|error| {
+        let response = request.send().await;
+        timer.sent(&response);
+        let response = response.map_err(|error| {
             tracing::warn!(
                 endpoint = "regional_market_orders",
                 region_id,
@@ -826,6 +866,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<MarketOrderObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::StructureMarketOrders,
                 format!(
                     "{}/latest/markets/structures/{structure_id}/?page={page}",
                     self.esi_base_url
@@ -886,10 +927,10 @@ impl EsiTransport for HttpEsiTransport {
         character_id: i64,
     ) -> Result<EsiResponse<CharacterPublicInfo>, EsiError> {
         let response = self
-            .get_public_json(format!(
-                "{}/latest/characters/{character_id}/",
-                self.esi_base_url
-            ))
+            .get_public_json(
+                EsiRoute::CharacterPublicInfo,
+                format!("{}/latest/characters/{character_id}/", self.esi_base_url),
+            )
             .await?;
         let metadata = metadata(&response);
         let raw: Value = response
@@ -910,6 +951,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterLocationObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterLocation,
                 format!(
                     "{}/latest/characters/{character_id}/location/",
                     self.esi_base_url
@@ -937,6 +979,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterSkillsObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterSkills,
                 format!(
                     "{}/latest/characters/{character_id}/skills/",
                     self.esi_base_url
@@ -964,6 +1007,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterSkillQueueEntry>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterSkillQueue,
                 format!(
                     "{}/latest/characters/{character_id}/skillqueue/",
                     self.esi_base_url
@@ -995,6 +1039,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterIndustryJobObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterIndustryJobs,
                 format!(
                     "{}/latest/characters/{character_id}/industry/jobs/",
                     self.esi_base_url
@@ -1025,6 +1070,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterPlanetObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterPlanets,
                 format!(
                     "{}/latest/characters/{character_id}/planets/",
                     self.esi_base_url
@@ -1056,6 +1102,7 @@ impl EsiTransport for HttpEsiTransport {
     ) -> Result<EsiResponse<CharacterPlanetDetailObservation>, EsiError> {
         let response = self
             .get_json(
+                EsiRoute::CharacterPlanetDetail,
                 format!(
                     "{}/latest/characters/{character_id}/planets/{planet_id}/",
                     self.esi_base_url
