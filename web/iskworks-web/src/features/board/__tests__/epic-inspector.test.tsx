@@ -215,6 +215,42 @@ describe("EpicInspector", () => {
     await waitFor(() => expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-1", "req-2"]));
   });
 
+  it("lists a produced item feeding several consumers once, as the one step ticket it needs", async () => {
+    const fibers = (id: string, consumer: string) =>
+      requirementFixture({
+        id,
+        typeId: 57_478,
+        capturedName: "Sylramic Fibers",
+        kind: "react",
+        state: "needsAction",
+        operationOccurrenceKey: consumer,
+        childOccurrenceKey: "reaction:sylramic",
+      });
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({
+        requirements: [
+          fibers("req-a", "manufacturing:a"),
+          fibers("req-b", "manufacturing:b"),
+          requirementFixture({ id: "req-trit", state: "needsAction" }),
+          requirementFixture({ id: "req-trit-2", state: "needsAction", operationOccurrenceKey: "manufacturing:b" }),
+        ],
+      }),
+    );
+    industryApi.bulkCreateTickets.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderInspector();
+
+    await screen.findByText("Needs Action");
+    expect(screen.getAllByText("Sylramic Fibers")).toHaveLength(1);
+    // Each Buy requirement still gets its own ticket.
+    expect(screen.getAllByText("Tritanium")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Create 3 tickets" }));
+
+    await waitFor(() =>
+      expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-a", "req-trit", "req-trit-2"]),
+    );
+  });
+
   it("shows how much of the planned reuse the Epic holds and reserves the rest on request", async () => {
     const tritanium = {
       id: "req-trit",

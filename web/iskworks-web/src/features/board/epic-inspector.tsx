@@ -143,7 +143,7 @@ export function EpicInspector({
   for (const ticket of linkedTickets) kindBreakdown[ticket.kind] += 1;
   const recordedCount = linkedTickets.filter((ticket) => ticket.recording?.state === "recorded").length;
 
-  const needsActionRequirements = detail?.requirements.filter((requirement) => requirement.state === "needsAction") ?? [];
+  const needsActionRequirements = needsActionRows(detail?.requirements ?? []);
 
   async function reserveInventory() {
     setReserveResult(null);
@@ -415,6 +415,23 @@ export function EpicInspector({
       />
     </PlannerInspectorShell>
   );
+}
+
+/** Requirements still needing a ticket, one row per ticket they need.
+ * A produced item feeding several consumers is several requirements but
+ * one production step (`childOccurrenceKey`), and one ticket for that
+ * step serves them all -- so it is listed once. Each Buy requirement gets
+ * its own ticket and keeps its own row. */
+function needsActionRows(requirements: OrderDetail["requirements"]): OrderDetail["requirements"] {
+  const seenSteps = new Set<string>();
+  return requirements.filter((requirement) => {
+    if (requirement.state !== "needsAction") return false;
+    const step = requirement.kind === "buy" ? null : requirement.childOccurrenceKey;
+    if (!step) return true;
+    if (seenSteps.has(step)) return false;
+    seenSteps.add(step);
+    return true;
+  });
 }
 
 /** How many of the items the Epic planned to take from stock it holds
