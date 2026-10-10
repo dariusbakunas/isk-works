@@ -470,12 +470,7 @@ impl EsiTransport for HttpEsiTransport {
 
     async fn refresh(&self, refresh_token: &str) -> Result<RefreshedToken, EsiError> {
         let refreshed = self.refresh_access_token(refresh_token).await;
-        let result = match &refreshed {
-            Ok(_) => "success",
-            Err(EsiError::AuthorizationRequired) => "reauth_required",
-            Err(_) => "failed",
-        };
-        metrics::counter!("iskworks_esi_token_refresh_total", "result" => result).increment(1);
+        crate::metrics::record_token_refresh(&refreshed);
         refreshed
     }
 

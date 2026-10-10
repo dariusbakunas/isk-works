@@ -44,6 +44,34 @@ impl PassResult {
     }
 }
 
+/// Every loop's `poll_loop` name. `init_loop_metrics` creates their series.
+const LOOP_NAMES: [&str; 7] = [
+    "market",
+    "auth_gc",
+    "market_gc",
+    "esi_gc",
+    "adjusted_price",
+    "system_index",
+    "character_sync",
+];
+
+/// Creates every `iskworks_worker_loop_runs_total` series at 0, so a loop's
+/// first failure after a restart shows in `increase()` (and in the
+/// `WorkerLoopFailing` alert). Call once at startup, after installing the
+/// recorder.
+pub fn init_loop_metrics() {
+    for name in LOOP_NAMES {
+        for result in [PassResult::Ok, PassResult::Failed] {
+            metrics::counter!(
+                "iskworks_worker_loop_runs_total",
+                "loop" => name,
+                "result" => result.label()
+            )
+            .increment(0);
+        }
+    }
+}
+
 /// Records a finished pass of loop `name`. A pass dropped on shutdown
 /// never finishes and isn't recorded.
 fn record_pass(name: &'static str, result: PassResult, started: std::time::Instant) {

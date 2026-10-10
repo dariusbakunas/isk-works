@@ -12,6 +12,31 @@ use reqwest::StatusCode;
 
 use crate::error_limit::ERROR_LIMITED_STATUS;
 
+/// `result` labels of `iskworks_esi_token_refresh_total`.
+const TOKEN_REFRESH_RESULTS: [&str; 3] = ["success", "reauth_required", "failed"];
+
+/// Creates the counters alerts watch, at 0. Prometheus's `increase()` and
+/// `rate()` can't see a series appear, so without this the first 420 after
+/// a restart would never fire `EsiErrorLimited`. Call once at startup,
+/// after installing the recorder.
+pub fn init_metrics() {
+    metrics::counter!("iskworks_esi_error_limited_total").increment(0);
+    metrics::counter!("iskworks_esi_error_limit_blocked_total").increment(0);
+    for result in TOKEN_REFRESH_RESULTS {
+        metrics::counter!("iskworks_esi_token_refresh_total", "result" => result).increment(0);
+    }
+}
+
+/// Counts one SSO token refresh by how it ended.
+pub(crate) fn record_token_refresh<T>(refreshed: &Result<T, crate::EsiError>) {
+    let result = match refreshed {
+        Ok(_) => TOKEN_REFRESH_RESULTS[0],
+        Err(crate::EsiError::AuthorizationRequired) => TOKEN_REFRESH_RESULTS[1],
+        Err(_) => TOKEN_REFRESH_RESULTS[2],
+    };
+    metrics::counter!("iskworks_esi_token_refresh_total", "result" => result).increment(1);
+}
+
 /// Every ESI/SSO endpoint this crate calls, named for metric labels.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum EsiRoute {
@@ -260,6 +285,10 @@ pub(crate) mod test_support {
                 .sum()
         }
 
+        pub(crate) fn has(&self, name: &str, labels: &[(&str, &str)]) -> bool {
+            self.matching(name, labels).next().is_some()
+        }
+
         pub(crate) fn gauge(&self, name: &str, labels: &[(&str, &str)]) -> Option<f64> {
             self.matching(name, labels).last().map(|value| match value {
                 DebugValue::Gauge(value) => value.into_inner(),
@@ -283,6 +312,26 @@ mod tests {
     use super::test_support::*;
     use super::*;
     use metrics_util::debugging::DebuggingRecorder;
+
+    #[test]
+    fn alerting_counters_exist_at_zero_after_init() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, init_metrics);
+
+        let recorded = Recorded::take(&snapshotter);
+        for name in [
+            "iskworks_esi_error_limited_total",
+            "iskworks_esi_error_limit_blocked_total",
+        ] {
+            assert!(recorded.has(name, &[]), "{name} missing");
+            assert_eq!(recorded.counter(name, &[]), 0);
+        }
+        for result in TOKEN_REFRESH_RESULTS {
+            let labels = [("result", result)];
+            assert!(recorded.has("iskworks_esi_token_refresh_total", &labels));
+        }
+    }
 
     #[test]
     fn route_labels_are_unique_templates_without_ids() {

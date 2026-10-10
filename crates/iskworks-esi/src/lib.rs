@@ -13,6 +13,7 @@ mod transport;
 
 pub use client_identity::contact_configured;
 pub use crypto::{EncryptedSecret, SecretCipher};
+pub use metrics::init_metrics;
 pub use oauth::{
     authorization_url, hash_state, new_pkce, OAuthState, PkceVerifier, ASSET_SCOPE,
     BLUEPRINT_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE,

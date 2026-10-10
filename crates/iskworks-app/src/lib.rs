@@ -46,3 +46,4 @@ pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,
 };
 pub use public_market::PublicMarketService;
+pub use sync_metrics::init_metrics as init_sync_metrics;
