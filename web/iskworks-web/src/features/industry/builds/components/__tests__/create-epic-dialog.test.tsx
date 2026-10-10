@@ -167,4 +167,59 @@ describe("CreateEpicDialog", () => {
     await user.click(within(dialog).getByRole("button", { name: "Open Epic" }));
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "order-1" }));
   });
+
+  it("keeps Create Epic disabled until the preview has loaded", async () => {
+    let resolvePreview: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>((resolve) => (resolvePreview = resolve))),
+    );
+    renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "Create Epic" });
+    expect(within(dialog).getByText("Checking free inventory...")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Create Epic" })).toBeDisabled();
+
+    resolvePreview(
+      new Response(JSON.stringify({ reuse: [{ typeId: 34, typeName: "Tritanium", quantity: 800 }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await within(dialog).findByText("Tritanium");
+    expect(within(dialog).getByRole("button", { name: "Create Epic" })).toBeEnabled();
+  });
+
+  it("never shows the last preview when reopened", async () => {
+    stubFetch([]);
+    const { rerender } = render(
+      <CreateEpicDialog buildId="build-1" command={COMMAND} onCancel={vi.fn()} onCreated={vi.fn()} open />,
+    );
+    await screen.findByText("Tritanium");
+    rerender(
+      <CreateEpicDialog buildId="build-1" command={COMMAND} onCancel={vi.fn()} onCreated={vi.fn()} open={false} />,
+    );
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    rerender(
+      <CreateEpicDialog buildId="build-1" command={COMMAND} onCancel={vi.fn()} onCreated={vi.fn()} open />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Create Epic" });
+    expect(within(dialog).queryByText("Tritanium")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Create Epic" })).toBeDisabled();
+  });
+
+  it("scrolls a long reuse list inside the dialog, with the buttons outside it", async () => {
+    stubFetch([]);
+    renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "Create Epic" });
+    const table = await within(dialog).findByRole("table", { name: "Inventory this Epic uses" });
+    const scroll = within(dialog).getByTestId("create-epic-scroll");
+    expect(scroll).toHaveClass("overflow-y-auto");
+    expect(scroll).toContainElement(table);
+    expect(scroll).not.toContainElement(within(dialog).getByRole("button", { name: "Create Epic" }));
+    expect(dialog.className).toMatch(/max-h-/);
+  });
 });
