@@ -260,6 +260,13 @@ pub(crate) mod test_support {
                 .sum()
         }
 
+        pub(crate) fn gauge(&self, name: &str, labels: &[(&str, &str)]) -> Option<f64> {
+            self.matching(name, labels).last().map(|value| match value {
+                DebugValue::Gauge(value) => value.into_inner(),
+                other => panic!("{name} is not a gauge: {other:?}"),
+            })
+        }
+
         pub(crate) fn histogram_count(&self, name: &str, labels: &[(&str, &str)]) -> usize {
             self.matching(name, labels)
                 .map(|value| match value {

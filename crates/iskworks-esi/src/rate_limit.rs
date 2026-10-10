@@ -89,9 +89,13 @@ impl RateLimitGuard {
         let group = state.groups.get(&route).cloned().unwrap_or(route);
         let key = (group, caller);
         match state.paused.get(&key) {
-            Some(until) if *until > now => Err(EsiError::RateLimited {
-                retry_after_seconds: Some((*until - now).as_secs().max(1)),
-            }),
+            Some(until) if *until > now => {
+                metrics::counter!("iskworks_esi_rate_limit_blocked_total", "group" => key.0.clone())
+                    .increment(1);
+                Err(EsiError::RateLimited {
+                    retry_after_seconds: Some((*until - now).as_secs().max(1)),
+                })
+            }
             Some(_) => {
                 state.paused.remove(&key);
                 Ok(())
@@ -118,16 +122,34 @@ impl RateLimitGuard {
             }
             None => state.groups.get(&route).cloned().unwrap_or(route),
         };
+        let bucket = bucket(headers);
+        if let Some((remaining, limit)) = bucket {
+            metrics::gauge!("iskworks_esi_rate_limit_remaining_ratio", "group" => group.clone())
+                .set(remaining as f64 / limit as f64);
+        }
         let pause = if status == StatusCode::TOO_MANY_REQUESTS {
-            Some(retry_after(headers, wall_clock).unwrap_or(DEFAULT_RETRY_AFTER))
-        } else if bucket_nearly_empty(headers) {
-            Some(LOW_REMAINING_PAUSE)
+            metrics::counter!("iskworks_esi_rate_limited_total", "group" => group.clone())
+                .increment(1);
+            Some((
+                retry_after(headers, wall_clock).unwrap_or(DEFAULT_RETRY_AFTER),
+                "retry_after",
+            ))
+        } else if bucket
+            .is_some_and(|(remaining, limit)| remaining < limit / LOW_REMAINING_FRACTION)
+        {
+            Some((LOW_REMAINING_PAUSE, "low_remaining"))
         } else {
             None
         };
-        let Some(pause) = pause else {
+        let Some((pause, reason)) = pause else {
             return;
         };
+        metrics::counter!(
+            "iskworks_esi_rate_limit_paused_total",
+            "group" => group.clone(),
+            "reason" => reason
+        )
+        .increment(1);
         let until = now + pause.min(MAX_RETRY_AFTER);
         let current = state.paused.entry((group.clone(), caller)).or_insert(until);
         if *current < until {
@@ -154,20 +176,20 @@ pub(crate) fn retry_after(headers: &HeaderMap, now: DateTime<Utc>) -> Option<Dur
     Some((at - now).to_std().unwrap_or(Duration::ZERO))
 }
 
-/// `X-Ratelimit-Remaining` below 1/`LOW_REMAINING_FRACTION` of the
-/// bucket's size (`X-Ratelimit-Limit`, e.g. "150/15m").
-fn bucket_nearly_empty(headers: &HeaderMap) -> bool {
-    let remaining =
-        header_text(headers, "x-ratelimit-remaining").and_then(|v| v.parse::<u64>().ok());
-    let limit = header_text(headers, "x-ratelimit-limit").and_then(|v| {
-        v.split('/')
-            .next()
-            .and_then(|n| n.trim().parse::<u64>().ok())
-    });
-    match (remaining, limit) {
-        (Some(remaining), Some(limit)) if limit > 0 => remaining < limit / LOW_REMAINING_FRACTION,
-        _ => false,
-    }
+/// The bucket's `X-Ratelimit-Remaining` and its size
+/// (`X-Ratelimit-Limit`, e.g. "150/15m"). It counts as nearly empty below
+/// 1/`LOW_REMAINING_FRACTION` of the size.
+fn bucket(headers: &HeaderMap) -> Option<(u64, u64)> {
+    let remaining = header_text(headers, "x-ratelimit-remaining")?
+        .parse::<u64>()
+        .ok()?;
+    let limit = header_text(headers, "x-ratelimit-limit")?
+        .split('/')
+        .next()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    (limit > 0).then_some((remaining, limit))
 }
 
 /// The route a URL belongs to: its path, with numeric segments (character,
@@ -257,6 +279,74 @@ mod tests {
         assert!(guard
             .check_at(now + Duration::from_secs(45), WALLET, alice)
             .is_ok());
+    }
+
+    #[test]
+    fn pauses_429s_refusals_and_bucket_levels_are_recorded_per_group() {
+        use crate::metrics::test_support::Recorded;
+        use metrics_util::debugging::DebuggingRecorder;
+
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let guard = RateLimitGuard::default();
+            let now = Instant::now();
+            let low = headers(&[
+                ("x-ratelimit-group", "market-order"),
+                ("x-ratelimit-limit", "12000/15m"),
+                ("x-ratelimit-remaining", "500"),
+            ]);
+            guard.observe_at(now, Utc::now(), ORDERS, None, StatusCode::OK, &low);
+            assert!(guard.check_at(now, ORDERS, None).is_err());
+            let limited = headers(&[("x-ratelimit-group", "char-wallet"), ("retry-after", "40")]);
+            guard.observe_at(
+                now,
+                Utc::now(),
+                WALLET,
+                Some(1),
+                StatusCode::TOO_MANY_REQUESTS,
+                &limited,
+            );
+            assert!(guard.check_at(now, WALLET, Some(1)).is_err());
+        });
+
+        let recorded = Recorded::take(&snapshotter);
+        let market = ("group", "market-order");
+        let wallet = ("group", "char-wallet");
+        assert_eq!(
+            recorded.gauge("iskworks_esi_rate_limit_remaining_ratio", &[market]),
+            Some(500.0 / 12000.0)
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_rate_limit_paused_total",
+                &[market, ("reason", "low_remaining")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_rate_limit_paused_total",
+                &[wallet, ("reason", "retry_after")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.counter("iskworks_esi_rate_limited_total", &[wallet]),
+            1
+        );
+        assert_eq!(
+            recorded.counter("iskworks_esi_rate_limited_total", &[market]),
+            0
+        );
+        assert_eq!(
+            recorded.counter("iskworks_esi_rate_limit_blocked_total", &[market]),
+            1
+        );
+        assert_eq!(
+            recorded.counter("iskworks_esi_rate_limit_blocked_total", &[wallet]),
+            1
+        );
     }
 
     #[test]

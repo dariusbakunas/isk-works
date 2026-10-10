@@ -57,9 +57,12 @@ impl ErrorLimitGuard {
     fn check_at(&self, now: Instant) -> Result<(), EsiError> {
         let blocked_until = *self.blocked_until.lock().expect("error limit lock");
         match blocked_until {
-            Some(until) if until > now => Err(EsiError::EsiErrorLimit {
-                reset_seconds: Some((until - now).as_secs().max(1)),
-            }),
+            Some(until) if until > now => {
+                metrics::counter!("iskworks_esi_error_limit_blocked_total").increment(1);
+                Err(EsiError::EsiErrorLimit {
+                    reset_seconds: Some((until - now).as_secs().max(1)),
+                })
+            }
             _ => Ok(()),
         }
     }
@@ -68,6 +71,7 @@ impl ErrorLimitGuard {
         let remain = header_number(headers, "x-esi-error-limit-remain");
         let reset = header_number(headers, "x-esi-error-limit-reset").map(Duration::from_secs);
         let exhausted = status.as_u16() == ERROR_LIMITED_STATUS;
+        record_budget(remain, reset, exhausted);
         if !exhausted && remain.map_or(true, |remain| remain > ERROR_LIMIT_FLOOR) {
             return;
         }
@@ -83,6 +87,21 @@ impl ErrorLimitGuard {
                 "ESI error limit is nearly exhausted; pausing all ESI requests"
             );
         }
+    }
+}
+
+/// The last budget ESI reported, and any 420. The floor is exported too,
+/// so dashboards can draw it next to `remaining`.
+fn record_budget(remain: Option<u64>, reset: Option<Duration>, exhausted: bool) {
+    if let Some(remain) = remain {
+        metrics::gauge!("iskworks_esi_error_limit_remaining").set(remain as f64);
+        metrics::gauge!("iskworks_esi_error_limit_floor").set(ERROR_LIMIT_FLOOR as f64);
+    }
+    if let Some(reset) = reset {
+        metrics::gauge!("iskworks_esi_error_limit_reset_seconds").set(reset.as_secs_f64());
+    }
+    if exhausted {
+        metrics::counter!("iskworks_esi_error_limited_total").increment(1);
     }
 }
 
@@ -161,6 +180,43 @@ mod tests {
         guard.observe_at(now, StatusCode::NOT_FOUND, &headers(Some(5), Some(2)));
 
         assert!(guard.check_at(now + Duration::from_secs(39)).is_err());
+    }
+
+    #[test]
+    fn the_budget_420s_and_local_refusals_are_recorded() {
+        use crate::metrics::test_support::Recorded;
+        use metrics_util::debugging::DebuggingRecorder;
+
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, || {
+            let guard = ErrorLimitGuard::default();
+            let now = Instant::now();
+            guard.observe_at(now, StatusCode::OK, &headers(Some(97), Some(42)));
+            assert!(guard.check_at(now).is_ok());
+            guard.observe_at(now, error_limited(), &headers(Some(0), Some(30)));
+            assert!(guard.check_at(now).is_err());
+            assert!(guard.check_at(now).is_err());
+        });
+
+        let recorded = Recorded::take(&snapshotter);
+        assert_eq!(
+            recorded.gauge("iskworks_esi_error_limit_remaining", &[]),
+            Some(0.0)
+        );
+        assert_eq!(
+            recorded.gauge("iskworks_esi_error_limit_reset_seconds", &[]),
+            Some(30.0)
+        );
+        assert_eq!(
+            recorded.gauge("iskworks_esi_error_limit_floor", &[]),
+            Some(ERROR_LIMIT_FLOOR as f64)
+        );
+        assert_eq!(recorded.counter("iskworks_esi_error_limited_total", &[]), 1);
+        assert_eq!(
+            recorded.counter("iskworks_esi_error_limit_blocked_total", &[]),
+            2
+        );
     }
 
     #[test]
