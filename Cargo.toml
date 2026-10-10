@@ -41,6 +41,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 url = "2"
 zip = "2"
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
+metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }
 jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

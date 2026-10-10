@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,6 +8,7 @@ use iskworks_esi::EsiTransport;
 use iskworks_storage::AuthPurgeOutcome;
 use tokio_util::sync::CancellationToken;
 
+pub mod metrics_exporter;
 mod runtime;
 pub use runtime::EvidenceWorker;
 
@@ -381,6 +383,9 @@ pub struct WorkerConfig {
     pub character_sync_batch_size: i64,
     pub character_sync_concurrency: usize,
     pub shutdown_timeout: Duration,
+    /// Where the Prometheus `/metrics` listener binds
+    /// (`ISKWORKS_METRICS_ADDR`). `None` keeps metrics off entirely.
+    pub metrics_addr: Option<SocketAddr>,
 }
 
 impl Default for WorkerConfig {
@@ -405,6 +410,7 @@ impl Default for WorkerConfig {
             character_sync_batch_size: 50,
             character_sync_concurrency: 4,
             shutdown_timeout: Duration::from_secs(30),
+            metrics_addr: None,
         }
     }
 }
@@ -513,6 +519,7 @@ impl WorkerConfig {
         )?
         .try_into()
         .map_err(|_| "ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY must fit in usize".to_string())?;
+        config.metrics_addr = metrics_exporter::metrics_addr(lookup("ISKWORKS_METRICS_ADDR"))?;
         Ok(config)
     }
 }

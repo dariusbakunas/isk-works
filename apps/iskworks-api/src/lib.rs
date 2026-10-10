@@ -19,6 +19,7 @@ mod cookies;
 mod csv_cell;
 mod error;
 mod export;
+pub mod metrics_exporter;
 mod observability;
 mod origin_check;
 mod readiness;
@@ -281,6 +282,10 @@ pub fn ensure_auth_available(
 pub struct ApiConfig {
     pub database_url: String,
     pub listen_addr: SocketAddr,
+    /// Where the Prometheus `/metrics` listener binds
+    /// (`ISKWORKS_METRICS_ADDR`). `None` keeps metrics off entirely. Never
+    /// the public listener: Traefik only routes `listen_addr`.
+    pub metrics_addr: Option<SocketAddr>,
 }
 
 impl ApiConfig {
@@ -291,9 +296,12 @@ impl ApiConfig {
             .parse()
             .map_err(|_| ConfigError::InvalidListenAddr)?;
 
+        let metrics_addr = metrics_exporter::metrics_addr(env::var("ISKWORKS_METRICS_ADDR").ok())?;
+
         Ok(Self {
             database_url,
             listen_addr,
+            metrics_addr,
         })
     }
 }
@@ -304,6 +312,8 @@ pub enum ConfigError {
     MissingDatabaseUrl,
     #[error("ISKWORKS_API_ADDR must be a valid socket address")]
     InvalidListenAddr,
+    #[error("ISKWORKS_METRICS_ADDR must be a valid socket address")]
+    InvalidMetricsAddr,
     #[error(
         "ISKWORKS_AUTH_REQUIRED is set but EVE SSO authentication is not configured. \
          Set EVE_SSO_CLIENT_ID and TOKEN_ENCRYPTION_KEY (and EVE_SSO_REDIRECT_URI / \

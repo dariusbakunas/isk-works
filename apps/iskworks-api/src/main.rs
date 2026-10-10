@@ -38,6 +38,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let config = ApiConfig::from_env()?;
+    if let Some(addr) = config.metrics_addr {
+        iskworks_api::metrics_exporter::install(addr)?;
+        tracing::info!("API metrics listening on {addr}");
+    }
     if !iskworks_esi::contact_configured() {
         tracing::warn!(
             "ISKWORKS_ESI_CONTACT is not set; ESI requests won't say how to reach this \

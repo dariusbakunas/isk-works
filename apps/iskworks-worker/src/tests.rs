@@ -887,3 +887,27 @@ async fn character_sync_fan_out_stops_queued_connections_on_cancel(pool: sqlx::P
         );
     }
 }
+
+#[test]
+fn metrics_listener_is_off_unless_an_address_is_configured() {
+    assert_eq!(WorkerConfig::default().metrics_addr, None);
+    let config = WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_METRICS_ADDR" => Some("0.0.0.0:9100".to_string()),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(config.metrics_addr, Some("0.0.0.0:9100".parse().unwrap()));
+
+    let blank = WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_METRICS_ADDR" => Some("  ".to_string()),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(blank.metrics_addr, None);
+
+    assert!(WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_METRICS_ADDR" => Some("not-an-address".to_string()),
+        _ => None,
+    })
+    .is_err());
+}
