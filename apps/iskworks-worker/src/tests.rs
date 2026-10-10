@@ -990,3 +990,35 @@ async fn finished_passes_are_recorded_per_loop() {
         Some(DebugValue::Gauge(_))
     ));
 }
+
+/// Every loop that `run` starts has its run counters created at startup.
+#[test]
+fn every_loop_s_run_counters_exist_at_zero_after_init() {
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+
+    let source = include_str!("lib.rs");
+    for name in super::LOOP_NAMES {
+        assert!(
+            source.contains(&format!("poll_loop(\n        \"{name}\",")),
+            "{name} is not a poll_loop name"
+        );
+    }
+    assert_eq!(
+        source.matches("poll_loop(\n        \"").count(),
+        super::LOOP_NAMES.len(),
+        "a loop is missing from LOOP_NAMES"
+    );
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    metrics::with_local_recorder(&recorder, super::init_loop_metrics);
+    let snapshot = snapshotter.snapshot().into_vec();
+    let series: Vec<_> = snapshot
+        .iter()
+        .filter(|(key, ..)| key.key().name() == "iskworks_worker_loop_runs_total")
+        .collect();
+    assert_eq!(series.len(), super::LOOP_NAMES.len() * 2);
+    assert!(series
+        .iter()
+        .all(|(.., value)| matches!(value, DebugValue::Counter(0))));
+}

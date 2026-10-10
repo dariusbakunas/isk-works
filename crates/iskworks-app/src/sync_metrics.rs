@@ -16,11 +16,30 @@ pub(crate) enum SyncResult {
 }
 
 impl SyncResult {
+    const ALL: [Self; 3] = [Self::Success, Self::Incomplete, Self::Failed];
+
     fn label(self) -> &'static str {
         match self {
             Self::Success => "success",
             Self::Incomplete => "incomplete",
             Self::Failed => "failed",
+        }
+    }
+}
+
+/// Creates every `iskworks_esi_sync_runs_total` series at 0, so the first
+/// failure after a restart shows in `increase()`/`rate()` (and in the
+/// `EsiSyncFailing` alert). Call once at startup, after installing the
+/// recorder.
+pub fn init_metrics() {
+    for kind in iskworks_core::CharacterSourceKind::all() {
+        for result in SyncResult::ALL {
+            metrics::counter!(
+                "iskworks_esi_sync_runs_total",
+                "kind" => kind.as_db_str(),
+                "result" => result.label()
+            )
+            .increment(0);
         }
     }
 }
@@ -103,5 +122,31 @@ pub(crate) mod test_support {
                 })
                 .sum()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::Recorded;
+    use super::*;
+    use metrics_util::debugging::DebuggingRecorder;
+
+    #[test]
+    fn every_kind_and_result_exists_at_zero_after_init() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        metrics::with_local_recorder(&recorder, init_metrics);
+
+        let recorded = Recorded::take(&snapshotter);
+        for kind in iskworks_core::CharacterSourceKind::all() {
+            for result in SyncResult::ALL {
+                let labels = [("kind", kind.as_db_str()), ("result", result.label())];
+                assert!(
+                    recorded.has("iskworks_esi_sync_runs_total", &labels),
+                    "{labels:?}"
+                );
+            }
+        }
+        assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 0);
     }
 }
