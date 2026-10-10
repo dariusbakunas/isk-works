@@ -151,11 +151,31 @@ impl EsiApplicationService {
             self.resolve_and_cache_structures(connection, token, structure_ids)
                 .await?;
         }
+        // One unusable blueprint must not fail the whole sync: skip it, keep
+        // its last good row, and say so on the run.
+        let (blueprints, invalid): (Vec<_>, Vec<_>) = blueprints
+            .into_iter()
+            .partition(BlueprintAssetObservation::efficiency_in_range);
+        for blueprint in &invalid {
+            tracing::warn!(
+                connection_id = %connection.id.0,
+                item_id = blueprint.item_id,
+                type_id = blueprint.type_id,
+                material_efficiency = blueprint.material_efficiency,
+                time_efficiency = blueprint.time_efficiency,
+                "skipping blueprint with out-of-range ME/TE from ESI"
+            );
+        }
+        let retained: Vec<i64> = invalid.iter().map(|blueprint| blueprint.item_id).collect();
+        // Blueprints before assets: `complete_assets` commits the assets
+        // ETag checkpoint, and a retry that gets 304 for assets returns
+        // early -- so a blueprint failure after it would leave blueprints
+        // stale until the assets themselves change.
         self.repository
-            .complete_assets(&run, pages, &records, etag.as_deref())
+            .complete_blueprints(connection, &blueprints, &retained)
             .await?;
         self.repository
-            .complete_blueprints(connection, &blueprints)
+            .complete_assets(&run, pages, &records, etag.as_deref(), invalid.len() as u64)
             .await?;
         self.repository
             .get_sync_run(run.id)

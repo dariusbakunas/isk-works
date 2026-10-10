@@ -42,14 +42,14 @@ async fn syncing_one_connections_blueprints_does_not_hide_another_connections(po
     let second = fixture_connection(&pool, workspace_id, owner_id, "Second Character").await;
 
     esi_repository
-        .complete_blueprints(&first, &[blueprint_observation(17_323)])
+        .complete_blueprints(&first, &[blueprint_observation(17_323)], &[])
         .await
         .unwrap();
     // Syncing a second connected character under the same owner must not
     // touch the first character's blueprint rows (the delete-not-seen sweep
     // is scoped by connection_id).
     esi_repository
-        .complete_blueprints(&second, &[blueprint_observation(40_672)])
+        .complete_blueprints(&second, &[blueprint_observation(40_672)], &[])
         .await
         .unwrap();
 
@@ -74,7 +74,7 @@ async fn re_syncing_a_blueprint_updates_its_row_in_place_keeping_the_same_id(poo
     let industry = PgIndustryRepository::new(pool.clone());
     let conn = fixture_connection(&pool, workspace_id, owner_id, "Researcher").await;
 
-    esi.complete_blueprints(&conn, &[blueprint_observation_item(42, 17_323, 4)])
+    esi.complete_blueprints(&conn, &[blueprint_observation_item(42, 17_323, 4)], &[])
         .await
         .unwrap();
     let first = industry
@@ -86,7 +86,7 @@ async fn re_syncing_a_blueprint_updates_its_row_in_place_keeping_the_same_id(poo
     assert_eq!(first[0].material_efficiency, 4);
 
     // Same blueprint, more research since.
-    esi.complete_blueprints(&conn, &[blueprint_observation_item(42, 17_323, 8)])
+    esi.complete_blueprints(&conn, &[blueprint_observation_item(42, 17_323, 8)], &[])
         .await
         .unwrap();
     let second = industry
@@ -120,6 +120,7 @@ async fn a_blueprint_absent_from_a_later_sync_is_deleted(pool: PgPool) {
             blueprint_observation_item(1, 17_323, 0),
             blueprint_observation_item(2, 40_672, 0),
         ],
+        &[],
     )
     .await
     .unwrap();
@@ -133,7 +134,7 @@ async fn a_blueprint_absent_from_a_later_sync_is_deleted(pool: PgPool) {
     );
 
     // Blueprint 2 has been sold -- the next full sync no longer reports it.
-    esi.complete_blueprints(&conn, &[blueprint_observation_item(1, 17_323, 0)])
+    esi.complete_blueprints(&conn, &[blueprint_observation_item(1, 17_323, 0)], &[])
         .await
         .unwrap();
     assert_eq!(
@@ -163,14 +164,14 @@ async fn an_empty_sync_clears_only_that_connections_blueprints(pool: PgPool) {
     let a = fixture_connection(&pool, workspace_id, owner_id, "Alpha").await;
     let b = fixture_connection(&pool, workspace_id, owner_id, "Bravo").await;
 
-    esi.complete_blueprints(&a, &[blueprint_observation_item(10, 17_323, 0)])
+    esi.complete_blueprints(&a, &[blueprint_observation_item(10, 17_323, 0)], &[])
         .await
         .unwrap();
-    esi.complete_blueprints(&b, &[blueprint_observation_item(20, 40_672, 0)])
+    esi.complete_blueprints(&b, &[blueprint_observation_item(20, 40_672, 0)], &[])
         .await
         .unwrap();
 
-    esi.complete_blueprints(&a, &[]).await.unwrap();
+    esi.complete_blueprints(&a, &[], &[]).await.unwrap();
 
     assert!(
         industry
