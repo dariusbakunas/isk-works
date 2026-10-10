@@ -307,12 +307,18 @@ impl HttpEsiTransport {
             return Ok(());
         };
         match downtime.check((self.now)()) {
-            DowntimeDecision::Send => Ok(()),
+            DowntimeDecision::Send => {
+                metrics::gauge!("iskworks_esi_downtime_paused").set(0.0);
+                Ok(())
+            }
             DowntimeDecision::Wait {
                 retry_after_seconds,
-            } => Err(EsiError::ServerDowntime {
-                retry_after_seconds: Some(retry_after_seconds),
-            }),
+            } => {
+                metrics::gauge!("iskworks_esi_downtime_paused").set(1.0);
+                Err(EsiError::ServerDowntime {
+                    retry_after_seconds: Some(retry_after_seconds),
+                })
+            }
             DowntimeDecision::Probe => {
                 let timer = RequestTimer::start(EsiRoute::Status);
                 let response = self
@@ -337,6 +343,16 @@ impl HttpEsiTransport {
                     Err(_) => false,
                 };
                 downtime.probed((self.now)(), healthy);
+                metrics::counter!(
+                    "iskworks_esi_downtime_probes_total",
+                    "result" => if healthy { "healthy" } else { "unhealthy" }
+                )
+                .increment(1);
+                metrics::gauge!("iskworks_esi_downtime_paused").set(if healthy {
+                    0.0
+                } else {
+                    1.0
+                });
                 if healthy {
                     Ok(())
                 } else {

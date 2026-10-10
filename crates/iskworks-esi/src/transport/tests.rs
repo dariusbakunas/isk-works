@@ -1729,4 +1729,47 @@ mod metrics_recording {
             1
         );
     }
+
+    #[tokio::test]
+    async fn downtime_pauses_and_status_probes_are_recorded() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+        let _guard = metrics::set_default_local_recorder(&recorder);
+        let (base_url, server) = spawn_scripted_esi(vec![UNAVAILABLE]).await;
+        let transport =
+            HttpEsiTransport::public(base_url).with_downtime_guard(Arc::default(), during_downtime);
+
+        // The first call probes /status/ (unhealthy); the second waits.
+        for _ in 0..2 {
+            assert!(transport.market_prices().await.is_err());
+        }
+        server.await.unwrap();
+
+        let recorded = Recorded::take(&snapshotter);
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_downtime_probes_total",
+                &[("result", "unhealthy")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.gauge("iskworks_esi_downtime_paused", &[]),
+            Some(1.0)
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_requests_total",
+                &[("route", "/status/"), ("outcome", "server_error")]
+            ),
+            1
+        );
+        assert_eq!(
+            recorded.counter(
+                "iskworks_esi_requests_total",
+                &[("route", "/markets/prices/"), ("outcome", "blocked")]
+            ),
+            2
+        );
+    }
 }
