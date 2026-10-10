@@ -136,6 +136,7 @@ async fn shutdown_while_idle_exits_promptly() {
                 let passes = Arc::clone(&passes);
                 async move {
                     passes.fetch_add(1, Ordering::SeqCst);
+                    super::PassResult::Ok
                 }
             },
         ))
@@ -182,6 +183,7 @@ async fn shutdown_while_waiting_on_interval_exits_promptly() {
                 let passes = Arc::clone(&passes);
                 async move {
                     passes.fetch_add(1, Ordering::SeqCst);
+                    super::PassResult::Ok
                 }
             },
         ))
@@ -227,7 +229,7 @@ async fn main_drain_has_bounded_upper_limit() {
         Duration::from_secs(3600),
         cancel.clone(),
         super::PassMode::Cooperative,
-        |_cancel| std::future::pending::<()>(),
+        |_cancel| std::future::pending::<super::PassResult>(),
     ));
     drain(8).await;
     cancel.cancel();
@@ -910,4 +912,81 @@ fn metrics_listener_is_off_unless_an_address_is_configured() {
         _ => None,
     })
     .is_err());
+}
+
+/// Every finished pass is counted per loop by result, timed, and stamped;
+/// an `Err` from the pass's work counts as failed.
+#[tokio::test(start_paused = true)]
+async fn finished_passes_are_recorded_per_loop() {
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let recorder = DebuggingRecorder::new();
+    let snapshotter = recorder.snapshotter();
+    let _guard = metrics::set_default_local_recorder(&recorder);
+    let cancel = CancellationToken::new();
+    let passes = Arc::new(AtomicUsize::new(0));
+    let handle = {
+        let passes = Arc::clone(&passes);
+        tokio::spawn(super::poll_loop(
+            "test",
+            Duration::from_secs(60),
+            cancel.clone(),
+            super::PassMode::DropOnCancel,
+            move |_cancel| {
+                let passes = Arc::clone(&passes);
+                async move {
+                    // The first pass fails, the second succeeds.
+                    if passes.fetch_add(1, Ordering::SeqCst) == 0 {
+                        super::PassResult::Failed
+                    } else {
+                        super::PassResult::Ok
+                    }
+                }
+            },
+        ))
+    };
+    drain(8).await;
+    tokio::time::advance(Duration::from_secs(60)).await;
+    drain(8).await;
+    cancel.cancel();
+    handle.await.unwrap();
+    assert_eq!(passes.load(Ordering::SeqCst), 2);
+
+    let snapshot = snapshotter.snapshot().into_vec();
+    let value = |name: &str, label: Option<(&str, &str)>| {
+        snapshot
+            .iter()
+            .find(|(key, ..)| {
+                let key = key.key();
+                key.name() == name
+                    && key
+                        .labels()
+                        .any(|l| l.key() == "loop" && l.value() == "test")
+                    && label.map_or(true, |(k, v)| {
+                        key.labels().any(|l| l.key() == k && l.value() == v)
+                    })
+            })
+            .map(|(.., value)| value)
+    };
+    assert!(matches!(
+        value(
+            "iskworks_worker_loop_runs_total",
+            Some(("result", "failed"))
+        ),
+        Some(DebugValue::Counter(1))
+    ));
+    assert!(matches!(
+        value("iskworks_worker_loop_runs_total", Some(("result", "ok"))),
+        Some(DebugValue::Counter(1))
+    ));
+    assert!(matches!(
+        value("iskworks_worker_loop_duration_seconds", None),
+        Some(DebugValue::Histogram(samples)) if samples.len() == 2
+    ));
+    assert!(matches!(
+        value("iskworks_worker_loop_last_run_timestamp_seconds", None),
+        Some(DebugValue::Gauge(_))
+    ));
 }

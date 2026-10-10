@@ -22,6 +22,7 @@ mod manual_sync_gate;
 mod order_plan;
 mod planetary;
 mod public_market;
+mod sync_metrics;
 
 pub use build_graph::{BuildGraphCoordinator, BuildGraphError};
 pub use build_materials::{BuildMaterialsCoordinator, BuildMaterialsError, BuildMaterialsSummary};

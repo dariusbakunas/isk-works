@@ -183,6 +183,23 @@ impl HttpEsiTransport {
             .map_err(|error| decode_body_error(&error))
     }
 
+    async fn refresh_access_token(&self, refresh_token: &str) -> Result<RefreshedToken, EsiError> {
+        let response = self
+            .token_request(&[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", refresh_token),
+                ("client_id", &self.client_id),
+            ])
+            .await?;
+        let identity = self.validate_identity(&response.access_token).await?;
+        Ok(RefreshedToken {
+            access_token: response.access_token,
+            rotated_refresh_token: response.refresh_token,
+            expires_at: Utc::now() + Duration::seconds(response.expires_in),
+            identity,
+        })
+    }
+
     async fn validate_identity(&self, token: &str) -> Result<Identity, EsiError> {
         self.validate_token(token)
             .await
@@ -452,20 +469,14 @@ impl EsiTransport for HttpEsiTransport {
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<RefreshedToken, EsiError> {
-        let response = self
-            .token_request(&[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token),
-                ("client_id", &self.client_id),
-            ])
-            .await?;
-        let identity = self.validate_identity(&response.access_token).await?;
-        Ok(RefreshedToken {
-            access_token: response.access_token,
-            rotated_refresh_token: response.refresh_token,
-            expires_at: Utc::now() + Duration::seconds(response.expires_in),
-            identity,
-        })
+        let refreshed = self.refresh_access_token(refresh_token).await;
+        let result = match &refreshed {
+            Ok(_) => "success",
+            Err(EsiError::AuthorizationRequired) => "reauth_required",
+            Err(_) => "failed",
+        };
+        metrics::counter!("iskworks_esi_token_refresh_total", "result" => result).increment(1);
+        refreshed
     }
 
     async fn revoke_refresh_token(&self, refresh_token: &str) -> Result<(), EsiError> {

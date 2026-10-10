@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -16,8 +17,16 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::esi_service::{reconnect_status, EsiApplicationError, EsiSyncDispatcher};
+use crate::sync_metrics::{record_sync_run, SyncResult};
 
 const LEASE_SECONDS: i64 = 120;
+
+/// A source this pass claimed: the repository's lease, and when work on
+/// it began (for the sync duration metric).
+struct SourceClaim {
+    lease: DateTime<Utc>,
+    started: Instant,
+}
 /// How long a connection backs off after a transient token-refresh failure.
 const TOKEN_FAILURE_BACKOFF: Duration = Duration::minutes(15);
 
@@ -749,15 +758,39 @@ impl CharacterSyncService {
         connection_id: ConnectedCharacterId,
         kind: CharacterSourceKind,
         now: DateTime<Utc>,
-    ) -> Option<DateTime<Utc>> {
+    ) -> Option<SourceClaim> {
         let lease_expires_at = now + Duration::seconds(LEASE_SECONDS);
         self.repository
             .begin_character_source_refresh(connection_id, kind, now, lease_expires_at)
             .await
             .unwrap_or(None)
+            .map(|lease| SourceClaim {
+                lease,
+                started: Instant::now(),
+            })
     }
 
     async fn finish_source(
+        &self,
+        connection_id: ConnectedCharacterId,
+        kind: CharacterSourceKind,
+        claim: SourceClaim,
+        now: DateTime<Utc>,
+        result: Result<Value, SourceFailure>,
+    ) -> CharacterSyncOutcome {
+        let outcome = self
+            .persist_source_result(connection_id, kind, claim.lease, now, result)
+            .await;
+        let result = if outcome == CharacterSyncOutcome::Succeeded {
+            SyncResult::Success
+        } else {
+            SyncResult::Failed
+        };
+        record_sync_run(kind.as_db_str(), result, claim.started);
+        outcome
+    }
+
+    async fn persist_source_result(
         &self,
         connection_id: ConnectedCharacterId,
         kind: CharacterSourceKind,
