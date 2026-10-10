@@ -202,7 +202,7 @@ describe("EpicInspector", () => {
       orderDetailFixture({
         requirements: [
           requirementFixture({ id: "req-1", state: "needsAction" }),
-          requirementFixture({ id: "req-2", capturedName: "Pyerite", state: "needsAction" }),
+          requirementFixture({ id: "req-2", typeId: 35, capturedName: "Pyerite", state: "needsAction" }),
         ],
       }),
     );
@@ -215,7 +215,7 @@ describe("EpicInspector", () => {
     await waitFor(() => expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-1", "req-2"]));
   });
 
-  it("lists a produced item feeding several consumers once, as the one step ticket it needs", async () => {
+  it("lists each item once, as the Plan view does", async () => {
     const fibers = (id: string, consumer: string) =>
       requirementFixture({
         id,
@@ -242,12 +242,34 @@ describe("EpicInspector", () => {
 
     await screen.findByText("Needs Action");
     expect(screen.getAllByText("Sylramic Fibers")).toHaveLength(1);
-    // Each Buy requirement still gets its own ticket.
-    expect(screen.getAllByText("Tritanium")).toHaveLength(2);
-    await user.click(screen.getByRole("button", { name: "Create 3 tickets" }));
+    expect(screen.getAllByText("Tritanium")).toHaveLength(1);
 
+    // One ticket per row: the fibers step, and one Tritanium purchase.
+    await user.click(screen.getByRole("button", { name: "Create 2 tickets" }));
     await waitFor(() =>
       expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-a", "req-trit", "req-trit-2"]),
+    );
+  });
+
+  it("a bought item's row creates one purchase for all of its uses", async () => {
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({
+        requirements: [
+          requirementFixture({ id: "req-trit", state: "needsAction" }),
+          requirementFixture({ id: "req-trit-2", state: "needsAction", operationOccurrenceKey: "manufacturing:b" }),
+        ],
+      }),
+    );
+    industryApi.bulkCreateTickets.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderInspector();
+
+    await screen.findByText("Needs Action");
+    expect(screen.queryByRole("button", { name: /Create \d+ tickets/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create ticket" }));
+
+    await waitFor(() =>
+      expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-trit", "req-trit-2"]),
     );
   });
 
