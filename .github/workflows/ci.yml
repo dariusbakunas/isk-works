@@ -120,6 +120,7 @@ jobs:
         with:
           persist-credentials: false
       - run: bash ci/test-web-runtime-config.sh
+      - run: bash ci/test-monitoring-config.sh
 
   images:
     name: Container images build

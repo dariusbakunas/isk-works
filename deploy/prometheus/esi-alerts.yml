@@ -1,0 +1,91 @@
+# Alert rules for ISK Works' ESI traffic (see docs/monitoring.md). They
+# expect the scrape jobs to be named iskworks-api and iskworks-worker.
+groups:
+  - name: iskworks-esi
+    rules:
+      - alert: IskWorksMetricsDown
+        expr: up{job=~"iskworks-api|iskworks-worker"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} metrics endpoint is down"
+          description: "Prometheus can't scrape {{ $labels.instance }}. Check the service is running with ISKWORKS_METRICS_ADDR set."
+
+      - alert: EsiErrorLimited
+        expr: sum by (job) (increase(iskworks_esi_error_limited_total[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "ESI answered 420: this host's error budget ran out"
+          description: "{{ $labels.job }} got {{ $value | humanize }} 420s in 5 minutes. Every ESI request from this IP is refused until the window resets. Find the route spending errors on the ESI dashboard."
+
+      - alert: EsiErrorBudgetLow
+        expr: min by (job) (iskworks_esi_error_limit_remaining) < 40
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ESI error budget is low ({{ $value }} left)"
+          description: "{{ $labels.job }} last saw {{ $value }} errors left in ESI's window. ISK Works pauses itself at the floor (20), but something is producing errors."
+
+      - alert: EsiServerErrorsHigh
+        expr: |
+          sum by (job) (rate(iskworks_esi_requests_total{outcome="server_error"}[10m]))
+            / sum by (job) (rate(iskworks_esi_requests_total{outcome!="blocked"}[10m]))
+            > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over 10% of ESI requests are failing with 5xx"
+          description: "{{ $labels.job }}: {{ $value | humanizePercentage }} of ESI requests got 5xx over 10 minutes. Usually ESI itself; check https://status.eveonline.com before digging in."
+
+      - alert: EsiSyncFailing
+        expr: |
+          sum by (kind) (rate(iskworks_esi_sync_runs_total{job="iskworks-worker", result="failed"}[30m]))
+            / sum by (kind) (rate(iskworks_esi_sync_runs_total{job="iskworks-worker"}[30m]))
+            > 0.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Most {{ $labels.kind }} syncs are failing"
+          description: "{{ $value | humanizePercentage }} of the worker's {{ $labels.kind }} syncs failed over 30 minutes. One character's error shows in its sync status in the app; this many means something broader."
+
+      # Twice the slowest refresh interval (assets and skills: 1h,
+      # character_info: 24h), and not while Tranquility is down.
+      - alert: EsiSyncStale
+        expr: |
+          (
+            time() - max by (kind) (iskworks_esi_sync_last_success_timestamp_seconds{job="iskworks-worker", kind!="character_info"}) > 2 * 3600
+            or
+            time() - max by (kind) (iskworks_esi_sync_last_success_timestamp_seconds{job="iskworks-worker", kind="character_info"}) > 26 * 3600
+          )
+          unless on () max(iskworks_esi_downtime_paused{job="iskworks-worker"}) == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No successful {{ $labels.kind }} sync for {{ $value | humanizeDuration }}"
+          description: "The worker hasn't completed a {{ $labels.kind }} sync for any character in {{ $value | humanizeDuration }}."
+
+      - alert: WorkerLoopStalled
+        expr: |
+          time() - iskworks_worker_loop_last_run_timestamp_seconds{loop=~"market|adjusted_price|system_index|character_sync"} > 15 * 60
+            or
+          time() - iskworks_worker_loop_last_run_timestamp_seconds{loop=~"market_gc|esi_gc|auth_gc"} > 3 * 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker loop {{ $labels.loop }} hasn't finished a pass in {{ $value | humanizeDuration }}"
+          description: "A pass may be hung. Check the worker logs for {{ $labels.loop }}."
+
+      - alert: WorkerLoopFailing
+        expr: sum by (loop) (increase(iskworks_worker_loop_runs_total{result="failed"}[30m])) > 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker loop {{ $labels.loop }} failed {{ $value | humanize }} times in 30 minutes"
+          description: "Its passes are erroring, usually database trouble. Check the worker logs."

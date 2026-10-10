@@ -1,0 +1,73 @@
+# Unit tests for esi-alerts.yml. Run with:
+#   promtool test rules deploy/prometheus/esi-alerts.test.yml
+rule_files:
+  - esi-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a single 420 alerts at once
+    interval: 1m
+    input_series:
+      - series: 'iskworks_esi_error_limited_total{job="iskworks-worker"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EsiErrorLimited
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: iskworks-worker
+            exp_annotations:
+              summary: "ESI answered 420: this host's error budget ran out"
+              description: "iskworks-worker got 1 420s in 5 minutes. Every ESI request from this IP is refused until the window resets. Find the route spending errors on the ESI dashboard."
+      - eval_time: 9m
+        alertname: EsiErrorLimited
+        exp_alerts: []
+
+  # last_success holds its first-sample timestamp (t=0), so time() minus
+  # it is the minute of evaluation.
+  - name: a stale sync alerts after two hours, but not during downtime
+    interval: 1m
+    input_series:
+      - series: 'iskworks_esi_sync_last_success_timestamp_seconds{job="iskworks-worker", kind="assets"}'
+        values: "0x200"
+      - series: 'iskworks_esi_sync_last_success_timestamp_seconds{job="iskworks-worker", kind="character_info"}'
+        values: "0x200"
+      - series: 'iskworks_esi_downtime_paused{job="iskworks-worker"}'
+        values: "0x150 1x50"
+    alert_rule_test:
+      - eval_time: 125m
+        alertname: EsiSyncStale
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: EsiSyncStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kind: assets
+            exp_annotations:
+              summary: "No successful assets sync for 2h 20m 0s"
+              description: "The worker hasn't completed a assets sync for any character in 2h 20m 0s."
+      - eval_time: 165m
+        alertname: EsiSyncStale
+        exp_alerts: []
+
+  - name: a stalled fast loop alerts, an hourly GC loop doesn't
+    interval: 1m
+    input_series:
+      - series: 'iskworks_worker_loop_last_run_timestamp_seconds{job="iskworks-worker", loop="market"}'
+        values: "0x30"
+      - series: 'iskworks_worker_loop_last_run_timestamp_seconds{job="iskworks-worker", loop="esi_gc"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: WorkerLoopStalled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: iskworks-worker
+              loop: market
+            exp_annotations:
+              summary: "Worker loop market hasn't finished a pass in 25m 0s"
+              description: "A pass may be hung. Check the worker logs for market."
