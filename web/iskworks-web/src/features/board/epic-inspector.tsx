@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import {
   archiveOrder,
   bulkCreateTickets,
-  cancelOrder,
   completeOrder,
   createTicketForRequirement,
   deleteOrder,
@@ -16,7 +15,7 @@ import {
   type ReserveInventoryResult,
   type TicketSummary,
 } from "../../api/industry";
-import { Badge, ButtonLink, ConfirmDialog, InlineAlert, ProgressBar } from "../../components/primitives";
+import { Badge, ButtonLink, InlineAlert, ProgressBar } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { apiMessage } from "../industry/shared/api-error";
@@ -28,6 +27,7 @@ import {
   orderTicketStatusMeta,
   requirementKindMeta,
 } from "./order-meta";
+import { RemoveEpicDialog, type RemoveEpicChoice } from "./remove-epic-dialog";
 import { recordingStateMeta } from "./recording/recording-meta";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -109,8 +109,7 @@ export function EpicInspector({
   const { busy, error, run } = useAsyncAction();
   const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState("");
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [reserveResult, setReserveResult] = useState<ReserveInventoryResult | null>(null);
 
   function loadDetail() {
@@ -171,15 +170,6 @@ export function EpicInspector({
     });
   }
 
-  async function cancel() {
-    setConfirmCancel(false);
-    await run(async () => {
-      const updated = await cancelOrder(order.id);
-      setDetail(updated);
-      onChanged?.();
-    });
-  }
-
   async function archive() {
     await run(async () => {
       const updated = await archiveOrder(order.id);
@@ -196,8 +186,12 @@ export function EpicInspector({
     });
   }
 
-  async function remove() {
-    setConfirmDelete(false);
+  async function remove(choice: RemoveEpicChoice) {
+    setConfirmRemove(false);
+    if (choice === "archive") {
+      await archive();
+      return;
+    }
     await run(async () => {
       await deleteOrder(order.id);
       onChanged?.();
@@ -397,57 +391,28 @@ export function EpicInspector({
               Mark Epic complete
             </button>
           ) : null}
-          {order.status === "blocked" || order.status === "ready" || order.status === "inProgress" ? (
-            <button
-              className="iw-button-secondary"
-              disabled={busy}
-              onClick={() => setConfirmCancel(true)}
-              type="button"
-            >
-              Cancel Epic
-            </button>
-          ) : null}
           {order.archivedAt ? (
             <button className="iw-button-secondary" disabled={busy} onClick={() => void restore()} type="button">
               Restore Epic
             </button>
-          ) : (
-            <button className="iw-button-secondary" disabled={busy} onClick={() => void archive()} type="button">
-              Archive Epic
-            </button>
-          )}
+          ) : null}
           <button
-            className="iw-button-danger"
+            className="iw-button-secondary"
             disabled={busy}
-            onClick={() => setConfirmDelete(true)}
+            onClick={() => setConfirmRemove(true)}
             type="button"
           >
-            Delete Epic
+            Remove Epic
           </button>
         </div>
       </div>
 
-      <ConfirmDialog
-        confirmLabel="Cancel Epic"
-        onCancel={() => setConfirmCancel(false)}
-        onConfirm={() => void cancel()}
-        open={confirmCancel}
-        title="Cancel this Epic?"
-      >
-        Canceling is organizational only — it does not touch inventory and does not cancel tickets already created
-        for it, which may still be needed by other work. This cannot be undone.
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        confirmLabel="Delete Epic"
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => void remove()}
-        open={confirmDelete}
-        title="Delete this Epic?"
-      >
-        This removes the Epic and its frozen plan. Its tickets will remain on the Board. Inventory already
-        recorded from those tickets will be kept. This cannot be undone.
-      </ConfirmDialog>
+      <RemoveEpicDialog
+        canArchive={!order.archivedAt}
+        onCancel={() => setConfirmRemove(false)}
+        onConfirm={(choice) => void remove(choice)}
+        open={confirmRemove}
+      />
     </PlannerInspectorShell>
   );
 }
