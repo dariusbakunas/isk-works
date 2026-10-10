@@ -113,7 +113,13 @@ your own privacy notice is your responsibility. See
 
 The API and worker can serve Prometheus metrics on a separate, internal
 port. Set `ISKWORKS_METRICS_ADDR` (e.g. `0.0.0.0:9100`) for both. Never
-publish that port. See `docs/monitoring.md` for what's exported.
+publish that port.
+
+For a ready-made Prometheus and Grafana with an ESI dashboard and alert rules,
+also set `GRAFANA_ADMIN_PASSWORD` and run
+`docker compose --profile monitoring up -d`. Grafana listens on
+`127.0.0.1:3000` only; reach it through an SSH tunnel. See
+`docs/monitoring.md` for setup details, alerts and every exported metric.
 
 ## Community links
 

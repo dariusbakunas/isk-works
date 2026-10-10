@@ -20,6 +20,48 @@ and recording costs nothing.
 compose stack doesn't publish it, and Traefik only routes the API's own port
 (8080). Scrape it from inside the Docker network or cluster.
 
+## Dashboard and alerts
+
+The repo ships a ready-made setup:
+
+- `deploy/grafana/esi-dashboard.json` is a Grafana dashboard ("ISK Works / ESI") with these sections:
+  - **Overview**
+  - **Traffic**
+  - **Error budget (420)**
+  - **Rate limits (429)**
+  - **Latency**
+  - **Sync**
+  - **Worker loops**
+
+  It picks its Prometheus data source and service (`job`) from dashboard variables.
+- `deploy/prometheus/esi-alerts.yml` holds Prometheus alert rules: any 420, a low error budget, a high share of 5xx, failing or stale syncs, and stalled or failing worker loops. Unit tests for the rules are in `esi-alerts.test.yml` (`promtool test rules`).
+- `deploy/prometheus/prometheus.yml` is a scrape config. **The dashboard and alerts expect the scrape jobs to be named `iskworks-api` and `iskworks-worker`.** Keep those names if you write your own.
+
+### With the bundled compose stack
+
+1. In `.env`, set:
+
+   ```
+   ISKWORKS_METRICS_ADDR=0.0.0.0:9100
+   GRAFANA_ADMIN_PASSWORD=<something strong>
+   ```
+
+   If you leave `GRAFANA_ADMIN_PASSWORD` blank, Grafana starts with admin/admin and asks you to change it on first login.
+2. Start the `monitoring` profile:
+
+   ```
+   docker compose --profile monitoring up -d
+   ```
+
+   This recreates the API and worker with metrics on, and adds Prometheus (15 days of retention; change it with `PROMETHEUS_RETENTION`) and Grafana with the dashboard provisioned.
+3. Grafana listens on `127.0.0.1:3000` on the host only (`GRAFANA_PORT` changes the port). From your machine, tunnel to it with `ssh -L 3000:127.0.0.1:3000 your-server` and open http://localhost:3000. Neither Prometheus nor Grafana is routed through Traefik.
+
+Alerts show up in Prometheus and in Grafana's alert list. Sending them anywhere (email, Discord, …) needs an Alertmanager or Grafana contact point, which isn't bundled.
+
+### Elsewhere (Kubernetes, existing Prometheus)
+
+Scrape port 9100 of both services with the job names above. Load `esi-alerts.yml` as a rule file (or PrometheusRule). Import the dashboard JSON into Grafana and pick your Prometheus data source.
+
 ## Metrics
 
 Every series is prefixed `iskworks_`. Labels never carry character,
@@ -57,7 +99,7 @@ ESI's error budget is per IP. If it runs dry, every request from the host is ref
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `iskworks_esi_error_limit_remaining` | gauge | – | Last `X-ESI-Error-Limit-Remain` ESI reported. |
+| `iskworks_esi_error_limit_remaining` | gauge | – | Last `X-ESI-Error-Limit-Remain` ESI reported. ESI sends it only on routes not yet moved to per-group rate limits (market and status routes don't), so it can be missing until such a route is called. |
 | `iskworks_esi_error_limit_reset_seconds` | gauge | – | Last `X-ESI-Error-Limit-Reset`. |
 | `iskworks_esi_error_limit_floor` | gauge | – | The budget level at which ISK Works pauses itself. |
 | `iskworks_esi_error_limited_total` | counter | – | 420 responses. Should be zero. |

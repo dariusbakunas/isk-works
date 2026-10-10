@@ -1,0 +1,18 @@
+# Scrape config for the compose stack's optional `monitoring` profile
+# (see docs/monitoring.md). Both services must run with
+# ISKWORKS_METRICS_ADDR=0.0.0.0:9100. In other setups, copy the two jobs
+# and keep their names; the dashboard and alerts filter on them.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - esi-alerts.yml
+
+scrape_configs:
+  - job_name: iskworks-api
+    static_configs:
+      - targets: ["iskworks-api:9100"]
+  - job_name: iskworks-worker
+    static_configs:
+      - targets: ["iskworks-worker:9100"]

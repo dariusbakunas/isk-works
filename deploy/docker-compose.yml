@@ -220,6 +220,46 @@ services:
     networks:
       - iskworks_edge
 
+  # Optional metrics stack, started with `docker compose --profile
+  # monitoring up -d`. Needs ISKWORKS_METRICS_ADDR=0.0.0.0:9100 in .env so
+  # the API and worker serve /metrics. Neither service is routed by
+  # Traefik; Grafana listens on localhost only (tunnel to it over SSH).
+  # See docs/monitoring.md.
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: iskworks-prometheus
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    container_name: iskworks-grafana
+    profiles: ["monitoring"]
+    depends_on:
+      - prometheus
+    environment:
+      # Blank: Grafana's admin/admin, which it makes you change on first login.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/esi-dashboard.json:/var/lib/grafana/dashboards/esi-dashboard.json:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
 networks:
   iskworks_edge:
     name: iskworks_edge
@@ -227,3 +267,5 @@ networks:
 volumes:
   iskworks_pg_data:
   traefik_letsencrypt:
+  prometheus_data:
+  grafana_data:
