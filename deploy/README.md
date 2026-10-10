@@ -109,6 +109,12 @@ tell your users: the About & Legal page mentions it automatically, but
 your own privacy notice is your responsibility. See
 `docs/security/session-replay-privacy.md` for what is masked.
 
+## Metrics (optional)
+
+The API and worker can serve Prometheus metrics on a separate, internal
+port. Set `ISKWORKS_METRICS_ADDR` (e.g. `0.0.0.0:9100`) for both. Never
+publish that port. See `docs/monitoring.md` for what's exported.
+
 ## Community links
 
 The footer, About & Legal page, and Help show your instance's community

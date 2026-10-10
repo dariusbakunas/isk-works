@@ -12,6 +12,8 @@ iskworks-app = { path = "../../crates/iskworks-app" }
 iskworks-core = { path = "../../crates/iskworks-core" }
 iskworks-esi = { path = "../../crates/iskworks-esi" }
 iskworks-storage = { path = "../../crates/iskworks-storage" }
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 sqlx.workspace = true
 tokio = { workspace = true, features = ["signal", "time"] }
 tokio-util.workspace = true

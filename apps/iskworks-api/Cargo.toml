@@ -27,6 +27,8 @@ iskworks-core = { path = "../../crates/iskworks-core" }
 iskworks-esi = { path = "../../crates/iskworks-esi" }
 iskworks-sde = { path = "../../crates/iskworks-sde" }
 iskworks-storage = { path = "../../crates/iskworks-storage" }
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rust_decimal.workspace = true
