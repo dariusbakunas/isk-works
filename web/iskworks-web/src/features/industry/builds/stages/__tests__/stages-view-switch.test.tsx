@@ -18,6 +18,13 @@ vi.mock("@xyflow/react", () => ({
 
 import { BuildWorkspacePage } from "../../build-workspace-page";
 
+// About section contents: sections start expanded here (see the double).
+vi.mock("../../../inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../../../inspector/__tests__/expanded-inspector-collapse");
+  return expandedInspectorCollapse();
+});
+
+
 const BUILD = {
   id: "build-ready",
   workspaceId: "workspace-1",
