@@ -1337,3 +1337,93 @@ async fn completing_an_epic_releases_leftover_reservations(pool: PgPool) {
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["error"]["code"], "order_not_reservable");
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// A finished root ticket -- Complete with its output recorded, in either
+// order -- completes its Epic.
+// ─────────────────────────────────────────────────────────────────────────
+
+async fn finish_ticket_workflow(fx: &Fixture, ticket_id: &str) {
+    for action in ["start", "complete"] {
+        let (status, body) = post_json(
+            &fx.app,
+            &format!("/api/tickets/{ticket_id}/{action}"),
+            Value::Null,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{action}: {body}");
+    }
+}
+
+async fn epic_completed_at(fx: &Fixture, order_id: &str) -> Value {
+    let (status, order) = get_json(fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(status, StatusCode::OK, "body: {order}");
+    order["completedAt"].clone()
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn completing_a_recorded_root_ticket_completes_its_epic(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await; // 600 Tritanium held
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 450), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+
+    finish_ticket_workflow(&fx, &ticket).await;
+
+    let (status, order) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(order["status"], "complete", "body: {order}");
+    assert!(
+        !order["startedAt"].is_null(),
+        "a never-started Epic gets a start"
+    );
+    assert!(
+        active_allocations(&pool).await.is_empty(),
+        "the unused 150 Tritanium are free again"
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_completed_root_ticket_completes_its_epic_once_recorded(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+
+    finish_ticket_workflow(&fx, &ticket).await;
+    assert!(
+        epic_completed_at(&fx, &order_id).await.is_null(),
+        "nothing recorded yet"
+    );
+    assert!(
+        !active_allocations(&pool).await.is_empty(),
+        "the Epic still holds its stock for the recording"
+    );
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 600), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    assert!(!epic_completed_at(&fx, &order_id).await.is_null());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recording_alone_does_not_complete_the_epic(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 600), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+}

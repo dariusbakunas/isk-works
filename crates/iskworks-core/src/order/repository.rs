@@ -769,6 +769,17 @@ pub trait OrderRepository: Send + Sync {
         order_id: OrderId,
     ) -> Result<Order, OrderError>;
 
+    /// Completes an Epic because its work is done: its root ticket is
+    /// Complete with its output recorded. Same effect as `complete_order`
+    /// (stamps `completed_at`, releases what the Epic still holds), but an
+    /// Epic that was never started is allowed -- `started_at` is stamped
+    /// too. `Ok(None)` when the Epic is already completed or canceled.
+    async fn complete_finished_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Option<Order>, OrderError>;
+
     /// `Ready -> InProgress`. Requires `status = 'ready'`.
     async fn start_ticket(
         &self,

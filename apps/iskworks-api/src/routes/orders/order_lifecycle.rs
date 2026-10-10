@@ -586,16 +586,7 @@ pub(super) async fn list_order_tickets(
                 ))
             }
             TicketKind::Manufacturing | TicketKind::Reaction => {
-                let recorded: u64 = recordings
-                    .iter()
-                    .filter(|recording| recording.reverted_at.is_none())
-                    .filter_map(|recording| recording.runs_completed)
-                    .sum();
-                let requested = ticket
-                    .execution_snapshot
-                    .as_ref()
-                    .map_or(recorded, |snapshot| snapshot.runs);
-                Some(derive_recording_summary(requested, recorded))
+                Some(production_recording_summary(&ticket, &recordings))
             }
             // Generic has no recording contract at all -- "not recorded"
             // would misleadingly imply something is missing.

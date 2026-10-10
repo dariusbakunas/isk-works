@@ -259,8 +259,8 @@ pub(super) async fn record_ticket_production_route(
             .collect(),
     };
     let ticket_id = iskworks_core::order::TicketId(ticket_id);
-    let outcome = match state
-        .order_repository()?
+    let repository = state.order_repository()?;
+    let outcome = match repository
         .record_ticket_production(workspace_id, ticket_id, input)
         .await
     {
@@ -271,6 +271,8 @@ pub(super) async fn record_ticket_production_route(
         }
         Err(error) => return Err(error.into()),
     };
+    let ticket = repository.get_ticket(workspace_id, ticket_id).await?;
+    complete_epic_if_root_finished(&*repository, workspace_id, &ticket).await?;
     let status = if outcome.created {
         StatusCode::CREATED
     } else {
