@@ -48,7 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              instance's operator. Set it to an email, Discord handle, or EVE character name."
         );
     }
-    let repository = PgWorkspaceRepository::connect(&config.database_url).await?;
+    let repository =
+        PgWorkspaceRepository::connect_with(&config.database_url, &config.db_pool).await?;
     MIGRATOR.run(repository.pool()).await?;
 
     let sde_repository = PgSdeRepository::new(repository.pool().clone());

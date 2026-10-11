@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
-    let workspace_repository = PgWorkspaceRepository::connect(&database_url).await?;
+    let workspace_repository =
+        PgWorkspaceRepository::connect_with(&database_url, &config.db_pool).await?;
     MIGRATOR.run(workspace_repository.pool()).await?;
     let market_repository = Arc::new(PgMarketRepository::new(workspace_repository.pool().clone()));
     let esi_repository = Arc::new(PgEsiRepository::new(workspace_repository.pool().clone()));

@@ -86,6 +86,10 @@ services:
       # Prometheus /metrics on an internal port (see docs/monitoring.md).
       # Never publish it; Traefik only routes port 8080.
       ISKWORKS_METRICS_ADDR: ${ISKWORKS_METRICS_ADDR:-}
+      # Postgres pool size, and the threshold above which a statement is
+      # logged at WARN with its request (0 = off). See docs/monitoring.md.
+      ISKWORKS_DB_MAX_CONNECTIONS: ${ISKWORKS_DB_MAX_CONNECTIONS:-5}
+      ISKWORKS_DB_SLOW_STATEMENT_MS: ${ISKWORKS_DB_SLOW_STATEMENT_MS:-500}
       RUST_LOG: info
       EVE_SSO_CLIENT_ID: ${EVE_SSO_CLIENT_ID:?set EVE_SSO_CLIENT_ID in .env}
       # Sent to ESI in the User-Agent so CCP can contact this instance's
@@ -159,6 +163,8 @@ services:
       ISKWORKS_ESI_CONTACT: ${ISKWORKS_ESI_CONTACT:?set ISKWORKS_ESI_CONTACT in .env}
       ISKWORKS_SOURCE_URL: ${ISKWORKS_SOURCE_URL:-}
       ISKWORKS_METRICS_ADDR: ${ISKWORKS_METRICS_ADDR:-}
+      ISKWORKS_DB_MAX_CONNECTIONS: ${ISKWORKS_DB_MAX_CONNECTIONS:-5}
+      ISKWORKS_DB_SLOW_STATEMENT_MS: ${ISKWORKS_DB_SLOW_STATEMENT_MS:-500}
       ISKWORKS_WORKER_MARKET_POLL_SECONDS: ${ISKWORKS_WORKER_MARKET_POLL_SECONDS:-5}
       ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS: ${ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS:-900}
       ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS: ${ISKWORKS_WORKER_ADJUSTED_PRICE_POLL_SECONDS:-30}

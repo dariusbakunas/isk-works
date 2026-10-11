@@ -30,6 +30,7 @@ mod inventory;
 mod invite;
 mod market;
 mod order;
+mod pool;
 mod production;
 pub use admin::PgAdminRepository;
 pub use assets::PgAssetBrowserRepository;
@@ -49,6 +50,7 @@ pub use invite::PgInviteRepository;
 pub use iskworks_core::{InviteSummary, NewInvite};
 pub use market::{MarketObservationPruneOutcome, PgMarketRepository};
 pub use order::PgOrderRepository;
+pub use pool::DbPoolConfig;
 pub use production::PgProductionRepository;
 
 mod sde_categories;

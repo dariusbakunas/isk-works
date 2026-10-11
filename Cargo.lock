@@ -1633,6 +1633,7 @@ dependencies = [
  "iskworks-core",
  "iskworks-esi",
  "iskworks-sde",
+ "log",
  "rust_decimal",
  "serde_json",
  "sha2",
