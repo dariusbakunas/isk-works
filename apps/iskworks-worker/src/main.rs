@@ -40,6 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace_repository =
         PgWorkspaceRepository::connect_with(&database_url, &config.db_pool).await?;
     MIGRATOR.run(workspace_repository.pool()).await?;
+    if config.metrics_addr.is_some() {
+        iskworks_storage::spawn_pool_sampler(workspace_repository.pool().clone());
+    }
     let market_repository = Arc::new(PgMarketRepository::new(workspace_repository.pool().clone()));
     let esi_repository = Arc::new(PgEsiRepository::new(workspace_repository.pool().clone()));
 

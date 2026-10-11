@@ -6,6 +6,12 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::{Context, Filter, Layer};
 
+const POOL_CONNECTIONS: &str = "iskworks_db_pool_connections";
+const POOL_MAX_CONNECTIONS: &str = "iskworks_db_pool_max_connections";
+/// The exporter's listener has no scrape-time hook, so the gauges are
+/// sampled. Comfortably finer than the 15 s scrape interval.
+const SAMPLE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
 const ACQUIRE_TIMEOUTS: &str = "iskworks_db_pool_acquire_timeouts_total";
 pub const ACQUIRE_DURATION: &str = "iskworks_db_pool_acquire_duration_seconds";
 
@@ -38,6 +44,28 @@ pub(crate) fn observe_error(error: &sqlx::Error) {
     if matches!(error, sqlx::Error::PoolTimedOut) {
         metrics::counter!(ACQUIRE_TIMEOUTS).increment(1);
     }
+}
+
+/// Samples the pool's in-use, idle and max connections every few seconds
+/// for as long as the process runs. Start it only when metrics are on.
+pub fn spawn_pool_sampler(pool: sqlx::PgPool) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticks = tokio::time::interval(SAMPLE_INTERVAL);
+        loop {
+            ticks.tick().await;
+            record_pool_gauges(&pool);
+        }
+    })
+}
+
+fn record_pool_gauges(pool: &sqlx::PgPool) {
+    let open = pool.size();
+    // `size` and `num_idle` are read separately, so a release between the
+    // two can briefly make idle exceed open.
+    let idle = u32::try_from(pool.num_idle()).unwrap_or(u32::MAX).min(open);
+    metrics::gauge!(POOL_CONNECTIONS, "state" => "in_use").set(f64::from(open - idle));
+    metrics::gauge!(POOL_CONNECTIONS, "state" => "idle").set(f64::from(idle));
+    metrics::gauge!(POOL_MAX_CONNECTIONS).set(f64::from(pool.options().get_max_connections()));
 }
 
 /// A tracing layer that records each pool acquire's wait into
@@ -83,6 +111,7 @@ impl Visit for AcquiredAfter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DbPoolConfig;
     use metrics_util::debugging::{DebugValue, DebuggingRecorder};
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -174,5 +203,48 @@ mod tests {
             });
         });
         assert_eq!(acquire_waits(&recorder), vec![0.002, 3.5]);
+    }
+
+    #[tokio::test]
+    async fn pool_gauges_report_open_idle_and_max_connections() {
+        let pool = DbPoolConfig {
+            max_connections: 7,
+            slow_statement: None,
+        }
+        .pool_options()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .unwrap();
+        let recorder = DebuggingRecorder::new();
+        metrics::with_local_recorder(&recorder, || record_pool_gauges(&pool));
+
+        let mut gauges: Vec<(String, f64)> = recorder
+            .snapshotter()
+            .snapshot()
+            .into_vec()
+            .into_iter()
+            .map(|(key, _, _, value)| {
+                let labels: Vec<String> = key
+                    .key()
+                    .labels()
+                    .map(|label| label.value().to_string())
+                    .collect();
+                let DebugValue::Gauge(value) = value else {
+                    panic!("{} is not a gauge", key.key().name());
+                };
+                (
+                    format!("{}{labels:?}", key.key().name()),
+                    value.into_inner(),
+                )
+            })
+            .collect();
+        gauges.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            gauges,
+            vec![
+                ("iskworks_db_pool_connections[\"idle\"]".to_string(), 0.0),
+                ("iskworks_db_pool_connections[\"in_use\"]".to_string(), 0.0),
+                ("iskworks_db_pool_max_connections[]".to_string(), 7.0),
+            ]
+        );
     }
 }

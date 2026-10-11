@@ -52,7 +52,9 @@ pub use iskworks_core::{InviteSummary, NewInvite};
 pub use market::{MarketObservationPruneOutcome, PgMarketRepository};
 pub use order::PgOrderRepository;
 pub use pool::DbPoolConfig;
-pub use pool_metrics::{db_pool_metrics_layer, init_metrics, ACQUIRE_BUCKETS, ACQUIRE_DURATION};
+pub use pool_metrics::{
+    db_pool_metrics_layer, init_metrics, spawn_pool_sampler, ACQUIRE_BUCKETS, ACQUIRE_DURATION,
+};
 pub use production::PgProductionRepository;
 
 mod sde_categories;

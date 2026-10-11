@@ -53,6 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repository =
         PgWorkspaceRepository::connect_with(&config.database_url, &config.db_pool).await?;
     MIGRATOR.run(repository.pool()).await?;
+    if config.metrics_addr.is_some() {
+        iskworks_storage::spawn_pool_sampler(repository.pool().clone());
+    }
 
     let sde_repository = PgSdeRepository::new(repository.pool().clone());
     // Finance analytics categories are materialized from the SDE; an import
