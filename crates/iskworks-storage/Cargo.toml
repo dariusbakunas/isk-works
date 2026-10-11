@@ -12,6 +12,7 @@ iskworks-core = { path = "../iskworks-core" }
 iskworks-esi = { path = "../iskworks-esi" }
 iskworks-sde = { path = "../iskworks-sde" }
 log.workspace = true
+metrics.workspace = true
 rust_decimal.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -21,6 +22,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
+metrics-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-log = "0.2"

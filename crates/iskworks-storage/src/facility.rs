@@ -793,6 +793,7 @@ fn as_u64(value: i64) -> Result<u64, FacilityError> {
     u64::try_from(value).map_err(|_| FacilityError::ArithmeticOverflow)
 }
 fn map_error(error: sqlx::Error) -> FacilityError {
+    crate::pool_metrics::observe_error(&error);
     FacilityError::Persistence(error.to_string())
 }
 

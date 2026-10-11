@@ -254,7 +254,8 @@ fn owner_kind_from_str(value: &str) -> Result<OwnerKind, AppError> {
     }
 }
 
-fn map_sqlx_error(error: sqlx::Error) -> AppError {
+pub(crate) fn map_sqlx_error(error: sqlx::Error) -> AppError {
+    crate::pool_metrics::observe_error(&error);
     AppError::Persistence(error.to_string())
 }
 

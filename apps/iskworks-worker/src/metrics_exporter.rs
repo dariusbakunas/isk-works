@@ -39,6 +39,7 @@ pub fn install(addr: SocketAddr) -> Result<(), BuildError> {
     // Series alerts watch must exist at 0 before their first increment.
     iskworks_esi::init_metrics();
     iskworks_app::init_sync_metrics();
+    iskworks_storage::init_metrics();
     crate::init_loop_metrics();
     let version = std::env::var("APP_VERSION").unwrap_or_else(|_| "dev".to_string());
     metrics::gauge!("iskworks_build_info", "service" => "worker", "version" => version).set(1.0);

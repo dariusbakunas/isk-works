@@ -110,6 +110,7 @@ pub(super) fn parse_observation_mode(value: &str) -> Result<MarketObservationSet
 }
 
 pub(super) fn map_sqlx(error: sqlx::Error) -> MarketError {
+    crate::pool_metrics::observe_error(&error);
     MarketError::Persistence(error.to_string())
 }
 

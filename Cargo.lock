@@ -1634,6 +1634,8 @@ dependencies = [
  "iskworks-esi",
  "iskworks-sde",
  "log",
+ "metrics",
+ "metrics-util",
  "rust_decimal",
  "serde_json",
  "sha2",
