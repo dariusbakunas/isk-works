@@ -45,6 +45,7 @@ function ticketFixture(overrides: Partial<Ticket> = {}): Ticket {
     executionSnapshot: null,
     createdAt: "2026-08-22T00:00:00Z",
     updatedAt: "2026-08-22T00:00:00Z",
+    completedAt: null,
     archivedAt: null,
     ...overrides,
   };

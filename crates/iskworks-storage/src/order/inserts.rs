@@ -420,6 +420,7 @@ pub(super) async fn insert_ticket_with_prerequisites(
         execution_snapshot: new_ticket.execution_snapshot,
         created_at: now,
         updated_at: now,
+        completed_at: None,
         archived_at: None,
         occurrence_key: new_ticket.occurrence_key,
         parent_ticket_id: new_ticket.parent_ticket_id,

@@ -206,7 +206,7 @@ const badgeToneClasses: Record<Tone, string> = {
   reaction: "border-reaction/50 bg-reaction/10 text-reaction",
 };
 
-const dotToneClasses: Record<Tone, string> = {
+export const dotToneClasses: Record<Tone, string> = {
   primary: "bg-primary",
   positive: "bg-positive",
   danger: "bg-danger",
