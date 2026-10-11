@@ -16,7 +16,7 @@ use iskworks_storage::{
     PgSdeRepository, PgWorkspaceRepository,
 };
 use sqlx::migrate::Migrator;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 static MIGRATOR: Migrator = sqlx::migrate!("../../migrations");
 const DEFAULT_ESI_BASE_URL: &str = "https://esi.evetech.net";
@@ -30,11 +30,13 @@ fn configured_esi_base_url(configured: Option<String>) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // RUST_LOG filters only the fmt layer. The pool metrics layer needs
+    // sqlx's TRACE acquire events, which a global filter would drop.
     tracing_subscriber::registry()
-        .with(
+        .with(tracing_subscriber::fmt::layer().with_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
+        ))
+        .with(iskworks_storage::db_pool_metrics_layer())
         .init();
 
     let config = ApiConfig::from_env()?;

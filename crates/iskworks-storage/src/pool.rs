@@ -52,7 +52,11 @@ impl DbPoolConfig {
     }
 
     pub(crate) fn pool_options(&self) -> PgPoolOptions {
-        PgPoolOptions::new().max_connections(self.max_connections)
+        PgPoolOptions::new()
+            .max_connections(self.max_connections)
+            // Every acquire emits sqlx's timing event at TRACE, which
+            // `db_pool_metrics_layer` turns into the wait histogram.
+            .acquire_time_level(log::LevelFilter::Trace)
     }
 
     pub(crate) fn connect_options(

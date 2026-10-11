@@ -33,6 +33,11 @@ pub(crate) fn metrics_addr(value: Option<String>) -> Result<Option<SocketAddr>, 
 pub fn install(addr: SocketAddr) -> Result<(), BuildError> {
     PrometheusBuilder::new()
         .with_http_listener(addr)
+        // `Full` matchers take precedence over the suffix below.
+        .set_buckets_for_metric(
+            Matcher::Full(iskworks_storage::ACQUIRE_DURATION.to_string()),
+            iskworks_storage::ACQUIRE_BUCKETS,
+        )?
         .set_buckets_for_metric(
             Matcher::Suffix("_duration_seconds".to_string()),
             DURATION_BUCKETS,
