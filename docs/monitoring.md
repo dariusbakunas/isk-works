@@ -137,5 +137,24 @@ ESI's error budget is per IP. If it runs dry, every request from the host is ref
 
 `loop` is one of `market`, `adjusted_price`, `system_index`, `character_sync`, `market_gc`, `esi_gc` or `auth_gc`.
 
+### Database pool
+
+The API and the worker each have one Postgres connection pool.
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `iskworks_db_pool_connections` | gauge | `state` (`in_use`/`idle`) | Open connections, sampled every 5 s. `in_use` pinned at the max means requests are queueing for a connection. |
+| `iskworks_db_pool_max_connections` | gauge | – | The pool's size (`ISKWORKS_DB_MAX_CONNECTIONS`). |
+| `iskworks_db_pool_acquire_duration_seconds` | histogram | – | How long each query or transaction waited for a connection. A slow page with a high wait here is starved of connections, not slow SQL. |
+| `iskworks_db_pool_acquire_timeouts_total` | counter | – | Acquires that gave up after 30 s. These fail the request. |
+
+Two settings tune the pool (both services):
+
+- `ISKWORKS_DB_MAX_CONNECTIONS` sets the pool size. Default 5.
+- `ISKWORKS_DB_SLOW_STATEMENT_MS` logs any statement slower than this at WARN, with its SQL, inside the request or worker loop that ran it. Default 500; `0` turns it off.
+
 Histograms named `*_duration_seconds` share these buckets: 10 ms, 25 ms,
 50 ms, 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min.
+The acquire histogram is the exception: it starts at 0.5 ms (0.5, 1, 2.5, 5,
+10, 25, 50, 100, 250, 500 ms, then 1 s to 30 s), because an uncontended
+acquire takes well under a millisecond.
