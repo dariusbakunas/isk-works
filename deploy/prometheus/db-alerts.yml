@@ -1,0 +1,66 @@
+# Alert rules for ISK Works' database (see docs/monitoring.md). The pool
+# rules expect the app's scrape jobs (iskworks-api, iskworks-worker); the
+# Postgres rules expect postgres_exporter scraped as job `postgres`.
+groups:
+  - name: iskworks-db
+    rules:
+      - alert: DbPoolAcquireTimeouts
+        expr: sum by (job) (increase(iskworks_db_pool_acquire_timeouts_total[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} timed out waiting for a database connection"
+          description: "{{ $value | humanize }} pool acquires gave up after 30 s in the last 5 minutes, and the requests or worker passes behind them failed. Check the App DB usage dashboard for who holds the connections."
+
+      - alert: DbPoolWaitHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, le) (rate(iskworks_db_pool_acquire_duration_seconds_bucket[5m]))
+          ) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} waits {{ $value | humanizeDuration }} for a database connection (p95)"
+          description: "Callers are queueing for the connection pool, so pages are slow before any SQL runs. Look for long transactions or slow statements holding connections, or raise ISKWORKS_DB_MAX_CONNECTIONS."
+
+      - alert: DbPoolSaturated
+        expr: |
+          sum by (job) (iskworks_db_pool_connections{state="in_use"})
+            >= on (job) max by (job) (iskworks_db_pool_max_connections)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }}'s connection pool has been fully in use for 10 minutes"
+          description: "Every pooled connection is checked out. Expect rising acquire waits and, eventually, timeouts."
+
+      - alert: PostgresDown
+        expr: pg_up{job="postgres"} == 0 or up{job="postgres"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres is unreachable for monitoring"
+          description: "postgres_exporter is down or can't connect to Postgres. If the app is still working, check the exporter and the iskworks_monitor role's password."
+
+      - alert: PostgresConnectionsNearMax
+        expr: |
+          sum by (job) (pg_stat_activity_count{job="postgres"})
+            / max by (job) (pg_settings_max_connections{job="postgres"})
+            > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres is using {{ $value | humanizePercentage }} of max_connections"
+          description: "New connections will be refused at the limit. The app pools are small (ISKWORKS_DB_MAX_CONNECTIONS each); look for other clients or leaked connections."
+
+      - alert: PostgresLongTransaction
+        expr: max by (job) (pg_long_running_transactions_oldest_timestamp_seconds{job="postgres"}) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A Postgres transaction has been open for {{ $value | humanizeDuration }}"
+          description: "Long transactions hold locks, block vacuum and stall migrations. Find it with: SELECT pid, state, xact_start, query FROM pg_stat_activity ORDER BY xact_start LIMIT 5;"

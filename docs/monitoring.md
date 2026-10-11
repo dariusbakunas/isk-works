@@ -34,7 +34,30 @@ The repo ships a ready-made setup:
   - **Worker loops**
 
   It picks its Prometheus data source and service (`job`) from dashboard variables.
+- `deploy/grafana/db-usage-dashboard.json` ("ISK Works / App DB usage") shows the app's side of the database:
+  - **Overview**
+  - **Connection pool**: in use vs. idle vs. size, acquire wait percentiles, timeouts.
+  - **API routes**: p95 and rate per route, status classes, 5xx by route.
+  - **Operations and worker loops**
+
+  Start here when pages are slow. A high acquire wait means requests are queueing for a connection. A slow route with no wait means slow SQL, so go to the Postgres dashboard.
+- `deploy/grafana/postgres-dashboard.json` ("ISK Works / Postgres") shows the server, from postgres_exporter (see [Postgres](#postgres)):
+  - **Overview**
+  - **Queries**: the top statements by total time, mean time and calls over the selected range, with their normalized SQL.
+  - **Connections and locks**
+  - **Tables and vacuum**
+
+  Pick the database with its `Database` variable.
 - `deploy/prometheus/esi-alerts.yml` holds Prometheus alert rules: any 420, a low error budget, a high share of 5xx, failing or stale syncs, and stalled or failing worker loops. Unit tests for the rules are in `esi-alerts.test.yml` (`promtool test rules`).
+- `deploy/prometheus/db-alerts.yml` holds the database rules:
+  - any pool acquire timeout;
+  - pool wait p95 over 250 ms for 10 minutes;
+  - a pool fully in use for 10 minutes;
+  - Postgres or its exporter down;
+  - over 80% of `max_connections` in use;
+  - a transaction open for more than 5 minutes.
+
+  Tests are in `db-alerts.test.yml`.
 - `deploy/prometheus/prometheus.yml` is a scrape config. **The dashboards and alerts expect the scrape jobs to be named `iskworks-api`, `iskworks-worker` and `postgres`** (postgres_exporter, see [Postgres](#postgres)). Keep those names if you write your own.
 
 ### With the bundled compose stack
@@ -53,14 +76,14 @@ The repo ships a ready-made setup:
    docker compose --profile monitoring up -d
    ```
 
-   This recreates the API and worker with metrics on, and adds Prometheus (15 days of retention; change it with `PROMETHEUS_RETENTION`) and Grafana with the dashboard provisioned.
+   This recreates the API and worker with metrics on, and adds Prometheus (15 days of retention; change it with `PROMETHEUS_RETENTION`) and Grafana with the dashboards provisioned. postgres_exporter starts too; it needs the one-time Postgres setup below.
 3. Grafana listens on `127.0.0.1:3000` on the host only (`GRAFANA_PORT` changes the port). From your machine, tunnel to it with `ssh -L 3000:127.0.0.1:3000 your-server` and open http://localhost:3000. Neither Prometheus nor Grafana is routed through Traefik.
 
 Alerts show up in Prometheus and in Grafana's alert list. Sending them anywhere (email, Discord, …) needs an Alertmanager or Grafana contact point, which isn't bundled.
 
 ### Elsewhere (Kubernetes, existing Prometheus)
 
-Scrape port 9100 of both services with the job names above. Load `esi-alerts.yml` as a rule file (or PrometheusRule). Import the dashboard JSON into Grafana and pick your Prometheus data source.
+Scrape port 9100 of both services with the job names above. Load `esi-alerts.yml` and `db-alerts.yml` as rule files (or PrometheusRules). Import the dashboard JSON files into Grafana and pick your Prometheus data source.
 
 ## Postgres
 

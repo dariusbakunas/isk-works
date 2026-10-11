@@ -8,6 +8,7 @@ global:
 
 rule_files:
   - esi-alerts.yml
+  - db-alerts.yml
 
 scrape_configs:
   - job_name: iskworks-api

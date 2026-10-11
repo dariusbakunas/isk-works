@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks the shipped monitoring files (deploy/prometheus, deploy/grafana):
 # the Prometheus config and alert rules are valid, the alert unit tests
-# pass, and the dashboard is valid JSON. Uses `promtool` from PATH, or the
+# pass, and every dashboard is valid JSON. Uses `promtool` from PATH, or the
 # Prometheus image the compose stack pins.
 set -euo pipefail
 
@@ -20,6 +20,8 @@ run_promtool() {
 }
 
 run_promtool check config prometheus.yml
-run_promtool test rules esi-alerts.test.yml
-python3 -m json.tool "$repo_root/deploy/grafana/esi-dashboard.json" >/dev/null
+run_promtool test rules esi-alerts.test.yml db-alerts.test.yml
+for dashboard in "$repo_root"/deploy/grafana/*-dashboard.json; do
+  python3 -m json.tool "$dashboard" >/dev/null
+done
 echo "monitoring config OK"

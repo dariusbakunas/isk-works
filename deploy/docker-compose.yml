@@ -310,6 +310,8 @@ services:
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/esi-dashboard.json:/var/lib/grafana/dashboards/esi-dashboard.json:ro
+      - ./grafana/postgres-dashboard.json:/var/lib/grafana/dashboards/postgres-dashboard.json:ro
+      - ./grafana/db-usage-dashboard.json:/var/lib/grafana/dashboards/db-usage-dashboard.json:ro
       - grafana_data:/var/lib/grafana
     networks:
       - iskworks_edge
