@@ -232,6 +232,38 @@ describe("BoardPage", () => {
     expect(within(screen.getByTestId("board-lane-inProgress")).getByText("ISK-1001")).toBeInTheDocument();
   });
 
+  it("shows the newest 10 Complete tickets until Show all is clicked", async () => {
+    // ISK-999..ISK-1010: numeric order, so ISK-1010 is newest and ISK-999
+    // (which a string sort would put last-but-newest) is oldest.
+    industryApi.listTickets.mockResolvedValue(
+      Array.from({ length: 12 }, (_, index) =>
+        ticketFixture({
+          id: `t${index}`,
+          displayId: `ISK-${999 + index}`,
+          status: "complete",
+          kind: "manufacturing",
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    renderPage();
+
+    const lane = within(await screen.findByTestId("board-lane-complete"));
+    expect(lane.getByText("ISK-1010")).toBeInTheDocument();
+    expect(lane.getByText("ISK-1001")).toBeInTheDocument();
+    expect(lane.queryByText("ISK-1000")).not.toBeInTheDocument();
+    expect(lane.queryByText("ISK-999")).not.toBeInTheDocument();
+    // The lane count still covers every card, shown or not.
+    expect(lane.getByText("12")).toBeInTheDocument();
+
+    await user.click(lane.getByRole("button", { name: "Show all 12 tickets" }));
+    expect(lane.getByText("ISK-999")).toBeInTheDocument();
+
+    await user.click(lane.getByRole("button", { name: "Show fewer" }));
+    expect(lane.queryByText("ISK-999")).not.toBeInTheDocument();
+  });
+
   it("uses Epic/run terminology in the header and footer, not Order/batch", async () => {
     industryApi.listTickets.mockResolvedValue([
       ticketFixture({ displayId: "ISK-1000", kind: "manufacturing" }),

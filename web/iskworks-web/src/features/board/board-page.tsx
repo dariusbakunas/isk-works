@@ -73,6 +73,17 @@ function epicLaneStatus(orderStatus: OrderSummary["status"]): TicketStatus {
   return orderStatus;
 }
 
+// The Complete lane is history, not a work queue: it shows this many
+// standalone tickets (newest first) as one-line rows until expanded.
+const COMPLETE_LANE_PREVIEW = 10;
+
+// Newest-first order for the Complete lane. Tickets carry no completion
+// timestamp, but display ids are issued sequentially; compare their numeric
+// part so ISK-1000 sorts after ISK-999.
+function displayIdNumber(displayId: string): number {
+  return Number(displayId.replace(/\D/g, "")) || 0;
+}
+
 // Lane drop-target highlight, keyed by the lane's own Tone (so "In
 // Progress" tints primary, "Complete" tints muted, etc.) -- two intensities,
 // an accent bar plus a tinted background.
@@ -133,6 +144,7 @@ export function BoardPage() {
   // point of grouping being to cut Board noise down from one card per
   // ticket.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showAllComplete, setShowAllComplete] = useState(false);
 
   // Board filters -- a distinct state dimension from Inspector selection
   // (`openOrderId`/`openTicketId` above). Derived live from the URL on
@@ -593,7 +605,7 @@ export function BoardPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="board-lanes">
+      <div className="flex flex-col gap-3 sm:flex-row" data-testid="board-lanes">
         {lanes.map((lane) => {
           const laneOrderCards = view.orderCards.filter(
             (order) => epicLaneStatus(order.status) === lane.status,
@@ -607,6 +619,13 @@ export function BoardPage() {
           );
           const acqGroups = deriveOrderAcquisitionGroups(laneTicketsAll);
           const laneCardCount = laneOrderCards.length + laneRunCards.length + nonAcqTickets.length + acqGroups.length;
+          const isCompleteLane = lane.status === "complete";
+          const laneTickets = isCompleteLane
+            ? [...nonAcqTickets].sort((a, b) => displayIdNumber(b.displayId) - displayIdNumber(a.displayId))
+            : nonAcqTickets;
+          const hiddenTicketCount =
+            isCompleteLane && !showAllComplete ? Math.max(0, laneTickets.length - COMPLETE_LANE_PREVIEW) : 0;
+          const visibleTickets = hiddenTicketCount > 0 ? laneTickets.slice(0, COMPLETE_LANE_PREVIEW) : laneTickets;
           const isEligibleLane =
             draggingTicket !== null &&
             draggingTicketDraggable &&
@@ -619,7 +638,8 @@ export function BoardPage() {
               : "border-border";
           return (
             <div
-              className={`rounded-[2px] border transition-colors ${laneHighlight}`}
+              // An empty lane gives its width to the lanes that have cards.
+              className={`rounded-[2px] border transition-colors sm:min-w-0 ${laneCardCount === 0 ? "sm:flex-[0.5]" : "sm:flex-1"} ${laneHighlight}`}
               data-drag-eligible={isEligibleLane ? "true" : "false"}
               data-testid={`board-lane-${lane.status}`}
               key={lane.status}
@@ -667,7 +687,7 @@ export function BoardPage() {
                     tickets={tickets}
                   />
                 ))}
-                {nonAcqTickets.map((ticket) => (
+                {visibleTickets.map((ticket) => (
                   <OrderTicketCard
                     active={ticket.id === openTicketId}
                     assignee={
@@ -675,6 +695,7 @@ export function BoardPage() {
                         ? (view.characterById.get(ticket.assigneeCharacterId) ?? null)
                         : null
                     }
+                    compact={isCompleteLane}
                     key={ticket.id}
                     onDragEnd={() => {
                       setDraggingTicketId(null);
@@ -715,6 +736,15 @@ export function BoardPage() {
                     />
                   );
                 })}
+                {isCompleteLane && (hiddenTicketCount > 0 || (showAllComplete && laneTickets.length > COMPLETE_LANE_PREVIEW)) ? (
+                  <button
+                    className="py-1 text-[11px] text-primary hover:opacity-80"
+                    onClick={() => setShowAllComplete((current) => !current)}
+                    type="button"
+                  >
+                    {showAllComplete ? "Show fewer" : `Show all ${laneTickets.length} tickets`}
+                  </button>
+                ) : null}
               </div>
             </div>
           );
