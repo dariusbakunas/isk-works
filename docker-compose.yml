@@ -5,10 +5,25 @@ services:
       POSTGRES_DB: iskworks
       POSTGRES_USER: iskworks
       POSTGRES_PASSWORD: iskworks
+    # pg_stat_statements for local query profiling, and a lower slow-
+    # statement log threshold than production. See docs/monitoring.md.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - pg_stat_statements.track_utility=off
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=200ms
     ports:
       - "5432:5432"
     volumes:
       - iskworks-postgres:/var/lib/postgresql/data
+      - ./deploy/postgres/init-monitoring.sh:/docker-entrypoint-initdb.d/10-monitoring.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U iskworks -d iskworks"]
       interval: 5s

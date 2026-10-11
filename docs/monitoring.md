@@ -35,7 +35,7 @@ The repo ships a ready-made setup:
 
   It picks its Prometheus data source and service (`job`) from dashboard variables.
 - `deploy/prometheus/esi-alerts.yml` holds Prometheus alert rules: any 420, a low error budget, a high share of 5xx, failing or stale syncs, and stalled or failing worker loops. Unit tests for the rules are in `esi-alerts.test.yml` (`promtool test rules`).
-- `deploy/prometheus/prometheus.yml` is a scrape config. **The dashboard and alerts expect the scrape jobs to be named `iskworks-api` and `iskworks-worker`.** Keep those names if you write your own.
+- `deploy/prometheus/prometheus.yml` is a scrape config. **The dashboards and alerts expect the scrape jobs to be named `iskworks-api`, `iskworks-worker` and `postgres`** (postgres_exporter, see [Postgres](#postgres)). Keep those names if you write your own.
 
 ### With the bundled compose stack
 
@@ -61,6 +61,60 @@ Alerts show up in Prometheus and in Grafana's alert list. Sending them anywhere 
 ### Elsewhere (Kubernetes, existing Prometheus)
 
 Scrape port 9100 of both services with the job names above. Load `esi-alerts.yml` as a rule file (or PrometheusRule). Import the dashboard JSON into Grafana and pick your Prometheus data source.
+
+## Postgres
+
+The app metrics show what the app waits for. Postgres itself shows which
+queries are slow and how the server is doing. Getting that view takes three
+pieces:
+
+- **Server settings.** The bundled compose files start Postgres with:
+  - `pg_stat_statements`, which collects per-query calls, time and rows across every client, with literals replaced by placeholders;
+  - `log_min_duration_statement`, which logs the full text of any statement over 500 ms (`POSTGRES_LOG_MIN_DURATION`; 200 ms locally);
+  - `track_io_timing`.
+
+  `pg_stat_statements.track_utility` is off, so DDL text (such as a role's password) never enters the statistics.
+- **The `iskworks_monitor` role.** A read-only login with Postgres's built-in `pg_monitor` role. `postgres_exporter` connects with it, never with the app user.
+- **`postgres_exporter`.** Part of the `monitoring` profile. Besides the standard server metrics (connections, locks, cache hits, vacuum), it exports the top 50 statements by total time from `pg_stat_statements`, with their query text (normalized, no literals), under the scrape job `postgres`.
+
+`deploy/postgres/init-monitoring.sh` creates the extension and the role. It is safe to re-run.
+
+### Turning it on (bundled compose stack)
+
+1. In `.env`, set a monitor password. Use hex only: the exporter can't parse quotes in passwords.
+
+   ```
+   POSTGRES_MONITOR_PASSWORD=<output of: openssl rand -hex 24>
+   ```
+
+2. Restart Postgres so it loads `pg_stat_statements`. Changing `shared_preload_libraries` needs a full restart:
+
+   ```
+   docker compose up -d postgres
+   ```
+
+3. Create the extension and the role. A brand-new volume does this by itself on first start. An existing database needs it run once by hand:
+
+   ```
+   docker compose exec -e POSTGRES_MONITOR_PASSWORD postgres /docker-entrypoint-initdb.d/10-monitoring.sh
+   ```
+
+   Re-run it after changing `POSTGRES_MONITOR_PASSWORD`, and it updates the role's password.
+4. `docker compose --profile monitoring up -d` then starts the exporter with the rest of the monitoring stack.
+
+The local development stack (`make db-up`) has the same server settings but no exporter. To query `pg_stat_statements` locally on an existing volume, run once:
+
+```
+docker compose exec db /docker-entrypoint-initdb.d/10-monitoring.sh
+```
+
+### Elsewhere
+
+Set the same server parameters in your Postgres configuration: `shared_preload_libraries`, `pg_stat_statements.track=top`, `pg_stat_statements.track_utility=off`, `log_min_duration_statement` and `track_io_timing`. Then restart Postgres.
+
+Run `init-monitoring.sh` once as a superuser, with `POSTGRES_USER`, `POSTGRES_DB` and `POSTGRES_MONITOR_PASSWORD` set; it uses `psql`.
+
+Run `quay.io/prometheuscommunity/postgres-exporter` with the flags from `deploy/docker-compose.yml`, and scrape it as job `postgres`.
 
 ## Metrics
 
