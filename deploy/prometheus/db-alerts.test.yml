@@ -1,0 +1,143 @@
+# Unit tests for db-alerts.yml. Run with:
+#   promtool test rules deploy/prometheus/db-alerts.test.yml
+rule_files:
+  - db-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a single acquire timeout alerts at once, then clears
+    interval: 1m
+    input_series:
+      - series: 'iskworks_db_pool_acquire_timeouts_total{job="iskworks-api"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DbPoolAcquireTimeouts
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: iskworks-api
+            exp_annotations:
+              summary: "iskworks-api timed out waiting for a database connection"
+              description: "1 pool acquires gave up after 30 s in the last 5 minutes, and the requests or worker passes behind them failed. Check the App DB usage dashboard for who holds the connections."
+      - eval_time: 9m
+        alertname: DbPoolAcquireTimeouts
+        exp_alerts: []
+
+  # 60 acquires a minute: all under 1 ms until minute 10, then all between
+  # 0.25 s and 0.5 s, so p95 lands in (0.25, 0.5].
+  - name: a slow pool acquire p95 alerts after 10 minutes
+    interval: 1m
+    input_series:
+      - series: 'iskworks_db_pool_acquire_duration_seconds_bucket{job="iskworks-worker", le="0.001"}'
+        values: "0+60x10 600x30"
+      - series: 'iskworks_db_pool_acquire_duration_seconds_bucket{job="iskworks-worker", le="0.25"}'
+        values: "0+60x10 600x30"
+      - series: 'iskworks_db_pool_acquire_duration_seconds_bucket{job="iskworks-worker", le="0.5"}'
+        values: "0+60x40"
+      - series: 'iskworks_db_pool_acquire_duration_seconds_bucket{job="iskworks-worker", le="+Inf"}'
+        values: "0+60x40"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DbPoolWaitHigh
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: DbPoolWaitHigh
+        exp_alerts: []
+      - eval_time: 28m
+        alertname: DbPoolWaitHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: iskworks-worker
+            exp_annotations:
+              summary: "iskworks-worker waits 487.5ms for a database connection (p95)"
+              description: "Callers are queueing for the connection pool, so pages are slow before any SQL runs. Look for long transactions or slow statements holding connections, or raise ISKWORKS_DB_MAX_CONNECTIONS."
+
+  - name: a pool fully in use for 10 minutes alerts
+    interval: 1m
+    input_series:
+      - series: 'iskworks_db_pool_connections{job="iskworks-api", state="in_use"}'
+        values: "2x5 5x20"
+      - series: 'iskworks_db_pool_connections{job="iskworks-api", state="idle"}'
+        values: "3x5 0x20"
+      - series: 'iskworks_db_pool_max_connections{job="iskworks-api"}'
+        values: "5x25"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DbPoolSaturated
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: DbPoolSaturated
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: iskworks-api
+            exp_annotations:
+              summary: "iskworks-api's connection pool has been fully in use for 10 minutes"
+              description: "Every pooled connection is checked out. Expect rising acquire waits and, eventually, timeouts."
+
+  - name: Postgres down alerts whether the exporter or the database is gone
+    interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres", instance="postgres-exporter:9187"}'
+        values: "1x3 0x10"
+      - series: 'up{job="postgres", instance="postgres-exporter:9187"}'
+        values: "1x14"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PostgresDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: PostgresDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: postgres
+              instance: postgres-exporter:9187
+            exp_annotations:
+              summary: "Postgres is unreachable for monitoring"
+              description: "postgres_exporter is down or can't connect to Postgres. If the app is still working, check the exporter and the iskworks_monitor role's password."
+
+  - name: connections near max_connections alert after 10 minutes
+    interval: 1m
+    input_series:
+      - series: 'pg_stat_activity_count{job="postgres", datname="iskworks", state="active"}'
+        values: "10x5 70x20"
+      - series: 'pg_stat_activity_count{job="postgres", datname="iskworks", state="idle"}'
+        values: "5x5 15x20"
+      - series: 'pg_settings_max_connections{job="postgres"}'
+        values: "100x25"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PostgresConnectionsNearMax
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: PostgresConnectionsNearMax
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: postgres
+            exp_annotations:
+              summary: "Postgres is using 85% of max_connections"
+              description: "New connections will be refused at the limit. The app pools are small (ISKWORKS_DB_MAX_CONNECTIONS each); look for other clients or leaked connections."
+
+  - name: a transaction open over 5 minutes alerts after 5 more
+    interval: 1m
+    input_series:
+      - series: 'pg_long_running_transactions_oldest_timestamp_seconds{job="postgres"}'
+        values: "0+60x20"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PostgresLongTransaction
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: PostgresLongTransaction
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: postgres
+            exp_annotations:
+              summary: "A Postgres transaction has been open for 12m 0s"
+              description: "Long transactions hold locks, block vacuum and stall migrations. Find it with: SELECT pid, state, xact_start, query FROM pg_stat_activity ORDER BY xact_start LIMIT 5;"
