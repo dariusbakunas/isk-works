@@ -6,8 +6,33 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-iskworks}
       POSTGRES_USER: ${POSTGRES_USER:-iskworks}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Password for the read-only `iskworks_monitor` login that
+      # postgres-exporter (monitoring profile) uses. Blank skips the role.
+      # Hex only (openssl rand -hex 24): the exporter can't parse quotes.
+      POSTGRES_MONITOR_PASSWORD: ${POSTGRES_MONITOR_PASSWORD:-}
+    # Query statistics and slow-statement logging (docs/monitoring.md).
+    # Cheap enough to leave on; shared_preload_libraries only changes on
+    # a restart. track_utility=off keeps DDL text (e.g. ALTER ROLE ...
+    # PASSWORD) out of pg_stat_statements.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=top
+      - -c
+      - pg_stat_statements.track_utility=off
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION:-500ms}
     volumes:
       - iskworks_pg_data:/var/lib/postgresql/data
+      # Runs on first start of an empty volume only. For an existing
+      # database, run it by hand; see docs/monitoring.md.
+      - ./postgres/init-monitoring.sh:/docker-entrypoint-initdb.d/10-monitoring.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iskworks} -d ${POSTGRES_DB:-iskworks}"]
       interval: 10s
@@ -241,6 +266,30 @@ services:
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
+    networks:
+      - iskworks_edge
+    restart: unless-stopped
+
+  # Postgres server metrics: connections, locks, cache hits, vacuum, and
+  # the top 50 statements by total time from pg_stat_statements. Connects
+  # as the read-only iskworks_monitor role (POSTGRES_MONITOR_PASSWORD).
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: iskworks-postgres-exporter
+    profiles: ["monitoring"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - --collector.stat_statements
+      - --collector.stat_statements.include_query
+      - --collector.stat_statements.query_length=200
+      - --collector.stat_statements.limit=50
+      - --collector.long_running_transactions
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB:-iskworks}?sslmode=disable
+      DATA_SOURCE_USER: iskworks_monitor
+      DATA_SOURCE_PASS: ${POSTGRES_MONITOR_PASSWORD:-}
     networks:
       - iskworks_edge
     restart: unless-stopped

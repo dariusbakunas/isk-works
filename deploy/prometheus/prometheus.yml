@@ -1,7 +1,7 @@
 # Scrape config for the compose stack's optional `monitoring` profile
 # (see docs/monitoring.md). Both services must run with
-# ISKWORKS_METRICS_ADDR=0.0.0.0:9100. In other setups, copy the two jobs
-# and keep their names; the dashboard and alerts filter on them.
+# ISKWORKS_METRICS_ADDR=0.0.0.0:9100. In other setups, copy the jobs and
+# keep their names; the dashboards and alerts filter on them.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -16,3 +16,8 @@ scrape_configs:
   - job_name: iskworks-worker
     static_configs:
       - targets: ["iskworks-worker:9100"]
+  # postgres_exporter. The Postgres dashboard and alerts filter on this
+  # job name too.
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]

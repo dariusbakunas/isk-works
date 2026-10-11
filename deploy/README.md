@@ -121,6 +121,11 @@ also set `GRAFANA_ADMIN_PASSWORD` and run
 `127.0.0.1:3000` only; reach it through an SSH tunnel. See
 `docs/monitoring.md` for setup details, alerts and every exported metric.
 
+Postgres query statistics (`pg_stat_statements`) and slow-statement logging
+are on by default. The profile also runs `postgres_exporter`, which needs
+`POSTGRES_MONITOR_PASSWORD` and a one-time setup on an existing database. See
+the Postgres section of `docs/monitoring.md`.
+
 ## Community links
 
 The footer, About & Legal page, and Help show your instance's community
