@@ -389,3 +389,60 @@ async fn set_ticket_status_rejects_a_ticket_from_another_workspace(pool: PgPool)
         .unwrap();
     assert_eq!(unchanged.status, TicketStatus::Todo);
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn completed_at_is_stamped_on_entering_complete_and_cleared_on_leaving(pool: PgPool) {
+    let (workspace_id, owner_id, _import_id) = fixture_workspace(&pool).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let (ticket, _) = repository
+        .create_ticket(new_acquisition_ticket(
+            workspace_id,
+            owner_id,
+            44,
+            "Vexor",
+            1,
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(ticket.completed_at, None);
+
+    let in_progress = repository
+        .set_ticket_status(workspace_id, ticket.id, TicketStatus::InProgress)
+        .await
+        .unwrap();
+    assert_eq!(in_progress.completed_at, None);
+
+    let complete = repository
+        .set_ticket_status(workspace_id, ticket.id, TicketStatus::Complete)
+        .await
+        .unwrap();
+    let completed_at = complete.completed_at.expect("stamped on entering Complete");
+    assert_eq!(completed_at, complete.updated_at);
+
+    // A repeated Complete write keeps the original completion time.
+    let again = repository
+        .set_ticket_status(workspace_id, ticket.id, TicketStatus::Complete)
+        .await
+        .unwrap();
+    assert_eq!(again.completed_at, Some(completed_at));
+
+    let reopened = repository
+        .set_ticket_status(workspace_id, ticket.id, TicketStatus::Todo)
+        .await
+        .unwrap();
+    assert_eq!(reopened.completed_at, None);
+
+    // The start/complete verbs stamp it too.
+    repository
+        .start_ticket(workspace_id, ticket.id)
+        .await
+        .unwrap();
+    let completed = repository
+        .complete_ticket(workspace_id, ticket.id)
+        .await
+        .unwrap();
+    assert_eq!(completed.completed_at, Some(completed.updated_at));
+}

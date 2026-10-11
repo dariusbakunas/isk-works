@@ -391,6 +391,8 @@ export interface Ticket {
   executionSnapshot: TaskExecutionSnapshot | null;
   createdAt: string;
   updatedAt: string;
+  // When the ticket last moved into Complete; `null` unless it is Complete.
+  completedAt: string | null;
   archivedAt: string | null;
   // This ticket's own frozen operation identity -- `null` for a ticket from
   // a version-1 Epic, a standalone, or an Acquisition/Generic ticket.

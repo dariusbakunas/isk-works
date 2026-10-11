@@ -169,6 +169,10 @@ pub struct Ticket {
     pub execution_snapshot: Option<TaskExecutionSnapshot>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When this ticket last moved into `Complete` -- `Some` exactly while
+    /// `status` is `Complete`. A repeated Complete write keeps the original
+    /// time; moving out clears it. Display/ordering only.
+    pub completed_at: Option<DateTime<Utc>>,
     /// Orthogonal to `status` -- never read by any derivation function in
     /// this module, only by Board/list visibility filtering.
     pub archived_at: Option<DateTime<Utc>>,
