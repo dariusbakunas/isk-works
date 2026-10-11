@@ -288,8 +288,8 @@ describe("OrderTicketCard recording indicator", () => {
     );
 
     expect(screen.getByText("40 / 100")).toBeInTheDocument();
-    expect(screen.getByText("recorded")).toBeInTheDocument();
-    // The lane/status badge is still driven by workflow status alone.
+    expect(screen.getByText("— Partially recorded")).toBeInTheDocument();
+    // The (screen-reader) status is still driven by workflow status alone.
     expect(screen.getByText("In Progress")).toBeInTheDocument();
   });
 
@@ -314,7 +314,7 @@ describe("OrderTicketCard recording indicator", () => {
         })}
       />,
     );
-    expect(screen.getByText("20 / 20").closest("p")).toHaveAttribute(
+    expect(screen.getByText("20 / 20").parentElement).toHaveAttribute(
       "title",
       expect.stringContaining("runs"),
     );
@@ -333,10 +333,35 @@ describe("OrderTicketCard recording indicator", () => {
         })}
       />,
     );
-    expect(screen.getByText("30 / 100").closest("p")).toHaveAttribute(
+    expect(screen.getByText("30 / 100").parentElement).toHaveAttribute(
       "title",
       expect.not.stringContaining("runs"),
     );
+  });
+
+  it("compact row keeps identity and quantity but collapses recording to its glyph", () => {
+    render(
+      <OrderTicketCard
+        compact
+        ticket={ticketFixture({
+          kind: "reaction",
+          status: "complete",
+          quantity: 5400,
+          recording: {
+            state: "recorded",
+            requestedQuantity: 18,
+            recordedQuantity: 18,
+            remainingQuantity: 0,
+            surplusQuantity: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("ISK-2000")).toBeInTheDocument();
+    expect(screen.getByText("×5,400")).toBeInTheDocument();
+    expect(screen.queryByText("18 / 18")).not.toBeInTheDocument();
+    expect(screen.getByText("●").parentElement).toHaveAttribute("title", expect.stringContaining("18 of 18 runs"));
   });
 
   it("masks a generic ticket's free-form title from session replay, but not a structured name", () => {
