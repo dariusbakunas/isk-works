@@ -20,6 +20,7 @@ mod cookies;
 mod csv_cell;
 mod error;
 mod export;
+mod http_metrics;
 pub mod metrics_exporter;
 mod observability;
 mod origin_check;
@@ -215,6 +216,9 @@ pub fn build_router(state: AppState) -> Router {
         // Every JSON endpoint gets a modest limit; the market-export upload
         // routes raise their own (`routes::market::imports`).
         .layer(DefaultBodyLimit::max(DEFAULT_BODY_LIMIT_BYTES))
+        // Outermost: times the whole request. `Router::layer` wraps each
+        // route, so `MatchedPath` is already set when this runs.
+        .layer(middleware::from_fn(http_metrics::record_request))
         .with_state(state)
 }
 
