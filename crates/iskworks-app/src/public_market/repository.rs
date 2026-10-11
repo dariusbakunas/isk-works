@@ -1,4 +1,5 @@
 use super::*;
+use crate::operation_metrics::Operation;
 
 #[async_trait]
 pub trait MarketRefreshRepository: Send + Sync {
@@ -267,7 +268,8 @@ where
         next_refresh_at: DateTime<Utc>,
         batch: EsiMarketObservationBatch,
     ) -> Result<bool, MarketError> {
-        self.complete_esi_market_refresh(workspace_id, claim, next_refresh_at, batch)
+        Operation::MarketBookWrite
+            .timed(self.complete_esi_market_refresh(workspace_id, claim, next_refresh_at, batch))
             .await
     }
 
@@ -379,7 +381,8 @@ where
         next_refresh_at: DateTime<Utc>,
         batch: PublicMarketObservationBatch,
     ) -> Result<bool, MarketError> {
-        self.complete_public_market_refresh(claim, next_refresh_at, batch)
+        Operation::MarketBookWrite
+            .timed(self.complete_public_market_refresh(claim, next_refresh_at, batch))
             .await
     }
 

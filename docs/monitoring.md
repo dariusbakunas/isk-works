@@ -207,6 +207,21 @@ Two settings tune the pool (both services):
 - `ISKWORKS_DB_MAX_CONNECTIONS` sets the pool size. Default 5.
 - `ISKWORKS_DB_SLOW_STATEMENT_MS` logs any statement slower than this at WARN, with its SQL, inside the request or worker loop that ran it. Default 500; `0` turns it off.
 
+### HTTP requests and heavy operations
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `iskworks_http_requests_total` | counter | `route`, `method`, `status_class` (`2xx`…`5xx`) | API requests (API only). |
+| `iskworks_http_request_duration_seconds` | histogram | `route`, `method` | Time from receiving the request to sending the response headers. This covers session lookup; streamed bodies such as CSV exports aren't covered. |
+| `iskworks_operation_duration_seconds` | histogram | `operation` | Time spent in a known-heavy operation, in whichever process ran it. |
+
+- `route` is the API's route template, e.g. `/api/builds/:build_id`, never the raw path. Requests that match no route share `route="unmatched"`.
+- `method` is a standard HTTP method, or `other`.
+- `operation` is one of:
+  - `build_materials`: the build-materials projection behind the build worksheet and Epics.
+  - `asset_snapshot_complete`: writing a character's asset snapshot.
+  - `market_book_write`: writing one refreshed market order book.
+
 Histograms named `*_duration_seconds` share these buckets: 10 ms, 25 ms,
 50 ms, 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min.
 The acquire histogram is the exception: it starts at 0.5 ms (0.5, 1, 2.5, 5,

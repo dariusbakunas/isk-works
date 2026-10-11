@@ -1515,6 +1515,7 @@ dependencies = [
  "iskworks-storage",
  "metrics",
  "metrics-exporter-prometheus",
+ "metrics-util",
  "rust_decimal",
  "rust_xlsxwriter",
  "serde",

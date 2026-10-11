@@ -1,7 +1,7 @@
 import { AlertCircle } from "lucide-react";
 
 import type { Ticket, TicketRecordingSummary, TicketSummary } from "../../api/industry";
-import { Badge } from "../../components/primitives";
+import { dotToneClasses, textToneClasses } from "../../components/primitives";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { MoneyAmount } from "../../components/money";
 import { CharacterName } from "../../observability/private";
@@ -10,31 +10,37 @@ import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
-// A small, secondary "how much of this has actually been recorded" line --
-// item quantities for Acquisition, runs for Manufacturing/Reaction. It is
-// NOT a Board lane or status: the card's lane and status badge are driven
-// entirely by workflow `status`, never by recording state.
+// A small, secondary "how much of this has actually been recorded" readout
+// -- item quantities for Acquisition, runs for Manufacturing/Reaction. It is
+// NOT a Board lane or status: the card's lane is driven entirely by
+// workflow `status`, never by recording state. `glyphOnly` is the one-line
+// compact row, where the counts live in the tooltip.
 function RecordingIndicator({
   recording,
   isProduction,
+  glyphOnly = false,
 }: {
   recording: TicketRecordingSummary;
   isProduction: boolean;
+  glyphOnly?: boolean;
 }) {
   const meta = recordingStateMeta[recording.state];
   const unit = isProduction ? " runs" : "";
   return (
-    <p
-      className="mt-1 flex items-center gap-1 text-[10px] text-muted"
+    <span
+      className="flex shrink-0 items-center gap-1 text-[10px] text-muted"
       title={`${meta.label} — ${recording.recordedQuantity.toLocaleString()} of ${recording.requestedQuantity.toLocaleString()}${unit} recorded`}
     >
-      <span aria-hidden="true">{meta.glyph}</span>
-      <span className="font-mono tabular-nums">
-        {recording.recordedQuantity.toLocaleString()} / {recording.requestedQuantity.toLocaleString()}
+      <span aria-hidden="true" className={textToneClasses[meta.tone]}>
+        {meta.glyph}
       </span>
-      <span>recorded</span>
+      {glyphOnly ? null : (
+        <span className="font-mono tabular-nums">
+          {recording.recordedQuantity.toLocaleString()} / {recording.requestedQuantity.toLocaleString()}
+        </span>
+      )}
       <span className="sr-only">— {meta.label}</span>
-    </p>
+    </span>
   );
 }
 
@@ -48,12 +54,16 @@ export function isBatchableOrderTicket(ticket: Ticket): boolean {
 
 // A standalone order::Ticket's own Board card -- deliberately a distinct
 // component from OrderCard rather than a shared/polymorphic one.
+//
+// Kept dense on purpose: the left stripe carries the kind (BUY/BUILD/RXN)
+// and the workflow status *is* the lane, so neither needs a badge row.
 export function OrderTicketCard({
   ticket,
   assignee,
   selectable = false,
   selected = false,
   active = false,
+  compact = false,
   onToggleSelect,
   onOpen,
   onDragStart,
@@ -68,6 +78,9 @@ export function OrderTicketCard({
   selected?: boolean;
   /** The ticket the Board's inspector is showing. */
   active?: boolean;
+  /** One-line row (the Complete lane): identity and quantity only, with
+   * recording collapsed to its glyph. Blocker/batch hints still show. */
+  compact?: boolean;
   onToggleSelect?: (ticketId: string) => void;
   onOpen?: (ticketId: string) => void;
   onDragStart?: (ticketId: string) => void;
@@ -85,6 +98,8 @@ export function OrderTicketCard({
   const firstBlocker = ticket.blockedBy[0] ?? null;
   const remainingBlockers = ticket.blockedBy.length - 1;
   const isBatched = ticket.acquisitionRunId !== null;
+  const isProduction = ticket.kind === "manufacturing" || ticket.kind === "reaction";
+  const quantity = ticket.kind !== "generic" ? `×${(ticket.quantity ?? 0).toLocaleString()}` : null;
   const batchable = isBatchableOrderTicket(ticket);
   // Drag moves the card between workflow lanes -- a bare status write, both
   // directions (see ticket-drag.ts). Disabled during selection mode
@@ -96,7 +111,7 @@ export function OrderTicketCard({
   return (
     <div
       aria-current={active ? "true" : undefined}
-      className={`relative overflow-hidden rounded-[2px] border bg-panel py-1.5 pl-3 pr-1.5 text-sm ${blocked ? "border-danger/50" : "border-border"} ${selectable && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${active ? ACTIVE_CARD_CLASS : ""}`}
+      className={`relative overflow-hidden rounded-[2px] border bg-panel ${compact ? "py-1" : "py-1.5"} pl-3 pr-1.5 text-sm ${blocked ? "border-danger/50" : "border-border"} ${selectable && !batchable ? "opacity-50" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${active ? ACTIVE_CARD_CLASS : ""}`}
       ref={ref}
       draggable={draggable}
       onClick={selectable ? undefined : () => onOpen?.(ticket.id)}
@@ -116,63 +131,65 @@ export function OrderTicketCard({
       tabIndex={selectable ? undefined : 0}
       title={isBatched ? "Batched into an Acquisition Run — start or complete it from the Run instead." : undefined}
     >
-      <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5">
-          {selectable ? (
-            <input
-              aria-label={`Select ${ticket.displayId}`}
-              checked={selected}
-              className="h-3.5 w-3.5"
-              disabled={!batchable}
-              onChange={() => onToggleSelect?.(ticket.id)}
-              onClick={(event) => event.stopPropagation()}
-              type="checkbox"
-            />
-          ) : null}
-          <span className="font-mono text-[10px] text-muted">{ticket.displayId}</span>
+      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${dotToneClasses[kindMeta.tone]}`} />
+      <span className="sr-only">{statusMeta.label}</span>
+      <div className="flex items-center gap-1.5">
+        {selectable ? (
+          <input
+            aria-label={`Select ${ticket.displayId}`}
+            checked={selected}
+            className="h-3.5 w-3.5 shrink-0"
+            disabled={!batchable}
+            onChange={() => onToggleSelect?.(ticket.id)}
+            onClick={(event) => event.stopPropagation()}
+            type="checkbox"
+          />
+        ) : null}
+        <span className="shrink-0 font-mono text-[10px] text-muted">{ticket.displayId}</span>
+        <span
+          className="min-w-0 flex-1 truncate text-[11px] font-medium leading-snug text-foreground"
+          // Generic tickets have a free-form user-authored title; structured
+          // (manufacturing/reaction) tickets carry a canonical product name.
+          data-private={ticket.kind === "generic" ? "" : undefined}
+        >
+          {ticket.capturedName}
         </span>
-        <Badge square tone={statusMeta.tone}>
-          {statusMeta.label}
-        </Badge>
-      </div>
-      <p
-        className="mt-1 truncate text-[11px] font-medium leading-snug text-foreground"
-        // Generic tickets have a free-form user-authored title; structured
-        // (manufacturing/reaction) tickets carry a canonical product name.
-        data-private={ticket.kind === "generic" ? "" : undefined}
-      >
-        {ticket.capturedName}
-      </p>
-      {ticket.kind !== "generic" ? (
-        <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted">
-          ×{(ticket.quantity ?? 0).toLocaleString()}
-          {cost ? (
-            <>
-              {" · "}
-              <MoneyAmount value={cost} />
-            </>
-          ) : null}
-        </p>
-      ) : null}
-      <div className="mt-1 h-px bg-border/50" />
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <Badge square tone={kindMeta.tone}>
-          {kindMeta.label}
-        </Badge>
+        {compact && quantity ? (
+          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted">{quantity}</span>
+        ) : null}
+        {compact && ticket.recording ? (
+          <RecordingIndicator glyphOnly isProduction={isProduction} recording={ticket.recording} />
+        ) : null}
         {assignee ? (
-          <span className="flex min-w-0 items-center gap-1 text-[10px] text-muted">
-            <EveCharacterPortrait characterId={assignee.eveCharacterId} characterName={assignee.characterName} size={32} className="h-4 w-4" />
-            <CharacterName className="truncate" name={assignee.characterName} />
+          <span className="flex shrink-0" title={assignee.characterName}>
+            <EveCharacterPortrait
+              characterId={assignee.eveCharacterId}
+              characterName={assignee.characterName}
+              size={16}
+            />
+            <CharacterName className="sr-only" name={assignee.characterName} />
           </span>
         ) : null}
       </div>
-      {ticket.recording ? (
-        <RecordingIndicator
-          isProduction={ticket.kind === "manufacturing" || ticket.kind === "reaction"}
-          recording={ticket.recording}
-        />
-      ) : null}
+      {compact ? null : (
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] tabular-nums text-muted">
+            <span className={`font-semibold ${textToneClasses[kindMeta.tone]}`}>{kindMeta.label}</span>
+            {quantity ? (
+              <span className="truncate">
+                {quantity}
+                {cost ? (
+                  <>
+                    {" · "}
+                    <MoneyAmount value={cost} />
+                  </>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
+          {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
+        </div>
+      )}
       {isBatched ? (
         <p className="mt-1 text-[10px] text-batch">Batched into an Acquisition Run</p>
       ) : blocked && firstBlocker ? (

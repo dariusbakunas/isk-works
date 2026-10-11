@@ -1,4 +1,5 @@
 use super::*;
+use crate::operation_metrics::Operation;
 use crate::sync_metrics::{record_sync_run, SyncResult};
 use iskworks_core::EsiSyncStatus;
 
@@ -176,8 +177,14 @@ impl EsiApplicationService {
         self.repository
             .complete_blueprints(connection, &blueprints, &retained)
             .await?;
-        self.repository
-            .complete_assets(&run, pages, &records, etag.as_deref(), invalid.len() as u64)
+        Operation::AssetSnapshotComplete
+            .timed(self.repository.complete_assets(
+                &run,
+                pages,
+                &records,
+                etag.as_deref(),
+                invalid.len() as u64,
+            ))
             .await?;
         self.repository
             .get_sync_run(run.id)

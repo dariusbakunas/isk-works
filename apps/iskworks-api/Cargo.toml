@@ -46,6 +46,7 @@ uuid.workspace = true
 calamine = "0.36"
 iskworks-app = { path = "../../crates/iskworks-app", features = ["test-support"] }
 iskworks-esi = { path = "../../crates/iskworks-esi", features = ["test-support"] }
+metrics-util.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tower.workspace = true
 zip.workspace = true

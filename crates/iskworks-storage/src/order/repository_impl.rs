@@ -496,6 +496,7 @@ impl OrderRepository for PgOrderRepository {
                 execution_snapshot: new_ticket.execution_snapshot,
                 created_at: now,
                 updated_at: now,
+                completed_at: None,
                 archived_at: None,
                 occurrence_key: new_ticket.occurrence_key,
                 parent_ticket_id: new_ticket.parent_ticket_id,
@@ -528,7 +529,7 @@ impl OrderRepository for PgOrderRepository {
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
-             execution_snapshot, created_at, updated_at, archived_at, \
+             execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
              own_installation_cost, total_production_cost, plan_evidence \
              FROM tickets WHERE workspace_id = $1 AND id = $2",
@@ -552,7 +553,7 @@ impl OrderRepository for PgOrderRepository {
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
-             execution_snapshot, created_at, updated_at, archived_at, \
+             execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
              own_installation_cost, total_production_cost, plan_evidence \
              FROM tickets WHERE workspace_id = $1 AND owner_id = $2 ORDER BY display_id",
@@ -577,7 +578,7 @@ impl OrderRepository for PgOrderRepository {
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
-             execution_snapshot, created_at, updated_at, archived_at, \
+             execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
              own_installation_cost, total_production_cost, plan_evidence \
              FROM tickets WHERE workspace_id = $1 AND order_id = $2 ORDER BY display_id",
@@ -1177,7 +1178,7 @@ impl OrderRepository for PgOrderRepository {
     ) -> Result<Ticket, OrderError> {
         let now = crate::db_now();
         let result = sqlx::query(
-            "UPDATE tickets SET status = 'complete', updated_at = $1 \
+            "UPDATE tickets SET status = 'complete', completed_at = $1, updated_at = $1 \
              WHERE workspace_id = $2 AND id = $3 AND status = 'in_progress'",
         )
         .bind(now)
@@ -2233,7 +2234,9 @@ impl OrderRepository for PgOrderRepository {
 
     /// Bare workflow-status write -- see `OrderRepository::set_ticket_status`'s
     /// own doc. One `UPDATE`, no transaction, no `FOR UPDATE`, no cascade,
-    /// no inventory: `tickets.status`/`updated_at` and nothing else. Every
+    /// no inventory: `tickets.status`/`completed_at`/`updated_at` and
+    /// nothing else (`completed_at` is stamped on entering Complete, kept
+    /// on a repeated Complete write, cleared on leaving it). Every
     /// transition is legal (no `AND status IN (...)` guard, unlike
     /// `start_ticket`/`cancel_ticket`), so Board drags move both
     /// directions. A same-status write still matches its row, so it
@@ -2246,7 +2249,12 @@ impl OrderRepository for PgOrderRepository {
     ) -> Result<Ticket, OrderError> {
         let now = crate::db_now();
         let result = sqlx::query(
-            "UPDATE tickets SET status = $1, updated_at = $2 WHERE workspace_id = $3 AND id = $4",
+            // The right-hand `status` is the pre-update value.
+            "UPDATE tickets SET status = $1, updated_at = $2, \
+             completed_at = CASE WHEN $1 <> 'complete' THEN NULL \
+                                 WHEN status = 'complete' THEN completed_at \
+                                 ELSE $2 END \
+             WHERE workspace_id = $3 AND id = $4",
         )
         .bind(ticket_status_str(status))
         .bind(now)

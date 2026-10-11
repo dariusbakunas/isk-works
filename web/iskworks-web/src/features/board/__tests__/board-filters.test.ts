@@ -39,6 +39,7 @@ function ticketFixture(overrides: Partial<TicketSummary> = {}): TicketSummary {
     executionSnapshot: null,
     createdAt: "2026-09-05T00:00:00Z",
     updatedAt: "2026-09-05T00:00:00Z",
+    completedAt: null,
     archivedAt: null,
     blockedBy: [],
     prerequisites: [],
