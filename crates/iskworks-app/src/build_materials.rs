@@ -26,6 +26,8 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use crate::operation_metrics::Operation;
+
 use iskworks_core::build_cost::{project_build_cost, BuildCostProjection};
 use iskworks_core::build_materials::{
     AggregateMaterialLine, InventoryBasisEntry, MaterialSource, MaterialsAggregateWarning,
@@ -244,17 +246,15 @@ impl BuildMaterialsCoordinator {
 
         // (2) The overlay-rooted allocating traversal (dynamic child sizing,
         // subtree pruning, zero `ProductionRepository::coverage`).
-        let projection: BuildMaterialsProjection = self
-            .preview
-            .industry_service()
-            .project_build_materials(
+        let projection: BuildMaterialsProjection = Operation::BuildMaterials
+            .timed(self.preview.industry_service().project_build_materials(
                 workspace_id,
                 owner_id,
                 &command,
                 &mut pool,
                 generated_at,
                 capture_verification,
-            )
+            ))
             .await?;
 
         let aggregate = match projection.outcome {

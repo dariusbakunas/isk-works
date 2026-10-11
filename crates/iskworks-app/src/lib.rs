@@ -19,6 +19,7 @@ mod descendant_production_configuration;
 mod esi_service;
 mod execution_plan;
 mod manual_sync_gate;
+mod operation_metrics;
 mod order_plan;
 mod planetary;
 mod public_market;
