@@ -10,6 +10,7 @@ use iskworks_core::{AuthenticatedUser, IndustryError, WorkspaceId};
 
 /// Request body limit for everything except the market-export uploads.
 const DEFAULT_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+use iskworks_storage::DbPoolConfig;
 use serde::Serialize;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -286,6 +287,7 @@ pub struct ApiConfig {
     /// (`ISKWORKS_METRICS_ADDR`). `None` keeps metrics off entirely. Never
     /// the public listener: Traefik only routes `listen_addr`.
     pub metrics_addr: Option<SocketAddr>,
+    pub db_pool: DbPoolConfig,
 }
 
 impl ApiConfig {
@@ -297,11 +299,14 @@ impl ApiConfig {
             .map_err(|_| ConfigError::InvalidListenAddr)?;
 
         let metrics_addr = metrics_exporter::metrics_addr(env::var("ISKWORKS_METRICS_ADDR").ok())?;
+        let db_pool = DbPoolConfig::from_lookup(|name| env::var(name).ok())
+            .map_err(ConfigError::InvalidDbPool)?;
 
         Ok(Self {
             database_url,
             listen_addr,
             metrics_addr,
+            db_pool,
         })
     }
 }
@@ -314,6 +319,8 @@ pub enum ConfigError {
     InvalidListenAddr,
     #[error("ISKWORKS_METRICS_ADDR must be a valid socket address")]
     InvalidMetricsAddr,
+    #[error("{0}")]
+    InvalidDbPool(String),
     #[error(
         "ISKWORKS_AUTH_REQUIRED is set but EVE SSO authentication is not configured. \
          Set EVE_SSO_CLIENT_ID and TOKEN_ENCRYPTION_KEY (and EVE_SSO_REDIRECT_URI / \

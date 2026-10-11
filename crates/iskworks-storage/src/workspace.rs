@@ -1,4 +1,5 @@
 use super::*;
+use crate::DbPoolConfig;
 
 #[derive(Clone)]
 pub struct PgWorkspaceRepository {
@@ -15,9 +16,16 @@ impl PgWorkspaceRepository {
     }
 
     pub async fn connect(database_url: &str) -> Result<Self, sqlx::Error> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(database_url)
+        Self::connect_with(database_url, &DbPoolConfig::default()).await
+    }
+
+    pub async fn connect_with(
+        database_url: &str,
+        config: &DbPoolConfig,
+    ) -> Result<Self, sqlx::Error> {
+        let pool = config
+            .pool_options()
+            .connect_with(config.connect_options(database_url)?)
             .await?;
         Ok(Self::new(pool))
     }
@@ -246,7 +254,8 @@ fn owner_kind_from_str(value: &str) -> Result<OwnerKind, AppError> {
     }
 }
 
-fn map_sqlx_error(error: sqlx::Error) -> AppError {
+pub(crate) fn map_sqlx_error(error: sqlx::Error) -> AppError {
+    crate::pool_metrics::observe_error(&error);
     AppError::Persistence(error.to_string())
 }
 

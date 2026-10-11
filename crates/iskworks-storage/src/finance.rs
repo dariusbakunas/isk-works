@@ -468,6 +468,7 @@ impl SavedFilterRow {
 }
 
 fn map_sqlx(error: sqlx::Error) -> FinanceError {
+    crate::pool_metrics::observe_error(&error);
     FinanceError::Persistence(error.to_string())
 }
 

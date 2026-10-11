@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn map_error(error: sqlx::Error) -> OrderError {
+    crate::pool_metrics::observe_error(&error);
     OrderError::Persistence(error.to_string())
 }
 

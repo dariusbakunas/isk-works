@@ -1,4 +1,5 @@
 use super::WorkerConfig;
+use iskworks_storage::DbPoolConfig;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
@@ -1021,4 +1022,23 @@ fn every_loop_s_run_counters_exist_at_zero_after_init() {
     assert!(series
         .iter()
         .all(|(.., value)| matches!(value, DebugValue::Counter(0))));
+}
+
+#[test]
+fn db_pool_settings_come_from_the_worker_lookup() {
+    assert_eq!(WorkerConfig::default().db_pool, DbPoolConfig::default());
+    let config = WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_DB_MAX_CONNECTIONS" => Some("8".to_string()),
+        "ISKWORKS_DB_SLOW_STATEMENT_MS" => Some("0".to_string()),
+        _ => None,
+    })
+    .unwrap();
+    assert_eq!(config.db_pool.max_connections, 8);
+    assert_eq!(config.db_pool.slow_statement, None);
+
+    assert!(WorkerConfig::from_lookup(|name| match name {
+        "ISKWORKS_DB_MAX_CONNECTIONS" => Some("0".to_string()),
+        _ => None,
+    })
+    .is_err());
 }

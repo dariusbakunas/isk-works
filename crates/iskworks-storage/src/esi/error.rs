@@ -11,6 +11,7 @@ pub(super) fn invalid_projection(_field: &str) -> InventoryError {
 }
 
 pub(super) fn map_sqlx(error: sqlx::Error) -> InventoryError {
+    crate::pool_metrics::observe_error(&error);
     InventoryError::Persistence(error.to_string())
 }
 
