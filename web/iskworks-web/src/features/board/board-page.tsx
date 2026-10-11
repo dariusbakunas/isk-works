@@ -74,14 +74,19 @@ function epicLaneStatus(orderStatus: OrderSummary["status"]): TicketStatus {
 }
 
 // The Complete lane is history, not a work queue: it shows this many
-// standalone tickets (newest first) as one-line rows until expanded.
+// standalone tickets (most recently completed first) as one-line rows until
+// expanded.
 const COMPLETE_LANE_PREVIEW = 10;
 
-// Newest-first order for the Complete lane. Tickets carry no completion
-// timestamp, but display ids are issued sequentially; compare their numeric
+// Most recently completed first. Ties (and any ticket without a
+// `completedAt`) fall back to the newest display id, comparing its numeric
 // part so ISK-1000 sorts after ISK-999.
 function displayIdNumber(displayId: string): number {
   return Number(displayId.replace(/\D/g, "")) || 0;
+}
+function byMostRecentlyCompleted(a: TicketSummary, b: TicketSummary): number {
+  const completed = (b.completedAt ?? "").localeCompare(a.completedAt ?? "");
+  return completed !== 0 ? completed : displayIdNumber(b.displayId) - displayIdNumber(a.displayId);
 }
 
 // Lane drop-target highlight, keyed by the lane's own Tone (so "In
@@ -621,7 +626,7 @@ export function BoardPage() {
           const laneCardCount = laneOrderCards.length + laneRunCards.length + nonAcqTickets.length + acqGroups.length;
           const isCompleteLane = lane.status === "complete";
           const laneTickets = isCompleteLane
-            ? [...nonAcqTickets].sort((a, b) => displayIdNumber(b.displayId) - displayIdNumber(a.displayId))
+            ? [...nonAcqTickets].sort(byMostRecentlyCompleted)
             : nonAcqTickets;
           const hiddenTicketCount =
             isCompleteLane && !showAllComplete ? Math.max(0, laneTickets.length - COMPLETE_LANE_PREVIEW) : 0;

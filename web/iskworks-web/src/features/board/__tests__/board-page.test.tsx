@@ -87,6 +87,7 @@ function ticketFixture(overrides: Partial<TicketSummary> = {}): TicketSummary {
     executionSnapshot: null,
     createdAt: "2026-08-22T00:00:00Z",
     updatedAt: "2026-08-22T00:00:00Z",
+    completedAt: null,
     archivedAt: null,
     blockedBy: [],
     prerequisites: [],
@@ -232,9 +233,9 @@ describe("BoardPage", () => {
     expect(within(screen.getByTestId("board-lane-inProgress")).getByText("ISK-1001")).toBeInTheDocument();
   });
 
-  it("shows the newest 10 Complete tickets until Show all is clicked", async () => {
-    // ISK-999..ISK-1010: numeric order, so ISK-1010 is newest and ISK-999
-    // (which a string sort would put last-but-newest) is oldest.
+  it("shows the 10 most recently completed tickets until Show all is clicked", async () => {
+    // Completed in reverse display-id order: ISK-999 most recently,
+    // ISK-1010 first -- so completion time, not display id, decides.
     industryApi.listTickets.mockResolvedValue(
       Array.from({ length: 12 }, (_, index) =>
         ticketFixture({
@@ -242,6 +243,7 @@ describe("BoardPage", () => {
           displayId: `ISK-${999 + index}`,
           status: "complete",
           kind: "manufacturing",
+          completedAt: `2026-10-${String(12 - index).padStart(2, "0")}T12:00:00Z`,
         }),
       ),
     );
@@ -249,19 +251,37 @@ describe("BoardPage", () => {
 
     renderPage();
 
-    const lane = within(await screen.findByTestId("board-lane-complete"));
-    expect(lane.getByText("ISK-1010")).toBeInTheDocument();
-    expect(lane.getByText("ISK-1001")).toBeInTheDocument();
-    expect(lane.queryByText("ISK-1000")).not.toBeInTheDocument();
-    expect(lane.queryByText("ISK-999")).not.toBeInTheDocument();
+    const laneElement = await screen.findByTestId("board-lane-complete");
+    const lane = within(laneElement);
+    expect(within(lane.getAllByRole("button")[0]).getByText("ISK-999")).toBeInTheDocument();
+    expect(lane.getByText("ISK-1008")).toBeInTheDocument();
+    expect(lane.queryByText("ISK-1009")).not.toBeInTheDocument();
+    expect(lane.queryByText("ISK-1010")).not.toBeInTheDocument();
     // The lane count still covers every card, shown or not.
     expect(lane.getByText("12")).toBeInTheDocument();
 
     await user.click(lane.getByRole("button", { name: "Show all 12 tickets" }));
-    expect(lane.getByText("ISK-999")).toBeInTheDocument();
+    expect(lane.getByText("ISK-1010")).toBeInTheDocument();
 
     await user.click(lane.getByRole("button", { name: "Show fewer" }));
-    expect(lane.queryByText("ISK-999")).not.toBeInTheDocument();
+    expect(lane.queryByText("ISK-1010")).not.toBeInTheDocument();
+  });
+
+  it("orders Complete tickets without a completion time by newest display id", async () => {
+    industryApi.listTickets.mockResolvedValue(
+      ["ISK-999", "ISK-1001", "ISK-1000"].map((displayId) =>
+        ticketFixture({ id: displayId, displayId, status: "complete", kind: "manufacturing", completedAt: null }),
+      ),
+    );
+
+    renderPage();
+
+    const lane = within(await screen.findByTestId("board-lane-complete"));
+    expect(lane.getAllByRole("button").map((row) => within(row).getByText(/^ISK-/).textContent)).toEqual([
+      "ISK-1001",
+      "ISK-1000",
+      "ISK-999",
+    ]);
   });
 
   it("uses Epic/run terminology in the header and footer, not Order/batch", async () => {
