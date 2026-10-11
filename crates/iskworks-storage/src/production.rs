@@ -696,6 +696,7 @@ fn as_u32(value: i32) -> Result<u32, ProductionError> {
 }
 
 fn map_sqlx(error: sqlx::Error) -> ProductionError {
+    crate::pool_metrics::observe_error(&error);
     ProductionError::Persistence(error.to_string())
 }
 

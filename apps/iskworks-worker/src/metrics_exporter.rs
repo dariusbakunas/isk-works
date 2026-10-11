@@ -31,6 +31,11 @@ pub(crate) fn metrics_addr(value: Option<String>) -> Result<Option<SocketAddr>, 
 pub fn install(addr: SocketAddr) -> Result<(), BuildError> {
     PrometheusBuilder::new()
         .with_http_listener(addr)
+        // `Full` matchers take precedence over the suffix below.
+        .set_buckets_for_metric(
+            Matcher::Full(iskworks_storage::ACQUIRE_DURATION.to_string()),
+            iskworks_storage::ACQUIRE_BUCKETS,
+        )?
         .set_buckets_for_metric(
             Matcher::Suffix("_duration_seconds".to_string()),
             DURATION_BUCKETS,
@@ -39,6 +44,7 @@ pub fn install(addr: SocketAddr) -> Result<(), BuildError> {
     // Series alerts watch must exist at 0 before their first increment.
     iskworks_esi::init_metrics();
     iskworks_app::init_sync_metrics();
+    iskworks_storage::init_metrics();
     crate::init_loop_metrics();
     let version = std::env::var("APP_VERSION").unwrap_or_else(|_| "dev".to_string());
     metrics::gauge!("iskworks_build_info", "service" => "worker", "version" => version).set(1.0);

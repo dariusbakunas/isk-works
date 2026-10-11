@@ -422,6 +422,7 @@ impl AuthenticatedUserRow {
 }
 
 fn map_sqlx_error(error: sqlx::Error) -> AuthError {
+    crate::pool_metrics::observe_error(&error);
     AuthError::Persistence(error.to_string())
 }
 

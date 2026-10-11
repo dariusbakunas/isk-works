@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn map_error(error: sqlx::Error) -> IndustryError {
+    crate::pool_metrics::observe_error(&error);
     IndustryError::Persistence(error.to_string())
 }
 

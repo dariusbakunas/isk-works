@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use iskworks_esi::EsiTransport;
-use iskworks_storage::AuthPurgeOutcome;
+use iskworks_storage::{AuthPurgeOutcome, DbPoolConfig};
 use tokio_util::sync::CancellationToken;
 
 pub mod metrics_exporter;
@@ -477,6 +477,8 @@ pub struct WorkerConfig {
     /// Where the Prometheus `/metrics` listener binds
     /// (`ISKWORKS_METRICS_ADDR`). `None` keeps metrics off entirely.
     pub metrics_addr: Option<SocketAddr>,
+    /// `ISKWORKS_DB_MAX_CONNECTIONS` / `ISKWORKS_DB_SLOW_STATEMENT_MS`.
+    pub db_pool: DbPoolConfig,
 }
 
 impl Default for WorkerConfig {
@@ -502,6 +504,7 @@ impl Default for WorkerConfig {
             character_sync_concurrency: 4,
             shutdown_timeout: Duration::from_secs(30),
             metrics_addr: None,
+            db_pool: DbPoolConfig::default(),
         }
     }
 }
@@ -611,6 +614,7 @@ impl WorkerConfig {
         .try_into()
         .map_err(|_| "ISKWORKS_WORKER_CHARACTER_SYNC_CONCURRENCY must fit in usize".to_string())?;
         config.metrics_addr = metrics_exporter::metrics_addr(lookup("ISKWORKS_METRICS_ADDR"))?;
+        config.db_pool = DbPoolConfig::from_lookup(&mut lookup)?;
         Ok(config)
     }
 }

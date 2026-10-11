@@ -982,6 +982,7 @@ impl ItemRow {
 }
 
 fn map_error(error: sqlx::Error) -> InventoryError {
+    crate::pool_metrics::observe_error(&error);
     InventoryError::Persistence(error.to_string())
 }
 

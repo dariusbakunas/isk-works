@@ -2018,5 +2018,6 @@ impl RecipeLineRow {
 }
 
 pub(super) fn map_sde_sqlx_error(error: sqlx::Error) -> SdeError {
+    crate::pool_metrics::observe_error(&error);
     SdeError::Storage(error.to_string())
 }

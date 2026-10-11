@@ -7,7 +7,7 @@ use iskworks_storage::{
 };
 use iskworks_worker::{EvidenceWorker, WorkerConfig};
 use sqlx::migrate::Migrator;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 static MIGRATOR: Migrator = sqlx::migrate!("../../migrations");
 const DEFAULT_DATABASE_URL: &str = "postgres://iskworks:iskworks@127.0.0.1:5432/iskworks";
@@ -15,11 +15,13 @@ const DEFAULT_ESI_BASE_URL: &str = "https://esi.evetech.net";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // RUST_LOG filters only the fmt layer. The pool metrics layer needs
+    // sqlx's TRACE acquire events, which a global filter would drop.
     tracing_subscriber::registry()
-        .with(
+        .with(tracing_subscriber::fmt::layer().with_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
+        ))
+        .with(iskworks_storage::db_pool_metrics_layer())
         .init();
 
     let config = WorkerConfig::from_env()?;
@@ -35,8 +37,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
-    let workspace_repository = PgWorkspaceRepository::connect(&database_url).await?;
+    let workspace_repository =
+        PgWorkspaceRepository::connect_with(&database_url, &config.db_pool).await?;
     MIGRATOR.run(workspace_repository.pool()).await?;
+    if config.metrics_addr.is_some() {
+        iskworks_storage::spawn_pool_sampler(workspace_repository.pool().clone());
+    }
     let market_repository = Arc::new(PgMarketRepository::new(workspace_repository.pool().clone()));
     let esi_repository = Arc::new(PgEsiRepository::new(workspace_repository.pool().clone()));
 
