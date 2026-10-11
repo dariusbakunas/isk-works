@@ -515,7 +515,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__range]))) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
+          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__range]))) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -614,7 +614,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__range])) / (sum by (queryid) (increase(pg_stat_statements_calls_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__range])) > 0)) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
+          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__range])) / (sum by (queryid) (increase(pg_stat_statements_calls_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__range])) > 0)) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -713,7 +713,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_calls_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__range]))) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
+          "expr": "topk(15, sum by (queryid) (increase(pg_stat_statements_calls_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__range]))) * on (queryid) group_left (query) max by (queryid, query) (pg_stat_statements_query_id{job=\"postgres\"})",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -812,7 +812,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (queryid) (rate(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__rate_interval])))",
+          "expr": "topk(10, sum by (queryid) (rate(pg_stat_statements_seconds_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__rate_interval])))",
           "legendFormat": "{{queryid}}",
           "refId": "A"
         }
@@ -870,7 +870,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(pg_stat_statements_block_read_seconds_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__rate_interval]))",
+          "expr": "sum(rate(pg_stat_statements_block_read_seconds_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__rate_interval]))",
           "legendFormat": "read",
           "refId": "A"
         },
@@ -879,7 +879,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(pg_stat_statements_block_write_seconds_total{job=\"postgres\",datname=\"$database\",user!=\"iskworks_monitor\"}[$__rate_interval]))",
+          "expr": "sum(rate(pg_stat_statements_block_write_seconds_total{job=\"postgres\",datname=\"$database\",user!~\"iskworks_monitor|prometheus\"}[$__rate_interval]))",
           "legendFormat": "write",
           "refId": "B"
         }
