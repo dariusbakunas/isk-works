@@ -2,6 +2,10 @@ use super::sync_runs::{checksum, finalize_run};
 use super::*;
 use async_trait::async_trait;
 
+/// Rows per batched `esi_asset_observations` INSERT. Each row binds 11
+/// parameters, and Postgres allows 65,535 per statement.
+pub(super) const ASSET_INSERT_BATCH_ROWS: usize = 4_000;
+
 #[async_trait]
 impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
     async fn latest_adjusted_prices(
@@ -560,31 +564,38 @@ impl PgEsiRepository {
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
-        for asset in observations {
-            let payload = serde_json::to_value(asset).map_err(map_json)?;
-            sqlx::query(
-                r#"
-                INSERT INTO esi_asset_observations (
-                  snapshot_id, source_item_id, type_id, quantity, location_id,
-                  location_type, location_flag, is_singleton, is_blueprint_copy,
-                  raw_payload, source_checksum
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                "#,
-            )
-            .bind(snapshot_id)
-            .bind(asset.item_id)
-            .bind(asset.type_id)
-            .bind(asset.quantity)
-            .bind(asset.location_id)
-            .bind(&asset.location_type)
-            .bind(&asset.location_flag)
-            .bind(asset.is_singleton)
-            .bind(asset.is_blueprint_copy)
-            .bind(&payload)
-            .bind(checksum(&payload))
-            .execute(&mut *tx)
-            .await
-            .map_err(map_sqlx)?;
+        // Batched, not one INSERT per asset: a large hangar is thousands of
+        // rows, and per-row round trips held this transaction (and a pooled
+        // connection) for seconds.
+        for chunk in observations.chunks(ASSET_INSERT_BATCH_ROWS) {
+            let rows = chunk
+                .iter()
+                .map(|asset| {
+                    let payload = serde_json::to_value(asset).map_err(map_json)?;
+                    let source_checksum = checksum(&payload);
+                    Ok((asset, payload, source_checksum))
+                })
+                .collect::<Result<Vec<_>, InventoryError>>()?;
+            let mut query = QueryBuilder::new(
+                "INSERT INTO esi_asset_observations (\
+                 snapshot_id, source_item_id, type_id, quantity, location_id, \
+                 location_type, location_flag, is_singleton, is_blueprint_copy, \
+                 raw_payload, source_checksum) ",
+            );
+            query.push_values(&rows, |mut row, (asset, payload, source_checksum)| {
+                row.push_bind(snapshot_id)
+                    .push_bind(asset.item_id)
+                    .push_bind(asset.type_id)
+                    .push_bind(asset.quantity)
+                    .push_bind(asset.location_id)
+                    .push_bind(&asset.location_type)
+                    .push_bind(&asset.location_flag)
+                    .push_bind(asset.is_singleton)
+                    .push_bind(asset.is_blueprint_copy)
+                    .push_bind(payload)
+                    .push_bind(source_checksum);
+            });
+            query.build().execute(&mut *tx).await.map_err(map_sqlx)?;
         }
         // Resolve the container hierarchy once, before the snapshot becomes
         // readable through `asset_browser_current`.
