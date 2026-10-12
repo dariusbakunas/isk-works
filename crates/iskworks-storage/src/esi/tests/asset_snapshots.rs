@@ -65,6 +65,110 @@ async fn completed_asset_snapshot_resolves_its_container_hierarchy(pool: PgPool)
     );
 }
 
+/// One `esi_asset_observations` row, in column order.
+type StoredAsset = (
+    i64,
+    i64,
+    i64,
+    i64,
+    String,
+    String,
+    bool,
+    Option<bool>,
+    Value,
+    String,
+);
+
+/// Writes more assets than one batched INSERT holds, so the snapshot spans
+/// several statements. Every column must still land exactly as the per-row
+/// insert wrote it.
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn a_snapshot_larger_than_one_insert_batch_keeps_every_asset(pool: PgPool) {
+    let repository = PgEsiRepository::new(pool.clone());
+    let (workspace_id, owner_id) = fixture_workspace(&pool).await;
+    let connection = fixture_connection(&pool, workspace_id, owner_id, "Hoarder").await;
+    let run = repository
+        .start_sync(&connection, EsiSyncKind::Assets)
+        .await
+        .unwrap();
+    let count = 2 * crate::esi::assets::ASSET_INSERT_BATCH_ROWS + 7;
+    let assets: Vec<AssetObservation> = (1..=count as i64)
+        .map(|item_id| AssetObservation {
+            item_id,
+            type_id: 34 + item_id % 5,
+            quantity: item_id * 3,
+            // Every tenth asset sits inside the previous one.
+            location_id: if item_id % 10 == 0 {
+                item_id - 1
+            } else {
+                60_003_760
+            },
+            location_type: if item_id % 10 == 0 { "item" } else { "station" }.to_string(),
+            location_flag: format!("Flag{}", item_id % 3),
+            is_singleton: item_id % 2 == 0,
+            is_blueprint_copy: match item_id % 3 {
+                0 => None,
+                1 => Some(true),
+                _ => Some(false),
+            },
+            raw: json!({ "item_id": item_id }),
+        })
+        .collect();
+
+    repository
+        .complete_assets(&run, 3, &assets, Some("etag-1"), 0)
+        .await
+        .unwrap();
+
+    let stored: Vec<StoredAsset> = sqlx::query_as(
+        "SELECT o.source_item_id, o.type_id, o.quantity, o.location_id, o.location_type,
+                    o.location_flag, o.is_singleton, o.is_blueprint_copy, o.raw_payload,
+                    o.source_checksum
+             FROM esi_asset_observations o
+             JOIN esi_asset_snapshots s ON s.id = o.snapshot_id
+             WHERE s.connection_id = $1 AND s.active
+             ORDER BY o.source_item_id",
+    )
+    .bind(connection.id.0)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let expected: Vec<_> = assets
+        .iter()
+        .map(|asset| {
+            let payload = serde_json::to_value(asset).unwrap();
+            let checksum = crate::esi::sync_runs::checksum(&payload);
+            (
+                asset.item_id,
+                asset.type_id,
+                asset.quantity,
+                asset.location_id,
+                asset.location_type.clone(),
+                asset.location_flag.clone(),
+                asset.is_singleton,
+                asset.is_blueprint_copy,
+                payload,
+                checksum,
+            )
+        })
+        .collect();
+    assert_eq!(stored.len(), count);
+    assert_eq!(stored, expected);
+    assert_eq!(
+        snapshot_rows(&pool, &connection).await,
+        vec![("complete".to_string(), true, count as i64, count as i64)]
+    );
+    let row_count: i64 = sqlx::query_scalar(
+        "SELECT row_count FROM esi_asset_snapshots WHERE connection_id = $1 AND active",
+    )
+    .bind(connection.id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row_count, count as i64);
+}
+
 fn stock(item_id: i64) -> AssetObservation {
     AssetObservation {
         item_id,
