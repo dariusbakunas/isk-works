@@ -31,12 +31,14 @@ use serde::{Deserialize, Serialize};
 use crate::{workspace_context, ApiError, AppState};
 
 mod coverage;
+mod job_progress;
 mod order_lifecycle;
 mod recording;
 mod requirement_tickets;
 mod tickets;
 mod views;
 use coverage::*;
+use job_progress::*;
 use order_lifecycle::*;
 use recording::*;
 use requirement_tickets::*;
@@ -52,6 +54,7 @@ pub(crate) fn router() -> Router<AppState> {
             "/api/tickets",
             get(list_order_tickets).post(create_ticket_route),
         )
+        .route("/api/tickets/job-progress", get(list_ticket_job_progress))
         .route("/api/orders/:order_id", get(get_order).delete(delete_order))
         .route(
             "/api/orders/:order_id/execution-plan",
