@@ -8,8 +8,10 @@
 //! requirements; every `Buy` requirement still to source becomes an
 //! acquisition line. Nothing is re-planned. Fields the freeze did not keep
 //! stay empty rather than invented: no facility, no production methods, no
-//! unresolved placeholders, no logistics, and typed cost warnings are
-//! omitted (the freeze kept them only as text).
+//! unresolved placeholders, and typed cost warnings are omitted (the freeze
+//! kept them only as text). Logistics is projected separately
+//! ([`project_frozen_logistics`]), since it needs live facility names and
+//! SDE volumes the freeze did not keep.
 
 use std::collections::BTreeMap;
 
@@ -266,6 +268,80 @@ pub fn project_frozen_execution_plan(
         generated_at,
         logistics: crate::logistics::LogisticsPlan::default(),
     })
+}
+
+/// A facility profile's live display identity, by id -- the freeze kept
+/// only each operation's profile id. A deleted profile is simply absent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrozenFacility {
+    pub name: String,
+    pub solar_system: String,
+}
+
+/// The facility profile a frozen operation was installed at, when known.
+#[must_use]
+pub fn frozen_facility_id(operation: &PlanOperation) -> Option<Uuid> {
+    operation
+        .evidence
+        .installation
+        .as_ref()?
+        .facility_profile_id
+}
+
+/// The Epic's own Logistics plan: the same reduction the live Build plan
+/// uses ([`crate::logistics::reduce_logistics`]), over the frozen
+/// operations and requirements -- so an Epic's Logistics agrees with its
+/// Plan, never with the (since re-planned) live draft.
+#[must_use]
+pub fn project_frozen_logistics(
+    operations: &[PlanOperation],
+    requirements: &[OrderRequirement],
+    facilities: &BTreeMap<Uuid, FrozenFacility>,
+    unit_volumes: &BTreeMap<i64, Option<rust_decimal::Decimal>>,
+) -> crate::logistics::LogisticsPlan {
+    let logistics_operations: Vec<crate::logistics::LogisticsOperation> = operations
+        .iter()
+        .map(|operation| {
+            let facility_id = frozen_facility_id(operation);
+            let facility = facility_id.and_then(|id| facilities.get(&id));
+            crate::logistics::LogisticsOperation {
+                graph_node_id: operation.occurrence_key.clone(),
+                build_id: build_or_nil(operation.build_id),
+                product_name: operation.product_name.clone(),
+                facility_id,
+                facility_name: facility.map(|facility| facility.name.clone()),
+                solar_system: facility.map(|facility| facility.solar_system.clone()),
+            }
+        })
+        .collect();
+    let demands: Vec<crate::logistics::LogisticsDemand> = requirements
+        .iter()
+        .filter_map(|requirement| {
+            // A Build-intended row with fresh demand but no frozen producer
+            // had no linked child at freeze time: still to be sourced.
+            let resolution = if requirement.kind != RequirementKind::Buy
+                && requirement.child_occurrence_key.is_none()
+                && requirement.fresh_quantity > 0
+            {
+                MaterialBoundaryResolution::Unresolved
+            } else {
+                resolution(requirement.kind)
+            };
+            Some(crate::logistics::LogisticsDemand {
+                consumer_node_id: requirement.operation_occurrence_key.clone()?,
+                type_id: requirement.type_id,
+                type_name: requirement.captured_name.clone(),
+                required_quantity: requirement.required_quantity,
+                planned_inventory_quantity: requirement.reused_quantity,
+                shortage_quantity: requirement.fresh_quantity,
+                scope: requirement.fulfillment_scope,
+                resolution,
+                producer_node_id: requirement.child_occurrence_key.clone(),
+                dependency_id: dependency_key(requirement),
+            })
+        })
+        .collect();
+    crate::logistics::reduce_logistics(&logistics_operations, &demands, unit_volumes)
 }
 
 /// Every `Buy` requirement with fresh quantity to source, grouped by type.

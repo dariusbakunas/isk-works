@@ -135,24 +135,96 @@ fn destination_key(facility_id: Option<Uuid>) -> String {
     facility_id.map_or_else(|| UNASSIGNED.to_string(), |id| format!("facility:{id}"))
 }
 
-/// Project the Logistics plan -- see the module doc. `unit_volumes` maps a
-/// `type_id` to its SDE packaged volume (absent or `None` = unknown).
-/// Deterministic: destinations by facility name (unassigned last), lines
-/// by type name, consumers/producers by operation id.
+/// One operation as Logistics sees it: where it runs. The reducer's input,
+/// adapted from the live walk ([`project_logistics`]) or an Epic's frozen
+/// operations (`crate::order::project_frozen_logistics`).
+#[derive(Debug, Clone)]
+pub struct LogisticsOperation {
+    pub graph_node_id: String,
+    pub build_id: BuildId,
+    pub product_name: String,
+    pub facility_id: Option<Uuid>,
+    pub facility_name: Option<String>,
+    pub solar_system: Option<String>,
+}
+
+/// One consuming operation's demand for one input.
+#[derive(Debug, Clone)]
+pub struct LogisticsDemand {
+    /// The consuming operation's `graph_node_id`.
+    pub consumer_node_id: String,
+    pub type_id: i64,
+    pub type_name: String,
+    pub required_quantity: u64,
+    pub planned_inventory_quantity: u64,
+    pub shortage_quantity: u64,
+    pub scope: FulfillmentScope,
+    pub resolution: MaterialBoundaryResolution,
+    /// The producing operation's `graph_node_id`, when produced in-plan.
+    pub producer_node_id: Option<String>,
+    pub dependency_id: String,
+}
+
+/// Project the Logistics plan from the live walk -- see the module doc.
+/// `unit_volumes` maps a `type_id` to its SDE packaged volume (absent or
+/// `None` = unknown).
 #[must_use]
 pub fn project_logistics(
     operations: &[VerificationOperationInput],
     allocations: &[NodeMaterialAllocation],
     unit_volumes: &BTreeMap<i64, Option<Decimal>>,
 ) -> LogisticsPlan {
-    let op_by_node: BTreeMap<&str, &VerificationOperationInput> = operations
+    let mut node_by_build: BTreeMap<Uuid, &str> = BTreeMap::new();
+    for op in operations {
+        node_by_build
+            .entry(op.build_id.0)
+            .or_insert(op.graph_node_id.as_str());
+    }
+    let operations: Vec<LogisticsOperation> = operations
+        .iter()
+        .map(|op| LogisticsOperation {
+            graph_node_id: op.graph_node_id.clone(),
+            build_id: op.build_id,
+            product_name: op.product_name.clone(),
+            facility_id: op.facility_id,
+            facility_name: op.facility_name.clone(),
+            solar_system: op.solar_system.clone(),
+        })
+        .collect();
+    let demands: Vec<LogisticsDemand> = allocations
+        .iter()
+        .map(|allocation| LogisticsDemand {
+            consumer_node_id: allocation.graph_node_id.clone(),
+            type_id: allocation.type_id,
+            type_name: allocation.type_name.clone(),
+            required_quantity: allocation.required_quantity,
+            planned_inventory_quantity: allocation.allocated_quantity,
+            shortage_quantity: allocation.shortage_quantity,
+            scope: allocation.scope,
+            resolution: allocation.resolution,
+            producer_node_id: allocation
+                .producer_build_id
+                .and_then(|id| node_by_build.get(&id.0))
+                .map(|node| (*node).to_string()),
+            dependency_id: allocation.dependency_id.clone(),
+        })
+        .collect();
+    reduce_logistics(&operations, &demands, unit_volumes)
+}
+
+/// The Logistics reduction itself -- see the module doc. Deterministic:
+/// destinations by facility name (unassigned last), lines by type name,
+/// consumers/producers by operation id.
+#[must_use]
+pub fn reduce_logistics(
+    operations: &[LogisticsOperation],
+    demands: &[LogisticsDemand],
+    unit_volumes: &BTreeMap<i64, Option<Decimal>>,
+) -> LogisticsPlan {
+    let op_by_node: BTreeMap<&str, &LogisticsOperation> = operations
         .iter()
         .map(|op| (op.graph_node_id.as_str(), op))
         .collect();
-    let mut op_by_build: BTreeMap<Uuid, &VerificationOperationInput> = BTreeMap::new();
-    for op in operations {
-        op_by_build.entry(op.build_id.0).or_insert(op);
-    }
 
     struct DestinationAcc {
         facility_id: Option<Uuid>,
@@ -175,14 +247,14 @@ pub fn project_logistics(
         destination.operation_ids.push(op.graph_node_id.clone());
     }
 
-    for allocation in allocations {
-        if allocation.required_quantity == 0 {
+    for demand in demands {
+        if demand.required_quantity == 0 {
             continue;
         }
-        let Some(consumer) = op_by_node.get(allocation.graph_node_id.as_str()) else {
+        let Some(consumer) = op_by_node.get(demand.consumer_node_id.as_str()) else {
             continue;
         };
-        let source = match allocation.resolution {
+        let source = match demand.resolution {
             MaterialBoundaryResolution::Buy => LogisticsSourceKind::Acquire,
             MaterialBoundaryResolution::Build | MaterialBoundaryResolution::Reaction => {
                 LogisticsSourceKind::Produced
@@ -194,42 +266,43 @@ pub fn project_logistics(
         };
         let line = destination
             .lines
-            .entry(allocation.type_id)
+            .entry(demand.type_id)
             .or_insert_with(|| LogisticsLine {
-                type_id: allocation.type_id,
-                type_name: allocation.type_name.clone(),
+                type_id: demand.type_id,
+                type_name: demand.type_name.clone(),
                 quantity: 0,
                 planned_inventory_quantity: 0,
                 shortage_quantity: 0,
                 acquire_quantity: 0,
                 produced_quantity: 0,
                 unresolved_quantity: 0,
-                unit_volume_m3: unit_volumes.get(&allocation.type_id).copied().flatten(),
+                unit_volume_m3: unit_volumes.get(&demand.type_id).copied().flatten(),
                 total_volume_m3: None,
                 consumers: Vec::new(),
                 producers: Vec::new(),
             });
-        line.quantity = line.quantity.saturating_add(allocation.required_quantity);
+        line.quantity = line.quantity.saturating_add(demand.required_quantity);
         line.planned_inventory_quantity = line
             .planned_inventory_quantity
-            .saturating_add(allocation.allocated_quantity);
+            .saturating_add(demand.planned_inventory_quantity);
         line.shortage_quantity = line
             .shortage_quantity
-            .saturating_add(allocation.shortage_quantity);
+            .saturating_add(demand.shortage_quantity);
         match source {
             LogisticsSourceKind::Acquire => {
                 line.acquire_quantity = line
                     .acquire_quantity
-                    .saturating_add(allocation.shortage_quantity);
+                    .saturating_add(demand.shortage_quantity);
             }
             LogisticsSourceKind::Produced => {
                 line.produced_quantity = line
                     .produced_quantity
-                    .saturating_add(allocation.shortage_quantity);
-                if allocation.shortage_quantity > 0 {
-                    if let Some(producer) = allocation
-                        .producer_build_id
-                        .and_then(|id| op_by_build.get(&id.0))
+                    .saturating_add(demand.shortage_quantity);
+                if demand.shortage_quantity > 0 {
+                    if let Some(producer) = demand
+                        .producer_node_id
+                        .as_deref()
+                        .and_then(|id| op_by_node.get(id))
                     {
                         match line
                             .producers
@@ -237,16 +310,15 @@ pub fn project_logistics(
                             .find(|existing| existing.operation_id == producer.graph_node_id)
                         {
                             Some(existing) => {
-                                existing.quantity = existing
-                                    .quantity
-                                    .saturating_add(allocation.shortage_quantity);
+                                existing.quantity =
+                                    existing.quantity.saturating_add(demand.shortage_quantity);
                             }
                             None => line.producers.push(LogisticsProducerRef {
                                 operation_id: producer.graph_node_id.clone(),
                                 facility_id: producer.facility_id,
                                 facility_name: producer.facility_name.clone(),
                                 solar_system: producer.solar_system.clone(),
-                                quantity: allocation.shortage_quantity,
+                                quantity: demand.shortage_quantity,
                             }),
                         }
                     }
@@ -255,7 +327,7 @@ pub fn project_logistics(
             LogisticsSourceKind::Unresolved => {
                 line.unresolved_quantity = line
                     .unresolved_quantity
-                    .saturating_add(allocation.shortage_quantity);
+                    .saturating_add(demand.shortage_quantity);
             }
         }
         line.consumers.push(LogisticsConsumerRef {
@@ -263,11 +335,11 @@ pub fn project_logistics(
             build_id: consumer.build_id,
             output_type_name: consumer.product_name.clone(),
             source,
-            fulfillment_scope: allocation.scope,
-            required_quantity: allocation.required_quantity,
-            planned_inventory_quantity: allocation.allocated_quantity,
-            shortage_quantity: allocation.shortage_quantity,
-            dependency_id: allocation.dependency_id.clone(),
+            fulfillment_scope: demand.scope,
+            required_quantity: demand.required_quantity,
+            planned_inventory_quantity: demand.planned_inventory_quantity,
+            shortage_quantity: demand.shortage_quantity,
+            dependency_id: demand.dependency_id.clone(),
         });
     }
 

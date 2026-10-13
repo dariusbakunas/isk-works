@@ -259,6 +259,167 @@ fn buy_requirements_still_to_source_become_acquisitions() {
     assert_eq!(pyerite.consumers[0].node_id, "reaction");
 }
 
+const MANUFACTURING_FACILITY: u128 = 0xF1;
+const REACTION_FACILITY: u128 = 0xF2;
+
+fn at_facility(mut operation: PlanOperation, facility: u128) -> PlanOperation {
+    operation.evidence.installation = Some(PlanInstallationEvidence {
+        estimated_item_value: None,
+        eiv_missing_type_ids: Vec::new(),
+        system_cost_index: None,
+        job_cost_reduction_percent: "0".to_string(),
+        facility_tax_percent: "0".to_string(),
+        scc_surcharge_percent: "0".to_string(),
+        alliance_surcharge_percent: "0".to_string(),
+        fixed_supplemental_cost: Money::zero(),
+        unmodified_system_index_cost: None,
+        system_index_cost: None,
+        facility_tax: None,
+        scc_surcharge: None,
+        alliance_surcharge: None,
+        complete: true,
+        formula_version: String::new(),
+        facility_profile_id: Some(Uuid::from_u128(facility)),
+        facility_profile_revision: Some(1),
+    });
+    operation
+}
+
+fn facilities() -> BTreeMap<Uuid, FrozenFacility> {
+    BTreeMap::from([
+        (
+            Uuid::from_u128(MANUFACTURING_FACILITY),
+            FrozenFacility {
+                name: "Jita Assembly".to_string(),
+                solar_system: "Jita".to_string(),
+            },
+        ),
+        (
+            Uuid::from_u128(REACTION_FACILITY),
+            FrozenFacility {
+                name: "0-VG7A Reactions".to_string(),
+                solar_system: "0-VG7A".to_string(),
+            },
+        ),
+    ])
+}
+
+fn volumes() -> BTreeMap<i64, Option<rust_decimal::Decimal>> {
+    BTreeMap::from([
+        (16_673, Some(rust_decimal::Decimal::ONE)),
+        (34, Some(rust_decimal::Decimal::new(1, 2))),
+    ])
+}
+
+#[test]
+fn logistics_delivers_each_frozen_operations_inputs_to_its_facility() {
+    let (operations, requirements) = muninn();
+    let operations = vec![
+        at_facility(operations[0].clone(), MANUFACTURING_FACILITY),
+        at_facility(operations[1].clone(), REACTION_FACILITY),
+    ];
+
+    let logistics = project_frozen_logistics(&operations, &requirements, &facilities(), &volumes());
+
+    let names: Vec<Option<&str>> = logistics
+        .destinations
+        .iter()
+        .map(|destination| destination.facility_name.as_deref())
+        .collect();
+    assert_eq!(names, vec![Some("0-VG7A Reactions"), Some("Jita Assembly")]);
+
+    let reactions = &logistics.destinations[0];
+    let types: Vec<i64> = reactions.lines.iter().map(|line| line.type_id).collect();
+    assert_eq!(types, vec![36, 35], "Mexallon, Pyerite by name");
+    assert_eq!(reactions.lines[1].acquire_quantity, 200);
+
+    let jita = &logistics.destinations[1];
+    let fernite = jita
+        .lines
+        .iter()
+        .find(|line| line.type_id == 16_673)
+        .unwrap();
+    assert_eq!(fernite.quantity, 500);
+    assert_eq!(fernite.planned_inventory_quantity, 100);
+    assert_eq!(fernite.produced_quantity, 400);
+    assert_eq!(fernite.producers.len(), 1);
+    assert_eq!(fernite.producers[0].operation_id, "reaction");
+    assert_eq!(
+        fernite.producers[0].facility_name.as_deref(),
+        Some("0-VG7A Reactions")
+    );
+    assert_eq!(
+        fernite.total_volume_m3,
+        Some(rust_decimal::Decimal::from(500))
+    );
+    let tritanium = jita.lines.iter().find(|line| line.type_id == 34).unwrap();
+    assert_eq!(tritanium.acquire_quantity, 400);
+}
+
+#[test]
+fn logistics_has_no_inputs_for_a_reaction_the_epic_did_not_freeze() {
+    // Fernite Carbide fully covered by stock at freeze time: no reaction
+    // operation was frozen, so its inputs need moving nowhere -- whatever
+    // the live draft re-plans later.
+    let (operations, _) = muninn();
+    let operations = vec![at_facility(operations[0].clone(), MANUFACTURING_FACILITY)];
+    let requirements = vec![
+        requirement(
+            16_673,
+            "Fernite Carbide",
+            RequirementKind::React,
+            "root",
+            None,
+            500,
+            500,
+            None,
+        ),
+        requirement(
+            34,
+            "Tritanium",
+            RequirementKind::Buy,
+            "root",
+            None,
+            1_000,
+            600,
+            None,
+        ),
+    ];
+
+    let logistics = project_frozen_logistics(&operations, &requirements, &facilities(), &volumes());
+
+    assert_eq!(logistics.destinations.len(), 1);
+    let jita = &logistics.destinations[0];
+    assert_eq!(jita.facility_name.as_deref(), Some("Jita Assembly"));
+    let fernite = jita
+        .lines
+        .iter()
+        .find(|line| line.type_id == 16_673)
+        .unwrap();
+    assert_eq!(fernite.planned_inventory_quantity, 500);
+    assert_eq!(fernite.produced_quantity, 0);
+    assert_eq!(fernite.unresolved_quantity, 0);
+}
+
+#[test]
+fn logistics_keeps_a_deleted_facility_as_its_own_unnamed_destination() {
+    let (operations, requirements) = muninn();
+    let operations = vec![
+        at_facility(operations[0].clone(), MANUFACTURING_FACILITY),
+        at_facility(operations[1].clone(), 0xDEAD),
+    ];
+
+    let logistics = project_frozen_logistics(&operations, &requirements, &facilities(), &volumes());
+
+    let unnamed = logistics
+        .destinations
+        .iter()
+        .find(|destination| destination.facility_id == Some(Uuid::from_u128(0xDEAD)))
+        .unwrap();
+    assert_eq!(unnamed.facility_name, None);
+    assert_eq!(unnamed.lines.len(), 2);
+}
+
 fn order() -> Order {
     Order {
         id: OrderId(Uuid::nil()),
