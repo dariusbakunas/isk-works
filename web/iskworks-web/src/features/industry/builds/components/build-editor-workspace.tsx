@@ -512,7 +512,13 @@ export function BuildEditorWorkspace({
       ) : null}
       {sdeReady && initialBuild ? (
         <div hidden={view !== "logistics"}>
-          <BuildLogisticsView active={view === "logistics"} editor={editor} focusedProducerId={focusedProducer?.id} />
+          <BuildLogisticsView
+            active={view === "logistics"}
+            editor={editor}
+            epicId={selectedEpicId}
+            epicRefreshKey={epicRefreshKey}
+            focusedProducerId={focusedProducer?.id}
+          />
         </div>
       ) : null}
       {sdeReady && initialBuild ? (

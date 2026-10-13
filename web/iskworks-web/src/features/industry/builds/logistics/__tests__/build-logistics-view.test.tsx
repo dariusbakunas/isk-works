@@ -10,9 +10,13 @@ import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor
 import { BuildLogisticsView, formatM3 } from "../build-logistics-view";
 
 const postBuildExecutionPlan = vi.fn();
+const getOrderExecutionPlan = vi.fn();
+const getOrder = vi.fn();
 vi.mock("../../../../../api/industry", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   postBuildExecutionPlan: (...args: unknown[]) => postBuildExecutionPlan(...args),
+  getOrderExecutionPlan: (...args: unknown[]) => getOrderExecutionPlan(...args),
+  getOrder: (...args: unknown[]) => getOrder(...args),
 }));
 
 function line(over: Partial<LogisticsLine> & { typeId: number; typeName: string }): LogisticsLine {
@@ -74,13 +78,13 @@ function consumer(name: string) {
   };
 }
 
-async function renderLogistics() {
+async function renderLogistics(epicId: string | null = null) {
   const editor = {
     initialBuild: { id: "build-1" },
     previewKey: JSON.stringify({ recipe: { mode: "manufacturing", blueprintTypeId: 1 }, runs: 1 }),
     linkedBuildsByTypeId: {},
   } as unknown as BuildWorksheetEditorModel;
-  render(<BuildLogisticsView active editor={editor} />);
+  render(<BuildLogisticsView active editor={editor} epicId={epicId} />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(300);
   });
@@ -89,10 +93,38 @@ async function renderLogistics() {
 beforeEach(() => {
   vi.useFakeTimers();
   postBuildExecutionPlan.mockReset();
+  getOrderExecutionPlan.mockReset();
+  getOrder.mockReset();
 });
 afterEach(() => vi.useRealTimers());
 
 describe("BuildLogisticsView", () => {
+  it("shows the selected Epic's frozen Logistics, never the live draft's", async () => {
+    postBuildExecutionPlan.mockResolvedValue(
+      planWith(
+        [destination({ key: "facility:r", facilityName: "Draft Reactions", lines: [line({ typeId: 1, typeName: "Ferrofluid", quantity: 392 })] })],
+        "0",
+      ),
+    );
+    getOrderExecutionPlan.mockResolvedValue({
+      plan: planWith(
+        [destination({ key: "facility:m", facilityName: "Epic Assembly", lines: [line({ typeId: 34, typeName: "Tritanium", quantity: 10 })] })],
+        "0",
+      ),
+      epic: { orderId: "epic-1", displayName: "Manufacture Muninn", sourceBuildRevision: 1, nodes: {}, acquisitions: {} },
+    });
+    getOrder.mockResolvedValue({ id: "epic-1", requirements: [] });
+
+    await renderLogistics("epic-1");
+
+    expect(getOrderExecutionPlan).toHaveBeenCalledWith("epic-1");
+    expect(postBuildExecutionPlan).not.toHaveBeenCalled();
+    expect(screen.getByText("Epic Assembly")).toBeInTheDocument();
+    expect(screen.getByText("Tritanium")).toBeInTheDocument();
+    expect(screen.queryByText("Draft Reactions")).not.toBeInTheDocument();
+  });
+
+
   it("groups lines by destination facility with per-destination and total cargo volume", async () => {
     postBuildExecutionPlan.mockResolvedValue(
       planWith(

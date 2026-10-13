@@ -1,3 +1,8 @@
+use std::collections::BTreeSet;
+
+use iskworks_core::order::{frozen_facility_id, project_frozen_logistics, FrozenFacility};
+use iskworks_core::{FacilityProfileId, WorkspaceId};
+
 use super::*;
 
 /// `GET /api/orders/:order_id/execution-plan`: a version-3 Epic's frozen
@@ -69,7 +74,7 @@ pub(super) async fn get_order_execution_plan(
         .await
         .unwrap_or_default();
 
-    let plan = project_frozen_execution_plan(
+    let mut plan = project_frozen_execution_plan(
         &operations,
         &requirements,
         &blueprint_names,
@@ -79,8 +84,66 @@ pub(super) async fn get_order_execution_plan(
         },
         Utc::now(),
     )?;
+    plan.logistics = frozen_logistics(&state, workspace_id, &operations, &requirements).await?;
     let epic = epic_plan_overlay(&order, &operations, &requirements, &totals, &tickets);
     Ok(Json(EpicExecutionPlanResponse { plan, epic }))
+}
+
+/// The Epic's Logistics, over its frozen plan. Facility names and volumes
+/// are display-only: a deleted facility profile stays an unnamed
+/// destination, and a missing SDE leaves volumes unknown.
+async fn frozen_logistics(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    operations: &[PlanOperation],
+    requirements: &[OrderRequirement],
+) -> Result<iskworks_core::logistics::LogisticsPlan, ApiError> {
+    let industry = state.industry_repository()?;
+    let facility_ids: BTreeSet<uuid::Uuid> =
+        operations.iter().filter_map(frozen_facility_id).collect();
+    let mut facilities = BTreeMap::new();
+    for facility_id in facility_ids {
+        if let Ok(profile) = industry
+            .get_facility_profile(workspace_id, FacilityProfileId(facility_id))
+            .await
+        {
+            facilities.insert(
+                facility_id,
+                FrozenFacility {
+                    name: profile.name,
+                    solar_system: profile.solar_system_name,
+                },
+            );
+        }
+    }
+    let type_ids: Vec<i64> = requirements
+        .iter()
+        .map(|requirement| requirement.type_id)
+        .collect::<BTreeSet<i64>>()
+        .into_iter()
+        .collect();
+    let metadata = state
+        .sde_repository
+        .inventory_type_metadata(&type_ids)
+        .await
+        .unwrap_or_default();
+    let unit_volumes = type_ids
+        .iter()
+        .map(|type_id| {
+            (
+                *type_id,
+                metadata
+                    .get(type_id)
+                    .and_then(|meta| meta.packaged_volume_m3),
+            )
+        })
+        .collect();
+    Ok(project_frozen_logistics(
+        operations,
+        requirements,
+        &facilities,
+        &unit_volumes,
+    ))
 }
 
 #[derive(Debug, Serialize)]

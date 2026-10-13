@@ -11,6 +11,10 @@
 // ticket" action. Source is shown only where it is trustworthy: the
 // producing operation's facility for produced inputs; bought inputs and
 // planned inventory have no known source location yet.
+//
+// With an Epic selected it renders that Epic's frozen plan's Logistics
+// instead, like the Plan view: the live draft may have been re-planned
+// since (e.g. around the stock the Epic now reserves).
 
 import type { LogisticsDestination, LogisticsLine } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
@@ -24,6 +28,7 @@ import { Quantity } from "../stages/execution-node-row";
 import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { focusExecutionPlan } from "../focused-producer-projection";
+import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
 import { useMemo } from "react";
 
 const COLUMNS: OperationalColumn[] = [
@@ -51,17 +56,29 @@ export function BuildLogisticsView({
   editor,
   active,
   focusedProducerId,
+  epicId = null,
+  epicRefreshKey = 0,
 }: {
   editor: BuildWorksheetEditorModel;
   active: boolean;
   focusedProducerId?: string;
+  /** Show this Epic's frozen plan's Logistics instead of the live draft's. */
+  epicId?: string | null;
+  /** Bump to reload the Epic's plan after a change made elsewhere. */
+  epicRefreshKey?: number;
 }) {
-  const { plan: rootPlan, loading, refreshError, hardError } = useBuildExecutionPlan({
+  const epicMode = epicId !== null;
+  const epicPlan = useEpicExecutionPlan(epicId, active && epicMode, epicRefreshKey);
+  const draft = useBuildExecutionPlan({
     buildId: editor.initialBuild?.id ?? "",
     previewKey: editor.previewKey,
-    active,
+    active: active && !epicMode,
     linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
+  const rootPlan = epicMode ? (epicPlan.data?.plan ?? null) : draft.plan;
+  const hardError = epicMode ? epicPlan.error : draft.hardError;
+  const loading = !epicMode && draft.loading;
+  const refreshError = epicMode ? "" : draft.refreshError;
   const plan = useMemo(
     () => rootPlan && focusedProducerId ? focusExecutionPlan(rootPlan, focusedProducerId) : rootPlan,
     [rootPlan, focusedProducerId],
