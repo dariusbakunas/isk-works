@@ -42,14 +42,15 @@ test("groups one absolute instant on different dates in EVE and local time", () 
   expect([...groupByDate([crossing], "local").keys()]).toEqual(["2026-09-30"]);
 });
 
-test("computes EVE and local month boundaries as absolute instants", () => {
+test("month ranges cover the whole visible grid, padding days included, as absolute instants", () => {
+  // October 2026 renders Sep 28 – Nov 1.
   expect(monthRange({ year: 2026, month: 10 }, "eve")).toEqual({
-    from: new Date("2026-10-01T00:00:00.000Z"),
-    to: new Date("2026-11-01T00:00:00.000Z"),
+    from: new Date("2026-09-28T00:00:00.000Z"),
+    to: new Date("2026-11-02T00:00:00.000Z"),
   });
   expect(monthRange({ year: 2026, month: 10 }, "local")).toEqual({
-    from: new Date("2026-10-01T04:00:00.000Z"),
-    to: new Date("2026-11-01T04:00:00.000Z"),
+    from: new Date("2026-09-28T04:00:00.000Z"),
+    to: new Date("2026-11-02T05:00:00.000Z"),
   });
 });
 
@@ -64,12 +65,13 @@ test("current month and Today follow the selected timezone", () => {
 test("local month ranges preserve civil midnights across DST transitions", () => {
   const spring = monthRange({ year: 2026, month: 3 }, "local");
   const fall = monthRange({ year: 2026, month: 11 }, "local");
-  expect((spring.to.getTime() - spring.from.getTime()) / 3_600_000).toBe(743);
-  expect((fall.to.getTime() - fall.from.getTime()) / 3_600_000).toBe(721);
-  expect(spring.from.toISOString()).toBe("2026-03-01T05:00:00.000Z");
-  expect(spring.to.toISOString()).toBe("2026-04-01T04:00:00.000Z");
-  expect(fall.from.toISOString()).toBe("2026-11-01T04:00:00.000Z");
-  expect(fall.to.toISOString()).toBe("2026-12-01T05:00:00.000Z");
+  // March 2026 renders Feb 23 – Apr 5; November 2026 renders Oct 26 – Dec 6.
+  expect((spring.to.getTime() - spring.from.getTime()) / 3_600_000).toBe(1007);
+  expect((fall.to.getTime() - fall.from.getTime()) / 3_600_000).toBe(1009);
+  expect(spring.from.toISOString()).toBe("2026-02-23T05:00:00.000Z");
+  expect(spring.to.toISOString()).toBe("2026-04-06T04:00:00.000Z");
+  expect(fall.from.toISOString()).toBe("2026-10-26T04:00:00.000Z");
+  expect(fall.to.toISOString()).toBe("2026-12-07T05:00:00.000Z");
 });
 
 test("derives a Monday-first cross-month week from its date anchor", () => {

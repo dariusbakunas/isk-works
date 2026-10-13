@@ -59,17 +59,10 @@ export function monthGrid(month: CalendarMonth): CalendarDay[] {
   });
 }
 
+/** The whole visible grid, so padding days from adjacent months get their milestones too. */
 export function monthRange(month: CalendarMonth, timezone: CalendarTimezone): CalendarRange {
-  if (timezone === "eve") {
-    return {
-      from: new Date(Date.UTC(month.year, month.month - 1, 1)),
-      to: new Date(Date.UTC(month.year, month.month, 1)),
-    };
-  }
-  return {
-    from: new Date(month.year, month.month - 1, 1),
-    to: new Date(month.year, month.month, 1),
-  };
+  const grid = monthGrid(month);
+  return dateKeysRange(grid[0].key, grid[grid.length - 1].key, timezone);
 }
 
 export function monthFromDateKey(key: string): CalendarMonth {
@@ -108,8 +101,13 @@ export function weekDateKeys(anchor: string): string[] {
 
 export function weekRange(anchor: string, timezone: CalendarTimezone): CalendarRange {
   const dates = weekDateKeys(anchor);
-  const [fromYear, fromMonth, fromDay] = partsFromKey(dates[0]);
-  const after = utcDateFromKey(dates[6]);
+  return dateKeysRange(dates[0], dates[6], timezone);
+}
+
+/** From the start of `first` to the start of the day after `last`, as civil midnights in `timezone`. */
+function dateKeysRange(first: string, last: string, timezone: CalendarTimezone): CalendarRange {
+  const [fromYear, fromMonth, fromDay] = partsFromKey(first);
+  const after = utcDateFromKey(last);
   after.setUTCDate(after.getUTCDate() + 1);
   const toParts: [number, number, number] = [after.getUTCFullYear(), after.getUTCMonth() + 1, after.getUTCDate()];
   const construct = ([year, month, day]: [number, number, number]) => timezone === "eve"

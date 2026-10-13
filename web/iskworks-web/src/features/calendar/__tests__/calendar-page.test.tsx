@@ -49,9 +49,16 @@ test("deduplicates the same annual range when Strict Mode replays effects", asyn
 test("loads the restored absolute EVE month range and applies URL filters", async () => {
   renderPage("/calendar?view=month&date=2026-10-02&type=skill&character=874c445a-67f4-4368-9028-b785770a2e52&tz=eve");
   await waitFor(() => expect(getCalendar).toHaveBeenCalledOnce());
-  expect(getCalendar).toHaveBeenCalledWith(new Date("2026-10-01T00:00:00Z"), new Date("2026-11-01T00:00:00Z"));
+  expect(getCalendar).toHaveBeenCalledWith(new Date("2026-09-28T00:00:00Z"), new Date("2026-11-02T00:00:00Z"));
   expect(await screen.findByRole("button", { name: /Drones V, skill completion/ })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Future Sleipnir batch/ })).not.toBeInTheDocument();
+});
+
+test("month view loads and shows milestones on the previous month's padding days", async () => {
+  renderPage("/calendar?view=month&date=2026-11-02&type=all&tz=eve");
+  await waitFor(() => expect(getCalendar).toHaveBeenCalledOnce());
+  expect(getCalendar).toHaveBeenCalledWith(new Date("2026-10-26T00:00:00Z"), new Date("2026-12-07T00:00:00Z"));
+  expect(await screen.findByRole("button", { name: /Future Sleipnir batch/ })).toBeInTheDocument();
 });
 
 test("pushes month navigation and replaces type, character, and timezone state", async () => {
