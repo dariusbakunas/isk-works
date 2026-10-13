@@ -45,42 +45,54 @@ function RecordingIndicator({
   );
 }
 
-// A thin bar for the ESI job(s) matched to an In Progress production
-// ticket -- display only, it never moves the card between lanes.
-function JobProgressBar({
+// Progress for the ESI job(s) matched to an In Progress production ticket,
+// drawn without adding card height: a 2px strip along the card's bottom
+// edge plus a remaining-time label in the existing meta row. Display only
+// -- it never moves the card between lanes.
+function jobProgressTitle(summary: TicketJobSummary, requestedRuns: number | null): string {
+  const jobs = `${summary.jobCount} ESI job${summary.jobCount === 1 ? "" : "s"}`;
+  const runs =
+    requestedRuns !== null && summary.jobRuns < requestedRuns
+      ? ` · ${summary.jobRuns.toLocaleString()} of ${requestedRuns.toLocaleString()} runs started`
+      : "";
+  return `${jobs}${runs} · ${summary.percent}% · ${summary.label}`;
+}
+
+function JobProgressEdge({ summary, tone, title }: { summary: TicketJobSummary; tone: Tone; title: string }) {
+  const barTone: Tone = summary.state === "ready" ? "positive" : summary.state === "paused" ? "muted" : tone;
+  return (
+    <div
+      aria-label={`Job progress ${summary.percent}%`}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={summary.percent}
+      className="absolute inset-x-0 bottom-0 h-[2px] bg-border/60"
+      role="progressbar"
+      title={title}
+    >
+      <div className={`h-full ${dotToneClasses[barTone]}`} style={{ width: `${summary.percent}%` }} />
+    </div>
+  );
+}
+
+function JobRemainingLabel({
   summary,
   requestedRuns,
-  tone,
+  title,
 }: {
   summary: TicketJobSummary;
   requestedRuns: number | null;
-  tone: Tone;
+  title: string;
 }) {
-  const barTone: Tone = summary.state === "ready" ? "positive" : summary.state === "paused" ? "muted" : tone;
-  const jobs = `${summary.jobCount} ESI job${summary.jobCount === 1 ? "" : "s"}`;
   const partial = requestedRuns !== null && summary.jobRuns < requestedRuns;
-  const runs = partial
-    ? ` · ${summary.jobRuns.toLocaleString()} of ${requestedRuns.toLocaleString()} runs started`
-    : "";
   return (
-    <div className="mt-1 flex items-center gap-2" title={`${jobs}${runs} · ${summary.percent}%`}>
-      <div
-        aria-label={`Job progress ${summary.percent}%`}
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={summary.percent}
-        className="h-[2px] min-w-0 flex-1 overflow-hidden bg-border"
-        role="progressbar"
-      >
-        <div className={`h-full ${dotToneClasses[barTone]}`} style={{ width: `${summary.percent}%` }} />
-      </div>
-      <span
-        className={`shrink-0 font-mono text-[10px] tabular-nums ${summary.state === "ready" ? "text-positive" : "text-muted"}`}
-      >
-        {partial ? `${summary.jobRuns.toLocaleString()}/${requestedRuns.toLocaleString()} · ` : ""}
-        {summary.label}
-      </span>
-    </div>
+    <span
+      className={`shrink-0 font-mono text-[10px] tabular-nums ${summary.state === "ready" ? "text-positive" : "text-muted"}`}
+      title={title}
+    >
+      {partial ? `${summary.jobRuns.toLocaleString()}/${requestedRuns.toLocaleString()} · ` : ""}
+      {summary.label}
+    </span>
   );
 }
 
@@ -151,6 +163,9 @@ export function OrderTicketCard({
   // through its Run).
   const draggable = !selectable && isTicketDraggable(ticket);
   const ref = useScrollIntoViewWhenActive<HTMLDivElement>(active);
+  const showJobProgress = !compact && jobProgress !== null;
+  const requestedRuns = isProduction ? (ticket.recording?.requestedQuantity ?? null) : null;
+  const jobTitle = jobProgress ? jobProgressTitle(jobProgress, requestedRuns) : "";
 
   return (
     <div
@@ -231,16 +246,15 @@ export function OrderTicketCard({
               </span>
             ) : null}
           </span>
-          {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {showJobProgress ? (
+              <JobRemainingLabel requestedRuns={requestedRuns} summary={jobProgress} title={jobTitle} />
+            ) : null}
+            {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
+          </span>
         </div>
       )}
-      {!compact && jobProgress ? (
-        <JobProgressBar
-          requestedRuns={isProduction ? (ticket.recording?.requestedQuantity ?? null) : null}
-          summary={jobProgress}
-          tone={kindMeta.tone}
-        />
-      ) : null}
+      {showJobProgress ? <JobProgressEdge summary={jobProgress} title={jobTitle} tone={kindMeta.tone} /> : null}
       {isBatched ? (
         <p className="mt-1 text-[10px] text-batch">Batched into an Acquisition Run</p>
       ) : blocked && firstBlocker ? (
