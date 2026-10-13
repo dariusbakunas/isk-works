@@ -111,6 +111,9 @@ pub struct IndustryJobDto {
     pub solar_system_name: Option<String>,
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
+    /// Set while the job is paused (e.g. its structure went offline);
+    /// progress freezes at this instant.
+    pub pause_date: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -241,6 +244,49 @@ impl CharacterRosterService {
             sources,
             industry_jobs,
         })
+    }
+
+    /// Every connected character's slot-occupying industry jobs, for
+    /// matching Board tickets to running jobs, with type and facility names
+    /// resolved the same best-effort way as `detail`.
+    pub async fn workspace_industry_jobs(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<(ConnectedCharacterId, IndustryJobDto)>, InventoryError> {
+        let connections = self.repository.list_connections(workspace_id).await?;
+        let mut summaries = Vec::new();
+        let mut type_ids = HashSet::new();
+        let mut facility_ids = HashSet::new();
+        for connection in connections
+            .iter()
+            .filter(|connection| connection.disconnected_at.is_none())
+        {
+            let sources = self
+                .repository
+                .character_source_state(connection.id)
+                .await?;
+            let summary = find(&sources, CharacterSourceKind::IndustryJobs)
+                .and_then(|source| source.summary.clone());
+            let (job_type_ids, job_facility_ids) = collect_industry_job_ids(summary.as_ref());
+            type_ids.extend(job_type_ids);
+            facility_ids.extend(job_facility_ids);
+            summaries.push((connection.id, summary));
+        }
+        let facility_ids: Vec<i64> = facility_ids.into_iter().collect();
+        let facility_labels = self
+            .repository
+            .industry_facility_labels(workspace_id, &facility_ids)
+            .await?;
+        let type_ids: Vec<i64> = type_ids.into_iter().collect();
+        let type_names = self.resolve_type_names(&type_ids).await;
+        Ok(summaries
+            .into_iter()
+            .flat_map(|(connection_id, summary)| {
+                parse_industry_jobs(summary.as_ref(), &type_names, &facility_labels)
+                    .into_iter()
+                    .map(move |job| (connection_id, job))
+            })
+            .collect())
     }
 
     async fn resolve_names(
@@ -571,6 +617,7 @@ fn parse_industry_jobs(
                 solar_system_name: facility.and_then(|label| label.solar_system_name.clone()),
                 start_date: parse_date_field(job, "start_date"),
                 end_date: parse_date_field(job, "end_date"),
+                pause_date: parse_date_field(job, "pause_date"),
             })
         })
         .collect();

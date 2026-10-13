@@ -107,6 +107,8 @@ export interface IndustryJob {
   solarSystemName: string | null;
   startDate: string | null;
   endDate: string | null;
+  // Set while paused (e.g. structure offline); progress freezes here.
+  pauseDate?: string | null;
 }
 
 export interface CharacterDetail extends CharacterRosterEntry {

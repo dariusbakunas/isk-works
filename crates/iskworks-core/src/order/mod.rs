@@ -28,6 +28,7 @@ mod recording;
 mod repository;
 mod reservation;
 mod ticket;
+mod ticket_job_match;
 mod ticket_plan;
 
 pub use aggregate::*;
@@ -40,4 +41,5 @@ pub use recording::*;
 pub use repository::*;
 pub use reservation::*;
 pub use ticket::*;
+pub use ticket_job_match::*;
 pub use ticket_plan::*;

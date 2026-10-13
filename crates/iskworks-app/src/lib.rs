@@ -30,7 +30,9 @@ pub use build_materials::{BuildMaterialsCoordinator, BuildMaterialsError, BuildM
 pub use build_preview::{BuildPlanningDeps, BuildPreviewCoordinator, BuildPreviewError};
 pub use build_worksheet::{BuildWorksheetCoordinator, BuildWorksheetError};
 pub use calendar::{CalendarMilestone, CalendarRange, CalendarService};
-pub use character_roster::{CharacterDetail, CharacterRosterEntry, CharacterRosterService};
+pub use character_roster::{
+    CharacterDetail, CharacterRosterEntry, CharacterRosterService, IndustryJobDto,
+};
 pub use character_sync::{AccessTokenProvider, CharacterSyncOutcome, CharacterSyncService};
 pub use descendant_production_configuration::{
     DescendantProductionConfigurationCoordinator, DescendantProductionConfigurationError,

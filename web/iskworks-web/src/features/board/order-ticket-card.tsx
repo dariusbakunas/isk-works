@@ -1,13 +1,14 @@
 import { AlertCircle } from "lucide-react";
 
 import type { Ticket, TicketRecordingSummary, TicketSummary } from "../../api/industry";
-import { dotToneClasses, textToneClasses } from "../../components/primitives";
+import { dotToneClasses, textToneClasses, type Tone } from "../../components/primitives";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { MoneyAmount } from "../../components/money";
 import { CharacterName } from "../../observability/private";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
+import type { TicketJobSummary } from "./ticket-job-progress";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 // A small, secondary "how much of this has actually been recorded" readout
@@ -44,6 +45,57 @@ function RecordingIndicator({
   );
 }
 
+// Progress for the ESI job(s) matched to an In Progress production ticket,
+// drawn without adding card height: a 2px strip along the card's bottom
+// edge plus a remaining-time label in the existing meta row. Display only
+// -- it never moves the card between lanes.
+function jobProgressTitle(summary: TicketJobSummary, requestedRuns: number | null): string {
+  const jobs = `${summary.jobCount} ESI job${summary.jobCount === 1 ? "" : "s"}`;
+  const runs =
+    requestedRuns !== null && summary.jobRuns < requestedRuns
+      ? ` · ${summary.jobRuns.toLocaleString()} of ${requestedRuns.toLocaleString()} runs started`
+      : "";
+  return `${jobs}${runs} · ${summary.percent}% · ${summary.label}`;
+}
+
+function JobProgressEdge({ summary, tone, title }: { summary: TicketJobSummary; tone: Tone; title: string }) {
+  const barTone: Tone = summary.state === "ready" ? "positive" : summary.state === "paused" ? "muted" : tone;
+  return (
+    <div
+      aria-label={`Job progress ${summary.percent}%`}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={summary.percent}
+      className="absolute inset-x-0 bottom-0 h-[2px] bg-border/60"
+      role="progressbar"
+      title={title}
+    >
+      <div className={`h-full ${dotToneClasses[barTone]}`} style={{ width: `${summary.percent}%` }} />
+    </div>
+  );
+}
+
+function JobRemainingLabel({
+  summary,
+  requestedRuns,
+  title,
+}: {
+  summary: TicketJobSummary;
+  requestedRuns: number | null;
+  title: string;
+}) {
+  const partial = requestedRuns !== null && summary.jobRuns < requestedRuns;
+  return (
+    <span
+      className={`shrink-0 font-mono text-[10px] tabular-nums ${summary.state === "ready" ? "text-positive" : "text-muted"}`}
+      title={title}
+    >
+      {partial ? `${summary.jobRuns.toLocaleString()}/${requestedRuns.toLocaleString()} · ` : ""}
+      {summary.label}
+    </span>
+  );
+}
+
 // A ticket can join a new standalone Acquisition Run only while it's a
 // To Do, unbatched Acquisition ticket -- Manufacturing/Reaction tickets are
 // never batchable. There is no per-ticket "acquisition location" preview
@@ -60,6 +112,7 @@ export function isBatchableOrderTicket(ticket: Ticket): boolean {
 export function OrderTicketCard({
   ticket,
   assignee,
+  jobProgress = null,
   selectable = false,
   selected = false,
   active = false,
@@ -74,6 +127,9 @@ export function OrderTicketCard({
    * already-loaded character roster -- no per-card fetch. `null`/omitted
    * when unassigned or the assignee isn't resolvable. */
   assignee?: { characterName: string; eveCharacterId: number } | null;
+  /** The assignee's ESI job(s) matched to this ticket, summarized at the
+   * Board's current tick. `null` when nothing is matched. */
+  jobProgress?: TicketJobSummary | null;
   selectable?: boolean;
   selected?: boolean;
   /** The ticket the Board's inspector is showing. */
@@ -107,6 +163,9 @@ export function OrderTicketCard({
   // through its Run).
   const draggable = !selectable && isTicketDraggable(ticket);
   const ref = useScrollIntoViewWhenActive<HTMLDivElement>(active);
+  const showJobProgress = !compact && jobProgress !== null;
+  const requestedRuns = isProduction ? (ticket.recording?.requestedQuantity ?? null) : null;
+  const jobTitle = jobProgress ? jobProgressTitle(jobProgress, requestedRuns) : "";
 
   return (
     <div
@@ -187,9 +246,15 @@ export function OrderTicketCard({
               </span>
             ) : null}
           </span>
-          {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
+          <span className="flex shrink-0 items-center gap-1.5">
+            {showJobProgress ? (
+              <JobRemainingLabel requestedRuns={requestedRuns} summary={jobProgress} title={jobTitle} />
+            ) : null}
+            {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
+          </span>
         </div>
       )}
+      {showJobProgress ? <JobProgressEdge summary={jobProgress} title={jobTitle} tone={kindMeta.tone} /> : null}
       {isBatched ? (
         <p className="mt-1 text-[10px] text-batch">Batched into an Acquisition Run</p>
       ) : blocked && firstBlocker ? (

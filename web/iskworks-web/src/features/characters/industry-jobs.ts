@@ -128,11 +128,15 @@ export function industryJobProgress(job: IndustryJob, nowMs: number): JobProgres
   const timerDone = Number.isFinite(end) && nowMs >= end;
   const ready = job.status === "ready" || (!paused && timerDone);
 
+  // A paused job's progress stops at its pause instant.
+  const pausedAt = paused && job.pauseDate ? Date.parse(job.pauseDate) : Number.NaN;
+  const progressAt = Number.isFinite(pausedAt) ? Math.min(nowMs, pausedAt) : nowMs;
+
   let fraction: number;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     fraction = ready ? 1 : 0;
   } else {
-    fraction = (nowMs - start) / (end - start);
+    fraction = (progressAt - start) / (end - start);
   }
   fraction = Math.min(1, Math.max(0, ready ? 1 : fraction));
 

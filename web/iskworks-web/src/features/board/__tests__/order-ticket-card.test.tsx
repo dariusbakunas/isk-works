@@ -6,6 +6,41 @@ import { isBatchableOrderTicket, OrderTicketCard } from "../order-ticket-card";
 import { makeDataTransfer, ticketFixture } from "./fixtures";
 
 describe("OrderTicketCard", () => {
+  it("shows matched job progress, and how many runs are started when only some are", () => {
+    render(
+      <OrderTicketCard
+        jobProgress={{ percent: 40, label: "3h 12m", state: "running", jobCount: 2, jobRuns: 8 }}
+        ticket={ticketFixture({
+          kind: "reaction",
+          status: "inProgress",
+          recording: {
+            state: "notRecorded",
+            requestedQuantity: 10,
+            recordedQuantity: 0,
+            remainingQuantity: 10,
+            surplusQuantity: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "40");
+    expect(screen.getByText("8/10 · 3h 12m")).toBeInTheDocument();
+  });
+
+  it("shows no job progress bar without a match or in the compact row", () => {
+    const { rerender } = render(<OrderTicketCard ticket={ticketFixture({ kind: "reaction", status: "inProgress" })} />);
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    rerender(
+      <OrderTicketCard
+        compact
+        jobProgress={{ percent: 100, label: "Ready", state: "ready", jobCount: 1, jobRuns: 10 }}
+        ticket={ticketFixture({ kind: "reaction", status: "inProgress" })}
+      />,
+    );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
   it("shows the ticket's identity, kind, status, and cost", () => {
     render(<OrderTicketCard ticket={ticketFixture()} />);
 

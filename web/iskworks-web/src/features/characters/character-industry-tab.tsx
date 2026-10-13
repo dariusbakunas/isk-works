@@ -79,7 +79,8 @@ const miniBarFillClass: Record<Tone, string> = {
   reaction: "bg-reaction",
 };
 
-function IndustryJobRow({ job, nowMs }: { job: IndustryJob; nowMs: number }) {
+// Also used by the Board's ticket inspector for a ticket's matched jobs.
+export function IndustryJobRow({ job, nowMs }: { job: IndustryJob; nowMs: number }) {
   const badge = industryActivityBadge(job.activity);
   const name = industryJobName(job);
   const location = industryJobLocation(job);
