@@ -247,15 +247,15 @@ impl CharacterRosterService {
     }
 
     /// Every connected character's slot-occupying industry jobs, for
-    /// matching Board tickets to running jobs. Facility names are resolved
-    /// from this workspace's cache; type names are not (the ticket already
-    /// names its product).
+    /// matching Board tickets to running jobs, with type and facility names
+    /// resolved the same best-effort way as `detail`.
     pub async fn workspace_industry_jobs(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<(ConnectedCharacterId, IndustryJobDto)>, InventoryError> {
         let connections = self.repository.list_connections(workspace_id).await?;
         let mut summaries = Vec::new();
+        let mut type_ids = HashSet::new();
         let mut facility_ids = HashSet::new();
         for connection in connections
             .iter()
@@ -267,7 +267,9 @@ impl CharacterRosterService {
                 .await?;
             let summary = find(&sources, CharacterSourceKind::IndustryJobs)
                 .and_then(|source| source.summary.clone());
-            facility_ids.extend(collect_industry_job_ids(summary.as_ref()).1);
+            let (job_type_ids, job_facility_ids) = collect_industry_job_ids(summary.as_ref());
+            type_ids.extend(job_type_ids);
+            facility_ids.extend(job_facility_ids);
             summaries.push((connection.id, summary));
         }
         let facility_ids: Vec<i64> = facility_ids.into_iter().collect();
@@ -275,11 +277,12 @@ impl CharacterRosterService {
             .repository
             .industry_facility_labels(workspace_id, &facility_ids)
             .await?;
-        let no_type_names = HashMap::new();
+        let type_ids: Vec<i64> = type_ids.into_iter().collect();
+        let type_names = self.resolve_type_names(&type_ids).await;
         Ok(summaries
             .into_iter()
             .flat_map(|(connection_id, summary)| {
-                parse_industry_jobs(summary.as_ref(), &no_type_names, &facility_labels)
+                parse_industry_jobs(summary.as_ref(), &type_names, &facility_labels)
                     .into_iter()
                     .map(move |job| (connection_id, job))
             })
