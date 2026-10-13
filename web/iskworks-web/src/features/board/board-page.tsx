@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
-import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
+import { listCharacters, type CharacterRosterEntry, type IndustryJob } from "../../api/characters";
 import {
   listAcquisitionRuns,
   listBuilds,
   listOrders,
   listPriceSources,
+  listTicketJobProgress,
   listTickets,
   updateTicketStatus,
   type AcquisitionRun,
@@ -38,6 +39,7 @@ import { OrderCard } from "./order-card";
 import { OrderSelectionBar } from "./order-selection-bar";
 import { OrderTicketCard } from "./order-ticket-card";
 import { OrderTicketDetailDrawer } from "./order-ticket-detail-drawer";
+import { summarizeTicketJobs } from "./ticket-job-progress";
 import { TicketEditor } from "./ticket-editor";
 import { canDropTicket, isTicketDraggable } from "./ticket-drag";
 
@@ -150,6 +152,11 @@ export function BoardPage() {
   // ticket.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showAllComplete, setShowAllComplete] = useState(false);
+  // ESI jobs matched to In Progress production tickets, by ticket id, and
+  // the clock their progress bars are drawn at. Display only: loaded apart
+  // from the Board's own data so a failure here never blanks the Board.
+  const [jobsByTicketId, setJobsByTicketId] = useState<Map<string, IndustryJob[]>>(new Map());
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Board filters -- a distinct state dimension from Inspector selection
   // (`openOrderId`/`openTicketId` above). Derived live from the URL on
@@ -171,7 +178,27 @@ export function BoardPage() {
     setParams(withoutBoardFilters(params), { replace: true });
   }
 
+  function loadJobProgress() {
+    return listTicketJobProgress()
+      .then((rows) => setJobsByTicketId(new Map(rows.map((row) => [row.ticketId, row.jobs]))))
+      .catch(() => {
+        // Keep the last known bars; the Board itself is unaffected.
+      });
+  }
+
+  // Bars tick locally from each job's fixed dates; the matches themselves
+  // are refetched every few minutes to pick up newly started jobs.
+  useEffect(() => {
+    const tick = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    const refetch = window.setInterval(() => void loadJobProgress(), 5 * 60_000);
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(refetch);
+    };
+  }, []);
+
   function load() {
+    void loadJobProgress();
     // Fetches everything once (small, personal-scale dataset), including
     // every archived Order -- "Show archived" applies purely client-side
     // afterward, so toggling it is instant with no refetch. `listCharacters`
@@ -701,6 +728,7 @@ export function BoardPage() {
                         : null
                     }
                     compact={isCompleteLane}
+                    jobProgress={summarizeTicketJobs(jobsByTicketId.get(ticket.id) ?? [], nowMs)}
                     key={ticket.id}
                     onDragEnd={() => {
                       setDraggingTicketId(null);
@@ -815,6 +843,8 @@ export function BoardPage() {
           // ticket drawer's own Epic-context section triggers this, never
           // a navigation to `/orders/:id`.
           onOpenEpic={openTicket.orderId ? () => openEpic(openTicket.orderId as string) : undefined}
+          jobs={jobsByTicketId.get(openTicket.id)}
+          nowMs={nowMs}
           ticket={openTicket}
         />
       ) : openOrder ? (

@@ -2,6 +2,7 @@ import { ApiError, type ApiErrorBody } from "../workspace";
 import type { ExecutionPlanProjection } from "./execution-plan";
 import { json, request } from "./request";
 import type { Money } from "./shared";
+import type { IndustryJob } from "../characters";
 import type { BlueprintSnapshot, PreviewBuildPlanCommand } from "./builds";
 import type { FacilityProfile, InstallationCostBreakdown } from "./facilities";
 
@@ -673,6 +674,18 @@ export interface TicketSummary extends Ticket {
 
 export function listTickets(): Promise<TicketSummary[]> {
   return request("/api/tickets");
+}
+
+// In Progress Manufacturing/Reaction tickets matched to their assignee's
+// running ESI jobs. Display only, recomputed server-side on every read;
+// a ticket with no matching job is absent.
+export interface TicketJobProgress {
+  ticketId: string;
+  jobs: IndustryJob[];
+}
+
+export function listTicketJobProgress(): Promise<TicketJobProgress[]> {
+  return request("/api/tickets/job-progress");
 }
 
 // Explicit inventory recording action -- posts exactly one Purchase and

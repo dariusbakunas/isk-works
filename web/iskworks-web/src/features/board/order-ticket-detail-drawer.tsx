@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 
-import type { CharacterRosterEntry } from "../../api/characters";
+import type { CharacterRosterEntry, IndustryJob } from "../../api/characters";
 import {
   deleteTicket,
   updateTicketMetadata,
@@ -13,6 +13,7 @@ import {
 import { Badge, ConfirmDialog, InlineAlert } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
+import { IndustryJobRow } from "../characters/character-industry-tab";
 import { apiMessage } from "../industry/shared/api-error";
 import { formatDuration } from "../industry/shared/formatting";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
@@ -47,6 +48,8 @@ export function OrderTicketDetailDrawer({
   onClose,
   onChanged,
   onOpenEpic,
+  jobs = [],
+  nowMs = Date.now(),
 }: {
   ticket: TicketSummary;
   /** The owning Epic's display name, when `ticket.orderId` is set and the
@@ -71,6 +74,10 @@ export function OrderTicketDetailDrawer({
    * navigation to `/orders/:id`. Omitted (or `ticket.orderId` null) hides
    * the Epic context section's click affordance. */
   onOpenEpic?: () => void;
+  /** The assignee's ESI jobs the Board matched to this ticket. */
+  jobs?: IndustryJob[];
+  /** The Board's clock, so job progress ticks with the cards. */
+  nowMs?: number;
 }) {
   const kindMeta = orderTicketKindMeta[ticket.kind];
   const statusMeta = orderTicketStatusMeta[ticket.status];
@@ -336,6 +343,17 @@ export function OrderTicketDetailDrawer({
               ×{(ticket.quantity ?? 0).toLocaleString()} units
               {snapshot ? ` from ${snapshot.runs.toLocaleString()} run${snapshot.runs === 1 ? "" : "s"}` : ""}
             </p>
+          </div>
+        ) : null}
+
+        {jobs.length > 0 ? (
+          <div className="space-y-1">
+            <SectionHeading>Industry jobs</SectionHeading>
+            <ul className="divide-y divide-border/70 border-y border-border/70">
+              {jobs.map((job) => (
+                <IndustryJobRow job={job} key={job.jobId} nowMs={nowMs} />
+              ))}
+            </ul>
           </div>
         ) : null}
 

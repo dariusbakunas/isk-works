@@ -1,13 +1,14 @@
 import { AlertCircle } from "lucide-react";
 
 import type { Ticket, TicketRecordingSummary, TicketSummary } from "../../api/industry";
-import { dotToneClasses, textToneClasses } from "../../components/primitives";
+import { dotToneClasses, textToneClasses, type Tone } from "../../components/primitives";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { MoneyAmount } from "../../components/money";
 import { CharacterName } from "../../observability/private";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
+import type { TicketJobSummary } from "./ticket-job-progress";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 // A small, secondary "how much of this has actually been recorded" readout
@@ -44,6 +45,45 @@ function RecordingIndicator({
   );
 }
 
+// A thin bar for the ESI job(s) matched to an In Progress production
+// ticket -- display only, it never moves the card between lanes.
+function JobProgressBar({
+  summary,
+  requestedRuns,
+  tone,
+}: {
+  summary: TicketJobSummary;
+  requestedRuns: number | null;
+  tone: Tone;
+}) {
+  const barTone: Tone = summary.state === "ready" ? "positive" : summary.state === "paused" ? "muted" : tone;
+  const jobs = `${summary.jobCount} ESI job${summary.jobCount === 1 ? "" : "s"}`;
+  const partial = requestedRuns !== null && summary.jobRuns < requestedRuns;
+  const runs = partial
+    ? ` · ${summary.jobRuns.toLocaleString()} of ${requestedRuns.toLocaleString()} runs started`
+    : "";
+  return (
+    <div className="mt-1 flex items-center gap-2" title={`${jobs}${runs} · ${summary.percent}%`}>
+      <div
+        aria-label={`Job progress ${summary.percent}%`}
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={summary.percent}
+        className="h-[2px] min-w-0 flex-1 overflow-hidden bg-border"
+        role="progressbar"
+      >
+        <div className={`h-full ${dotToneClasses[barTone]}`} style={{ width: `${summary.percent}%` }} />
+      </div>
+      <span
+        className={`shrink-0 font-mono text-[10px] tabular-nums ${summary.state === "ready" ? "text-positive" : "text-muted"}`}
+      >
+        {partial ? `${summary.jobRuns.toLocaleString()}/${requestedRuns.toLocaleString()} · ` : ""}
+        {summary.label}
+      </span>
+    </div>
+  );
+}
+
 // A ticket can join a new standalone Acquisition Run only while it's a
 // To Do, unbatched Acquisition ticket -- Manufacturing/Reaction tickets are
 // never batchable. There is no per-ticket "acquisition location" preview
@@ -60,6 +100,7 @@ export function isBatchableOrderTicket(ticket: Ticket): boolean {
 export function OrderTicketCard({
   ticket,
   assignee,
+  jobProgress = null,
   selectable = false,
   selected = false,
   active = false,
@@ -74,6 +115,9 @@ export function OrderTicketCard({
    * already-loaded character roster -- no per-card fetch. `null`/omitted
    * when unassigned or the assignee isn't resolvable. */
   assignee?: { characterName: string; eveCharacterId: number } | null;
+  /** The assignee's ESI job(s) matched to this ticket, summarized at the
+   * Board's current tick. `null` when nothing is matched. */
+  jobProgress?: TicketJobSummary | null;
   selectable?: boolean;
   selected?: boolean;
   /** The ticket the Board's inspector is showing. */
@@ -190,6 +234,13 @@ export function OrderTicketCard({
           {ticket.recording ? <RecordingIndicator isProduction={isProduction} recording={ticket.recording} /> : null}
         </div>
       )}
+      {!compact && jobProgress ? (
+        <JobProgressBar
+          requestedRuns={isProduction ? (ticket.recording?.requestedQuantity ?? null) : null}
+          summary={jobProgress}
+          tone={kindMeta.tone}
+        />
+      ) : null}
       {isBatched ? (
         <p className="mt-1 text-[10px] text-batch">Batched into an Acquisition Run</p>
       ) : blocked && firstBlocker ? (

@@ -173,6 +173,14 @@ describe("industryJobProgress (deterministic clock)", () => {
     expect(p.remainingLabel).toBe("Paused");
   });
 
+  test("a paused job's progress freezes at its pause date", () => {
+    const p = industryJobProgress(
+      job({ status: "paused", pauseDate: new Date(NOW - 2 * 3_600_000).toISOString() }),
+      NOW,
+    );
+    expect(p.percent).toBe(25);
+  });
+
   test("zero / invalid duration is defensive, not a divide-by-zero", () => {
     const sameInstant = new Date(NOW).toISOString();
     const p = industryJobProgress(job({ startDate: sameInstant, endDate: sameInstant }), NOW);

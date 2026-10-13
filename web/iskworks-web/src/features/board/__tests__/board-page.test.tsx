@@ -8,6 +8,7 @@ import { ApiError } from "../../../api/workspace";
 
 const industryApi = vi.hoisted(() => ({
   listTickets: vi.fn(),
+  listTicketJobProgress: vi.fn(),
   listAcquisitionRuns: vi.fn(),
   listOrders: vi.fn(),
   listPriceSources: vi.fn(),
@@ -199,8 +200,50 @@ describe("BoardPage", () => {
     );
     charactersApi.listCharacters.mockResolvedValue([]);
     industryApi.listTickets.mockResolvedValue([]);
+    industryApi.listTicketJobProgress.mockResolvedValue([]);
     industryApi.listAcquisitionRuns.mockResolvedValue([]);
     industryApi.listBuilds.mockResolvedValue([]);
+  });
+
+  it("draws a progress bar on an In Progress ticket matched to an ESI job", async () => {
+    industryApi.listTickets.mockResolvedValue([
+      ticketFixture({ id: "t1", displayId: "ISK-1077", status: "inProgress", kind: "reaction" }),
+      ticketFixture({ id: "t2", displayId: "ISK-1078", status: "inProgress", kind: "reaction" }),
+    ]);
+    const now = Date.now();
+    industryApi.listTicketJobProgress.mockResolvedValue([
+      {
+        ticketId: "t1",
+        jobs: [
+          {
+            jobId: 1,
+            activity: "reaction",
+            activityId: 9,
+            status: "active",
+            blueprintTypeId: 46_166,
+            blueprintName: null,
+            productTypeId: 16_670,
+            productName: null,
+            runs: 10,
+            facilityId: 1,
+            facilityName: null,
+            solarSystemName: null,
+            startDate: new Date(now - 3_600_000).toISOString(),
+            endDate: new Date(now + 3_600_000).toISOString(),
+          },
+        ],
+      },
+    ]);
+
+    renderPage();
+
+    const matched = (await screen.findByText("ISK-1077")).closest("[role=button]") as HTMLElement;
+    expect(await within(matched).findByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+    const unmatched = screen.getByText("ISK-1078").closest("[role=button]") as HTMLElement;
+    expect(within(unmatched).queryByRole("progressbar")).not.toBeInTheDocument();
+
+    await userEvent.click(matched);
+    expect(await screen.findByText("Industry jobs")).toBeInTheDocument();
   });
 
   it("renders the workflow lanes (To Do / In Progress / Complete) with tickets grouped by status", async () => {
