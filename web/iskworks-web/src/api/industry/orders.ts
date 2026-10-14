@@ -489,17 +489,16 @@ export function previewTicketPlan(buildId: string, runs?: number): Promise<Ticke
   return request(`/api/builds/${buildId}/ticket-preview${query}`);
 }
 
-// Organizational metadata only -- title, notes, Epic membership,
-// assignee. Every field is optional and independently three-valued on the
-// wire: omit it (JSON.stringify drops an `undefined` value) to leave it
-// untouched, pass `null` to clear `orderId`/`assigneeCharacterId`, or pass
-// a value to set it. Never touches status, recording, execution snapshot,
+// Organizational metadata only -- title, notes, assignee. Every field is
+// optional: omit it (JSON.stringify drops an `undefined` value) to leave it
+// untouched, pass `null` to clear `assigneeCharacterId`, or pass a value to
+// set it. A ticket's Epic is fixed when it's created; the server refuses an
+// `orderId` here. Never touches status, recording, execution snapshot,
 // source Build, requirement fulfillments, or AcquisitionRun membership --
 // see `PATCH /api/tickets/:id`'s own doc.
 export interface UpdateTicketMetadataInput {
   capturedName?: string;
   notes?: string;
-  orderId?: string | null;
   assigneeCharacterId?: string | null;
 }
 

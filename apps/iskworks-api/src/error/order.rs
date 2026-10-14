@@ -18,6 +18,7 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         ),
         OrderError::InvalidQuantity => (StatusCode::BAD_REQUEST, "invalid_quantity", false),
         OrderError::InvalidTicketTitle => (StatusCode::BAD_REQUEST, "invalid_ticket_title", false),
+        OrderError::TicketEpicFixed => (StatusCode::BAD_REQUEST, "ticket_epic_fixed", false),
         OrderError::TicketKindDoesNotMatchBuildRecipe => (
             StatusCode::BAD_REQUEST,
             "ticket_kind_does_not_match_build_recipe",

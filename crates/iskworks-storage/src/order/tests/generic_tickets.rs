@@ -81,9 +81,7 @@ async fn generic_ticket_with_epic_and_assignee_persists_both(pool: PgPool) {
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
-async fn clearing_epic_and_assignee_via_metadata_update_leaves_everything_else_unchanged(
-    pool: PgPool,
-) {
+async fn clearing_the_assignee_via_metadata_update_leaves_everything_else_unchanged(pool: PgPool) {
     let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
     let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
     let repository = PgOrderRepository::new(pool.clone());
@@ -112,14 +110,13 @@ async fn clearing_epic_and_assignee_via_metadata_update_leaves_everything_else_u
             TicketMetadataUpdate {
                 captured_name: None,
                 notes: None,
-                order_id: Some(None),
                 assignee_character_id: Some(None),
             },
         )
         .await
         .unwrap();
 
-    assert_eq!(cleared.order_id, None);
+    assert_eq!(cleared.order_id, Some(order.id), "the Epic never changes");
     assert_eq!(cleared.assignee_character_id, None);
     // Everything else survives untouched -- the Ticket itself, not merely
     // the relationships.
@@ -127,90 +124,6 @@ async fn clearing_epic_and_assignee_via_metadata_update_leaves_everything_else_u
     assert_eq!(cleared.captured_name, "Move blueprints");
     assert_eq!(cleared.status, ticket.status);
     assert_eq!(cleared.kind, TicketKind::Generic);
-}
-
-#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
-#[sqlx::test(migrations = "../../migrations")]
-async fn moving_a_ticket_between_epics_via_metadata_update_touches_nothing_else(pool: PgPool) {
-    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
-    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
-    let repository = PgOrderRepository::new(pool.clone());
-
-    let snapshot_a = empty_price_snapshot();
-    let order_a = draft_order(workspace_id, owner_id, build_id, snapshot_a.id);
-    let (order_a, _) = repository
-        .create_order(NewOrder {
-            order: order_a,
-            price_snapshot: snapshot_a,
-            requirements: vec![],
-        })
-        .await
-        .unwrap();
-    let snapshot_b = empty_price_snapshot();
-    let order_b = draft_order(workspace_id, owner_id, build_id, snapshot_b.id);
-    let (order_b, _) = repository
-        .create_order(NewOrder {
-            order: order_b,
-            price_snapshot: snapshot_b,
-            requirements: vec![],
-        })
-        .await
-        .unwrap();
-
-    let mut new_ticket = generic_ticket(workspace_id, owner_id, "Move blueprints");
-    new_ticket.order_id = Some(order_a.id);
-    let (ticket, _) = repository.create_ticket(new_ticket).await.unwrap();
-    let status_before = ticket.status;
-    let updated_at_before = ticket.updated_at;
-
-    let moved = repository
-        .update_ticket_metadata(
-            workspace_id,
-            ticket.id,
-            TicketMetadataUpdate {
-                captured_name: None,
-                notes: None,
-                order_id: Some(Some(order_b.id)),
-                assignee_character_id: None,
-            },
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(moved.order_id, Some(order_b.id));
-    assert_eq!(
-        moved.status, status_before,
-        "moving Epics never changes status"
-    );
-    assert_eq!(
-        moved.source_build_id, None,
-        "Generic never gains a source_build_id"
-    );
-    assert!(moved.updated_at >= updated_at_before);
-
-    // No new fulfillment/prerequisite/allocation of any kind was created by
-    // the move.
-    let fulfillment_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM order_requirement_fulfillments")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(fulfillment_count, 0);
-    assert!(allocation_snapshot(&pool).await.is_empty());
-
-    let epic_a_tickets = repository
-        .list_tickets_for_order(workspace_id, order_a.id)
-        .await
-        .unwrap();
-    assert!(epic_a_tickets.is_empty());
-    let epic_b_tickets = repository
-        .list_tickets_for_order(workspace_id, order_b.id)
-        .await
-        .unwrap();
-    assert_eq!(
-        epic_b_tickets.iter().map(|t| t.id).collect::<Vec<_>>(),
-        vec![ticket.id]
-    );
 }
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
@@ -233,7 +146,6 @@ async fn reassigning_a_ticket_via_metadata_update_touches_nothing_else(pool: PgP
             TicketMetadataUpdate {
                 captured_name: None,
                 notes: None,
-                order_id: None,
                 assignee_character_id: Some(Some(character_b)),
             },
         )

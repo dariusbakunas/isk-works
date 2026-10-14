@@ -246,69 +246,30 @@ describe("OrderTicketDetailDrawer", () => {
 describe("OrderTicketDetailDrawer Epic context and editing", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  const orders = [
-    { id: "order-1", displayName: "Weekend Ishtar Production" } as never,
-    { id: "order-2", displayName: "Weekday Rifter Run" } as never,
-  ];
-
-  it("shows the Epic dropdown with the current Epic selected, and Open switches to it", async () => {
+  it("shows the ticket's Epic read-only -- it can't be changed -- and Open switches to it", async () => {
     const onOpenEpic = vi.fn();
     render(
       <OrderTicketDetailDrawer
         epicName="Weekend Ishtar Production"
         onClose={() => {}}
         onOpenEpic={onOpenEpic}
-        orders={orders}
         ticket={ticketFixture({ orderId: "order-1" })}
       />,
     );
 
-    expect(screen.getByLabelText("Epic")).toHaveValue("order-1");
+    expect(screen.getByText("Weekend Ishtar Production")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Epic" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
 
     expect(onOpenEpic).toHaveBeenCalled();
   });
 
-  it("omits the Epic control entirely when no Epic list is supplied", () => {
-    render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture({ orderId: "order-1" })} />);
+  it("a standalone ticket reads No Epic, with no Open button", () => {
+    render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture({ orderId: null })} />);
 
-    expect(screen.queryByLabelText("Epic")).not.toBeInTheDocument();
-  });
-
-  it("changing the Epic dropdown patches metadata only -- no Open button for a standalone ticket", async () => {
-    industryApi.updateTicketMetadata.mockResolvedValue({});
-    const onChanged = vi.fn();
-    render(
-      <OrderTicketDetailDrawer
-        onChanged={onChanged}
-        onClose={() => {}}
-        orders={orders}
-        ticket={ticketFixture({ orderId: null })}
-      />,
-    );
-
-    expect(screen.getByLabelText("Epic")).toHaveValue("");
+    expect(screen.getByText("No Epic")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Epic" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open" })).not.toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText("Epic"), "order-2");
-
-    await waitFor(() =>
-      expect(industryApi.updateTicketMetadata).toHaveBeenCalledWith("ticket-1", { orderId: "order-2" }),
-    );
-    expect(onChanged).toHaveBeenCalled();
-  });
-
-  it("clearing the Epic dropdown sends an explicit null, not an omitted field", async () => {
-    industryApi.updateTicketMetadata.mockResolvedValue({});
-    render(
-      <OrderTicketDetailDrawer onClose={() => {}} orders={orders} ticket={ticketFixture({ orderId: "order-1" })} />,
-    );
-
-    await userEvent.selectOptions(screen.getByLabelText("Epic"), "");
-
-    await waitFor(() =>
-      expect(industryApi.updateTicketMetadata).toHaveBeenCalledWith("ticket-1", { orderId: null }),
-    );
   });
 
   it("shows the Assignee dropdown and reassigning patches metadata only", async () => {
