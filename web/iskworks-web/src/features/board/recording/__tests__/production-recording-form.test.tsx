@@ -192,6 +192,74 @@ describe("ProductionRecordingForm — snapshot-based defaults", () => {
     expect(installInput()).toHaveValue("1,000");
   });
 
+  it("prefills the installation cost from the linked ESI jobs' actual cost", async () => {
+    const linkedJob = (jobId: number, runs: number, cost: string | null) => ({
+      jobId,
+      activity: "manufacturing" as const,
+      activityId: 1,
+      status: "delivered",
+      blueprintTypeId: 1000,
+      blueprintName: null,
+      productTypeId: 20185,
+      productName: null,
+      runs,
+      facilityId: 1,
+      facilityName: null,
+      solarSystemName: null,
+      startDate: "2026-10-13T00:00:00Z",
+      endDate: "2026-10-13T10:00:00Z",
+      cost,
+    });
+    render(
+      <ProductionRecordingForm
+        jobs={[linkedJob(1, 60, "1234.5600"), linkedJob(2, 40, "823.0400")]}
+        onCancel={() => {}}
+        onRecorded={() => {}}
+        ticket={ticket()}
+      />,
+    );
+
+    // 2,057.60 ISK over 100 runs, recording all 100.
+    expect(installInput()).toHaveValue("2,057.6");
+    expect(screen.getByTestId("install-cost-source")).toHaveTextContent("From 2 ESI jobs");
+
+    // Recording 40 runs takes 40 runs' share.
+    await userEvent.clear(runsInput());
+    await userEvent.type(runsInput(), "40");
+    expect(installInput()).toHaveValue("823.04");
+  });
+
+  it("falls back to the planned estimate unless every linked job reports its cost", () => {
+    render(
+      <ProductionRecordingForm
+        jobs={[
+          {
+            jobId: 1,
+            activity: "manufacturing",
+            activityId: 1,
+            status: "active",
+            blueprintTypeId: 1000,
+            blueprintName: null,
+            productTypeId: 20185,
+            productName: null,
+            runs: 100,
+            facilityId: 1,
+            facilityName: null,
+            solarSystemName: null,
+            startDate: "2026-10-13T00:00:00Z",
+            endDate: "2026-10-13T10:00:00Z",
+            cost: null,
+          },
+        ]}
+        onCancel={() => {}}
+        onRecorded={() => {}}
+        ticket={ticket()}
+      />,
+    );
+    expect(installInput()).toHaveValue("1,000");
+    expect(screen.getByTestId("install-cost-source")).toHaveTextContent("Planned estimate");
+  });
+
   it("rescales untouched defaults when runs change (output / material / installation)", async () => {
     render(<ProductionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
 

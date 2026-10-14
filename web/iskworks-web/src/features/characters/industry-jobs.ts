@@ -125,8 +125,10 @@ export function industryJobProgress(job: IndustryJob, nowMs: number): JobProgres
   const start = job.startDate ? Date.parse(job.startDate) : Number.NaN;
   const end = job.endDate ? Date.parse(job.endDate) : Number.NaN;
   const paused = job.status === "paused";
+  // A Board ticket's linked job keeps its last state after leaving ESI.
+  const delivered = job.status === "delivered";
   const timerDone = Number.isFinite(end) && nowMs >= end;
-  const ready = job.status === "ready" || (!paused && timerDone);
+  const ready = delivered || job.status === "ready" || (!paused && timerDone);
 
   // A paused job's progress stops at its pause instant.
   const pausedAt = paused && job.pauseDate ? Date.parse(job.pauseDate) : Number.NaN;
@@ -142,7 +144,13 @@ export function industryJobProgress(job: IndustryJob, nowMs: number): JobProgres
 
   const remainingMs = Number.isFinite(end) ? Math.max(0, end - nowMs) : 0;
   const state: JobProgressState = paused ? "paused" : ready ? "ready" : "running";
-  const remainingLabel = paused ? "Paused" : ready ? "Ready" : formatJobRemaining(remainingMs);
+  const remainingLabel = paused
+    ? "Paused"
+    : delivered
+      ? "Delivered"
+      : ready
+        ? "Ready"
+        : formatJobRemaining(remainingMs);
 
   return { percent: Math.round(fraction * 100), fraction, remainingMs, remainingLabel, state };
 }

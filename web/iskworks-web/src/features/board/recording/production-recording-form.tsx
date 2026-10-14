@@ -10,6 +10,8 @@ import {
   type RecordProductionBody,
   type TicketSummary,
 } from "../../../api/industry";
+import type { IndustryJob } from "../../../api/characters";
+import { formatIskSummary } from "../../../components/money";
 import { MoneyInput } from "../../../components/money-input/money-input";
 import type { MoneyInputResult } from "../../../components/money-input/parse-money-input";
 import { parseMoneyInput } from "../../../components/money-input/parse-money-input";
@@ -34,12 +36,26 @@ function isNonNegativeInteger(value: string): boolean {
 // snapshot is what was planned, the form is the actual execution being
 // recorded. Posts exactly one explicit `record-production`; never a
 // workflow-status write, never `/complete`.
+/** The linked jobs' actual installation cost per run, or `null` unless
+ * every linked job reports its cost. */
+function actualInstallPerRun(jobs: IndustryJob[]): { perRun: number; total: number; runs: number } | null {
+  if (jobs.length === 0 || jobs.some((job) => job.cost == null || job.runs <= 0)) return null;
+  const total = jobs.reduce((sum, job) => sum + Number(job.cost), 0);
+  const runs = jobs.reduce((sum, job) => sum + job.runs, 0);
+  if (!Number.isFinite(total) || runs <= 0) return null;
+  return { perRun: total / runs, total, runs };
+}
+
 export function ProductionRecordingForm({
   ticket,
+  jobs = [],
   onCancel,
   onRecorded,
 }: {
   ticket: TicketSummary;
+  /** ESI jobs linked to this ticket; their actual installation cost seeds
+   * the form instead of the plan's estimate. */
+  jobs?: IndustryJob[];
   onCancel: () => void;
   onRecorded: () => void;
 }) {
@@ -76,7 +92,11 @@ export function ProductionRecordingForm({
     if (plannedRuns <= 0) return String(requiredQuantity);
     return String(Math.ceil((requiredQuantity * runs) / plannedRuns));
   };
+  const actualInstall = actualInstallPerRun(jobs);
   const defaultInstall = (runs: number): string => {
+    // What EVE actually charged, scaled to the runs being recorded --
+    // exact when recording all the linked jobs' runs.
+    if (actualInstall) return (actualInstall.perRun * runs).toFixed(2);
     if (!plannedInstallTotal || plannedRuns <= 0) return "0";
     const scaled = (Number(plannedInstallTotal) * runs) / plannedRuns;
     if (!Number.isFinite(scaled)) return "0";
@@ -346,6 +366,11 @@ export function ProductionRecordingForm({
           onValueChange={setInstallCostResult}
           value={installCost}
         />
+        <span className="mt-0.5 block text-[10px] font-normal" data-testid="install-cost-source">
+          {actualInstall
+            ? `From ${jobs.length} ESI job${jobs.length === 1 ? "" : "s"}: ${formatIskSummary(String(actualInstall.total))} for ${actualInstall.runs.toLocaleString()} runs`
+            : "Planned estimate — no ESI job cost linked to this ticket"}
+        </span>
       </label>
 
       <label className="block text-xs font-medium text-muted">

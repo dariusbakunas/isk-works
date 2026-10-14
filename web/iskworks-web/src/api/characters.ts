@@ -109,6 +109,8 @@ export interface IndustryJob {
   endDate: string | null;
   // Set while paused (e.g. structure offline); progress freezes here.
   pauseDate?: string | null;
+  // What installing the job cost (installation fee plus facility tax).
+  cost?: string | null;
 }
 
 export interface CharacterDetail extends CharacterRosterEntry {

@@ -70,3 +70,15 @@ describe("summarizeTicketJobs", () => {
     expect(summary?.label).toBe("Paused");
   });
 });
+
+describe("summarizeTicketJobs with delivered jobs", () => {
+  test("delivered jobs count as done; all delivered reads Delivered", () => {
+    const delivered = job({ jobId: 1, status: "delivered", endDate: new Date(NOW - HOUR).toISOString() });
+    const ready = job({ jobId: 2, endDate: new Date(NOW - HOUR).toISOString() });
+    expect(summarizeTicketJobs([delivered, ready], NOW)?.label).toBe("Ready");
+    const all = summarizeTicketJobs([delivered, { ...delivered, jobId: 3 }], NOW);
+    expect(all?.label).toBe("Delivered");
+    expect(all?.percent).toBe(100);
+    expect(all?.state).toBe("ready");
+  });
+});
