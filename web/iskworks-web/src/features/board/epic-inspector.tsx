@@ -145,6 +145,8 @@ export function EpicInspector({
 
   const needsActionItems = needsActionRows(detail?.requirements ?? []);
   const needsActionRequirementIds = needsActionItems.flatMap((row) => row.requirementIds);
+  const unblockedItems = needsActionItems.filter((row) => row.waitsOn.length === 0);
+  const blockedCount = needsActionItems.length - unblockedItems.length;
 
   async function reserveInventory() {
     setReserveResult(null);
@@ -218,9 +220,9 @@ export function EpicInspector({
     }
   }
 
-  async function createAllTickets(requirementIds: string[]) {
+  async function createAllTickets(busyId: string, requirementIds: string[]) {
     setRowError("");
-    setRowBusyId("__bulk__");
+    setRowBusyId(busyId);
     try {
       await bulkCreateTickets(order.id, requirementIds);
       loadDetail();
@@ -348,14 +350,31 @@ export function EpicInspector({
         {needsActionItems.length > 0 ? (
           <div className="space-y-1.5">
             <SectionHeading>Needs Action</SectionHeading>
+            {blockedCount > 0 ? (
+              <p className="text-[10px] text-muted">
+                {unblockedItems.length} can start now · {blockedCount} blocked
+              </p>
+            ) : null}
             {needsActionItems.length > 1 ? (
               <button
                 className="iw-button-secondary w-full"
                 disabled={rowBusyId !== null}
-                onClick={() => void createAllTickets(needsActionRequirementIds)}
+                onClick={() => void createAllTickets("__bulk__", needsActionRequirementIds)}
                 type="button"
               >
                 {rowBusyId === "__bulk__" ? "Creating…" : `Create ${needsActionItems.length} tickets`}
+              </button>
+            ) : null}
+            {blockedCount > 0 && unblockedItems.length > 0 ? (
+              <button
+                className="iw-button-secondary w-full"
+                disabled={rowBusyId !== null}
+                onClick={() =>
+                  void createAllTickets("__unblocked__", unblockedItems.flatMap((row) => row.requirementIds))}
+                title="Create tickets only for work whose inputs are already covered"
+                type="button"
+              >
+                {rowBusyId === "__unblocked__" ? "Creating…" : `Create ${unblockedItems.length} unblocked`}
               </button>
             ) : null}
             <div className="space-y-1">
@@ -364,12 +383,25 @@ export function EpicInspector({
                 return (
                   <div
                     className="flex items-center gap-1.5 rounded-[2px] border border-border bg-panel px-2 py-1.5 text-[11px]"
+                    data-needs-action-row=""
                     key={row.key}
                   >
                     <Badge square tone={kindMeta.tone}>
                       {kindMeta.label}
                     </Badge>
-                    <span className="min-w-0 flex-1 truncate text-foreground">{row.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-foreground">{row.name}</span>
+                      {row.waitsOn.length > 0 ? (
+                        <span className="block truncate text-[10px] text-muted" title={row.waitsOn.join(", ")}>
+                          Waits on {row.waitsOn.join(", ")}
+                        </span>
+                      ) : null}
+                    </span>
+                    {row.waitsOn.length > 0 ? (
+                      <Badge square tone="warning">
+                        Blocked
+                      </Badge>
+                    ) : null}
                     <button
                       className="iw-button-secondary shrink-0 px-1.5 py-0.5 text-[10px]"
                       disabled={rowBusyId !== null}
@@ -428,6 +460,10 @@ interface NeedsActionRow {
   name: string;
   /** The requirements its one ticket will serve. */
   requirementIds: string[];
+  /** For a production step: its own inputs not yet covered (by stock or a
+   * complete ticket), so its ticket would start blocked. Empty for a
+   * purchase, which never has prerequisites. */
+  waitsOn: string[];
 }
 
 /** Requirements still needing a ticket, one row per item -- as the Plan
@@ -449,12 +485,25 @@ function needsActionRows(requirements: OrderDetail["requirements"]): NeedsAction
         kind: requirement.kind,
         name: requirement.capturedName,
         requirementIds: [requirement.id],
+        waitsOn: step ? unmetInputs(requirements, step) : [],
       });
     } else if (!step) {
       row.requirementIds.push(requirement.id);
     }
   }
   return [...rows.values()];
+}
+
+/** The names of a step's own inputs (requirements of that operation) not
+ * yet covered by stock or completed work -- the same rule the server's
+ * ticket blockers use, so a ticket created now would start blocked on
+ * exactly these. */
+function unmetInputs(requirements: OrderDetail["requirements"], step: string): string[] {
+  const names = requirements
+    .filter((requirement) => requirement.operationOccurrenceKey === step)
+    .filter((requirement) => requirement.state !== "satisfied" && requirement.state !== "inventorySatisfied")
+    .map((requirement) => requirement.capturedName);
+  return [...new Set(names)];
 }
 
 /** How many of the items the Epic planned to take from stock it holds

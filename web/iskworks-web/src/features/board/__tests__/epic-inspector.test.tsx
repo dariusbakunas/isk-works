@@ -252,6 +252,93 @@ describe("EpicInspector", () => {
     );
   });
 
+  // Silicon Diborite's reaction still waits on its own Hydrocarbons purchase;
+  // Ferrogel's inputs are all covered, so its ticket could start right now.
+  function blockedStepFixture() {
+    return orderDetailFixture({
+      requirements: [
+        requirementFixture({
+          id: "req-sd",
+          typeId: 16_643,
+          capturedName: "Silicon Diborite",
+          kind: "react",
+          state: "needsAction",
+          operationOccurrenceKey: "manufacturing:root",
+          childOccurrenceKey: "reaction:sd",
+        }),
+        requirementFixture({
+          id: "req-hydro",
+          typeId: 16_633,
+          capturedName: "Hydrocarbons",
+          state: "needsAction",
+          operationOccurrenceKey: "reaction:sd",
+        }),
+        requirementFixture({
+          id: "req-ferrogel",
+          typeId: 16_683,
+          capturedName: "Ferrogel",
+          kind: "react",
+          state: "needsAction",
+          operationOccurrenceKey: "manufacturing:root",
+          childOccurrenceKey: "reaction:ferrogel",
+        }),
+        requirementFixture({
+          id: "req-ferrogel-input",
+          typeId: 16_640,
+          capturedName: "Hafnium",
+          state: "inventorySatisfied",
+          freshQuantity: 0,
+          operationOccurrenceKey: "reaction:ferrogel",
+        }),
+      ],
+    });
+  }
+
+  it("marks a step whose own inputs are still unmet as blocked", async () => {
+    industryApi.getOrder.mockResolvedValue(blockedStepFixture());
+    renderInspector();
+
+    await screen.findByText("Needs Action");
+    expect(screen.getByText("2 can start now · 1 blocked")).toBeInTheDocument();
+    const blockedRow = screen.getByText("Silicon Diborite").closest("[data-needs-action-row]") as HTMLElement;
+    expect(within(blockedRow).getByText("Blocked")).toBeInTheDocument();
+    expect(within(blockedRow).getByText("Waits on Hydrocarbons")).toBeInTheDocument();
+    for (const name of ["Ferrogel", "Hydrocarbons"]) {
+      const row = screen.getByText(name).closest("[data-needs-action-row]") as HTMLElement;
+      expect(within(row).queryByText("Blocked")).not.toBeInTheDocument();
+    }
+  });
+
+  it("creates only the tickets that can start right now", async () => {
+    industryApi.getOrder.mockResolvedValue(blockedStepFixture());
+    industryApi.bulkCreateTickets.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderInspector();
+
+    expect(await screen.findByRole("button", { name: "Create 3 tickets" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create 2 unblocked" }));
+
+    await waitFor(() =>
+      expect(industryApi.bulkCreateTickets).toHaveBeenCalledWith("order-1", ["req-hydro", "req-ferrogel"]),
+    );
+  });
+
+  it("offers no separate unblocked action when nothing is blocked", async () => {
+    industryApi.getOrder.mockResolvedValue(
+      orderDetailFixture({
+        requirements: [
+          requirementFixture({ id: "req-1", state: "needsAction" }),
+          requirementFixture({ id: "req-2", typeId: 35, capturedName: "Pyerite", state: "needsAction" }),
+        ],
+      }),
+    );
+    renderInspector();
+
+    expect(await screen.findByRole("button", { name: "Create 2 tickets" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /unblocked/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/blocked/)).not.toBeInTheDocument();
+  });
+
   it("a bought item's row creates one purchase for all of its uses", async () => {
     industryApi.getOrder.mockResolvedValue(
       orderDetailFixture({
