@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import type { IndustryJob } from "../../../api/characters";
 import type { TicketSummary } from "../../../api/industry";
 import { AcquisitionRecordingForm } from "./acquisition-recording-form";
 import { ProductionRecordingForm } from "./production-recording-form";
@@ -10,10 +11,13 @@ import { recordingTerms } from "./recording-meta";
 // records anything.
 export function RecordOutcomeDialog({
   ticket,
+  jobs,
   onClose,
   onRecorded,
 }: {
   ticket: TicketSummary;
+  /** ESI jobs linked to the ticket, for its actual installation cost. */
+  jobs?: IndustryJob[];
   onClose: () => void;
   onRecorded: () => void;
 }) {
@@ -44,7 +48,7 @@ export function RecordOutcomeDialog({
           </p>
         </div>
         {isProduction ? (
-          <ProductionRecordingForm onCancel={onClose} onRecorded={onRecorded} ticket={ticket} />
+          <ProductionRecordingForm jobs={jobs} onCancel={onClose} onRecorded={onRecorded} ticket={ticket} />
         ) : (
           <AcquisitionRecordingForm onCancel={onClose} onRecorded={onRecorded} ticket={ticket} />
         )}

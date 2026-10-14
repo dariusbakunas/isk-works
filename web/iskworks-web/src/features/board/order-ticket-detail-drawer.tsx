@@ -505,6 +505,7 @@ export function OrderTicketDetailDrawer({
 
       {recordOpen ? (
         <RecordOutcomeDialog
+          jobs={jobs}
           onClose={() => setRecordOpen(false)}
           onRecorded={() => {
             setRecordOpen(false);

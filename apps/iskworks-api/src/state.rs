@@ -9,7 +9,7 @@
 use std::env;
 use std::sync::Arc;
 
-use iskworks_core::order::{OrderError, OrderRepository};
+use iskworks_core::order::{OrderError, OrderRepository, TicketJobRepository};
 use iskworks_core::{
     AdjustedPriceRepository, BuildPlanningService, ComponentExpansionService, FacilityError,
     FinanceError, IndustryError, IndustryRepository, IndustryService, InventoryError,
@@ -26,7 +26,7 @@ use iskworks_app::{
     CalendarService, CharacterRosterService, CharacterSyncService,
     DescendantProductionConfigurationCoordinator, EsiApplicationError, EsiApplicationService,
     ExecutionPlanCoordinator, OrderPlanCoordinator, PlanetaryCharacterSource, PlanetaryService,
-    PublicMarketService,
+    PublicMarketService, TicketJobService,
 };
 
 use crate::error::ApiError;
@@ -44,6 +44,7 @@ pub struct AppState {
     esi_repository: Option<Arc<iskworks_storage::PgEsiRepository>>,
     pub(crate) esi_service: Option<Arc<EsiApplicationService>>,
     character_sync_service: Option<Arc<CharacterSyncService>>,
+    ticket_job_repository: Option<Arc<dyn TicketJobRepository>>,
     character_roster_service: Option<Arc<CharacterRosterService>>,
     calendar_service: Option<Arc<CalendarService>>,
     planetary_characters: Option<Arc<dyn PlanetaryCharacterSource>>,
@@ -79,6 +80,7 @@ impl AppState {
             esi_repository: None,
             esi_service: None,
             character_sync_service: None,
+            ticket_job_repository: None,
             character_roster_service: None,
             calendar_service: None,
             planetary_characters: None,
@@ -163,6 +165,12 @@ impl AppState {
     #[must_use]
     pub fn with_order_repository(mut self, repository: Arc<dyn OrderRepository>) -> Self {
         self.order_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_ticket_job_repository(mut self, repository: Arc<dyn TicketJobRepository>) -> Self {
+        self.ticket_job_repository = Some(repository);
         self
     }
 
@@ -584,10 +592,31 @@ impl AppState {
         self.esi_service.clone().ok_or_else(esi_not_configured)
     }
 
+    /// Character sync, linking Board tickets to industry jobs after each
+    /// jobs refresh whenever ticket links are available.
     pub(crate) fn character_sync_service(&self) -> Result<Arc<CharacterSyncService>, ApiError> {
-        self.character_sync_service
+        let service = self
+            .character_sync_service
             .clone()
-            .ok_or_else(esi_not_configured)
+            .ok_or_else(esi_not_configured)?;
+        Ok(match self.ticket_job_service() {
+            Ok(ticket_jobs) => Arc::new(
+                (*service)
+                    .clone()
+                    .with_industry_jobs_synced(Arc::new(ticket_jobs)),
+            ),
+            Err(_) => service,
+        })
+    }
+
+    /// Ticket <-> ESI industry job links; needs ESI persistence.
+    pub(crate) fn ticket_job_service(&self) -> Result<TicketJobService, ApiError> {
+        let links = self.ticket_job_repository.clone().ok_or_else(|| {
+            ApiError::Inventory(InventoryError::Persistence(
+                "Ticket job persistence is unavailable.".to_string(),
+            ))
+        })?;
+        Ok(TicketJobService::new(self.esi_repository()?, links))
     }
 
     pub(crate) fn character_roster_service(&self) -> Result<Arc<CharacterRosterService>, ApiError> {

@@ -367,6 +367,7 @@ pub struct CharacterSyncService {
     transport: Arc<dyn EsiTransport>,
     token_provider: Arc<dyn AccessTokenProvider>,
     esi_sync: Arc<dyn EsiSyncDispatcher>,
+    jobs_synced: Option<Arc<dyn crate::IndustryJobsSynced>>,
 }
 
 impl CharacterSyncService {
@@ -387,7 +388,16 @@ impl CharacterSyncService {
             transport,
             token_provider,
             esi_sync,
+            jobs_synced: None,
         }
+    }
+
+    /// Told after each successful `industry_jobs` refresh, e.g. to link
+    /// Board tickets to new jobs.
+    #[must_use]
+    pub fn with_industry_jobs_synced(mut self, hook: Arc<dyn crate::IndustryJobsSynced>) -> Self {
+        self.jobs_synced = Some(hook);
+        self
     }
 
     /// Attempts every due `CharacterSourceKind` for one connection. Never
@@ -594,6 +604,11 @@ impl CharacterSyncService {
             }
             None => CharacterSyncOutcome::Skipped,
         };
+        if outcome == CharacterSyncOutcome::Succeeded {
+            if let Some(hook) = &self.jobs_synced {
+                hook.industry_jobs_synced(connection.workspace_id).await;
+            }
+        }
         outcomes.push((CharacterSourceKind::IndustryJobs, outcome));
 
         if cancel.is_cancelled() {

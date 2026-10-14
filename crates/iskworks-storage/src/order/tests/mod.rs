@@ -336,7 +336,36 @@ mod reserved_quantity;
 mod set_ticket_status;
 mod status_todo_migration;
 mod ticket_inventory_neutrality;
+mod ticket_jobs;
 mod ticket_lifecycle;
+
+/// A minimal connected-character row (`eve_connections`) -- the canonical
+/// internal identity `tickets.assignee_character_id` references.
+async fn fixture_character(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    owner_id: OwnerId,
+    name: &str,
+) -> ConnectedCharacterId {
+    let id = ConnectedCharacterId::new();
+    let now = crate::db_now();
+    sqlx::query(
+        r#"INSERT INTO eve_connections (
+             id, workspace_id, owner_id, eve_character_id, character_name,
+             status, granted_scopes, connected_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, 'connected', '{}', $6, $6)"#,
+    )
+    .bind(id.0)
+    .bind(workspace_id.0)
+    .bind(owner_id.0)
+    .bind((id.0.as_u128() % 1_000_000_000) as i64 + 1)
+    .bind(name)
+    .bind(now)
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
 
 // ---------------------------------------------------------------------------
 // Order and requirement helpers

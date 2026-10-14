@@ -703,3 +703,50 @@ async fn list_and_detail_assemble_a_registered_connections_sources(pool: sqlx::P
     assert_eq!(detail.entry.manufacturing_active_jobs, Some(1));
     assert_eq!(detail.entry.research_active_jobs, Some(1));
 }
+
+#[test]
+fn parse_industry_jobs_reads_the_installation_cost() {
+    let now = Utc::now();
+    let mut as_string = job(
+        20,
+        1,
+        "active",
+        12_004,
+        Some(12_005),
+        1,
+        1,
+        chrono::Duration::hours(1),
+        now,
+    );
+    as_string["cost"] = json!("52284454.0");
+    let mut as_number = job(
+        21,
+        1,
+        "active",
+        12_004,
+        Some(12_005),
+        1,
+        1,
+        chrono::Duration::hours(2),
+        now,
+    );
+    as_number["cost"] = json!(1250.5);
+    let without = job(
+        22,
+        1,
+        "active",
+        12_004,
+        Some(12_005),
+        1,
+        1,
+        chrono::Duration::hours(3),
+        now,
+    );
+    let summary = json!({ "jobs": [as_string, as_number, without] });
+
+    let jobs = parse_industry_jobs(Some(&summary), &HashMap::new(), &HashMap::new());
+
+    assert_eq!(jobs[0].cost, Money::parse("52284454").ok());
+    assert_eq!(jobs[1].cost, Money::parse("1250.5").ok());
+    assert_eq!(jobs[2].cost, None);
+}

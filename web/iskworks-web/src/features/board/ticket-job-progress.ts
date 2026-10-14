@@ -4,7 +4,7 @@ import { formatJobRemaining, industryJobProgress, type JobProgressState } from "
 export interface TicketJobSummary {
   /** 0-100, runs-weighted across the matched jobs. */
   percent: number;
-  /** "Ready" once every job is done, "Paused" if any is, else time until the last one finishes. */
+  /** "Delivered" once every job is, "Ready" once every job is done, "Paused" if any is, else time until the last one finishes. */
   label: string;
   state: JobProgressState;
   jobCount: number;
@@ -30,6 +30,14 @@ export function summarizeTicketJobs(jobs: IndustryJob[], nowMs: number): TicketJ
       ? "ready"
       : "running";
   const remainingMs = Math.max(...progresses.map(({ progress }) => progress.remainingMs));
-  const label = state === "paused" ? "Paused" : state === "ready" ? "Ready" : formatJobRemaining(remainingMs);
+  const allDelivered = jobs.every((job) => job.status === "delivered");
+  const label =
+    state === "paused"
+      ? "Paused"
+      : allDelivered
+        ? "Delivered"
+        : state === "ready"
+          ? "Ready"
+          : formatJobRemaining(remainingMs);
   return { percent: Math.round(fraction * 100), label, state, jobCount: jobs.length, jobRuns };
 }

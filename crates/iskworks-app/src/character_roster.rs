@@ -2,10 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use iskworks_core::order::ObservedIndustryJob;
 use iskworks_core::{
     character_health, industry_job_slot_max, CharacterHealth, CharacterSourceKind,
     CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId, ConnectionStatus,
-    IndustryActivity, IndustrySlotBucket, InventoryError, MarketRefreshState, WorkspaceId,
+    IndustryActivity, IndustrySlotBucket, InventoryError, MarketRefreshState, Money, WorkspaceId,
     ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
     ADVANCED_MASS_REACTIONS_SKILL_ID, LABORATORY_OPERATION_SKILL_ID, MASS_PRODUCTION_SKILL_ID,
     MASS_REACTIONS_SKILL_ID,
@@ -114,6 +115,53 @@ pub struct IndustryJobDto {
     /// Set while the job is paused (e.g. its structure went offline);
     /// progress freezes at this instant.
     pub pause_date: Option<DateTime<Utc>>,
+    /// What installing the job cost (installation fee plus facility tax).
+    pub cost: Option<Money>,
+}
+
+impl IndustryJobDto {
+    /// A stored or observed job, names unresolved (see
+    /// `CharacterRosterService::label_industry_jobs`).
+    #[must_use]
+    pub fn from_observed(job: &ObservedIndustryJob) -> Self {
+        Self {
+            job_id: job.job_id,
+            activity: job.activity(),
+            activity_id: job.activity_id,
+            status: job.status.clone(),
+            blueprint_type_id: job.blueprint_type_id,
+            blueprint_name: None,
+            product_type_id: job.product_type_id,
+            product_name: None,
+            runs: i64::try_from(job.runs).unwrap_or(i64::MAX),
+            facility_id: job.facility_id,
+            facility_name: None,
+            solar_system_name: None,
+            start_date: Some(job.start_date),
+            end_date: Some(job.end_date),
+            pause_date: job.pause_date,
+            cost: job.cost,
+        }
+    }
+
+    /// `None` when ESI left out a field the link needs.
+    #[must_use]
+    pub fn to_observed(&self, connection_id: ConnectedCharacterId) -> Option<ObservedIndustryJob> {
+        Some(ObservedIndustryJob {
+            connection_id,
+            job_id: self.job_id,
+            activity_id: self.activity_id,
+            blueprint_type_id: self.blueprint_type_id,
+            product_type_id: self.product_type_id,
+            facility_id: self.facility_id,
+            runs: u64::try_from(self.runs).ok().filter(|runs| *runs > 0)?,
+            cost: self.cost,
+            status: self.status.clone(),
+            start_date: self.start_date?,
+            end_date: self.end_date?,
+            pause_date: self.pause_date,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -246,47 +294,37 @@ impl CharacterRosterService {
         })
     }
 
-    /// Every connected character's slot-occupying industry jobs, for
-    /// matching Board tickets to running jobs, with type and facility names
-    /// resolved the same best-effort way as `detail`.
-    pub async fn workspace_industry_jobs(
+    /// Fills in type and facility names, best-effort, the same way
+    /// `detail` does.
+    pub async fn label_industry_jobs(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<(ConnectedCharacterId, IndustryJobDto)>, InventoryError> {
-        let connections = self.repository.list_connections(workspace_id).await?;
-        let mut summaries = Vec::new();
+        jobs: &mut [IndustryJobDto],
+    ) -> Result<(), InventoryError> {
         let mut type_ids = HashSet::new();
         let mut facility_ids = HashSet::new();
-        for connection in connections
-            .iter()
-            .filter(|connection| connection.disconnected_at.is_none())
-        {
-            let sources = self
-                .repository
-                .character_source_state(connection.id)
-                .await?;
-            let summary = find(&sources, CharacterSourceKind::IndustryJobs)
-                .and_then(|source| source.summary.clone());
-            let (job_type_ids, job_facility_ids) = collect_industry_job_ids(summary.as_ref());
-            type_ids.extend(job_type_ids);
-            facility_ids.extend(job_facility_ids);
-            summaries.push((connection.id, summary));
+        for job in jobs.iter() {
+            type_ids.insert(job.blueprint_type_id);
+            type_ids.extend(job.product_type_id);
+            facility_ids.insert(job.facility_id);
         }
+        let type_ids: Vec<i64> = type_ids.into_iter().collect();
         let facility_ids: Vec<i64> = facility_ids.into_iter().collect();
-        let facility_labels = self
+        let type_names = self.resolve_type_names(&type_ids).await;
+        let facilities = self
             .repository
             .industry_facility_labels(workspace_id, &facility_ids)
             .await?;
-        let type_ids: Vec<i64> = type_ids.into_iter().collect();
-        let type_names = self.resolve_type_names(&type_ids).await;
-        Ok(summaries
-            .into_iter()
-            .flat_map(|(connection_id, summary)| {
-                parse_industry_jobs(summary.as_ref(), &type_names, &facility_labels)
-                    .into_iter()
-                    .map(move |job| (connection_id, job))
-            })
-            .collect())
+        for job in jobs.iter_mut() {
+            job.blueprint_name = type_names.get(&job.blueprint_type_id).cloned();
+            job.product_name = job
+                .product_type_id
+                .and_then(|id| type_names.get(&id).cloned());
+            let facility = facilities.get(&job.facility_id);
+            job.facility_name = facility.map(|label| label.name.clone());
+            job.solar_system_name = facility.and_then(|label| label.solar_system_name.clone());
+        }
+        Ok(())
     }
 
     async fn resolve_names(
@@ -565,6 +603,31 @@ fn collect_industry_job_ids(jobs_summary: Option<&Value>) -> (Vec<i64>, Vec<i64>
     )
 }
 
+/// Each connected character's slot-occupying jobs from its last successful
+/// `industry_jobs` sync, names unresolved. Characters that have never
+/// synced their jobs are absent; one with no running jobs is present with
+/// an empty list.
+pub(crate) async fn workspace_job_observations(
+    repository: &PgEsiRepository,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<(ConnectedCharacterId, Vec<IndustryJobDto>)>, InventoryError> {
+    let mut observations = Vec::new();
+    for connection in repository.list_connections(workspace_id).await? {
+        if connection.disconnected_at.is_some() {
+            continue;
+        }
+        let sources = repository.character_source_state(connection.id).await?;
+        let Some(summary) =
+            find(&sources, CharacterSourceKind::IndustryJobs).and_then(|s| s.summary.as_ref())
+        else {
+            continue;
+        };
+        let jobs = parse_industry_jobs(Some(summary), &HashMap::new(), &HashMap::new());
+        observations.push((connection.id, jobs));
+    }
+    Ok(observations)
+}
+
 fn parse_date_field(job: &Value, key: &str) -> Option<DateTime<Utc>> {
     job.get(key)
         .and_then(Value::as_str)
@@ -618,6 +681,14 @@ fn parse_industry_jobs(
                 start_date: parse_date_field(job, "start_date"),
                 end_date: parse_date_field(job, "end_date"),
                 pause_date: parse_date_field(job, "pause_date"),
+                cost: job
+                    .get("cost")
+                    .and_then(|value| match value {
+                        Value::String(text) => text.parse::<Decimal>().ok(),
+                        Value::Number(number) => number.to_string().parse::<Decimal>().ok(),
+                        _ => None,
+                    })
+                    .map(Money),
             })
         })
         .collect();
