@@ -78,7 +78,7 @@ export function CreateOrderAcquisitionRunDialog({
       <section
         aria-labelledby="create-order-run-title"
         aria-modal="true"
-        className="iw-dialog w-full max-w-lg p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-lg p-4"
         role="dialog"
       >
         <h2 className="text-base font-semibold" id="create-order-run-title">
@@ -89,65 +89,67 @@ export function CreateOrderAcquisitionRunDialog({
           Source Orders stay untouched until the Run starts.
         </p>
 
-        {error ? (
+        <div className="iw-dialog-body">
+          {error ? (
+            <div className="mt-3">
+              <InlineAlert title="Could not create the Run">{error}</InlineAlert>
+            </div>
+          ) : null}
+
           <div className="mt-3">
-            <InlineAlert title="Could not create the Run">{error}</InlineAlert>
-          </div>
-        ) : null}
-
-        <div className="mt-3">
-          <TextField id="order-acquisition-run-name" label="Name (optional)" onChange={setName} value={name} />
-          <p className="iw-muted mt-1 text-xs">
-            Stable ID will be auto-generated: <span className="font-mono">ACQ-####</span>
-          </p>
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-          <div>
-            <p className="iw-muted">Pricing</p>
-            <p className="mt-0.5 font-medium text-foreground">{pricingLabel(tickets, priceSourceNameById)}</p>
-          </div>
-          <div>
-            <p className="iw-muted">Source tickets</p>
-            <p className="mt-0.5 font-medium text-foreground">
-              {tickets.length} ticket{tickets.length === 1 ? "" : "s"}
+            <TextField id="order-acquisition-run-name" label="Name (optional)" onChange={setName} value={name} />
+            <p className="iw-muted mt-1 text-xs">
+              Stable ID will be auto-generated: <span className="font-mono">ACQ-####</span>
             </p>
           </div>
-        </div>
 
-        <div className="mt-3">
-          <p className="iw-muted text-xs font-medium tracking-wide">Consolidated items</p>
-          <div className="mt-1.5 max-h-40 overflow-y-auto rounded-md border border-border">
-            {items.map((item) => (
-              <div
-                className="flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0"
-                key={item.typeId}
-              >
-                <span className="min-w-0 flex-1 truncate text-foreground">{item.capturedName}</span>
-                <span className="shrink-0 font-mono tabular-nums text-muted">
-                  {item.neededQuantity.toLocaleString()}
-                </span>
-                <span className="w-20 shrink-0 text-right font-mono tabular-nums text-warning">
-                  {item.lineCost ? <MoneyAmount mode="summary" value={item.lineCost} /> : "—"}
-                </span>
-              </div>
-            ))}
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <p className="iw-muted">Pricing</p>
+              <p className="mt-0.5 font-medium text-foreground">{pricingLabel(tickets, priceSourceNameById)}</p>
+            </div>
+            <div>
+              <p className="iw-muted">Source tickets</p>
+              <p className="mt-0.5 font-medium text-foreground">
+                {tickets.length} ticket{tickets.length === 1 ? "" : "s"}
+              </p>
+            </div>
           </div>
+
+          <div className="mt-3">
+            <p className="iw-muted text-xs font-medium tracking-wide">Consolidated items</p>
+            <div className="mt-1.5 max-h-40 overflow-y-auto rounded-md border border-border">
+              {items.map((item) => (
+                <div
+                  className="flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0"
+                  key={item.typeId}
+                >
+                  <span className="min-w-0 flex-1 truncate text-foreground">{item.capturedName}</span>
+                  <span className="shrink-0 font-mono tabular-nums text-muted">
+                    {item.neededQuantity.toLocaleString()}
+                  </span>
+                  <span className="w-20 shrink-0 text-right font-mono tabular-nums text-warning">
+                    {item.lineCost ? <MoneyAmount mode="summary" value={item.lineCost} /> : "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <ul className="mt-3 max-h-56 overflow-y-auto rounded-md border border-border">
+            {tickets.map((ticket) => (
+              <li
+                className="flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0"
+                key={ticket.id}
+              >
+                <span className="font-mono text-muted">{ticket.displayId}</span>
+                <span className="min-w-0 flex-1 truncate px-2 text-foreground">{ticket.capturedName}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <ul className="mt-3 max-h-56 overflow-y-auto rounded-md border border-border">
-          {tickets.map((ticket) => (
-            <li
-              className="flex items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-xs last:border-b-0"
-              key={ticket.id}
-            >
-              <span className="font-mono text-muted">{ticket.displayId}</span>
-              <span className="min-w-0 flex-1 truncate px-2 text-foreground">{ticket.capturedName}</span>
-            </li>
-          ))}
-        </ul>
-
-        <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="iw-dialog-footer items-center justify-between">
           <div className="text-xs">
             {totalCost ? (
               <>

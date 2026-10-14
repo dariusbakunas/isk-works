@@ -76,8 +76,8 @@ export function OpportunityContextStrip({
 
       {open ? (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4" role="presentation">
-          <section aria-label="Edit calculation context" aria-modal="true" className="iw-dialog w-[min(480px,100%)] p-4" role="dialog">
-            <div className="mb-3 flex items-center justify-between gap-3">
+          <section aria-label="Edit calculation context" aria-modal="true" className="iw-dialog iw-dialog-frame w-[min(480px,100%)] p-4" role="dialog">
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
               <div>
                 <p className="iw-eyebrow">Opportunities</p>
                 <h2 className="text-base font-semibold">Edit calculation context</h2>
@@ -86,36 +86,38 @@ export function OpportunityContextStrip({
                 <X aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm font-semibold" htmlFor="opportunity-context-facility">
-                Facility
-                <select
-                  className="iw-input mt-1"
-                  id="opportunity-context-facility"
-                  onChange={(event) => setFacilityId(event.target.value)}
-                  value={facilityId}
-                >
-                  {eligibleFacilities.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {candidate.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div>
-                <p className="text-sm font-semibold">Market scope</p>
-                <div className="mt-1">
-                  <MarketScopeSelector onChange={setDraftScope} scope={draftScope} />
+            <div className="iw-dialog-body">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-semibold" htmlFor="opportunity-context-facility">
+                  Facility
+                  <select
+                    className="iw-input mt-1"
+                    id="opportunity-context-facility"
+                    onChange={(event) => setFacilityId(event.target.value)}
+                    value={facilityId}
+                  >
+                    {eligibleFacilities.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div>
+                  <p className="text-sm font-semibold">Market scope</p>
+                  <div className="mt-1">
+                    <MarketScopeSelector onChange={setDraftScope} scope={draftScope} />
+                  </div>
                 </div>
+                {editableEfficiency ? (
+                  <>
+                    <Field inputMode="numeric" label="Material Efficiency (0-10)" max={10} min={0} onChange={setMe} type="number" value={me} />
+                    <Field inputMode="numeric" label="Time Efficiency (0-20)" max={20} min={0} onChange={setTe} type="number" value={te} />
+                  </>
+                ) : null}
               </div>
-              {editableEfficiency ? (
-                <>
-                  <Field inputMode="numeric" label="Material Efficiency (0-10)" max={10} min={0} onChange={setMe} type="number" value={me} />
-                  <Field inputMode="numeric" label="Time Efficiency (0-20)" max={20} min={0} onChange={setTe} type="number" value={te} />
-                </>
-              ) : null}
             </div>
-            <div className="mt-3 flex justify-end gap-2 border-t border-border pt-3">
+            <div className="iw-dialog-footer mt-3 border-t border-border pt-3">
               <button className="iw-button-secondary" onClick={() => setOpen(false)} type="button">
                 Cancel
               </button>

@@ -43,35 +43,37 @@ export function RemoveEpicDialog({
       <section
         aria-labelledby="remove-epic-title"
         aria-modal="true"
-        className="iw-dialog w-full max-w-md p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-md p-4"
         role="dialog"
       >
         <h2 className="text-base font-semibold" id="remove-epic-title">
           Remove this Epic?
         </h2>
-        <fieldset className="mt-3 grid gap-2">
-          <legend className="sr-only">How to remove it</legend>
-          {available.map((option) => (
-            <label
-              className={`block rounded-md border p-3 text-sm ${
-                choice === option.value ? "border-primary bg-primary/10" : "border-border"
-              }`}
-              key={option.value}
-            >
-              <input
-                checked={choice === option.value}
-                className="mr-2"
-                name="remove-epic"
-                onChange={() => setChoice(option.value)}
-                type="radio"
-              />
-              <span className="font-semibold">{option.label}</span>
-              <span className="iw-muted mt-1 block">{option.detail}</span>
-            </label>
-          ))}
-        </fieldset>
-        <p className="iw-muted mt-3 text-sm">Either way, stock the Epic reserved goes back to free inventory.</p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="iw-dialog-body">
+          <fieldset className="mt-3 grid gap-2">
+            <legend className="sr-only">How to remove it</legend>
+            {available.map((option) => (
+              <label
+                className={`block rounded-md border p-3 text-sm ${
+                  choice === option.value ? "border-primary bg-primary/10" : "border-border"
+                }`}
+                key={option.value}
+              >
+                <input
+                  checked={choice === option.value}
+                  className="mr-2"
+                  name="remove-epic"
+                  onChange={() => setChoice(option.value)}
+                  type="radio"
+                />
+                <span className="font-semibold">{option.label}</span>
+                <span className="iw-muted mt-1 block">{option.detail}</span>
+              </label>
+            ))}
+          </fieldset>
+          <p className="iw-muted mt-3 text-sm">Either way, stock the Epic reserved goes back to free inventory.</p>
+          </div>
+        <div className="iw-dialog-footer">
           <button className="iw-button-secondary" onClick={onCancel} type="button">
             Cancel
           </button>

@@ -119,7 +119,8 @@ export function InventoryPreviewPanel({
   busyLabel = "Recording...",
 }: {
   preview: InventoryPreview;
-  onSave: () => void;
+  /** Omitted when the host dialog keeps its record button in its footer. */
+  onSave?: () => void;
   busy: boolean;
   actionLabel?: string;
   busyLabel?: string;
@@ -152,10 +153,12 @@ export function InventoryPreviewPanel({
         <PreviewMetric label="Revision" value={String(preview.resulting.revision)} />
       </dl>
       {preview.warnings.map((warning) => <div className="mt-3" key={warning}><InlineAlert title="Cost warning" tone="info">{warning}</InlineAlert></div>)}
-      <button className="iw-button-primary mt-4 w-full" disabled={busy} onClick={onSave} type="button">
-        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-        {busy ? busyLabel : actionLabel}
-      </button>
+      {onSave ? (
+        <button className="iw-button-primary mt-4 w-full" disabled={busy} onClick={onSave} type="button">
+          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+          {busy ? busyLabel : actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -277,18 +280,15 @@ export function InventoryPostingPanel({
   return (
     <dialog
       aria-labelledby="inventory-posting-title"
-      className="iw-dialog m-auto max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto p-5 text-foreground backdrop:bg-black/70"
+      className="iw-dialog iw-dialog-frame m-auto w-[min(760px,calc(100vw-2rem))] p-5 text-foreground backdrop:bg-black/70"
       onCancel={(event) => { event.preventDefault(); onCancel(); }}
       ref={dialogRef}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <p className="iw-eyebrow">{kind === "opening" ? "Starting position" : "Inbound inventory"}</p>
-          <h2 className="text-lg font-semibold" id="inventory-posting-title">{kind === "opening" ? "Add Opening Balance" : "Record Purchase"}</h2>
-        </div>
-        <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
+      <div className="mb-4 shrink-0">
+        <p className="iw-eyebrow">{kind === "opening" ? "Starting position" : "Inbound inventory"}</p>
+        <h2 className="text-lg font-semibold" id="inventory-posting-title">{kind === "opening" ? "Add Opening Balance" : "Record Purchase"}</h2>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="iw-dialog-body grid gap-4 lg:grid-cols-2">
         <div className="grid content-start gap-3">
           {!selected ? (
             <>
@@ -336,20 +336,29 @@ export function InventoryPostingPanel({
             <textarea className="iw-input mt-1 min-h-20" value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
           {error ? <InlineAlert title="Inventory event not ready">{error}</InlineAlert> : null}
-          <button className="iw-button-secondary justify-self-start" disabled={busy || unitCostResult.status === "invalid"} onClick={runPreview} type="button">
-            <Calculator className="mr-2 h-4 w-4" aria-hidden="true" />
-            {busy ? "Calculating..." : "Preview"}
-          </button>
         </div>
         <div>
           {preview ? (
-            <InventoryPreviewPanel preview={preview} onSave={save} busy={busy} />
+            <InventoryPreviewPanel preview={preview} busy={busy} />
           ) : (
             <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted">
               Enter the event details, then preview the exact inventory result before recording it.
             </div>
           )}
         </div>
+      </div>
+      <div className="iw-dialog-footer">
+        <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
+        <button className="iw-button-secondary" disabled={busy || unitCostResult.status === "invalid"} onClick={runPreview} type="button">
+          <Calculator className="mr-2 h-4 w-4" aria-hidden="true" />
+          {busy ? "Calculating..." : "Preview"}
+        </button>
+        {preview ? (
+          <button className="iw-button-primary" disabled={busy} onClick={save} type="button">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {busy ? "Recording..." : "Record Event"}
+          </button>
+        ) : null}
       </div>
     </dialog>
   );

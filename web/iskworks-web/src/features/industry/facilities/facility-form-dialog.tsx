@@ -325,317 +325,319 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
   return (
     <dialog
         aria-labelledby="facility-form-title"
-        className="iw-dialog m-auto max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto p-0 text-foreground backdrop:bg-black/70"
+        className="iw-dialog iw-dialog-frame m-auto w-[min(760px,calc(100vw-2rem))] p-0 text-foreground backdrop:bg-black/70"
         onCancel={(event) => {
           event.preventDefault();
           closeForm();
         }}
         ref={formDialog}
       >
-        {open ? <div className="p-5">
-          <div className="flex items-start justify-between gap-3">
+        {open ? <div className="iw-dialog-pane p-5">
+          <div className="flex shrink-0 items-start justify-between gap-3">
             <div>
               <p className="iw-eyebrow">Industry assumptions</p>
               <h2 className="text-base font-semibold" id="facility-form-title">{facility ? "Edit Facility" : "New Facility"}</h2>
             </div>
             <button aria-label="Close Facility form" className="iw-icon-button" disabled={saving} onClick={closeForm} title="Close" type="button"><X className="h-4 w-4" /></button>
           </div>
-          {error ? <div className="mt-4"><InlineAlert title="Facility action unavailable">{error}</InlineAlert></div> : null}
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2"><Field label="Name" value={form.name} onChange={(value) => set("name", value)} /></div>
-            <label className="text-sm">Kind<select className="iw-input mt-1" value={form.kind} onChange={(event) => {
-              const kind = event.target.value as FacilityInput["kind"];
-              setStructureQuery("");
-              setStationQuery("");
-              setKnownStructureOpen(false);
-              setStationOpen(false);
-              setForm((current) => ({
-                ...current,
-                kind,
-                structureId: null,
-                structureTypeId: null,
-                structureTypeName: "",
-                ...zeroedStructureModifiers,
-              }));
-            }}><option value="manual">Manual</option><option value="npcStation">NPC Station</option><option value="upwellStructure">Upwell Structure</option></select></label>
-            <label className="text-sm">Role<select className="iw-input mt-1" value={form.role} onChange={(event) => {
-              const role = event.target.value as FacilityInput["role"];
-              setForm((current) => ({
-                ...current,
-                role,
-                rigs: [],
-                ...zeroedStructureModifiers,
-              }));
-            }}><option value="manufacturing">Manufacturing</option><option value="reaction">Reaction</option></select></label>
-            <label className="text-sm">Security<select className="iw-input mt-1" value={form.securityClass} onChange={(event) => setForm((current) => ({ ...current, securityClass: event.target.value as FacilityInput["securityClass"] }))}><option value="unknown">Unknown</option><option value="highSec">High sec</option><option value="lowSec">Low sec</option><option value="nullSec">Null sec</option><option value="wormhole">Wormhole</option></select></label>
-            {form.kind === "upwellStructure" ? (
-              <>
-                <div className="relative">
+          <div className="iw-dialog-body">
+            {error ? <div className="mt-4"><InlineAlert title="Facility action unavailable">{error}</InlineAlert></div> : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2"><Field label="Name" value={form.name} onChange={(value) => set("name", value)} /></div>
+              <label className="text-sm">Kind<select className="iw-input mt-1" value={form.kind} onChange={(event) => {
+                const kind = event.target.value as FacilityInput["kind"];
+                setStructureQuery("");
+                setStationQuery("");
+                setKnownStructureOpen(false);
+                setStationOpen(false);
+                setForm((current) => ({
+                  ...current,
+                  kind,
+                  structureId: null,
+                  structureTypeId: null,
+                  structureTypeName: "",
+                  ...zeroedStructureModifiers,
+                }));
+              }}><option value="manual">Manual</option><option value="npcStation">NPC Station</option><option value="upwellStructure">Upwell Structure</option></select></label>
+              <label className="text-sm">Role<select className="iw-input mt-1" value={form.role} onChange={(event) => {
+                const role = event.target.value as FacilityInput["role"];
+                setForm((current) => ({
+                  ...current,
+                  role,
+                  rigs: [],
+                  ...zeroedStructureModifiers,
+                }));
+              }}><option value="manufacturing">Manufacturing</option><option value="reaction">Reaction</option></select></label>
+              <label className="text-sm">Security<select className="iw-input mt-1" value={form.securityClass} onChange={(event) => setForm((current) => ({ ...current, securityClass: event.target.value as FacilityInput["securityClass"] }))}><option value="unknown">Unknown</option><option value="highSec">High sec</option><option value="lowSec">Low sec</option><option value="nullSec">Null sec</option><option value="wormhole">Wormhole</option></select></label>
+              {form.kind === "upwellStructure" ? (
+                <>
+                  <div className="relative">
+                    <Field
+                      label="Structure"
+                      value={structureQuery}
+                      onChange={(value) => {
+                        setStructureQuery(value);
+                        setKnownStructureOpen(true);
+                        setForm((current) => ({ ...current, structureId: null }));
+                      }}
+                      onFocus={() => setKnownStructureOpen(true)}
+                    />
+                    {knownStructureLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching resolved ESI structures...</p> : null}
+                    {!knownStructureLookup.searching && knownStructureOpen && !form.structureId ? (
+                      <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                        {knownStructureLookup.results.length > 0 ? knownStructureLookup.results.map((structure) => (
+                          <button
+                            className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
+                            key={structure.structureId}
+                            onClick={() => applyKnownStructure(structure)}
+                            type="button"
+                          >
+                            <span className="block text-sm">{structure.structureName}</span>
+                            <span className="iw-muted block text-xs">
+                              {[structure.structureTypeName, structure.solarSystemName].filter(Boolean).join(" · ") || "Resolved through ESI"}
+                            </span>
+                          </button>
+                        )) : (
+                          <div className="px-3 py-2">
+                            <p className="iw-muted text-sm">
+                              No resolved structures found. Sync assets or blueprints for a character with access to this structure.
+                            </p>
+                            {(() => {
+                              const referencedId = parseStructureReference(structureQuery);
+                              if (!referencedId) {
+                                return (
+                                  <p className="iw-muted mt-2 text-xs">
+                                    Have docking access but never synced assets there? Shift-drag the
+                                    structure into chat, mail, or a note in the EVE client to get a
+                                    Show Info link (<code>showinfo:...</code>), then paste it here.
+                                  </p>
+                                );
+                              }
+                              return (
+                                <button
+                                  className="iw-button-secondary mt-2"
+                                  disabled={resolvingStructure}
+                                  onClick={() => void resolveStructureById(referencedId)}
+                                  type="button"
+                                >
+                                  {resolvingStructure ? "Resolving via ESI..." : `Resolve structure ${referencedId} via ESI`}
+                                </button>
+                              );
+                            })()}
+                            {structureNeedsReconnection ? (
+                              <p className="mt-2 text-xs">
+                                <ButtonLink to="/characters">Open Characters</ButtonLink>
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    {form.structureId ? <p className="iw-muted mt-1 text-xs">Selected from resolved ESI structures</p> : null}
+                  </div>
+                  <div className="relative">
+                    <Field
+                      label="Structure type"
+                      value={form.structureTypeName}
+                      onChange={(value) => {
+                        setStructureTypeOpen(true);
+                        setForm((current) => ({
+                          ...current,
+                          structureTypeId: null,
+                          structureTypeName: value,
+                        }));
+                      }}
+                      onFocus={() => setStructureTypeOpen(true)}
+                    />
+                    {structureTypeLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
+                    {!structureTypeLookup.searching && structureTypeOpen && !form.structureTypeId ? (
+                      <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                        {structureTypeLookup.results.length > 0 ? structureTypeLookup.results.map((type) => (
+                          <button
+                            className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
+                            key={type.typeId}
+                            onClick={() => {
+                              setForm((current) => ({
+                                ...current,
+                                structureTypeId: type.typeId,
+                                structureTypeName: type.typeName,
+                                ...zeroedStructureModifiers,
+                              }));
+                              setStructureTypeOpen(false);
+                              getStructureManufacturingModifiers(type.typeId)
+                                .then((modifiers) => setForm((current) => ({
+                                  ...current,
+                                  materialReductionPercent: modifiers.materialReductionPercent,
+                                  timeReductionPercent: modifiers.timeReductionPercent,
+                                  jobCostReductionPercent: modifiers.jobCostReductionPercent,
+                                })))
+                                .catch((requestError) => setError(apiMessage(requestError)));
+                            }}
+                            type="button"
+                          >
+                            <span className="block text-sm">{type.typeName}</span>
+                            <span className="iw-muted block text-xs">{type.groupName ?? "Unknown group"}</span>
+                          </button>
+                        )) : <p className="iw-muted px-3 py-2 text-sm">No matching types in the active SDE.</p>}
+                      </div>
+                    ) : null}
+                    {form.structureTypeId ? <p className="iw-muted mt-1 text-xs">Selected from active SDE</p> : null}
+                  </div>
+                </>
+              ) : null}
+              {form.kind === "npcStation" ? (
+                <div className="relative sm:col-span-2">
                   <Field
-                    label="Structure"
-                    value={structureQuery}
+                    label="NPC station"
+                    value={stationQuery}
                     onChange={(value) => {
-                      setStructureQuery(value);
-                      setKnownStructureOpen(true);
+                      setStationQuery(value);
+                      setStationOpen(true);
                       setForm((current) => ({ ...current, structureId: null }));
                     }}
-                    onFocus={() => setKnownStructureOpen(true)}
+                    onFocus={() => setStationOpen(true)}
                   />
-                  {knownStructureLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching resolved ESI structures...</p> : null}
-                  {!knownStructureLookup.searching && knownStructureOpen && !form.structureId ? (
+                  {stationLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
+                  {!stationLookup.searching && stationOpen && !form.structureId ? (
                     <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
-                      {knownStructureLookup.results.length > 0 ? knownStructureLookup.results.map((structure) => (
+                      {stationLookup.results.length > 0 ? stationLookup.results.map((station) => (
                         <button
                           className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
-                          key={structure.structureId}
-                          onClick={() => applyKnownStructure(structure)}
-                          type="button"
-                        >
-                          <span className="block text-sm">{structure.structureName}</span>
-                          <span className="iw-muted block text-xs">
-                            {[structure.structureTypeName, structure.solarSystemName].filter(Boolean).join(" · ") || "Resolved through ESI"}
-                          </span>
-                        </button>
-                      )) : (
-                        <div className="px-3 py-2">
-                          <p className="iw-muted text-sm">
-                            No resolved structures found. Sync assets or blueprints for a character with access to this structure.
-                          </p>
-                          {(() => {
-                            const referencedId = parseStructureReference(structureQuery);
-                            if (!referencedId) {
-                              return (
-                                <p className="iw-muted mt-2 text-xs">
-                                  Have docking access but never synced assets there? Shift-drag the
-                                  structure into chat, mail, or a note in the EVE client to get a
-                                  Show Info link (<code>showinfo:...</code>), then paste it here.
-                                </p>
-                              );
-                            }
-                            return (
-                              <button
-                                className="iw-button-secondary mt-2"
-                                disabled={resolvingStructure}
-                                onClick={() => void resolveStructureById(referencedId)}
-                                type="button"
-                              >
-                                {resolvingStructure ? "Resolving via ESI..." : `Resolve structure ${referencedId} via ESI`}
-                              </button>
-                            );
-                          })()}
-                          {structureNeedsReconnection ? (
-                            <p className="mt-2 text-xs">
-                              <ButtonLink to="/characters">Open Characters</ButtonLink>
-                            </p>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {form.structureId ? <p className="iw-muted mt-1 text-xs">Selected from resolved ESI structures</p> : null}
-                </div>
-                <div className="relative">
-                  <Field
-                    label="Structure type"
-                    value={form.structureTypeName}
-                    onChange={(value) => {
-                      setStructureTypeOpen(true);
-                      setForm((current) => ({
-                        ...current,
-                        structureTypeId: null,
-                        structureTypeName: value,
-                      }));
-                    }}
-                    onFocus={() => setStructureTypeOpen(true)}
-                  />
-                  {structureTypeLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
-                  {!structureTypeLookup.searching && structureTypeOpen && !form.structureTypeId ? (
-                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
-                      {structureTypeLookup.results.length > 0 ? structureTypeLookup.results.map((type) => (
-                        <button
-                          className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
-                          key={type.typeId}
+                          key={station.stationId}
                           onClick={() => {
+                            setStationQuery(station.stationName);
+                            setStationOpen(false);
                             setForm((current) => ({
                               ...current,
-                              structureTypeId: type.typeId,
-                              structureTypeName: type.typeName,
+                              structureId: station.stationId,
+                              structureTypeId: station.stationTypeId,
+                              structureTypeName: station.stationTypeName ?? "NPC Station",
+                              solarSystemId: station.solarSystemId,
+                              solarSystemName: station.solarSystemName,
+                              securityClass: station.securityClass,
                               ...zeroedStructureModifiers,
                             }));
-                            setStructureTypeOpen(false);
-                            getStructureManufacturingModifiers(type.typeId)
-                              .then((modifiers) => setForm((current) => ({
-                                ...current,
-                                materialReductionPercent: modifiers.materialReductionPercent,
-                                timeReductionPercent: modifiers.timeReductionPercent,
-                                jobCostReductionPercent: modifiers.jobCostReductionPercent,
-                              })))
-                              .catch((requestError) => setError(apiMessage(requestError)));
                           }}
                           type="button"
                         >
-                          <span className="block text-sm">{type.typeName}</span>
-                          <span className="iw-muted block text-xs">{type.groupName ?? "Unknown group"}</span>
+                          <span className="block text-sm">{station.stationName}</span>
+                          <span className="iw-muted block text-xs">
+                            {[station.stationTypeName, station.solarSystemName].filter(Boolean).join(" · ")}
+                          </span>
                         </button>
-                      )) : <p className="iw-muted px-3 py-2 text-sm">No matching types in the active SDE.</p>}
+                      )) : <p className="iw-muted px-3 py-2 text-sm">No matching NPC stations in the active SDE.</p>}
                     </div>
                   ) : null}
-                  {form.structureTypeId ? <p className="iw-muted mt-1 text-xs">Selected from active SDE</p> : null}
+                  {form.structureId ? <p className="iw-muted mt-1 text-xs">Station, type, system, and security derived from active SDE</p> : null}
                 </div>
-              </>
-            ) : null}
-            {form.kind === "npcStation" ? (
+              ) : null}
               <div className="relative sm:col-span-2">
                 <Field
-                  label="NPC station"
-                  value={stationQuery}
-                  onChange={(value) => {
-                    setStationQuery(value);
-                    setStationOpen(true);
-                    setForm((current) => ({ ...current, structureId: null }));
-                  }}
-                  onFocus={() => setStationOpen(true)}
+                      label="Solar system"
+                      value={form.solarSystemName}
+                      onChange={(value) => {
+                        setCostIndexState({ status: "idle" });
+                        setForm((current) => ({
+                          ...current,
+                          solarSystemName: value,
+                          solarSystemId: null,
+                          manualSystemCostIndex: null,
+                        }));
+                      }}
                 />
-                {stationLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
-                {!stationLookup.searching && stationOpen && !form.structureId ? (
-                  <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
-                    {stationLookup.results.length > 0 ? stationLookup.results.map((station) => (
+                {solarSystemLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
+                {!solarSystemLookup.searching && !form.solarSystemId && form.solarSystemName.trim().length >= 2 ? (
+                  <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                    {solarSystemLookup.results.length > 0 ? solarSystemLookup.results.map((system) => (
                       <button
-                        className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
-                        key={station.stationId}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-panel-strong"
+                        key={system.solarSystemId}
                         onClick={() => {
-                          setStationQuery(station.stationName);
-                          setStationOpen(false);
                           setForm((current) => ({
                             ...current,
-                            structureId: station.stationId,
-                            structureTypeId: station.stationTypeId,
-                            structureTypeName: station.stationTypeName ?? "NPC Station",
-                            solarSystemId: station.solarSystemId,
-                            solarSystemName: station.solarSystemName,
-                            securityClass: station.securityClass,
-                            ...zeroedStructureModifiers,
+                            solarSystemId: system.solarSystemId,
+                            solarSystemName: system.solarSystemName,
+                            securityClass: system.securityClass,
                           }));
                         }}
                         type="button"
                       >
-                        <span className="block text-sm">{station.stationName}</span>
-                        <span className="iw-muted block text-xs">
-                          {[station.stationTypeName, station.solarSystemName].filter(Boolean).join(" · ")}
-                        </span>
+                        {system.solarSystemName}
                       </button>
-                    )) : <p className="iw-muted px-3 py-2 text-sm">No matching NPC stations in the active SDE.</p>}
+                    )) : <p className="iw-muted px-3 py-2 text-sm">No matching systems in the active SDE. Re-import the SDE if it predates solar-system support.</p>}
                   </div>
                 ) : null}
-                {form.structureId ? <p className="iw-muted mt-1 text-xs">Station, type, system, and security derived from active SDE</p> : null}
+                {form.solarSystemId ? <p className="iw-muted mt-1 text-xs">Selected from active SDE</p> : null}
               </div>
-            ) : null}
-            <div className="relative sm:col-span-2">
-              <Field
-                    label="Solar system"
-                    value={form.solarSystemName}
-                    onChange={(value) => {
-                      setCostIndexState({ status: "idle" });
-                      setForm((current) => ({
-                        ...current,
-                        solarSystemName: value,
-                        solarSystemId: null,
-                        manualSystemCostIndex: null,
-                      }));
-                    }}
-              />
-              {solarSystemLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
-              {!solarSystemLookup.searching && !form.solarSystemId && form.solarSystemName.trim().length >= 2 ? (
-                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
-                  {solarSystemLookup.results.length > 0 ? solarSystemLookup.results.map((system) => (
-                    <button
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-panel-strong"
-                      key={system.solarSystemId}
-                      onClick={() => {
-                        setForm((current) => ({
-                          ...current,
-                          solarSystemId: system.solarSystemId,
-                          solarSystemName: system.solarSystemName,
-                          securityClass: system.securityClass,
-                        }));
-                      }}
-                      type="button"
-                    >
-                      {system.solarSystemName}
-                    </button>
-                  )) : <p className="iw-muted px-3 py-2 text-sm">No matching systems in the active SDE. Re-import the SDE if it predates solar-system support.</p>}
+              <Field label="Structure material reduction %" value={form.materialReductionPercent} onChange={(value) => set("materialReductionPercent", value)} />
+              <Field label="Structure time reduction %" value={form.timeReductionPercent} onChange={(value) => set("timeReductionPercent", value)} />
+              <Field label="Structure job-cost reduction %" value={form.jobCostReductionPercent} onChange={(value) => set("jobCostReductionPercent", value)} />
+              <Field label="Facility tax %" value={form.facilityTaxPercent} onChange={(value) => set("facilityTaxPercent", value)} />
+              <div>
+                <Field label="SCC surcharge %" value={form.sccSurchargePercent} onChange={(value) => set("sccSurchargePercent", value)} inputMode="decimal" />
+                <p className="iw-muted mt-1 text-xs">Defaults to CCP&apos;s 4% manufacturing SCC surcharge; editable if the rule changes.</p>
+              </div>
+              <Field label="Alliance surcharge %" value={form.allianceSurchargePercent} onChange={(value) => set("allianceSurchargePercent", value)} />
+              <div>
+                <Field
+                  label="System cost index"
+                  value={form.manualSystemCostIndex ?? ""}
+                  onChange={(value) => {
+                    setCostIndexState({ status: "manual" });
+                    setForm((current) => ({ ...current, manualSystemCostIndex: value || null }));
+                  }}
+                  inputMode="decimal"
+                />
+                {costIndexState.status === "loading" ? <p className="iw-muted mt-1 text-xs">Fetching {form.role} index from ESI...</p> : null}
+                {costIndexState.status === "esi" ? (
+                  <p className="mt-1 text-xs text-success">
+                    ESI {form.role} index · fetched {new Date(costIndexState.fetchedAt ?? "").toLocaleString()} · refreshes after {new Date(costIndexState.expiresAt ?? "").toLocaleTimeString()}
+                  </p>
+                ) : null}
+                {costIndexState.status === "manual" ? <p className="iw-muted mt-1 text-xs">Manual override</p> : null}
+                {costIndexState.status === "unavailable" ? <p className="mt-1 text-xs text-accent">ESI index unavailable. Enter the current value manually.</p> : null}
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-semibold">Fixed supplemental cost</span>
+                <MoneyInput
+                  aria-label="Fixed supplemental cost"
+                  onClear={() => set("fixedSupplementalCost", "0")}
+                  onCommit={(canonical) => set("fixedSupplementalCost", canonical)}
+                  onValueChange={setFixedCostResult}
+                  value={form.fixedSupplementalCost}
+                />
+              </label>
+              <div className="sm:col-span-2 border-t border-border pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h3 className="text-sm font-semibold">Applicable rigs</h3><p className="iw-muted text-xs">Capture only rigs that affect the {form.role === "reaction" ? "reaction" : "manufacturing"} category represented by this profile.</p></div>
+                  <button className="iw-button-secondary" disabled={form.rigs.length >= 3} onClick={addRig} type="button"><Plus className="mr-2 h-4 w-4" />Add rig</button>
                 </div>
-              ) : null}
-              {form.solarSystemId ? <p className="iw-muted mt-1 text-xs">Selected from active SDE</p> : null}
-            </div>
-            <Field label="Structure material reduction %" value={form.materialReductionPercent} onChange={(value) => set("materialReductionPercent", value)} />
-            <Field label="Structure time reduction %" value={form.timeReductionPercent} onChange={(value) => set("timeReductionPercent", value)} />
-            <Field label="Structure job-cost reduction %" value={form.jobCostReductionPercent} onChange={(value) => set("jobCostReductionPercent", value)} />
-            <Field label="Facility tax %" value={form.facilityTaxPercent} onChange={(value) => set("facilityTaxPercent", value)} />
-            <div>
-              <Field label="SCC surcharge %" value={form.sccSurchargePercent} onChange={(value) => set("sccSurchargePercent", value)} inputMode="decimal" />
-              <p className="iw-muted mt-1 text-xs">Defaults to CCP&apos;s 4% manufacturing SCC surcharge; editable if the rule changes.</p>
-            </div>
-            <Field label="Alliance surcharge %" value={form.allianceSurchargePercent} onChange={(value) => set("allianceSurchargePercent", value)} />
-            <div>
-              <Field
-                label="System cost index"
-                value={form.manualSystemCostIndex ?? ""}
-                onChange={(value) => {
-                  setCostIndexState({ status: "manual" });
-                  setForm((current) => ({ ...current, manualSystemCostIndex: value || null }));
-                }}
-                inputMode="decimal"
-              />
-              {costIndexState.status === "loading" ? <p className="iw-muted mt-1 text-xs">Fetching {form.role} index from ESI...</p> : null}
-              {costIndexState.status === "esi" ? (
-                <p className="mt-1 text-xs text-success">
-                  ESI {form.role} index · fetched {new Date(costIndexState.fetchedAt ?? "").toLocaleString()} · refreshes after {new Date(costIndexState.expiresAt ?? "").toLocaleTimeString()}
-                </p>
-              ) : null}
-              {costIndexState.status === "manual" ? <p className="iw-muted mt-1 text-xs">Manual override</p> : null}
-              {costIndexState.status === "unavailable" ? <p className="mt-1 text-xs text-accent">ESI index unavailable. Enter the current value manually.</p> : null}
-            </div>
-            <label className="block">
-              <span className="mb-1 block text-sm font-semibold">Fixed supplemental cost</span>
-              <MoneyInput
-                aria-label="Fixed supplemental cost"
-                onClear={() => set("fixedSupplementalCost", "0")}
-                onCommit={(canonical) => set("fixedSupplementalCost", canonical)}
-                onValueChange={setFixedCostResult}
-                value={form.fixedSupplementalCost}
-              />
-            </label>
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="flex items-center justify-between gap-3">
-                <div><h3 className="text-sm font-semibold">Applicable rigs</h3><p className="iw-muted text-xs">Capture only rigs that affect the {form.role === "reaction" ? "reaction" : "manufacturing"} category represented by this profile.</p></div>
-                <button className="iw-button-secondary" disabled={form.rigs.length >= 3} onClick={addRig} type="button"><Plus className="mr-2 h-4 w-4" />Add rig</button>
+                <div className="mt-3 grid gap-3">
+                  {form.rigs.map((rig) => (
+                    <div className="grid gap-2 border border-border p-3 sm:grid-cols-2" key={rig.slotNumber}>
+                      <div className="flex items-center justify-between gap-2 sm:col-span-2"><strong className="text-sm">Rig slot {rig.slotNumber}</strong><button aria-label={`Remove rig slot ${rig.slotNumber}`} className="iw-icon-button" onClick={() => setForm((current) => ({ ...current, rigs: current.rigs.filter((item) => item.slotNumber !== rig.slotNumber) }))} title="Remove rig" type="button"><Trash2 className="h-4 w-4" /></button></div>
+                      <RigTypeSelector
+                        activity={form.role}
+                        onChange={(patch) => updateRig(rig.slotNumber, patch)}
+                        onError={setError}
+                        rig={rig}
+                        securityClass={form.securityClass}
+                        structureTypeId={form.structureTypeId}
+                      />
+                      <Field label="Material reduction %" value={rig.materialReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { materialReductionPercent: value })} />
+                      <Field label="Time reduction %" value={rig.timeReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { timeReductionPercent: value })} />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="mt-3 grid gap-3">
-                {form.rigs.map((rig) => (
-                  <div className="grid gap-2 border border-border p-3 sm:grid-cols-2" key={rig.slotNumber}>
-                    <div className="flex items-center justify-between gap-2 sm:col-span-2"><strong className="text-sm">Rig slot {rig.slotNumber}</strong><button aria-label={`Remove rig slot ${rig.slotNumber}`} className="iw-icon-button" onClick={() => setForm((current) => ({ ...current, rigs: current.rigs.filter((item) => item.slotNumber !== rig.slotNumber) }))} title="Remove rig" type="button"><Trash2 className="h-4 w-4" /></button></div>
-                    <RigTypeSelector
-                      activity={form.role}
-                      onChange={(patch) => updateRig(rig.slotNumber, patch)}
-                      onError={setError}
-                      rig={rig}
-                      securityClass={form.securityClass}
-                      structureTypeId={form.structureTypeId}
-                    />
-                    <Field label="Material reduction %" value={rig.materialReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { materialReductionPercent: value })} />
-                    <Field label="Time reduction %" value={rig.timeReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { timeReductionPercent: value })} />
-                  </div>
-                ))}
-              </div>
+              <div className="sm:col-span-2"><Field label="Notes" value={form.notes} onChange={(value) => set("notes", value)} multiline /></div>
             </div>
-            <div className="sm:col-span-2"><Field label="Notes" value={form.notes} onChange={(value) => set("notes", value)} multiline /></div>
+            <p className="iw-muted mt-3 text-xs">Structure and rig bonuses selected from the active SDE are calculated for the chosen security class. Review the captured assumptions before saving.</p>
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="iw-dialog-footer justify-start">
             <button className="iw-button-secondary" disabled={saving} onClick={closeForm} type="button">Cancel</button>
             <button className="iw-button-primary" disabled={saving || fixedCostResult.status === "invalid"} onClick={() => void save()} type="button">{saving ? "Saving..." : facility ? "Save Changes" : "Create Facility"}</button>
           </div>
-          <p className="iw-muted mt-3 text-xs">Structure and rig bonuses selected from the active SDE are calculated for the chosen security class. Review the captured assumptions before saving.</p>
         </div> : null}
     </dialog>
   );

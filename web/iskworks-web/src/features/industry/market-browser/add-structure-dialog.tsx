@@ -141,14 +141,14 @@ export function AddStructureDialog({
   return (
     <dialog
       aria-labelledby="add-structure-dialog-title"
-      className="iw-dialog m-auto max-h-[calc(100vh-2rem)] w-[min(480px,calc(100vw-2rem))] overflow-y-auto p-0 text-foreground backdrop:bg-black/70"
+      className="iw-dialog iw-dialog-frame m-auto w-[min(480px,calc(100vw-2rem))] p-0 text-foreground backdrop:bg-black/70"
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
       }}
       ref={dialog}
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold" id="add-structure-dialog-title">
           Add a Structure
         </span>
@@ -156,7 +156,7 @@ export function AddStructureDialog({
           <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
-      <div className="p-5">
+      <div className="iw-dialog-body mx-0 px-5 pt-5">
         <p className="iw-muted text-sm">
           Search structures your characters already know about, or paste a structure ID/Show Info link. Market data can only be fetched by a connected character with docking access and market permissions there.
         </p>
@@ -175,7 +175,7 @@ export function AddStructureDialog({
           />
           {lookup.searching ? <p className="iw-muted mt-1 text-xs">Searching known structures...</p> : null}
           {!lookup.searching && dropdownOpen && !selected ? (
-            <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+            <div className="mt-1 max-h-56 overflow-y-auto border border-border bg-panel">
               {lookup.results.length > 0 ? (
                 lookup.results.map((structure) => (
                   <button
@@ -249,22 +249,22 @@ export function AddStructureDialog({
             )}
           </div>
         ) : null}
+      </div>
 
-        <div className="mt-5 flex justify-end gap-2">
-          <button className="iw-button-secondary" disabled={busy} onClick={onClose} type="button">
-            {phase.status === "resolved" && phase.access.access === "confirmed" ? "Done" : "Cancel"}
+      <div className="iw-dialog-footer px-5 pb-5 pt-5">
+        <button className="iw-button-secondary" disabled={busy} onClick={onClose} type="button">
+          {phase.status === "resolved" && phase.access.access === "confirmed" ? "Done" : "Cancel"}
+        </button>
+        {phase.status !== "resolved" || phase.access.access !== "confirmed" ? (
+          <button
+            className="iw-button-primary"
+            disabled={busy || !selected}
+            onClick={() => void verifyAccess()}
+            type="button"
+          >
+            {phase.status === "verifying" ? "Checking access..." : "Verify market access"}
           </button>
-          {phase.status !== "resolved" || phase.access.access !== "confirmed" ? (
-            <button
-              className="iw-button-primary"
-              disabled={busy || !selected}
-              onClick={() => void verifyAccess()}
-              type="button"
-            >
-              {phase.status === "verifying" ? "Checking access..." : "Verify market access"}
-            </button>
-          ) : null}
-        </div>
+        ) : null}
       </div>
     </dialog>
   );

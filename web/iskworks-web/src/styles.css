@@ -137,6 +137,32 @@ body {
       0 24px 80px rgb(0 0 0 / 0.72);
   }
 
+  /* Dialog layout: the frame is capped to the viewport, its header and
+     footer stay in view, and only the body scrolls. A wrapper between
+     frame and body/footer (a <form>, a wizard step) is an iw-dialog-pane.
+     `display: flex` is withheld from a closed <dialog>, which must stay
+     hidden. */
+  .iw-dialog-frame {
+    @apply max-h-[calc(100dvh-2rem)] flex-col overflow-hidden;
+  }
+
+  .iw-dialog-frame:where(:not(dialog), [open]) {
+    display: flex;
+  }
+
+  .iw-dialog-pane {
+    @apply flex min-h-0 flex-1 flex-col;
+  }
+
+  /* -mx-1/px-1 keeps input focus rings from being clipped by the scroller. */
+  .iw-dialog-body {
+    @apply -mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1;
+  }
+
+  .iw-dialog-footer {
+    @apply flex shrink-0 flex-wrap justify-end gap-2 pt-4;
+  }
+
   .iw-page-container {
     @apply w-full px-3 py-3 sm:px-4;
   }
