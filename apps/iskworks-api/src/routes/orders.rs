@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_core::build_materials::MaterialActivity;
@@ -55,6 +55,15 @@ pub(crate) fn router() -> Router<AppState> {
             get(list_order_tickets).post(create_ticket_route),
         )
         .route("/api/tickets/job-progress", get(list_ticket_job_progress))
+        .route(
+            "/api/tickets/:ticket_id/job-choices",
+            get(list_ticket_job_choices),
+        )
+        .route("/api/tickets/:ticket_id/jobs", post(link_ticket_job))
+        .route(
+            "/api/tickets/:ticket_id/jobs/:job_id",
+            delete(unlink_ticket_job),
+        )
         .route("/api/orders/:order_id", get(get_order).delete(delete_order))
         .route(
             "/api/orders/:order_id/execution-plan",

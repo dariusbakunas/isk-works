@@ -63,6 +63,39 @@ pub fn job_fits_ticket(
     }
 }
 
+/// A job the user could link to a ticket by hand, and the ticket it is on
+/// now, if any (linking moves it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketJobChoice {
+    pub job: ObservedIndustryJob,
+    pub linked_ticket_id: Option<TicketId>,
+}
+
+/// The jobs ESI reports now that fit the ticket ([`job_fits_ticket`]) and
+/// aren't already linked to it, earliest-started first.
+#[must_use]
+pub fn ticket_job_choices(
+    target: &TicketJobTarget,
+    observed: &[ObservedIndustryJob],
+    linked: &[TicketIndustryJob],
+) -> Vec<TicketJobChoice> {
+    let linked_to: HashMap<i64, TicketId> = linked
+        .iter()
+        .map(|link| (link.job.job_id, link.ticket_id))
+        .collect();
+    let mut choices: Vec<TicketJobChoice> = observed
+        .iter()
+        .filter(|job| job_fits_ticket(target, job).is_ok())
+        .filter(|job| linked_to.get(&job.job_id) != Some(&target.ticket_id))
+        .map(|job| TicketJobChoice {
+            job: job.clone(),
+            linked_ticket_id: linked_to.get(&job.job_id).copied(),
+        })
+        .collect();
+    choices.sort_by_key(|choice| (choice.job.start_date, choice.job.job_id));
+    choices
+}
+
 /// One ESI industry job as last observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObservedIndustryJob {
@@ -532,6 +565,38 @@ mod tests {
                 Err(OrderError::TicketJobMismatch)
             ));
         }
+    }
+
+    #[test]
+    fn choices_are_the_fitting_jobs_not_already_on_the_ticket_with_their_current_ticket() {
+        let target = target(Some(character(1)));
+        let on_this = job(100, 1, 10);
+        let on_other = job(101, 2, 10);
+        let free = job(102, 3, 10);
+        let other_product = ObservedIndustryJob {
+            product_type_id: Some(CARBIDE),
+            ..job(103, 4, 10)
+        };
+        let linked = [link(1, on_this.clone()), link(2, on_other.clone())];
+        let choices = ticket_job_choices(
+            &target,
+            &[free.clone(), other_product, on_this, on_other.clone()],
+            &linked,
+        );
+        // Earliest-started first.
+        assert_eq!(
+            choices,
+            vec![
+                TicketJobChoice {
+                    job: on_other,
+                    linked_ticket_id: Some(ticket_id(2)),
+                },
+                TicketJobChoice {
+                    job: free,
+                    linked_ticket_id: None,
+                },
+            ]
+        );
     }
 
     #[test]
