@@ -163,6 +163,13 @@ body {
     @apply flex shrink-0 flex-wrap justify-end gap-2 pt-4;
   }
 
+  /* The Board card the inspector is showing: a primary-tinted background
+     instead of an outline. `!important` because each card sets its own
+     bg-panel / bg-panel-strong utility, which outranks this layer. */
+  .iw-card-active {
+    background-color: color-mix(in oklch, var(--color-primary) 14%, var(--color-panel-strong)) !important;
+  }
+
   .iw-page-container {
     @apply w-full px-3 py-3 sm:px-4;
   }
