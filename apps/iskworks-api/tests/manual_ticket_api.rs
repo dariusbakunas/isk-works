@@ -332,7 +332,7 @@ async fn tickets_cannot_reference_another_workspaces_epic_character_or_price_sou
         .unwrap();
     assert_eq!(tickets, 0);
 
-    // Updating an own ticket to point at another workspace's ids fails too,
+    // Updating an own ticket to point at another workspace's assignee fails too,
     // and leaves the ticket as it was.
     let (status, ticket) = post_json(
         &fx.app,
@@ -342,14 +342,10 @@ async fn tickets_cannot_reference_another_workspaces_epic_character_or_price_sou
     .await;
     assert_eq!(status, StatusCode::CREATED);
     let ticket_id = ticket["id"].as_str().unwrap();
-    for body in [
-        serde_json::json!({ "orderId": other_epic }),
-        serde_json::json!({ "assigneeCharacterId": other_character }),
-    ] {
-        let (status, response) =
-            patch_json(&fx.app, &format!("/api/tickets/{ticket_id}"), body.clone()).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{body} -> {response}");
-    }
+    let body = serde_json::json!({ "assigneeCharacterId": other_character });
+    let (status, response) =
+        patch_json(&fx.app, &format!("/api/tickets/{ticket_id}"), body.clone()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body} -> {response}");
     let (order_id, assignee): (Option<Uuid>, Option<Uuid>) =
         sqlx::query_as("SELECT order_id, assignee_character_id FROM tickets WHERE id = $1")
             .bind(Uuid::parse_str(ticket_id).unwrap())
@@ -412,9 +408,7 @@ async fn create_acquisition_ticket_manually_and_record_it_through_the_existing_p
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
-async fn patch_moves_a_ticket_between_epics_and_clears_assignee_without_touching_status(
-    pool: PgPool,
-) {
+async fn patch_refuses_to_change_a_tickets_epic_but_still_clears_the_assignee(pool: PgPool) {
     let fx = fixture(&pool).await;
     let epic_a = seed_epic(&pool, fx.workspace_id, fx.owner_id).await;
     let epic_b = seed_epic(&pool, fx.workspace_id, fx.owner_id).await;
@@ -434,33 +428,39 @@ async fn patch_moves_a_ticket_between_epics_and_clears_assignee_without_touching
     let ticket_id = ticket["id"].as_str().unwrap();
     let original_status = ticket["status"].clone();
 
-    let (status, moved) = patch_json(
-        &fx.app,
-        &format!("/api/tickets/{ticket_id}"),
+    // A ticket's Epic is set when it's created: moving it to another Epic
+    // or detaching it is refused, and changes nothing.
+    for body in [
         serde_json::json!({ "orderId": epic_b }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(moved["orderId"], epic_b.to_string());
-    assert_eq!(
-        moved["assigneeCharacterId"],
-        character_id.to_string(),
-        "assignee untouched by an Epic move"
-    );
-    assert_eq!(moved["status"], original_status);
+        serde_json::json!({ "orderId": null }),
+        serde_json::json!({ "orderId": epic_b, "capturedName": "Renamed" }),
+    ] {
+        let (status, response) =
+            patch_json(&fx.app, &format!("/api/tickets/{ticket_id}"), body.clone()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body} -> {response}");
+        assert_eq!(response["error"]["code"], "ticket_epic_fixed");
+    }
+    let (order_id, captured_name): (Option<Uuid>, String) =
+        sqlx::query_as("SELECT order_id, captured_name FROM tickets WHERE id = $1")
+            .bind(Uuid::parse_str(ticket_id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(order_id, Some(epic_a));
+    assert_eq!(captured_name, "Move blueprints");
 
     let (status, cleared) = patch_json(
         &fx.app,
         &format!("/api/tickets/{ticket_id}"),
-        serde_json::json!({ "orderId": null, "assigneeCharacterId": null }),
+        serde_json::json!({ "assigneeCharacterId": null }),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(cleared["orderId"], Value::Null);
     assert_eq!(cleared["assigneeCharacterId"], Value::Null);
+    assert_eq!(cleared["orderId"], epic_a.to_string(), "Epic untouched");
     assert_eq!(
         cleared["capturedName"], "Move blueprints",
-        "title untouched by clearing relationships"
+        "title untouched by clearing the assignee"
     );
     assert_eq!(cleared["status"], original_status);
 }

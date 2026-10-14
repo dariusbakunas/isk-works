@@ -6,7 +6,6 @@ import {
   deleteTicket,
   updateTicketMetadata,
   updateTicketStatus,
-  type OrderSummary,
   type TicketStatus,
   type TicketSummary,
 } from "../../api/industry";
@@ -44,7 +43,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function OrderTicketDetailDrawer({
   ticket,
   epicName,
-  orders,
   characters,
   onBack,
   onClose,
@@ -59,10 +57,6 @@ export function OrderTicketDetailDrawer({
    * `ticket.orderId` itself being `null`, a standalone ticket) hides the
    * Epic context section entirely. */
   epicName?: string | null;
-  /** Board's already-loaded Epic list, for the Details section's Epic
-   * dropdown -- omit to render Details without an Epic control (e.g. a
-   * caller that hasn't loaded Orders at all). */
-  orders?: OrderSummary[];
   /** Already-loaded/cached connected-character roster for the Assignee
    * dropdown -- no ESI call made here. */
   characters?: CharacterRosterEntry[];
@@ -115,7 +109,7 @@ export function OrderTicketDetailDrawer({
     }
   }
 
-  // Organizational metadata editing -- title/notes/Epic/assignee, all via
+  // Organizational metadata editing -- title/notes/assignee, all via
   // the same `PATCH /api/tickets/:id` metadata path. Never touches status,
   // recording, execution snapshot, source Build, or requirement
   // fulfillments (see `updateTicketMetadata`'s own doc). Local field state
@@ -270,41 +264,26 @@ export function OrderTicketDetailDrawer({
             />
           </div>
 
-          {orders ? (
-            <div className="space-y-1">
-              <label className="block text-[10px] text-muted" htmlFor="ticket-epic">
-                Epic
-              </label>
-              <div className="flex items-center gap-2">
-                <select
-                  className="iw-input w-full text-sm"
-                  disabled={metaBusy}
-                  id="ticket-epic"
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    void saveMetadata({ orderId: value || null });
-                  }}
-                  value={ticket.orderId ?? ""}
+          {/* Fixed at creation: moving an Epic's ticket would leave its
+              requirement links and reservations with the old Epic. A ticket
+              filed under the wrong Epic is deleted and created again. */}
+          <div className="space-y-1">
+            <span className="block text-[10px] text-muted">Epic</span>
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                {ticket.orderId ? (epicName ?? "Unknown Epic") : "No Epic"}
+              </span>
+              {ticket.orderId && epicName && onOpenEpic ? (
+                <button
+                  className="shrink-0 text-[10px] font-semibold uppercase text-primary hover:underline"
+                  onClick={onOpenEpic}
+                  type="button"
                 >
-                  <option value="">No Epic</option>
-                  {orders.map((order) => (
-                    <option key={order.id} value={order.id}>
-                      {order.displayName}
-                    </option>
-                  ))}
-                </select>
-                {ticket.orderId && epicName && onOpenEpic ? (
-                  <button
-                    className="shrink-0 text-[10px] font-semibold uppercase text-primary hover:underline"
-                    onClick={onOpenEpic}
-                    type="button"
-                  >
-                    Open
-                  </button>
-                ) : null}
-              </div>
+                  Open
+                </button>
+              ) : null}
             </div>
-          ) : null}
+          </div>
 
           {characters ? (
             <div className="space-y-1">

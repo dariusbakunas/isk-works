@@ -527,13 +527,12 @@ pub(super) struct UpdateTicketRequest {
     /// having any). Absent -> notes untouched.
     #[serde(default)]
     notes: Option<String>,
-    /// Omitted -> Epic membership untouched. `null` -> clear it (no
-    /// Epic). A uuid -> set it. This is a bare organizational write --
-    /// never a requirement-fulfillment/inventory/status/Build operation
-    /// (moving a Ticket between Epics touches nothing else).
+    /// A ticket's Epic is set when it's created and never changes: any
+    /// `orderId` here (a uuid or `null`) is refused with
+    /// `ticket_epic_fixed`, rather than silently ignored.
     #[serde(default, deserialize_with = "deserialize_present_field")]
     order_id: Option<Option<uuid::Uuid>>,
-    /// Same three-value semantics as `order_id`, for the assignee.
+    /// Omitted -> assignee untouched. `null` -> unassign. A uuid -> set it.
     /// Reassigning is metadata-only -- it never touches status, recording,
     /// inventory, Epic, Build, or dependencies.
     #[serde(default, deserialize_with = "deserialize_present_field")]
@@ -547,7 +546,7 @@ pub(super) struct UpdateTicketRequest {
 /// status to any other, in either direction.
 ///
 /// Also the canonical organizational metadata-update endpoint (title,
-/// notes, Epic, assignee) -- see `UpdateTicketRequest`'s own field docs for
+/// notes, assignee; the Epic is fixed at creation) -- see `UpdateTicketRequest`'s own field docs for
 /// the omitted/`null`/set semantics. A request may set `status` and/or any
 /// metadata field in the same call; each independently no-ops when absent.
 /// No inventory, allocation, cascade, or Order/Run/Build mutation from
@@ -561,9 +560,11 @@ pub(super) async fn update_ticket(
     let repository = state.order_repository()?;
     let ticket_id = TicketId(ticket_id);
 
+    if request.order_id.is_some() {
+        return Err(OrderError::TicketEpicFixed.into());
+    }
     let has_metadata = request.captured_name.is_some()
         || request.notes.is_some()
-        || request.order_id.is_some()
         || request.assignee_character_id.is_some();
     if has_metadata {
         let captured_name = request
@@ -573,7 +574,7 @@ pub(super) async fn update_ticket(
         repository
             .verify_ticket_references(
                 workspace_id,
-                request.order_id.flatten().map(OrderId),
+                None,
                 request
                     .assignee_character_id
                     .flatten()
@@ -588,7 +589,6 @@ pub(super) async fn update_ticket(
                 TicketMetadataUpdate {
                     captured_name,
                     notes: request.notes,
-                    order_id: request.order_id.map(|value| value.map(OrderId)),
                     assignee_character_id: request
                         .assignee_character_id
                         .map(|value| value.map(ConnectedCharacterId)),

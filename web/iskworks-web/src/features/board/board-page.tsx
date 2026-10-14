@@ -835,7 +835,6 @@ export function BoardPage() {
               ? (state.orders.find((order) => order.id === openTicket.orderId)?.displayName ?? null)
               : null
           }
-          orders={state.orders}
           onBack={ticketBackToOrderId ? backFromTicketToEpic : undefined}
           onChanged={() => void load()}
           onClose={closeTicket}

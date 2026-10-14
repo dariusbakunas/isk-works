@@ -1884,7 +1884,6 @@ impl OrderRepository for PgOrderRepository {
     ) -> Result<Ticket, OrderError> {
         if update.captured_name.is_none()
             && update.notes.is_none()
-            && update.order_id.is_none()
             && update.assignee_character_id.is_none()
         {
             return self.get_ticket(workspace_id, ticket_id).await;
@@ -1897,11 +1896,6 @@ impl OrderRepository for PgOrderRepository {
         }
         if let Some(notes) = update.notes {
             query.push(", notes = ").push_bind(notes);
-        }
-        if let Some(order_id) = update.order_id {
-            query
-                .push(", order_id = ")
-                .push_bind(order_id.map(|id| id.0));
         }
         if let Some(assignee_character_id) = update.assignee_character_id {
             query

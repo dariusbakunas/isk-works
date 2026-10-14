@@ -268,19 +268,19 @@ pub struct NewTicket {
 }
 
 /// A purely organizational, metadata-only Ticket update -- title, notes,
-/// Epic membership, and assignee. Every field is independently
-/// three-valued: `None` means "leave unchanged", `Some(None)` means "clear
-/// it" (only meaningful for `order_id`/`assignee_character_id`, the two
-/// nullable relationships), `Some(Some(x))` means "set it to `x`".
-/// Deliberately never touches `status`, `recording`, `execution_snapshot`,
-/// `source_build_id`, requirement fulfillments, or AcquisitionRun
-/// membership -- moving a Ticket between Epics or reassigning it is a bare
-/// metadata write, nothing else.
+/// and assignee. `None` means "leave unchanged"; for the nullable assignee
+/// `Some(None)` clears it and `Some(Some(x))` sets it. Deliberately never
+/// touches `status`, `recording`, `execution_snapshot`, `source_build_id`,
+/// requirement fulfillments, or AcquisitionRun membership.
+///
+/// A ticket's Epic (`order_id`) is not here: it is set when the ticket is
+/// created and never changes. Moving an Epic-generated ticket would leave
+/// its requirement fulfillments and reservations behind with the old Epic;
+/// a ticket filed under the wrong Epic is deleted and created again.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct TicketMetadataUpdate {
     pub captured_name: Option<String>,
     pub notes: Option<String>,
-    pub order_id: Option<Option<OrderId>>,
     pub assignee_character_id: Option<Option<ConnectedCharacterId>>,
 }
 
@@ -427,6 +427,8 @@ pub enum OrderError {
     InvalidQuantity,
     #[error("a ticket title is required and cannot be blank")]
     InvalidTicketTitle,
+    #[error("a ticket's Epic is set when it is created and cannot be changed")]
+    TicketEpicFixed,
     #[error("the selected Build's recipe does not match the requested ticket kind")]
     TicketKindDoesNotMatchBuildRecipe,
     #[error("ticket's type does not match the requirement/prerequisite it would fulfill")]
