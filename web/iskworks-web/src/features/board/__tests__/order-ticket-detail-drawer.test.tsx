@@ -156,6 +156,19 @@ describe("OrderTicketDetailDrawer", () => {
               reusedLineTotal: null,
             },
           ],
+          // Still unmet, so the server lists it as a blocker.
+          blockedBy: [
+            {
+              prerequisiteId: "prereq-pc",
+              kind: "buy",
+              typeId: 16680,
+              capturedName: "Phenolic Composites",
+              outstandingQuantity: 60,
+              representativeFulfillingTicketId: null,
+              representativeFulfillingTicketDisplayId: null,
+              representativeFulfillingTicketStatus: null,
+            },
+          ],
         })}
       />,
     );
@@ -166,13 +179,50 @@ describe("OrderTicketDetailDrawer", () => {
     expect(within(coveredRow).getByText("Use Inventory")).toBeInTheDocument();
     expect(within(coveredRow).queryByText("BUY")).not.toBeInTheDocument();
 
-    const partialRow = screen.getByText("Phenolic Composites").closest("div") as HTMLElement;
+    // The first match is the Required Materials row (Blocked by lists it too).
+    const partialRow = screen.getAllByText("Phenolic Composites")[0].closest("div") as HTMLElement;
     expect(within(partialRow).getByText("60")).toBeInTheDocument();
     expect(within(partialRow).getByText("Buy · Missing (60)")).toBeInTheDocument();
 
     // The only "BUY" on screen would be the ticket-kind badge; this ticket
     // is manufacturing, so "BUY" must not appear at all.
     expect(screen.queryByText("BUY")).not.toBeInTheDocument();
+  });
+
+  it("a prerequisite that no longer blocks reads as done, not Missing", () => {
+    render(
+      <OrderTicketDetailDrawer
+        onClose={() => {}}
+        ticket={ticketFixture({
+          kind: "manufacturing",
+          prerequisites: [
+            {
+              // Partly from stock; its producing step has since delivered the
+              // rest, so the server no longer lists it in blockedBy.
+              id: "prereq-dse",
+              ticketId: "ticket-1",
+              typeId: 11_555,
+              capturedName: "Deflection Shield Emitter",
+              kind: "build",
+              sourceBuildId: null,
+              requiredQuantity: 1_608,
+              fulfillmentScope: "missing",
+              reusedQuantity: 217,
+              freshQuantity: 1_391,
+              estimatedUnitCost: null,
+              estimatedLineTotal: null,
+              reusedLineTotal: null,
+            },
+          ],
+          blockedBy: [],
+        })}
+      />,
+    );
+
+    const row = screen.getByText("Deflection Shield Emitter").closest("div") as HTMLElement;
+    expect(within(row).getByText("Built")).toBeInTheDocument();
+    expect(within(row).queryByText(/Missing/)).not.toBeInTheDocument();
+    expect(within(row).getByText("1,391")).not.toHaveClass("text-danger");
   });
 
   it("shows the Blocked-by list with outstanding quantity and fulfilling ticket, independent of workflow status", () => {
