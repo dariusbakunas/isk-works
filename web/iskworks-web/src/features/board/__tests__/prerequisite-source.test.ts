@@ -82,6 +82,28 @@ describe("prerequisiteSourcePresentation", () => {
     ).toEqual({ label: "React", tone: "reaction" });
   });
 
+  it("once the work is done (no longer blocking), reads Built / Bought / Reacted (positive)", () => {
+    expect(prerequisiteSourcePresentation(prereq({ kind: "build", freshQuantity: 60 }), { met: true })).toEqual({
+      label: "Built",
+      tone: "positive",
+    });
+    expect(prerequisiteSourcePresentation(prereq({ kind: "buy" }), { met: true })).toEqual({
+      label: "Bought",
+      tone: "positive",
+    });
+    expect(prerequisiteSourcePresentation(prereq({ kind: "react", fulfillmentScope: "full" }), { met: true })).toEqual({
+      label: "Reacted",
+      tone: "positive",
+    });
+  });
+
+  it("a row stock already covered keeps reading Use Inventory once met", () => {
+    expect(prerequisiteSourcePresentation(prereq({ kind: "build", freshQuantity: 0 }), { met: true })).toEqual({
+      label: "Use Inventory",
+      tone: "positive",
+    });
+  });
+
   it("uses compact quantities for large outstanding amounts, matching the Worksheet", () => {
     expect(
       prerequisiteSourcePresentation(

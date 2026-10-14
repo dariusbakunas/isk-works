@@ -394,8 +394,11 @@ export function OrderTicketDetailDrawer({
                 // sourcing kind: a fully inventory-covered row (fresh 0)
                 // reads "Use Inventory", a partial one "<Kind> · Missing
                 // (N)" -- never a bare "BUY" that implies buying the whole
-                // quantity. Shared with the Worksheet/Graph vocabulary.
-                const source = prerequisiteSourcePresentation(prerequisite);
+                // quantity. Shared with the Worksheet/Graph vocabulary. Once
+                // the server stops listing it as a blocker, the fresh part
+                // is done and the row reads "Built"/"Bought"/"Reacted".
+                const met = !ticket.blockedBy.some((blocker) => blocker.prerequisiteId === prerequisite.id);
+                const source = prerequisiteSourcePresentation(prerequisite, { met });
                 return (
                   <div className="flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.id}>
                     <span className="min-w-0 flex-1 truncate text-foreground">{prerequisite.capturedName}</span>
@@ -403,7 +406,7 @@ export function OrderTicketDetailDrawer({
                       {prerequisite.requiredQuantity.toLocaleString()}
                     </span>
                     <span
-                      className={`w-16 shrink-0 text-right font-mono tabular-nums ${prerequisite.freshQuantity > 0 ? "text-danger" : "text-positive"}`}
+                      className={`w-16 shrink-0 text-right font-mono tabular-nums ${prerequisite.freshQuantity === 0 ? "text-positive" : met ? "text-foreground" : "text-danger"}`}
                     >
                       {prerequisite.freshQuantity.toLocaleString()}
                     </span>

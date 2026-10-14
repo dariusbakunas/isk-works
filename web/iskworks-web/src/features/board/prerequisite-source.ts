@@ -15,8 +15,13 @@
 //   partial        -> "<Kind> · Missing (N)"
 //   uncovered      -> "<Kind>"
 //
-// PRESENTATION ONLY. It reads the frozen prerequisite snapshot and never
-// consults live inventory.
+// Once the fresh part is done (the prerequisite no longer blocks the
+// ticket), a row that needed sourcing reads "Bought" / "Built" / "Reacted"
+// instead -- "Missing" only describes the plan, and would otherwise linger
+// after the work was delivered.
+//
+// PRESENTATION ONLY. It reads the frozen prerequisite snapshot and the
+// caller's blocker state, and never consults live inventory.
 
 import type { RequirementKind } from "../../api/industry";
 import type { Tone } from "../../components/primitives";
@@ -37,6 +42,12 @@ const UI_BASE: Record<RequirementKind, string> = {
   buy: "Buy",
   build: "Build",
   react: "React",
+};
+
+const DONE_LABEL: Record<RequirementKind, string> = {
+  buy: "Bought",
+  build: "Built",
+  react: "Reacted",
 };
 
 export interface PrerequisiteSourcePresentation {
@@ -65,11 +76,17 @@ export interface PrerequisiteSourceInput {
  */
 export function prerequisiteSourcePresentation(
   prerequisite: PrerequisiteSourceInput,
+  /** `met`: the ticket no longer lists this prerequisite in `blockedBy`. */
+  { met = false }: { met?: boolean } = {},
 ): PrerequisiteSourcePresentation {
   const required = prerequisite.requiredQuantity;
   const remaining =
     prerequisite.fulfillmentScope === "full" ? required : prerequisite.freshQuantity;
   const coverage = coverageSplit(required, remaining);
+
+  if (met && !coverage.fullyCovered) {
+    return { label: DONE_LABEL[prerequisite.kind], tone: "positive" };
+  }
 
   // `sourcingSummary` owns the state machine (full -> "Use Inventory",
   // partial -> "<base> · Missing (N)", fresh -> "<base>"); we only swap the
