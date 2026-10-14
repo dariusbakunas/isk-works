@@ -12,7 +12,6 @@ import {
 import { Badge, ConfirmDialog, InlineAlert } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
-import { IndustryJobRow } from "../characters/character-industry-tab";
 import { apiMessage } from "../industry/shared/api-error";
 import { formatDuration } from "../industry/shared/formatting";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
@@ -20,6 +19,7 @@ import { prerequisiteSourcePresentation } from "./prerequisite-source";
 import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
 import { recordingTerms } from "./recording/recording-meta";
 import { RecordingSection } from "./recording/recording-section";
+import { TicketJobsSection } from "./ticket-jobs-section";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted">{children}</h3>;
@@ -337,15 +337,8 @@ export function OrderTicketDetailDrawer({
           </div>
         ) : null}
 
-        {jobs.length > 0 ? (
-          <div className="space-y-1">
-            <SectionHeading>Industry jobs</SectionHeading>
-            <ul className="divide-y divide-border/70 border-y border-border/70">
-              {jobs.map((job) => (
-                <IndustryJobRow job={job} key={job.jobId} nowMs={nowMs} />
-              ))}
-            </ul>
-          </div>
+        {ticket.kind === "manufacturing" || ticket.kind === "reaction" ? (
+          <TicketJobsSection jobs={jobs} nowMs={nowMs} onChanged={onChanged} ticket={ticket} />
         ) : null}
 
         {blueprint ? (

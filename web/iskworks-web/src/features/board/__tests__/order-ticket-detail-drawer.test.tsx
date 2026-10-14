@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { IndustryJob } from "../../../api/characters";
 import { OrderTicketDetailDrawer } from "../order-ticket-detail-drawer";
 import { ticketFixture } from "./fixtures";
 
@@ -12,6 +13,9 @@ const industryApi = vi.hoisted(() => ({
   recordTicketProduction: vi.fn(),
   updateTicketMetadata: vi.fn(),
   deleteTicket: vi.fn(),
+  listTicketJobChoices: vi.fn(),
+  linkTicketJob: vi.fn(),
+  unlinkTicketJob: vi.fn(),
 }));
 
 vi.mock("../../../api/industry", async () => {
@@ -690,5 +694,108 @@ describe("OrderTicketDetailDrawer recording section", () => {
 
     screen.getByRole("region", { name: "Recording" });
     expect(within(screen.getByTestId("recording-state")).getByText("Recorded")).toBeInTheDocument();
+  });
+});
+
+function jobFixture(overrides: Partial<IndustryJob> = {}): IndustryJob {
+  return {
+    jobId: 500,
+    activity: "manufacturing",
+    activityId: 1,
+    status: "active",
+    blueprintTypeId: 1,
+    blueprintName: "Muninn Blueprint",
+    productTypeId: 12_015,
+    productName: "Muninn",
+    runs: 1,
+    facilityId: 1,
+    facilityName: "Q-3HS5 -- T2-T1 Med Ships",
+    solarSystemName: null,
+    startDate: "2026-10-14T00:00:00Z",
+    endDate: "2026-10-15T00:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("OrderTicketDetailDrawer industry job links", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const production = (overrides = {}) =>
+    ticketFixture({ kind: "manufacturing", assigneeCharacterId: "char-1", ...overrides });
+
+  it("unlinks a job from the ticket", async () => {
+    industryApi.unlinkTicketJob.mockResolvedValue(undefined);
+    const onChanged = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <OrderTicketDetailDrawer
+        jobs={[jobFixture({ jobId: 500 }), jobFixture({ jobId: 501 })]}
+        onChanged={onChanged}
+        onClose={() => {}}
+        ticket={production()}
+      />,
+    );
+
+    const unlinks = screen.getAllByRole("button", { name: "Unlink job" });
+    expect(unlinks).toHaveLength(2);
+    await user.click(unlinks[1]);
+
+    await waitFor(() => expect(industryApi.unlinkTicketJob).toHaveBeenCalledWith("ticket-1", 501));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("lists the jobs that fit and links one, moving it off another ticket", async () => {
+    industryApi.listTicketJobChoices.mockResolvedValue([
+      { job: jobFixture({ jobId: 600 }), linkedTicketId: null, linkedTicketDisplayId: null },
+      { job: jobFixture({ jobId: 601 }), linkedTicketId: "ticket-9", linkedTicketDisplayId: "ISK-1080" },
+    ]);
+    industryApi.linkTicketJob.mockResolvedValue(undefined);
+    const onChanged = vi.fn();
+    const user = userEvent.setup();
+    render(<OrderTicketDetailDrawer onChanged={onChanged} onClose={() => {}} ticket={production()} />);
+
+    expect(screen.getByText("No jobs linked.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Link job" }));
+
+    await waitFor(() => expect(industryApi.listTicketJobChoices).toHaveBeenCalledWith("ticket-1"));
+    const choices = await screen.findByRole("list", { name: "Jobs to link" });
+    expect(within(choices).getByText("On ISK-1080")).toBeInTheDocument();
+    expect(within(choices).getAllByRole("button", { name: "Link" })).toHaveLength(1);
+    await user.click(within(choices).getByRole("button", { name: "Move here" }));
+
+    await waitFor(() => expect(industryApi.linkTicketJob).toHaveBeenCalledWith("ticket-1", 601));
+    expect(onChanged).toHaveBeenCalled();
+    expect(screen.queryByRole("list", { name: "Jobs to link" })).not.toBeInTheDocument();
+  });
+
+  it("says when no job fits", async () => {
+    industryApi.listTicketJobChoices.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<OrderTicketDetailDrawer onClose={() => {}} ticket={production()} />);
+
+    await user.click(screen.getByRole("button", { name: "Link job" }));
+
+    expect(
+      await screen.findByText("No other running jobs by the assignee make this item."),
+    ).toBeInTheDocument();
+  });
+
+  it("an unassigned ticket asks for an assignee instead of listing jobs", async () => {
+    const user = userEvent.setup();
+    render(
+      <OrderTicketDetailDrawer onClose={() => {}} ticket={production({ assigneeCharacterId: null })} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Link job" }));
+
+    expect(screen.getByText("Assign the ticket to link its jobs.")).toBeInTheDocument();
+    expect(industryApi.listTicketJobChoices).not.toHaveBeenCalled();
+  });
+
+  it("a purchase ticket has no industry jobs section", () => {
+    render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture({ kind: "acquisition" })} />);
+
+    expect(screen.queryByText("Industry jobs")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Link job" })).not.toBeInTheDocument();
   });
 });

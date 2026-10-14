@@ -688,6 +688,29 @@ export function listTicketJobProgress(): Promise<TicketJobProgress[]> {
   return request("/api/tickets/job-progress");
 }
 
+// A job ESI reports now that could be linked to the ticket by hand -- the
+// assignee's, for the ticket's activity and exact product -- and the ticket
+// it is on now, if any (linking moves it).
+export interface TicketJobChoice {
+  job: IndustryJob;
+  linkedTicketId: string | null;
+  linkedTicketDisplayId: string | null;
+}
+
+export function listTicketJobChoices(ticketId: string): Promise<TicketJobChoice[]> {
+  return request(`/api/tickets/${ticketId}/job-choices`);
+}
+
+// Links a job to the ticket by hand, moving it off any other ticket.
+export function linkTicketJob(ticketId: string, jobId: number): Promise<void> {
+  return request(`/api/tickets/${ticketId}/jobs`, json("POST", { jobId }));
+}
+
+// Unlinks a job; automatic matching won't link it to this ticket again.
+export function unlinkTicketJob(ticketId: string, jobId: number): Promise<void> {
+  return request(`/api/tickets/${ticketId}/jobs/${jobId}`, { method: "DELETE" });
+}
+
 // Explicit inventory recording action -- posts exactly one Purchase and
 // records immutable provenance, in one transaction. Never changes the
 // ticket's workflow status. Idempotent on `idempotencyKey`.
