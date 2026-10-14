@@ -613,3 +613,52 @@ async fn record_acquisition_rejects_a_ticket_from_another_workspace(pool: PgPool
     assert_eq!(recording_count(&pool).await, 0);
     assert_eq!(inventory_event_count(&pool).await, 0);
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn preview_acquisition_reports_the_new_average_and_records_nothing(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    seed_sde_type(&pool, import_id, 34, "Tritanium").await;
+    seed_inventory_balance_with_cost(
+        &pool,
+        workspace_id,
+        owner_id,
+        34,
+        "Tritanium",
+        1_000,
+        "4000.0000",
+    )
+    .await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let (ticket, _) = repository
+        .create_ticket(new_acquisition_ticket_no_estimate(
+            workspace_id,
+            owner_id,
+            34,
+            "Tritanium",
+            1_000,
+        ))
+        .await
+        .unwrap();
+
+    let preview = repository
+        .preview_ticket_acquisition(
+            workspace_id,
+            ticket.id,
+            acquisition_input(1_000, Some("6.00")),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(preview.lines.len(), 1);
+    let line = &preview.lines[0];
+    assert_eq!(
+        line.effect,
+        iskworks_core::order::RecordingPreviewEffect::Added
+    );
+    assert_eq!(line.current.average_unit_cost, Money::parse("4").ok());
+    assert_eq!(line.resulting.quantity, 2_000);
+    assert_eq!(line.resulting.average_unit_cost, Money::parse("5").ok());
+    assert_eq!(recording_count(&pool).await, 0);
+    assert!(purchase_events(&pool).await.is_empty());
+}

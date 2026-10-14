@@ -372,6 +372,37 @@ pub struct RecordProductionOutcome {
     pub summary: TicketRecordingSummary,
 }
 
+/// How a previewed recording moves one inventory item.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RecordingPreviewEffect {
+    /// The recording adds this item: the production output, or the
+    /// acquired item.
+    Added,
+    /// The recording consumes this item as a production input.
+    Consumed,
+}
+
+/// One inventory item a recording would change, before and after.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingPreviewLine {
+    pub type_id: i64,
+    pub type_name: String,
+    pub effect: RecordingPreviewEffect,
+    pub current: crate::InventoryBalance,
+    pub resulting: crate::InventoryBalance,
+}
+
+/// What a recording would do to inventory, computed by running it and
+/// rolling back -- so it matches what recording posts exactly. Added items
+/// first, then consumed ones in input order.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingPreview {
+    pub lines: Vec<RecordingPreviewLine>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RevertTicketInventoryRecordingOutcome {
     pub recording: TicketInventoryRecording,
@@ -914,6 +945,25 @@ pub trait OrderRepository: Send + Sync {
         ticket_id: TicketId,
         input: RecordProductionInput,
     ) -> Result<RecordProductionOutcome, OrderError>;
+
+    /// What `record_ticket_acquisition` would do to inventory, without
+    /// recording anything. Fails the same way recording would.
+    async fn preview_ticket_acquisition(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        input: RecordAcquisitionInput,
+    ) -> Result<RecordingPreview, OrderError>;
+
+    /// What `record_ticket_production` would do to inventory, without
+    /// recording anything. Fails the same way recording would, including
+    /// `InsufficientAvailable` when other Epics hold the inputs.
+    async fn preview_ticket_production(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        input: RecordProductionInput,
+    ) -> Result<RecordingPreview, OrderError>;
 
     /// Reverts one immutable ticket recording by appending exact
     /// compensating events for its linked ledger evidence in one transaction.

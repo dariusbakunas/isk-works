@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct RecordAcquisitionRequest {
+    /// A preview ignores it.
     idempotency_key: uuid::Uuid,
     quantity: u64,
     #[serde(default)]
@@ -22,6 +23,46 @@ pub(super) struct RecordAcquisitionResponse {
     summary: TicketRecordingSummary,
 }
 
+fn acquisition_input(
+    request: RecordAcquisitionRequest,
+) -> Result<RecordAcquisitionInput, ApiError> {
+    if request.quantity == 0 {
+        return Err(OrderError::InvalidQuantity.into());
+    }
+    let unit_cost = request
+        .unit_cost
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(iskworks_core::Money::parse)
+        .transpose()?;
+    Ok(RecordAcquisitionInput {
+        idempotency_key: request.idempotency_key,
+        quantity: request.quantity,
+        unit_cost,
+        location_note: request.location_note.trim().to_string(),
+        note: request.note.trim().to_string(),
+        effective_at: request.effective_at.unwrap_or_else(Utc::now),
+    })
+}
+
+/// What recording this acquisition would do to inventory -- the same body
+/// as `record-acquisition`, nothing recorded. `idempotencyKey` is ignored.
+pub(super) async fn preview_ticket_acquisition_route(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+    Json(request): Json<RecordAcquisitionRequest>,
+) -> Result<Json<iskworks_core::order::RecordingPreview>, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let input = acquisition_input(request)?;
+    Ok(Json(
+        state
+            .order_repository()?
+            .preview_ticket_acquisition(workspace_id, TicketId(ticket_id), input)
+            .await?,
+    ))
+}
+
 /// Explicit "I acquired this" recording -- the first explicit
 /// inventory-recording action.
 /// Posts exactly one `Purchase` for `quantity` and records immutable
@@ -36,24 +77,7 @@ pub(super) async fn record_ticket_acquisition_route(
     Json(request): Json<RecordAcquisitionRequest>,
 ) -> Result<(StatusCode, Json<RecordAcquisitionResponse>), ApiError> {
     let (workspace_id, _owner_id) = workspace_context(&state).await?;
-    if request.quantity == 0 {
-        return Err(OrderError::InvalidQuantity.into());
-    }
-    let unit_cost = request
-        .unit_cost
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(iskworks_core::Money::parse)
-        .transpose()?;
-    let input = RecordAcquisitionInput {
-        idempotency_key: request.idempotency_key,
-        quantity: request.quantity,
-        unit_cost,
-        location_note: request.location_note.trim().to_string(),
-        note: request.note.trim().to_string(),
-        effective_at: request.effective_at.unwrap_or_else(Utc::now),
-    };
+    let input = acquisition_input(request)?;
     let outcome = state
         .order_repository()?
         .record_ticket_acquisition(
@@ -93,6 +117,7 @@ pub(super) struct RecordProductionInputRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct RecordProductionRequest {
+    /// A preview ignores it.
     idempotency_key: uuid::Uuid,
     runs_completed: u64,
     output: RecordProductionOutputRequest,
@@ -210,19 +235,7 @@ pub(super) struct RecordProductionResponse {
     summary: TicketRecordingSummary,
 }
 
-/// Explicit "I produced this" recording. In one transaction:
-/// one `Consumption` per input at the material's current inventory
-/// weighted average, then -- when `output.quantity > 0` -- one
-/// `ProductionOutput` whose basis is `Σ consumed basis + installationCost`
-/// (`Known` quality). **Does not** change the ticket's status, cascade
-/// dependents, or touch any Build/Order/allocation. Idempotent on
-/// `idempotencyKey` (`200` on replay, `201` on first post).
-pub(super) async fn record_ticket_production_route(
-    State(state): State<AppState>,
-    Path(ticket_id): Path<uuid::Uuid>,
-    Json(request): Json<RecordProductionRequest>,
-) -> Result<axum::response::Response, ApiError> {
-    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+fn production_input(request: RecordProductionRequest) -> Result<RecordProductionInput, ApiError> {
     if request.runs_completed == 0 {
         return Err(OrderError::InvalidQuantity.into());
     }
@@ -232,7 +245,7 @@ pub(super) async fn record_ticket_production_route(
     // `Money::parse` rejects a negative value, so `installationCost >= 0`
     // (and `0`) fall out for free.
     let installation_cost = iskworks_core::Money::parse(request.installation_cost.trim())?;
-    let input = RecordProductionInput {
+    Ok(RecordProductionInput {
         idempotency_key: request.idempotency_key,
         runs_completed: request.runs_completed,
         output_type_id: request.output.type_id,
@@ -257,7 +270,47 @@ pub(super) async fn record_ticket_production_route(
                 type_id: take.type_id,
             })
             .collect(),
-    };
+    })
+}
+
+/// What recording this production would do to inventory -- the same body
+/// as `record-production`, nothing recorded. `idempotencyKey` is ignored;
+/// other Epics' reservations answer the same `409 insufficient_available`.
+pub(super) async fn preview_ticket_production_route(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+    Json(request): Json<RecordProductionRequest>,
+) -> Result<axum::response::Response, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let input = production_input(request)?;
+    let ticket_id = TicketId(ticket_id);
+    match state
+        .order_repository()?
+        .preview_ticket_production(workspace_id, ticket_id, input)
+        .await
+    {
+        Ok(preview) => Ok(Json(preview).into_response()),
+        Err(OrderError::InsufficientAvailable(shortages)) => {
+            insufficient_available_response(&state, workspace_id, ticket_id, shortages).await
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Explicit "I produced this" recording. In one transaction:
+/// one `Consumption` per input at the material's current inventory
+/// weighted average, then -- when `output.quantity > 0` -- one
+/// `ProductionOutput` whose basis is `Σ consumed basis + installationCost`
+/// (`Known` quality). **Does not** change the ticket's status, cascade
+/// dependents, or touch any Build/Order/allocation. Idempotent on
+/// `idempotencyKey` (`200` on replay, `201` on first post).
+pub(super) async fn record_ticket_production_route(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+    Json(request): Json<RecordProductionRequest>,
+) -> Result<axum::response::Response, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let input = production_input(request)?;
     let ticket_id = iskworks_core::order::TicketId(ticket_id);
     let repository = state.order_repository()?;
     let outcome = match repository

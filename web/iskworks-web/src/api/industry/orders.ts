@@ -3,6 +3,7 @@ import type { ExecutionPlanProjection } from "./execution-plan";
 import { json, request } from "./request";
 import type { Money } from "./shared";
 import type { IndustryJob } from "../characters";
+import type { InventoryBalance } from "../inventory";
 import type { BlueprintSnapshot, PreviewBuildPlanCommand } from "./builds";
 import type { FacilityProfile, InstallationCostBreakdown } from "./facilities";
 
@@ -703,6 +704,35 @@ export function recordTicketAcquisition(
   },
 ): Promise<RecordAcquisitionResponse> {
   return request(`/api/tickets/${ticketId}/record-acquisition`, json("POST", body));
+}
+
+// What a recording would do to inventory, per touched item, before and
+// after -- the server runs the recording and rolls it back, so this is
+// exactly what recording would post. Added items (the output or acquired
+// item) come first, then consumed inputs.
+export interface RecordingPreviewLine {
+  typeId: number;
+  typeName: string;
+  effect: "added" | "consumed";
+  current: InventoryBalance;
+  resulting: InventoryBalance;
+}
+
+export interface RecordingPreview {
+  lines: RecordingPreviewLine[];
+}
+
+export type RecordAcquisitionBody = Parameters<typeof recordTicketAcquisition>[1];
+export type RecordProductionBody = Parameters<typeof recordTicketProduction>[1];
+
+export function previewTicketAcquisition(ticketId: string, body: RecordAcquisitionBody): Promise<RecordingPreview> {
+  return request(`/api/tickets/${ticketId}/record-acquisition/preview`, json("POST", body));
+}
+
+// Answers the same 409 `insufficient_available` as recording when other
+// Epics hold the inputs.
+export function previewTicketProduction(ticketId: string, body: RecordProductionBody): Promise<RecordingPreview> {
+  return request(`/api/tickets/${ticketId}/record-production/preview`, json("POST", body));
 }
 
 // Explicit production recording for a Manufacturing/Reaction ticket --

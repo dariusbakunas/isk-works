@@ -6,6 +6,7 @@ import type { TicketSummary } from "../../../../api/industry";
 import { AcquisitionRecordingForm } from "../acquisition-recording-form";
 
 const api = vi.hoisted(() => ({
+  previewTicketAcquisition: vi.fn(),
   recordTicketAcquisition: vi.fn(),
   recordTicketProduction: vi.fn(),
   startTicket: vi.fn(),
@@ -61,12 +62,66 @@ function ticket(overrides: Partial<TicketSummary> = {}): TicketSummary {
   };
 }
 
+function balance(quantity: number, total: string, average: string | null) {
+  return {
+    key: { workspaceId: "workspace-1", ownerId: "owner-1", typeId: 34 },
+    typeName: "Tritanium",
+    quantity,
+    totalHistoricalCost: total,
+    averageUnitCost: average,
+    revision: 1,
+    lastActivityAt: null,
+  };
+}
+
+const PREVIEW = {
+  lines: [
+    {
+      typeId: 34,
+      typeName: "Tritanium",
+      effect: "added",
+      current: balance(1_000, "4000.0000", "4.0000"),
+      resulting: balance(1_060, "4360.0000", "4.1132"),
+    },
+  ],
+};
+
+async function previewThenRecord() {
+  await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Record" }));
+}
+
 function quantityInput(): HTMLInputElement {
   return screen.getByRole("spinbutton", { name: "Quantity" });
 }
 
 describe("AcquisitionRecordingForm", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.previewTicketAcquisition.mockResolvedValue(PREVIEW);
+  });
+
+  it("previews the inventory change before recording anything", async () => {
+    api.recordTicketAcquisition.mockResolvedValue({});
+    render(<AcquisitionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(await screen.findByText("Inventory after recording")).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.tagName === "DD" && element.textContent === "1,000 → 1,060"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("average-cost-change")).toBeInTheDocument();
+    expect(api.previewTicketAcquisition).toHaveBeenCalledWith(
+      "ticket-1",
+      expect.objectContaining({ quantity: 60 }),
+    );
+    expect(api.recordTicketAcquisition).not.toHaveBeenCalled();
+
+    // Back keeps what was entered.
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(quantityInput()).toHaveValue(60);
+  });
 
   it("defaults the quantity to the remaining amount", () => {
     render(<AcquisitionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
@@ -92,11 +147,11 @@ describe("AcquisitionRecordingForm", () => {
     );
 
     expect(quantityInput()).toHaveValue(null);
-    expect(screen.getByRole("button", { name: "Record" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
 
     await userEvent.type(quantityInput(), "25");
-    expect(screen.getByRole("button", { name: "Record" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
+    await previewThenRecord();
 
     await waitFor(() => expect(api.recordTicketAcquisition).toHaveBeenCalledTimes(1));
     expect(api.recordTicketAcquisition.mock.calls[0][1]).toMatchObject({ quantity: 25 });
@@ -109,7 +164,7 @@ describe("AcquisitionRecordingForm", () => {
       <AcquisitionRecordingForm onCancel={() => {}} onRecorded={onRecorded} ticket={ticket()} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await previewThenRecord();
 
     await waitFor(() => expect(onRecorded).toHaveBeenCalled());
     expect(api.recordTicketAcquisition).toHaveBeenCalledWith(
@@ -121,17 +176,17 @@ describe("AcquisitionRecordingForm", () => {
     expect(api.updateTicketStatus).not.toHaveBeenCalled();
   });
 
-  it("keeps the form and entered values on failure", async () => {
-    api.recordTicketAcquisition.mockRejectedValue(new Error("a cost is required to record this purchase"));
+  it("keeps the form and entered values when the preview fails", async () => {
+    api.previewTicketAcquisition.mockRejectedValue(new Error("a cost is required to record this purchase"));
     render(<AcquisitionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
 
     await userEvent.clear(quantityInput());
     await userEvent.type(quantityInput(), "17");
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
 
     expect(await screen.findByText("a cost is required to record this purchase")).toBeInTheDocument();
     expect(quantityInput()).toHaveValue(17);
-    expect(screen.getByRole("button", { name: "Record" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
   });
 
   it("reuses the idempotency key on retry, then a fresh key for the next recording", async () => {
@@ -141,15 +196,16 @@ describe("AcquisitionRecordingForm", () => {
       .mockResolvedValueOnce({});
     render(<AcquisitionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
 
-    // First attempt fails.
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    // First attempt fails; the preview stays up with the error.
+    await previewThenRecord();
     await screen.findByText("network blip");
     // Retry (same submission intent) succeeds.
     await userEvent.click(screen.getByRole("button", { name: "Record" }));
     await waitFor(() => expect(api.recordTicketAcquisition).toHaveBeenCalledTimes(2));
     // A brand-new recording after success.
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await userEvent.type(quantityInput(), "5");
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await previewThenRecord();
     await waitFor(() => expect(api.recordTicketAcquisition).toHaveBeenCalledTimes(3));
 
     const keys = api.recordTicketAcquisition.mock.calls.map((call) => call[1].idempotencyKey);

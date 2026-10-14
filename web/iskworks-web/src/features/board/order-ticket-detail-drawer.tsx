@@ -18,6 +18,8 @@ import { apiMessage } from "../industry/shared/api-error";
 import { formatDuration } from "../industry/shared/formatting";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { prerequisiteSourcePresentation } from "./prerequisite-source";
+import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
+import { recordingTerms } from "./recording/recording-meta";
 import { RecordingSection } from "./recording/recording-section";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -94,6 +96,10 @@ export function OrderTicketDetailDrawer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+  // Generic tickets have no recording; a batched acquisition records
+  // through its Acquisition Run.
+  const canRecord = ticket.recording !== null && !isBatched;
 
   async function remove() {
     setConfirmDelete(false);
@@ -241,6 +247,12 @@ export function OrderTicketDetailDrawer({
             </select>
           </div>
         )}
+
+        {canRecord ? (
+          <button className="iw-button-secondary w-full" onClick={() => setRecordOpen(true)} type="button">
+            {recordingTerms(ticket.kind).action}
+          </button>
+        ) : null}
 
         <div className="space-y-2">
           <SectionHeading>Details</SectionHeading>
@@ -490,6 +502,17 @@ export function OrderTicketDetailDrawer({
           </button>
         </div>
       </div>
+
+      {recordOpen ? (
+        <RecordOutcomeDialog
+          onClose={() => setRecordOpen(false)}
+          onRecorded={() => {
+            setRecordOpen(false);
+            onChanged?.();
+          }}
+          ticket={ticket}
+        />
+      ) : null}
 
       <ConfirmDialog
         confirmLabel="Delete ticket"

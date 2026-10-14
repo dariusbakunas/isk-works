@@ -21,6 +21,7 @@ const industryApi = vi.hoisted(() => ({
   completeTicket: vi.fn(),
   cancelTicket: vi.fn(),
   recordTicketProduction: vi.fn(),
+  previewTicketProduction: vi.fn(),
   recordTicketAcquisition: vi.fn(),
   getOrder: vi.fn(),
   startOrder: vi.fn(),
@@ -1321,6 +1322,7 @@ describe("BoardPage explicit recording integration", () => {
         }),
       ]);
     industryApi.recordTicketProduction.mockResolvedValue({});
+    industryApi.previewTicketProduction.mockResolvedValue({ lines: [] });
 
     renderPage();
 
@@ -1340,8 +1342,9 @@ describe("BoardPage explicit recording integration", () => {
       "60",
     ]);
 
-    // Open Record production; the form defaults to the remaining 60 runs.
-    await userEvent.click(within(section).getByRole("button", { name: "Record production" }));
+    // Open Record production (under Status); the form defaults to the
+    // remaining 60 runs.
+    await userEvent.click(screen.getByRole("button", { name: "Record production" }));
     const runsField = screen.getByRole("spinbutton", { name: "Runs completed" });
     expect(runsField).toHaveValue(60);
 
@@ -1353,7 +1356,8 @@ describe("BoardPage explicit recording integration", () => {
     await userEvent.clear(install);
     await userEvent.type(install, "50");
     await userEvent.tab();
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Record" }));
 
     await waitFor(() => expect(industryApi.recordTicketProduction).toHaveBeenCalledTimes(1));
     expect(industryApi.recordTicketProduction.mock.calls[0][1]).toMatchObject({

@@ -6,6 +6,7 @@ import type { TaskExecutionSnapshot, TicketSummary } from "../../../../api/indus
 import { ProductionRecordingForm } from "../production-recording-form";
 
 const api = vi.hoisted(() => ({
+  previewTicketProduction: vi.fn(),
   recordTicketProduction: vi.fn(),
   recordTicketAcquisition: vi.fn(),
   startTicket: vi.fn(),
@@ -129,6 +130,42 @@ function ticket(overrides: Partial<TicketSummary> = {}): TicketSummary {
   };
 }
 
+function balance(typeId: number, quantity: number, total: string, average: string | null) {
+  return {
+    key: { workspaceId: "workspace-1", ownerId: "owner-1", typeId },
+    typeName: "",
+    quantity,
+    totalHistoricalCost: total,
+    averageUnitCost: average,
+    revision: 1,
+    lastActivityAt: null,
+  };
+}
+
+const PREVIEW = {
+  lines: [
+    {
+      typeId: 20185,
+      typeName: "Crystalline Carbonide Armor Plate",
+      effect: "added",
+      current: balance(20185, 0, "0", null),
+      resulting: balance(20185, 500, "50000.0000", "100.0000"),
+    },
+    {
+      typeId: 34,
+      typeName: "Tritanium",
+      effect: "consumed",
+      current: balance(34, 2_000, "10000.0000", "5.0000"),
+      resulting: balance(34, 1_000, "5000.0000", "5.0000"),
+    },
+  ],
+};
+
+async function previewThenRecord(user = userEvent) {
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  await user.click(await screen.findByRole("button", { name: "Record" }));
+}
+
 const runsInput = () => screen.getByRole("spinbutton", { name: "Runs completed" });
 const outputInput = () =>
   screen.getByRole("spinbutton", { name: /Output quantity for/ });
@@ -186,7 +223,23 @@ describe("ProductionRecordingForm — snapshot-based defaults", () => {
 });
 
 describe("ProductionRecordingForm — submission", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.previewTicketProduction.mockResolvedValue(PREVIEW);
+  });
+
+  it("previews the output and consumed materials before recording", async () => {
+    render(<ProductionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(await screen.findByText("Inventory after recording")).toBeInTheDocument();
+    expect(screen.getByText("Added")).toBeInTheDocument();
+    expect(screen.getByText("Consumed")).toBeInTheDocument();
+    expect(screen.getByText("No existing stock")).toBeInTheDocument();
+    expect(api.previewTicketProduction.mock.calls[0][1]).toMatchObject({ runsCompleted: 100 });
+    expect(api.recordTicketProduction).not.toHaveBeenCalled();
+  });
 
   it("records via record-production only, with the edited actuals, and no workflow call", async () => {
     api.recordTicketProduction.mockResolvedValue({});
@@ -199,7 +252,7 @@ describe("ProductionRecordingForm — submission", () => {
     await userEvent.type(runsInput(), "40");
     await userEvent.clear(materialInput());
     await userEvent.type(materialInput(), "410");
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await previewThenRecord();
 
     await waitFor(() => expect(onRecorded).toHaveBeenCalled());
     expect(api.recordTicketProduction).toHaveBeenCalledTimes(1);
@@ -223,28 +276,29 @@ describe("ProductionRecordingForm — submission", () => {
     await userEvent.clear(installInput());
     await userEvent.type(installInput(), "0");
     await userEvent.tab();
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await previewThenRecord();
 
     await waitFor(() => expect(api.recordTicketProduction).toHaveBeenCalled());
     expect(api.recordTicketProduction.mock.calls[0][1].installationCost).toBe("0");
   });
 
   it("preserves the form and its values when the backend reports insufficient inventory", async () => {
-    api.recordTicketProduction.mockRejectedValue(
+    api.previewTicketProduction.mockRejectedValue(
       new Error("not enough of a material is in stock to record this consumption"),
     );
     render(<ProductionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
 
     await userEvent.clear(runsInput());
     await userEvent.type(runsInput(), "40");
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
 
     expect(
       await screen.findByText("not enough of a material is in stock to record this consumption"),
     ).toBeInTheDocument();
     expect(runsInput()).toHaveValue(40);
     expect(outputInput()).toHaveValue(200);
-    expect(screen.getByRole("button", { name: "Record" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
+    expect(api.recordTicketProduction).not.toHaveBeenCalled();
   });
 
   it("drives a Reaction ticket through the same record-production path", async () => {
@@ -258,7 +312,7 @@ describe("ProductionRecordingForm — submission", () => {
     );
 
     expect(screen.getByRole("form", { name: "Record reaction" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    await previewThenRecord();
     await waitFor(() => expect(api.recordTicketProduction).toHaveBeenCalledTimes(1));
   });
 });
@@ -296,11 +350,12 @@ describe("ProductionRecordingForm — legacy ticket without a frozen snapshot", 
 describe("ProductionRecordingForm when other Epics reserved the stock", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.recordTicketProduction.mockResolvedValue({});
   });
 
   it("names the holders and records after taking only the missing amount", async () => {
     const { ApiError } = await import("../../../../api/workspace");
-    api.recordTicketProduction
+    api.previewTicketProduction
       .mockRejectedValueOnce(
         new ApiError(409, {
           code: "insufficient_available",
@@ -320,12 +375,12 @@ describe("ProductionRecordingForm when other Epics reserved the stock", () => {
           ],
         } as never),
       )
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce(PREVIEW);
     const onRecorded = vi.fn();
     const user = userEvent.setup();
     render(<ProductionRecordingForm onCancel={() => {}} onRecorded={onRecorded} ticket={ticket()} />);
 
-    await user.click(screen.getByRole("button", { name: "Record" }));
+    await user.click(screen.getByRole("button", { name: "Preview" }));
 
     expect(await screen.findByText("Reserved by other Epics")).toBeInTheDocument();
     expect(
@@ -337,23 +392,27 @@ describe("ProductionRecordingForm when other Epics reserved the stock", () => {
     // holder, the other 50 from the second.
     await user.click(
       screen.getByRole("button", {
-        name: "Take 250 Tritanium from Manufacture Sacrilege, 50 Tritanium from Manufacture Ishkur and record",
+        name: "Take 250 Tritanium from Manufacture Sacrilege, 50 Tritanium from Manufacture Ishkur and preview",
       }),
     );
+    await user.click(await screen.findByRole("button", { name: "Record" }));
 
     await waitFor(() => expect(onRecorded).toHaveBeenCalled());
-    const [first, second] = api.recordTicketProduction.mock.calls;
-    expect(second[1].takeFrom).toEqual([
+    const takes = [
       { orderId: "epic-b", typeId: 34 },
       { orderId: "epic-c", typeId: 34 },
-    ]);
-    expect(second[1].idempotencyKey).toBe(first[1].idempotencyKey);
+    ];
+    const [first, second] = api.previewTicketProduction.mock.calls;
     expect(first[1].takeFrom).toBeUndefined();
+    expect(second[1].takeFrom).toEqual(takes);
+    // Recording sends exactly what was previewed.
+    expect(api.recordTicketProduction).toHaveBeenCalledTimes(1);
+    expect(api.recordTicketProduction.mock.calls[0][1].takeFrom).toEqual(takes);
   });
 
   it("can back out without taking anything", async () => {
     const { ApiError } = await import("../../../../api/workspace");
-    api.recordTicketProduction.mockRejectedValueOnce(
+    api.previewTicketProduction.mockRejectedValueOnce(
       new ApiError(409, {
         code: "insufficient_available",
         message: "x",
@@ -372,10 +431,10 @@ describe("ProductionRecordingForm when other Epics reserved the stock", () => {
     const user = userEvent.setup();
     render(<ProductionRecordingForm onCancel={() => {}} onRecorded={() => {}} ticket={ticket()} />);
 
-    await user.click(screen.getByRole("button", { name: "Record" }));
+    await user.click(screen.getByRole("button", { name: "Preview" }));
     await user.click(await screen.findByRole("button", { name: "Keep their reservations" }));
 
     expect(screen.queryByText("Reserved by other Epics")).not.toBeInTheDocument();
-    expect(api.recordTicketProduction).toHaveBeenCalledTimes(1);
+    expect(api.recordTicketProduction).not.toHaveBeenCalled();
   });
 });
