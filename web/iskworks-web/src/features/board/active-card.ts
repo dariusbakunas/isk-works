@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 
-/** The ring on the Board card whose details the inspector is showing. */
-export const ACTIVE_CARD_CLASS = "ring-2 ring-primary";
+/** The tinted background on the Board card whose details the inspector is
+ * showing (see `.iw-card-active` in styles.css). */
+export const ACTIVE_CARD_CLASS = "iw-card-active";
 
 /** Scrolls the card into view when it becomes the inspected one -- e.g.
  * opened from an Epic's ticket list or a `?ticket=` link -- so the
