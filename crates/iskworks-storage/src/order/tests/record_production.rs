@@ -1196,3 +1196,88 @@ async fn record_production_with_zero_output_consumes_but_posts_no_output(pool: P
     assert_eq!(reversals[0].0, 50);
     assert_eq!(reversals[0].1, "500.0000".parse().unwrap());
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn preview_production_reports_before_and_after_and_records_nothing(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    for (type_id, name) in [(34_i64, "Material A"), (20185, "Product")] {
+        seed_sde_type(&pool, import_id, type_id, name).await;
+    }
+    seed_inventory_balance_with_cost(
+        &pool,
+        workspace_id,
+        owner_id,
+        34,
+        "Material A",
+        100,
+        "1000.0000",
+    )
+    .await;
+    seed_inventory_balance_with_cost(
+        &pool,
+        workspace_id,
+        owner_id,
+        20185,
+        "Product",
+        10,
+        "1000.0000",
+    )
+    .await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let (ticket, _) = repository
+        .create_ticket(mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Manufacturing,
+            20185,
+            "Product",
+            build_id,
+            vec![prod_prereq(34, "Material A")],
+            None,
+        ))
+        .await
+        .unwrap();
+
+    let preview = repository
+        .preview_ticket_production(
+            workspace_id,
+            ticket.id,
+            production_input(1, 20185, 10, &[(34, 40)], "600"),
+        )
+        .await
+        .unwrap();
+
+    // Output first: 10 @ 1000 plus 10 @ (40 * 10 + 600) = 2000 over 20.
+    let output = &preview.lines[0];
+    assert_eq!(output.type_id, 20185);
+    assert_eq!(output.effect, RecordingPreviewEffect::Added);
+    assert_eq!(output.current.quantity, 10);
+    assert_eq!(output.resulting.quantity, 20);
+    assert_eq!(output.current.average_unit_cost, Money::parse("100").ok());
+    assert_eq!(output.resulting.average_unit_cost, Money::parse("100").ok());
+    assert_eq!(
+        output.resulting.total_historical_cost,
+        Money::parse("2000").unwrap()
+    );
+    // Input: 40 of 100 consumed at the 10 ISK average.
+    let input = &preview.lines[1];
+    assert_eq!(input.type_id, 34);
+    assert_eq!(input.effect, RecordingPreviewEffect::Consumed);
+    assert_eq!(input.current.quantity, 100);
+    assert_eq!(input.resulting.quantity, 60);
+    assert_eq!(
+        input.resulting.total_historical_cost,
+        Money::parse("600").unwrap()
+    );
+
+    // Nothing was recorded or posted.
+    assert_eq!(recording_count(&pool).await, 0);
+    assert!(events_of_kind(&pool, "production_output").await.is_empty());
+    assert!(events_of_kind(&pool, "consumption").await.is_empty());
+    assert_eq!(
+        inventory_balance(&pool, workspace_id, owner_id, 34).await,
+        Some((100, "1000.0000".parse::<Decimal>().unwrap(), 1))
+    );
+}

@@ -2,6 +2,7 @@ use super::*;
 
 use super::inserts::*;
 use super::inventory_posting::*;
+use super::recording_preview::*;
 use super::recording_queries::*;
 
 #[async_trait]
@@ -1205,168 +1206,22 @@ impl OrderRepository for PgOrderRepository {
         ticket_id: TicketId,
         input: RecordAcquisitionInput,
     ) -> Result<RecordAcquisitionOutcome, OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-
-        // Lock the ticket row -- serializes concurrent recordings for this
-        // same ticket so the idempotency pre-check below is race-free. The
-        // `UNIQUE (ticket_id, idempotency_key)` constraint is the
-        // DB-authoritative backstop regardless (handled after the INSERT).
-        let ticket_row: Option<(
-            String,
-            Uuid,
-            i64,
-            String,
-            i64,
-            String,
-            Option<Uuid>,
-            Option<Decimal>,
-        )> = sqlx::query_as(
-            "SELECT kind, owner_id, type_id, captured_name, quantity, display_id, \
-                 acquisition_run_id, estimated_unit_cost FROM tickets \
-                 WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
-        )
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        let (
-            kind_str,
-            owner_id,
-            type_id,
-            captured_name,
-            requested_quantity,
-            display_id,
-            acquisition_run_id,
-            estimated_unit_cost,
-        ) = ticket_row.ok_or(OrderError::TicketNotFound)?;
-
-        if ticket_kind_from_str(&kind_str)? != TicketKind::Acquisition {
-            return Err(OrderError::RecordingRequiresAcquisitionTicket);
-        }
-        if acquisition_run_id.is_some() {
-            return Err(OrderError::RecordingNotAllowedForBatchedTicket);
-        }
-        let owner_id = OwnerId(owner_id);
-        let requested_quantity = u64_from_i64(requested_quantity)?;
-        let estimated_unit_cost = estimated_unit_cost.map(Money);
-
-        // Idempotent replay: this key was already recorded -- post nothing.
-        if let Some(existing) =
-            find_ticket_recording_by_key(&mut tx, ticket_id, input.idempotency_key).await?
-        {
-            let recorded = recorded_quantity_sum(&mut tx, ticket_id).await?;
-            tx.commit().await.map_err(map_error)?;
-            return Ok(RecordAcquisitionOutcome {
-                recording: existing,
-                created: false,
-                summary: derive_recording_summary(requested_quantity, recorded),
-            });
-        }
-
-        let recording_id = TicketInventoryRecordingId::new();
-        let recorded_at = crate::db_now();
-        let insert = sqlx::query(
-            "INSERT INTO ticket_inventory_recordings \
-               (id, ticket_id, kind, idempotency_key, recorded_quantity, \
-                location_note, note, recorded_at) \
-             VALUES ($1, $2, 'acquisition', $3, $4, $5, $6, $7)",
-        )
-        .bind(recording_id.0)
-        .bind(ticket_id.0)
-        .bind(input.idempotency_key)
-        .bind(i64_from_u64(input.quantity)?)
-        .bind(&input.location_note)
-        .bind(&input.note)
-        .bind(recorded_at)
-        .execute(&mut *tx)
-        .await;
-        if let Err(error) = insert {
-            if is_unique_violation(&error) {
-                // A concurrent duplicate won the race (not reachable under
-                // the ticket `FOR UPDATE`, but the UNIQUE is authoritative).
-                tx.rollback().await.map_err(map_error)?;
-                let (recording, recorded) = self
-                    .replay_ticket_recording(ticket_id, input.idempotency_key)
-                    .await?;
-                return Ok(RecordAcquisitionOutcome {
-                    recording,
-                    created: false,
-                    summary: derive_recording_summary(requested_quantity, recorded),
-                });
-            }
-            return Err(map_error(error));
-        }
-
-        // One `Purchase` for exactly this recording's quantity, cost via the
-        // same hierarchy `complete_ticket`'s acquisition path uses. Keeps
-        // `display_id` as `source_reference` (existing convention); the
-        // recording link below is the stronger provenance.
-        let event_id = post_purchase_in_transaction(
-            &mut tx,
-            InventoryPostingLine {
-                key: InventoryItemKey {
-                    workspace_id,
-                    owner_id,
-                    type_id,
-                },
-                type_name: &captured_name,
-                quantity: input.quantity,
-                source_reference: &display_id,
-            },
-            input.unit_cost,
-            estimated_unit_cost,
-            input.effective_at,
-            recorded_at,
-        )
-        .await?;
-
-        sqlx::query("UPDATE inventory_events SET ticket_inventory_recording_id = $1 WHERE id = $2")
-            .bind(recording_id.0)
-            .bind(event_id.0)
-            .execute(&mut *tx)
+        self.run_ticket_acquisition(workspace_id, ticket_id, input, None)
             .await
-            .map_err(map_error)?;
+    }
 
-        // The purchase is reserved to the Epic requirements this ticket
-        // fulfills, up to what they still need; the rest stays free.
-        super::reservations::reserve_recorded_output(
-            &mut tx,
-            super::reservations::RecordedOutput {
-                workspace_id,
-                owner_id,
-                feeds: super::reservations::OutputFeeds::Acquisition { ticket_id },
-                type_id,
-                quantity: input.quantity,
-                recording_id,
-                now: recorded_at,
-            },
-        )
-        .await?;
-
-        let recorded = recorded_quantity_sum(&mut tx, ticket_id).await?;
-        tx.commit().await.map_err(map_error)?;
-
-        Ok(RecordAcquisitionOutcome {
-            recording: TicketInventoryRecording {
-                id: recording_id,
-                ticket_id,
-                kind: TicketInventoryRecordingKind::Acquisition,
-                recorded_quantity: Some(input.quantity),
-                runs_completed: None,
-                installation_cost: None,
-                output_type_id: None,
-                output_quantity: None,
-                location_note: input.location_note,
-                note: input.note,
-                recorded_at,
-                reverted_at: None,
-                status: TicketInventoryRecordingStatus::Recorded,
-                effects: Vec::new(),
-            },
-            created: true,
-            summary: derive_recording_summary(requested_quantity, recorded),
-        })
+    async fn preview_ticket_acquisition(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        mut input: RecordAcquisitionInput,
+    ) -> Result<RecordingPreview, OrderError> {
+        // A fresh key can never replay an existing recording.
+        input.idempotency_key = Uuid::new_v4();
+        let mut capture = PreviewCapture::default();
+        self.run_ticket_acquisition(workspace_id, ticket_id, input, Some(&mut capture))
+            .await?;
+        Ok(capture.into_preview())
     }
 
     async fn record_ticket_production(
@@ -1375,278 +1230,22 @@ impl OrderRepository for PgOrderRepository {
         ticket_id: TicketId,
         input: RecordProductionInput,
     ) -> Result<RecordProductionOutcome, OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-
-        // Lock the ticket -- serializes concurrent recordings for it, so
-        // the idempotency pre-check is race-free (the UNIQUE is the
-        // authoritative backstop after the INSERT).
-        let ticket_row: Option<(String, Uuid, i64, String, String, Option<serde_json::Value>)> =
-            sqlx::query_as(
-                "SELECT kind, owner_id, type_id, captured_name, display_id, execution_snapshot \
-                 FROM tickets WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
-            )
-            .bind(workspace_id.0)
-            .bind(ticket_id.0)
-            .fetch_optional(&mut *tx)
+        self.run_ticket_production(workspace_id, ticket_id, input, None)
             .await
-            .map_err(map_error)?;
-        let (kind_str, owner_id, ticket_type_id, ticket_captured_name, display_id, snapshot_json) =
-            ticket_row.ok_or(OrderError::TicketNotFound)?;
+    }
 
-        let kind = ticket_kind_from_str(&kind_str)?;
-        if !matches!(kind, TicketKind::Manufacturing | TicketKind::Reaction) {
-            return Err(OrderError::RecordingRequiresProductionTicket);
-        }
-        let owner_id = OwnerId(owner_id);
-        let requested_runs = execution_snapshot_runs(&snapshot_json)?;
-
-        // The output must be the ticket's product.
-        if input.output_type_id != ticket_type_id {
-            return Err(OrderError::RecordingOutputTypeMismatch);
-        }
-
-        // Every input must be one of the ticket's frozen prerequisites (its
-        // material list). Quantities are actuals -- not checked against the
-        // plan. NOTE (known limitation): a legitimate unplanned consumable
-        // not in the frozen BOM is rejected here, rather than warned about.
-        let prereq_names: HashMap<i64, String> = sqlx::query_as::<_, (i64, String)>(
-            "SELECT type_id, captured_name FROM ticket_prerequisites WHERE ticket_id = $1",
-        )
-        .bind(ticket_id.0)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(map_error)?
-        .into_iter()
-        .collect();
-        for line in &input.inputs {
-            if line.quantity == 0 {
-                return Err(OrderError::InvalidQuantity);
-            }
-            if !prereq_names.contains_key(&line.type_id) {
-                return Err(OrderError::RecordingInputNotAPrerequisite);
-            }
-        }
-
-        // Idempotent replay: this key was already recorded -- post nothing.
-        if let Some(existing) =
-            find_ticket_recording_by_key(&mut tx, ticket_id, input.idempotency_key).await?
-        {
-            let recorded = recorded_runs_sum(&mut tx, ticket_id).await?;
-            tx.commit().await.map_err(map_error)?;
-            return Ok(RecordProductionOutcome {
-                recording: existing,
-                created: false,
-                summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
-            });
-        }
-
-        let recording_id = TicketInventoryRecordingId::new();
-        let recorded_at = crate::db_now();
-        let insert = sqlx::query(
-            "INSERT INTO ticket_inventory_recordings \
-               (id, ticket_id, kind, idempotency_key, runs_completed, installation_cost, \
-                output_type_id, output_quantity, location_note, note, recorded_at) \
-             VALUES ($1, $2, 'production', $3, $4, $5, $6, $7, $8, $9, $10)",
-        )
-        .bind(recording_id.0)
-        .bind(ticket_id.0)
-        .bind(input.idempotency_key)
-        .bind(i64_from_u64(input.runs_completed)?)
-        .bind(input.installation_cost.0)
-        .bind(input.output_type_id)
-        .bind(i64_from_u64(input.output_quantity)?)
-        .bind(&input.location_note)
-        .bind(&input.note)
-        .bind(recorded_at)
-        .execute(&mut *tx)
-        .await;
-        if let Err(error) = insert {
-            if is_unique_violation(&error) {
-                tx.rollback().await.map_err(map_error)?;
-                let (recording, recorded) = self
-                    .replay_ticket_recording(ticket_id, input.idempotency_key)
-                    .await?;
-                return Ok(RecordProductionOutcome {
-                    recording,
-                    created: false,
-                    summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
-                });
-            }
-            return Err(map_error(error));
-        }
-
-        // Every multi-balance inventory writer takes the complete lock set
-        // in the same deterministic order as recording reversal. The
-        // posting helpers below re-read already-held rows for their exact
-        // revision and basis, but cannot deadlock by acquiring identities
-        // in caller-provided input order.
-        let mut balance_type_ids: Vec<i64> = input
-            .inputs
-            .iter()
-            .map(|line| line.type_id)
-            .chain((input.output_quantity > 0).then_some(input.output_type_id))
-            .collect();
-        balance_type_ids.sort_unstable();
-        balance_type_ids.dedup();
-        for type_id in balance_type_ids {
-            sqlx::query(
-                "SELECT revision FROM inventory_balances \
-                 WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3 FOR UPDATE",
-            )
-            .bind(workspace_id.0)
-            .bind(owner_id.0)
-            .bind(type_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(map_error)?;
-        }
-
-        // Decide where each input type draws from, under those locks: the
-        // ticket's own Epic reservations first, then free stock, then only
-        // Epics the caller allowed. Refuse (rolling back the recording) if
-        // that would use stock another Epic is counting on.
-        let (consumer_order_id, consumer_occurrence_key): (Option<Uuid>, Option<String>) =
-            sqlx::query_as("SELECT order_id, occurrence_key FROM tickets WHERE id = $1")
-                .bind(ticket_id.0)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(map_error)?;
-        let mut input_quantities: BTreeMap<i64, u64> = BTreeMap::new();
-        for line in &input.inputs {
-            *input_quantities.entry(line.type_id).or_insert(0) += line.quantity;
-        }
-        let draws = super::reservations::plan_recording_draws(
-            &mut tx,
-            workspace_id,
-            owner_id,
-            consumer_order_id
-                .zip(consumer_occurrence_key.as_deref())
-                .map(|(order_id, key)| (OrderId(order_id), key)),
-            &input_quantities,
-            &input.take_from,
-        )
-        .await?;
-        super::reservations::apply_recording_draws(&mut tx, &draws, recording_id, recorded_at)
+    async fn preview_ticket_production(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        mut input: RecordProductionInput,
+    ) -> Result<RecordingPreview, OrderError> {
+        // A fresh key can never replay an existing recording.
+        input.idempotency_key = Uuid::new_v4();
+        let mut capture = PreviewCapture::default();
+        self.run_ticket_production(workspace_id, ticket_id, input, Some(&mut capture))
             .await?;
-
-        // Consume each actual input at the balance's current weighted
-        // average; sum the real ledger basis removed.
-        let mut consumed_basis = Decimal::ZERO;
-        let mut event_ids: Vec<Uuid> = Vec::with_capacity(input.inputs.len() + 1);
-        for line in &input.inputs {
-            let type_name = prereq_names
-                .get(&line.type_id)
-                .expect("validated to be a prerequisite above");
-            let (event_id, consumed) = post_consumption_in_transaction(
-                &mut tx,
-                InventoryPostingLine {
-                    key: InventoryItemKey {
-                        workspace_id,
-                        owner_id,
-                        type_id: line.type_id,
-                    },
-                    type_name,
-                    quantity: line.quantity,
-                    source_reference: &display_id,
-                },
-                recorded_at,
-            )
-            .await?;
-            consumed_basis += consumed;
-            event_ids.push(event_id.0);
-        }
-
-        // Production batch basis = actual consumed material basis + actual
-        // installation cost. Assigned to the output in full -- every
-        // produced unit (planned and surplus alike) shares it per-unit.
-        let mut production_basis = consumed_basis + input.installation_cost.0;
-        production_basis.rescale(4);
-
-        if input.output_quantity > 0 {
-            // Display unit cost only; `total_cost_delta` stays authoritative
-            // (`apply_inventory_event` re-derives the average from it).
-            let unit_cost = Money(production_basis)
-                .checked_div_quantity(input.output_quantity)
-                .map_err(|error| OrderError::Persistence(error.to_string()))?;
-            let output_event = post_production_output_in_transaction(
-                &mut tx,
-                InventoryPostingLine {
-                    key: InventoryItemKey {
-                        workspace_id,
-                        owner_id,
-                        type_id: input.output_type_id,
-                    },
-                    type_name: &ticket_captured_name,
-                    quantity: input.output_quantity,
-                    source_reference: &display_id,
-                },
-                MoneyDelta(production_basis),
-                Some(unit_cost),
-                // Known: consumed basis is from the actual ledger and
-                // installation cost is explicit -- nothing estimated.
-                CostInputQuality::Known,
-                input.effective_at,
-                recorded_at,
-            )
-            .await?;
-            event_ids.push(output_event.0);
-
-            // The output is reserved to the steps this ticket's operation
-            // feeds, up to what they still need; overshoot stays free.
-            if let (Some(order_id), Some(occurrence_key)) =
-                (consumer_order_id, consumer_occurrence_key.as_deref())
-            {
-                super::reservations::reserve_recorded_output(
-                    &mut tx,
-                    super::reservations::RecordedOutput {
-                        workspace_id,
-                        owner_id,
-                        feeds: super::reservations::OutputFeeds::Production {
-                            order_id: OrderId(order_id),
-                            occurrence_key,
-                        },
-                        type_id: input.output_type_id,
-                        quantity: input.output_quantity,
-                        recording_id,
-                        now: recorded_at,
-                    },
-                )
-                .await?;
-            }
-        }
-
-        sqlx::query(
-            "UPDATE inventory_events SET ticket_inventory_recording_id = $1 WHERE id = ANY($2)",
-        )
-        .bind(recording_id.0)
-        .bind(&event_ids)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-
-        let recorded = recorded_runs_sum(&mut tx, ticket_id).await?;
-        tx.commit().await.map_err(map_error)?;
-
-        Ok(RecordProductionOutcome {
-            recording: TicketInventoryRecording {
-                id: recording_id,
-                ticket_id,
-                kind: TicketInventoryRecordingKind::Production,
-                recorded_quantity: None,
-                runs_completed: Some(input.runs_completed),
-                installation_cost: Some(input.installation_cost),
-                output_type_id: Some(input.output_type_id),
-                output_quantity: Some(input.output_quantity),
-                location_note: input.location_note,
-                note: input.note,
-                recorded_at,
-                reverted_at: None,
-                status: TicketInventoryRecordingStatus::Recorded,
-                effects: Vec::new(),
-            },
-            created: true,
-            summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
-        })
+        Ok(capture.into_preview())
     }
 
     async fn revert_ticket_inventory_recording(
@@ -2487,5 +2086,524 @@ impl PgOrderRepository {
         .await
         .map_err(map_error)?;
         Ok((recording, u64_from_i64(sum)?))
+    }
+}
+
+/// `kind, owner_id, type_id, captured_name, quantity, display_id,
+/// acquisition_run_id, estimated_unit_cost` of the ticket being recorded.
+type AcquisitionTicketRow = (
+    String,
+    Uuid,
+    i64,
+    String,
+    i64,
+    String,
+    Option<Uuid>,
+    Option<Decimal>,
+);
+
+impl PgOrderRepository {
+    /// The body of `record_ticket_acquisition`. With `preview`, it records into the
+    /// transaction, captures the touched balances before and after, then
+    /// rolls back instead of committing.
+    pub(super) async fn run_ticket_acquisition(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        input: RecordAcquisitionInput,
+        mut preview: Option<&mut PreviewCapture>,
+    ) -> Result<RecordAcquisitionOutcome, OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+
+        // Lock the ticket row -- serializes concurrent recordings for this
+        // same ticket so the idempotency pre-check below is race-free. The
+        // `UNIQUE (ticket_id, idempotency_key)` constraint is the
+        // DB-authoritative backstop regardless (handled after the INSERT).
+        let ticket_row: Option<AcquisitionTicketRow> = sqlx::query_as(
+            "SELECT kind, owner_id, type_id, captured_name, quantity, display_id, \
+                 acquisition_run_id, estimated_unit_cost FROM tickets \
+                 WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        let (
+            kind_str,
+            owner_id,
+            type_id,
+            captured_name,
+            requested_quantity,
+            display_id,
+            acquisition_run_id,
+            estimated_unit_cost,
+        ) = ticket_row.ok_or(OrderError::TicketNotFound)?;
+
+        if ticket_kind_from_str(&kind_str)? != TicketKind::Acquisition {
+            return Err(OrderError::RecordingRequiresAcquisitionTicket);
+        }
+        if acquisition_run_id.is_some() {
+            return Err(OrderError::RecordingNotAllowedForBatchedTicket);
+        }
+        let owner_id = OwnerId(owner_id);
+        let requested_quantity = u64_from_i64(requested_quantity)?;
+        let estimated_unit_cost = estimated_unit_cost.map(Money);
+
+        // Idempotent replay: this key was already recorded -- post nothing.
+        if let Some(existing) =
+            find_ticket_recording_by_key(&mut tx, ticket_id, input.idempotency_key).await?
+        {
+            let recorded = recorded_quantity_sum(&mut tx, ticket_id).await?;
+            tx.commit().await.map_err(map_error)?;
+            return Ok(RecordAcquisitionOutcome {
+                recording: existing,
+                created: false,
+                summary: derive_recording_summary(requested_quantity, recorded),
+            });
+        }
+
+        if let Some(capture) = preview.as_deref_mut() {
+            capture
+                .read_before(
+                    &mut tx,
+                    vec![(
+                        InventoryItemKey {
+                            workspace_id,
+                            owner_id,
+                            type_id,
+                        },
+                        captured_name.clone(),
+                        RecordingPreviewEffect::Added,
+                    )],
+                )
+                .await?;
+        }
+
+        let recording_id = TicketInventoryRecordingId::new();
+        let recorded_at = crate::db_now();
+        let insert = sqlx::query(
+            "INSERT INTO ticket_inventory_recordings \
+               (id, ticket_id, kind, idempotency_key, recorded_quantity, \
+                location_note, note, recorded_at) \
+             VALUES ($1, $2, 'acquisition', $3, $4, $5, $6, $7)",
+        )
+        .bind(recording_id.0)
+        .bind(ticket_id.0)
+        .bind(input.idempotency_key)
+        .bind(i64_from_u64(input.quantity)?)
+        .bind(&input.location_note)
+        .bind(&input.note)
+        .bind(recorded_at)
+        .execute(&mut *tx)
+        .await;
+        if let Err(error) = insert {
+            if is_unique_violation(&error) {
+                // A concurrent duplicate won the race (not reachable under
+                // the ticket `FOR UPDATE`, but the UNIQUE is authoritative).
+                tx.rollback().await.map_err(map_error)?;
+                let (recording, recorded) = self
+                    .replay_ticket_recording(ticket_id, input.idempotency_key)
+                    .await?;
+                return Ok(RecordAcquisitionOutcome {
+                    recording,
+                    created: false,
+                    summary: derive_recording_summary(requested_quantity, recorded),
+                });
+            }
+            return Err(map_error(error));
+        }
+
+        // One `Purchase` for exactly this recording's quantity, cost via the
+        // same hierarchy `complete_ticket`'s acquisition path uses. Keeps
+        // `display_id` as `source_reference` (existing convention); the
+        // recording link below is the stronger provenance.
+        let event_id = post_purchase_in_transaction(
+            &mut tx,
+            InventoryPostingLine {
+                key: InventoryItemKey {
+                    workspace_id,
+                    owner_id,
+                    type_id,
+                },
+                type_name: &captured_name,
+                quantity: input.quantity,
+                source_reference: &display_id,
+            },
+            input.unit_cost,
+            estimated_unit_cost,
+            input.effective_at,
+            recorded_at,
+        )
+        .await?;
+
+        sqlx::query("UPDATE inventory_events SET ticket_inventory_recording_id = $1 WHERE id = $2")
+            .bind(recording_id.0)
+            .bind(event_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_error)?;
+
+        // The purchase is reserved to the Epic requirements this ticket
+        // fulfills, up to what they still need; the rest stays free.
+        super::reservations::reserve_recorded_output(
+            &mut tx,
+            super::reservations::RecordedOutput {
+                workspace_id,
+                owner_id,
+                feeds: super::reservations::OutputFeeds::Acquisition { ticket_id },
+                type_id,
+                quantity: input.quantity,
+                recording_id,
+                now: recorded_at,
+            },
+        )
+        .await?;
+
+        let recorded = recorded_quantity_sum(&mut tx, ticket_id).await?;
+        match preview {
+            Some(capture) => {
+                capture.read_after(&mut tx).await?;
+                tx.rollback().await.map_err(map_error)?;
+            }
+            None => tx.commit().await.map_err(map_error)?,
+        }
+
+        Ok(RecordAcquisitionOutcome {
+            recording: TicketInventoryRecording {
+                id: recording_id,
+                ticket_id,
+                kind: TicketInventoryRecordingKind::Acquisition,
+                recorded_quantity: Some(input.quantity),
+                runs_completed: None,
+                installation_cost: None,
+                output_type_id: None,
+                output_quantity: None,
+                location_note: input.location_note,
+                note: input.note,
+                recorded_at,
+                reverted_at: None,
+                status: TicketInventoryRecordingStatus::Recorded,
+                effects: Vec::new(),
+            },
+            created: true,
+            summary: derive_recording_summary(requested_quantity, recorded),
+        })
+    }
+
+    /// The body of `record_ticket_production`. With `preview`, it records into the
+    /// transaction, captures the touched balances before and after, then
+    /// rolls back instead of committing.
+    pub(super) async fn run_ticket_production(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        input: RecordProductionInput,
+        mut preview: Option<&mut PreviewCapture>,
+    ) -> Result<RecordProductionOutcome, OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+
+        // Lock the ticket -- serializes concurrent recordings for it, so
+        // the idempotency pre-check is race-free (the UNIQUE is the
+        // authoritative backstop after the INSERT).
+        let ticket_row: Option<(String, Uuid, i64, String, String, Option<serde_json::Value>)> =
+            sqlx::query_as(
+                "SELECT kind, owner_id, type_id, captured_name, display_id, execution_snapshot \
+                 FROM tickets WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+            )
+            .bind(workspace_id.0)
+            .bind(ticket_id.0)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_error)?;
+        let (kind_str, owner_id, ticket_type_id, ticket_captured_name, display_id, snapshot_json) =
+            ticket_row.ok_or(OrderError::TicketNotFound)?;
+
+        let kind = ticket_kind_from_str(&kind_str)?;
+        if !matches!(kind, TicketKind::Manufacturing | TicketKind::Reaction) {
+            return Err(OrderError::RecordingRequiresProductionTicket);
+        }
+        let owner_id = OwnerId(owner_id);
+        let requested_runs = execution_snapshot_runs(&snapshot_json)?;
+
+        // The output must be the ticket's product.
+        if input.output_type_id != ticket_type_id {
+            return Err(OrderError::RecordingOutputTypeMismatch);
+        }
+
+        // Every input must be one of the ticket's frozen prerequisites (its
+        // material list). Quantities are actuals -- not checked against the
+        // plan. NOTE (known limitation): a legitimate unplanned consumable
+        // not in the frozen BOM is rejected here, rather than warned about.
+        let prereq_names: HashMap<i64, String> = sqlx::query_as::<_, (i64, String)>(
+            "SELECT type_id, captured_name FROM ticket_prerequisites WHERE ticket_id = $1",
+        )
+        .bind(ticket_id.0)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(map_error)?
+        .into_iter()
+        .collect();
+        for line in &input.inputs {
+            if line.quantity == 0 {
+                return Err(OrderError::InvalidQuantity);
+            }
+            if !prereq_names.contains_key(&line.type_id) {
+                return Err(OrderError::RecordingInputNotAPrerequisite);
+            }
+        }
+
+        // Idempotent replay: this key was already recorded -- post nothing.
+        if let Some(existing) =
+            find_ticket_recording_by_key(&mut tx, ticket_id, input.idempotency_key).await?
+        {
+            let recorded = recorded_runs_sum(&mut tx, ticket_id).await?;
+            tx.commit().await.map_err(map_error)?;
+            return Ok(RecordProductionOutcome {
+                recording: existing,
+                created: false,
+                summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
+            });
+        }
+
+        if let Some(capture) = preview.as_deref_mut() {
+            let key = |type_id| InventoryItemKey {
+                workspace_id,
+                owner_id,
+                type_id,
+            };
+            let mut items = vec![(
+                key(input.output_type_id),
+                ticket_captured_name.clone(),
+                RecordingPreviewEffect::Added,
+            )];
+            for line in &input.inputs {
+                if items
+                    .iter()
+                    .all(|(item, _, _)| item.type_id != line.type_id)
+                {
+                    items.push((
+                        key(line.type_id),
+                        prereq_names[&line.type_id].clone(),
+                        RecordingPreviewEffect::Consumed,
+                    ));
+                }
+            }
+            capture.read_before(&mut tx, items).await?;
+        }
+
+        let recording_id = TicketInventoryRecordingId::new();
+        let recorded_at = crate::db_now();
+        let insert = sqlx::query(
+            "INSERT INTO ticket_inventory_recordings \
+               (id, ticket_id, kind, idempotency_key, runs_completed, installation_cost, \
+                output_type_id, output_quantity, location_note, note, recorded_at) \
+             VALUES ($1, $2, 'production', $3, $4, $5, $6, $7, $8, $9, $10)",
+        )
+        .bind(recording_id.0)
+        .bind(ticket_id.0)
+        .bind(input.idempotency_key)
+        .bind(i64_from_u64(input.runs_completed)?)
+        .bind(input.installation_cost.0)
+        .bind(input.output_type_id)
+        .bind(i64_from_u64(input.output_quantity)?)
+        .bind(&input.location_note)
+        .bind(&input.note)
+        .bind(recorded_at)
+        .execute(&mut *tx)
+        .await;
+        if let Err(error) = insert {
+            if is_unique_violation(&error) {
+                tx.rollback().await.map_err(map_error)?;
+                let (recording, recorded) = self
+                    .replay_ticket_recording(ticket_id, input.idempotency_key)
+                    .await?;
+                return Ok(RecordProductionOutcome {
+                    recording,
+                    created: false,
+                    summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
+                });
+            }
+            return Err(map_error(error));
+        }
+
+        // Every multi-balance inventory writer takes the complete lock set
+        // in the same deterministic order as recording reversal. The
+        // posting helpers below re-read already-held rows for their exact
+        // revision and basis, but cannot deadlock by acquiring identities
+        // in caller-provided input order.
+        let mut balance_type_ids: Vec<i64> = input
+            .inputs
+            .iter()
+            .map(|line| line.type_id)
+            .chain((input.output_quantity > 0).then_some(input.output_type_id))
+            .collect();
+        balance_type_ids.sort_unstable();
+        balance_type_ids.dedup();
+        for type_id in balance_type_ids {
+            sqlx::query(
+                "SELECT revision FROM inventory_balances \
+                 WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3 FOR UPDATE",
+            )
+            .bind(workspace_id.0)
+            .bind(owner_id.0)
+            .bind(type_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_error)?;
+        }
+
+        // Decide where each input type draws from, under those locks: the
+        // ticket's own Epic reservations first, then free stock, then only
+        // Epics the caller allowed. Refuse (rolling back the recording) if
+        // that would use stock another Epic is counting on.
+        let (consumer_order_id, consumer_occurrence_key): (Option<Uuid>, Option<String>) =
+            sqlx::query_as("SELECT order_id, occurrence_key FROM tickets WHERE id = $1")
+                .bind(ticket_id.0)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(map_error)?;
+        let mut input_quantities: BTreeMap<i64, u64> = BTreeMap::new();
+        for line in &input.inputs {
+            *input_quantities.entry(line.type_id).or_insert(0) += line.quantity;
+        }
+        let draws = super::reservations::plan_recording_draws(
+            &mut tx,
+            workspace_id,
+            owner_id,
+            consumer_order_id
+                .zip(consumer_occurrence_key.as_deref())
+                .map(|(order_id, key)| (OrderId(order_id), key)),
+            &input_quantities,
+            &input.take_from,
+        )
+        .await?;
+        super::reservations::apply_recording_draws(&mut tx, &draws, recording_id, recorded_at)
+            .await?;
+
+        // Consume each actual input at the balance's current weighted
+        // average; sum the real ledger basis removed.
+        let mut consumed_basis = Decimal::ZERO;
+        let mut event_ids: Vec<Uuid> = Vec::with_capacity(input.inputs.len() + 1);
+        for line in &input.inputs {
+            let type_name = prereq_names
+                .get(&line.type_id)
+                .expect("validated to be a prerequisite above");
+            let (event_id, consumed) = post_consumption_in_transaction(
+                &mut tx,
+                InventoryPostingLine {
+                    key: InventoryItemKey {
+                        workspace_id,
+                        owner_id,
+                        type_id: line.type_id,
+                    },
+                    type_name,
+                    quantity: line.quantity,
+                    source_reference: &display_id,
+                },
+                recorded_at,
+            )
+            .await?;
+            consumed_basis += consumed;
+            event_ids.push(event_id.0);
+        }
+
+        // Production batch basis = actual consumed material basis + actual
+        // installation cost. Assigned to the output in full -- every
+        // produced unit (planned and surplus alike) shares it per-unit.
+        let mut production_basis = consumed_basis + input.installation_cost.0;
+        production_basis.rescale(4);
+
+        if input.output_quantity > 0 {
+            // Display unit cost only; `total_cost_delta` stays authoritative
+            // (`apply_inventory_event` re-derives the average from it).
+            let unit_cost = Money(production_basis)
+                .checked_div_quantity(input.output_quantity)
+                .map_err(|error| OrderError::Persistence(error.to_string()))?;
+            let output_event = post_production_output_in_transaction(
+                &mut tx,
+                InventoryPostingLine {
+                    key: InventoryItemKey {
+                        workspace_id,
+                        owner_id,
+                        type_id: input.output_type_id,
+                    },
+                    type_name: &ticket_captured_name,
+                    quantity: input.output_quantity,
+                    source_reference: &display_id,
+                },
+                MoneyDelta(production_basis),
+                Some(unit_cost),
+                // Known: consumed basis is from the actual ledger and
+                // installation cost is explicit -- nothing estimated.
+                CostInputQuality::Known,
+                input.effective_at,
+                recorded_at,
+            )
+            .await?;
+            event_ids.push(output_event.0);
+
+            // The output is reserved to the steps this ticket's operation
+            // feeds, up to what they still need; overshoot stays free.
+            if let (Some(order_id), Some(occurrence_key)) =
+                (consumer_order_id, consumer_occurrence_key.as_deref())
+            {
+                super::reservations::reserve_recorded_output(
+                    &mut tx,
+                    super::reservations::RecordedOutput {
+                        workspace_id,
+                        owner_id,
+                        feeds: super::reservations::OutputFeeds::Production {
+                            order_id: OrderId(order_id),
+                            occurrence_key,
+                        },
+                        type_id: input.output_type_id,
+                        quantity: input.output_quantity,
+                        recording_id,
+                        now: recorded_at,
+                    },
+                )
+                .await?;
+            }
+        }
+
+        sqlx::query(
+            "UPDATE inventory_events SET ticket_inventory_recording_id = $1 WHERE id = ANY($2)",
+        )
+        .bind(recording_id.0)
+        .bind(&event_ids)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+
+        let recorded = recorded_runs_sum(&mut tx, ticket_id).await?;
+        match preview {
+            Some(capture) => {
+                capture.read_after(&mut tx).await?;
+                tx.rollback().await.map_err(map_error)?;
+            }
+            None => tx.commit().await.map_err(map_error)?,
+        }
+
+        Ok(RecordProductionOutcome {
+            recording: TicketInventoryRecording {
+                id: recording_id,
+                ticket_id,
+                kind: TicketInventoryRecordingKind::Production,
+                recorded_quantity: None,
+                runs_completed: Some(input.runs_completed),
+                installation_cost: Some(input.installation_cost),
+                output_type_id: Some(input.output_type_id),
+                output_quantity: Some(input.output_quantity),
+                location_note: input.location_note,
+                note: input.note,
+                recorded_at,
+                reverted_at: None,
+                status: TicketInventoryRecordingStatus::Recorded,
+                effects: Vec::new(),
+            },
+            created: true,
+            summary: derive_recording_summary(requested_runs.unwrap_or(recorded), recorded),
+        })
     }
 }

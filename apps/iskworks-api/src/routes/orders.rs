@@ -82,6 +82,14 @@ pub(crate) fn router() -> Router<AppState> {
             post(record_ticket_production_route),
         )
         .route(
+            "/api/tickets/:ticket_id/record-acquisition/preview",
+            post(preview_ticket_acquisition_route),
+        )
+        .route(
+            "/api/tickets/:ticket_id/record-production/preview",
+            post(preview_ticket_production_route),
+        )
+        .route(
             "/api/tickets/:ticket_id/recordings/:recording_id/revert",
             post(revert_ticket_inventory_recording_route),
         )

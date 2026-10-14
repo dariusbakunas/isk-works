@@ -1,6 +1,6 @@
 use super::*;
 use crate::{PgIndustryRepository, PgInventoryRepository};
-use iskworks_core::order::RecordingState;
+use iskworks_core::order::{RecordingPreviewEffect, RecordingState};
 use iskworks_core::{
     IndustryRepository, InventoryItemKey, InventoryRepository, PriceSnapshot, ProductionRepository,
 };

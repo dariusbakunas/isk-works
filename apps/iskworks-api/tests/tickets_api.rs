@@ -404,6 +404,43 @@ async fn record_production_returns_201_then_200_on_idempotent_replay(pool: PgPoo
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
+async fn preview_production_returns_inventory_before_and_after_without_recording(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let path = format!(
+        "/api/tickets/{}/record-production/preview",
+        fx.manufacturing_ticket_id
+    );
+
+    let (status, preview) = post_json(
+        &fx.app,
+        &path,
+        production_body(&Uuid::new_v4().to_string(), 10),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let lines = preview["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["typeId"], 20185);
+    assert_eq!(lines[0]["effect"], "added");
+    assert_eq!(lines[0]["current"]["quantity"], 0);
+    assert_eq!(lines[0]["resulting"]["quantity"], 10);
+    // 50 Tritanium at 10 ISK + 500 installation over 10 units.
+    assert_eq!(lines[0]["resulting"]["totalHistoricalCost"], "1000.0000");
+    assert_eq!(lines[1]["typeId"], 34);
+    assert_eq!(lines[1]["effect"], "consumed");
+    assert_eq!(lines[1]["current"]["quantity"], 1000);
+    assert_eq!(lines[1]["resulting"]["quantity"], 950);
+
+    let recordings: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM ticket_inventory_recordings")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(recordings, 0);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
 async fn record_production_rejects_zero_runs_with_400(pool: PgPool) {
     let fx = fixture(&pool).await;
     let mut body = production_body(&Uuid::new_v4().to_string(), 10);
