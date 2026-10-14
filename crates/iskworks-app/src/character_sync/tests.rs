@@ -1389,3 +1389,51 @@ async fn every_source_refresh_is_recorded_by_kind_and_result() {
     assert!(recorded.has(last_success, &[("kind", "skills")]));
     assert!(!recorded.has(last_success, &[("kind", "location")]));
 }
+
+#[derive(Default)]
+struct RecordingJobsSynced {
+    workspaces: Mutex<Vec<WorkspaceId>>,
+}
+
+#[async_trait]
+impl crate::IndustryJobsSynced for RecordingJobsSynced {
+    async fn industry_jobs_synced(&self, workspace_id: WorkspaceId) {
+        self.workspaces.lock().unwrap().push(workspace_id);
+    }
+}
+
+#[tokio::test]
+async fn a_successful_jobs_refresh_tells_the_hook_for_the_characters_workspace() {
+    let character = connection(all_scopes());
+    let workspace_id = character.workspace_id;
+    let hook = Arc::new(RecordingJobsSynced::default());
+    let (_, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        character,
+    );
+    let service = service.with_industry_jobs_synced(hook.clone());
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    assert_eq!(*hook.workspaces.lock().unwrap(), vec![workspace_id]);
+}
+
+#[tokio::test]
+async fn a_failed_jobs_refresh_does_not_tell_the_hook() {
+    let hook = Arc::new(RecordingJobsSynced::default());
+    let (_, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::failing("character_industry_jobs", EsiError::TemporaryFailure),
+        connection(all_scopes()),
+    );
+    let service = service.with_industry_jobs_synced(hook.clone());
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    assert!(hook.workspaces.lock().unwrap().is_empty());
+}

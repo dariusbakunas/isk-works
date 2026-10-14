@@ -73,6 +73,7 @@ fn industry_job(job_id: i64, occurs_at: chrono::DateTime<Utc>) -> IndustryJobDto
         start_date: Some(occurs_at - chrono::Duration::hours(2)),
         end_date: Some(occurs_at),
         pause_date: None,
+        cost: None,
     }
 }
 

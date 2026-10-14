@@ -24,6 +24,7 @@ mod order_plan;
 mod planetary;
 mod public_market;
 mod sync_metrics;
+mod ticket_jobs;
 
 pub use build_graph::{BuildGraphCoordinator, BuildGraphError};
 pub use build_materials::{BuildMaterialsCoordinator, BuildMaterialsError, BuildMaterialsSummary};
@@ -50,3 +51,4 @@ pub use planetary::{
 };
 pub use public_market::PublicMarketService;
 pub use sync_metrics::init_metrics as init_sync_metrics;
+pub use ticket_jobs::{IndustryJobsSynced, TicketJobError, TicketJobService};

@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use iskworks_app::{CharacterSyncService, EsiApplicationService, MarketAccessResolver};
+use iskworks_app::{
+    CharacterSyncService, EsiApplicationService, MarketAccessResolver, TicketJobService,
+};
 use iskworks_esi::HttpEsiTransport;
 use iskworks_storage::{
-    PgAuthMaintenance, PgEsiRepository, PgMarketRepository, PgWorkspaceRepository,
+    PgAuthMaintenance, PgEsiRepository, PgMarketRepository, PgOrderRepository,
+    PgWorkspaceRepository,
 };
 use iskworks_worker::{EvidenceWorker, WorkerConfig};
 use sqlx::migrate::Migrator;
@@ -50,12 +53,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (character_sync_service, market_access_resolver) = match esi_service {
         Some(service) => {
             let service = Arc::new(service);
+            let ticket_jobs = TicketJobService::new(
+                esi_repository.clone(),
+                Arc::new(PgOrderRepository::new(workspace_repository.pool().clone())),
+            );
             let character_sync = CharacterSyncService::new(
                 esi_repository.clone(),
                 service.transport(),
                 Arc::clone(&service),
                 Arc::clone(&service),
-            );
+            )
+            .with_industry_jobs_synced(Arc::new(ticket_jobs));
             let market_access: Arc<dyn MarketAccessResolver> = service;
             (Some(character_sync), Some(market_access))
         }
