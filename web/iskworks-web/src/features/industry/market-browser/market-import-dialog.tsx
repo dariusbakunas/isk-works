@@ -179,14 +179,14 @@ export function MarketImportDialog({
   return (
     <dialog
       aria-labelledby="market-import-dialog-title"
-      className="iw-dialog m-auto max-h-[calc(100vh-2rem)] w-[min(480px,calc(100vw-2rem))] overflow-y-auto p-0 text-foreground backdrop:bg-black/70"
+      className="iw-dialog iw-dialog-frame m-auto w-[min(480px,calc(100vw-2rem))] p-0 text-foreground backdrop:bg-black/70"
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
       }}
       ref={dialog}
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold" id="market-import-dialog-title">
           Import EVE Market Export
         </span>
@@ -194,7 +194,7 @@ export function MarketImportDialog({
           <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
-      <div className="p-5">
+      <div className="iw-dialog-body mx-0 p-5">
         {phase.status === "idle" ? (
           <div className="grid place-items-center border-2 border-dashed border-border p-6 text-center">
             <Upload aria-hidden="true" className="mx-auto h-6 w-6 text-muted" />
@@ -268,24 +268,10 @@ export function MarketImportDialog({
               ))
             )}
 
-            <p className="iw-muted mb-3 text-xs">
+            <p className="iw-muted text-xs">
               These observations are merged into the market data for the scope{scopes.length === 1 ? "" : "s"} above.
               No Price Override is created.
             </p>
-
-            <div className="flex gap-2">
-              <button
-                className="iw-button-primary flex-1"
-                disabled={busy || scopes.length === 0}
-                onClick={() => void runImport()}
-                type="button"
-              >
-                {busy ? "Importing..." : "Import"}
-              </button>
-              <button className="iw-button-secondary" disabled={busy} onClick={onClose} type="button">
-                Cancel
-              </button>
-            </div>
           </>
         ) : null}
 
@@ -304,14 +290,33 @@ export function MarketImportDialog({
                 </p>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button className="iw-button-primary" onClick={onClose} type="button">
-                Done
-              </button>
-            </div>
           </div>
         ) : null}
       </div>
+
+      {phase.status === "confirm" || phase.status === "importing" ? (
+        <div className="iw-dialog-footer flex-nowrap border-t border-border px-5 py-3">
+          <button
+            className="iw-button-primary flex-1"
+            disabled={busy || scopes.length === 0}
+            onClick={() => void runImport()}
+            type="button"
+          >
+            {busy ? "Importing..." : "Import"}
+          </button>
+          <button className="iw-button-secondary" disabled={busy} onClick={onClose} type="button">
+            Cancel
+          </button>
+        </div>
+      ) : null}
+
+      {phase.status === "done" ? (
+        <div className="iw-dialog-footer px-5 pb-5 pt-0">
+          <button className="iw-button-primary" onClick={onClose} type="button">
+            Done
+          </button>
+        </div>
+      ) : null}
     </dialog>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Plus } from "lucide-react";
 
 import type { InventoryPreview } from "../../api/inventory";
 import {
@@ -193,8 +194,8 @@ function RecordingPreview({ busy, error, onClose, onConfirm, preview, row }: {
   const titleId = `inventory-recording-preview-${row.observationId}`;
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4" role="presentation">
-      <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog w-full max-w-sm p-4 text-left" role="dialog">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog iw-dialog-frame w-full max-w-sm p-4 text-left" role="dialog">
+        <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-base font-semibold" id={titleId}>Add to inventory</h2>
             <p className="truncate text-xs text-muted" data-private="">
@@ -203,14 +204,16 @@ function RecordingPreview({ busy, error, onClose, onConfirm, preview, row }: {
           </div>
           <button className="iw-button-secondary" disabled={busy} onClick={onClose} ref={closeRef} type="button">Cancel</button>
         </div>
-        <InventoryPreviewPanel
-          actionLabel="Add to Inventory"
-          busy={busy}
-          busyLabel="Adding…"
-          onSave={onConfirm}
-          preview={preview}
-        />
-        {error ? <p className="mt-3 text-xs text-destructive" role="alert">{error}</p> : null}
+        <div className="iw-dialog-body">
+          <InventoryPreviewPanel busy={busy} preview={preview} />
+          {error ? <p className="mt-3 text-xs text-destructive" role="alert">{error}</p> : null}
+        </div>
+        <div className="iw-dialog-footer">
+          <button className="iw-button-primary w-full" disabled={busy} onClick={onConfirm} type="button">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {busy ? "Adding…" : "Add to Inventory"}
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -237,24 +240,26 @@ function RecordingDetails({ busy, error, onClose, onRevert, open, recording, row
   const titleId = `inventory-recording-${row.observationId}`;
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4" role="presentation">
-      <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog w-full max-w-sm p-4" role="dialog">
+      <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog iw-dialog-frame w-full max-w-sm p-4" role="dialog">
         <h2 className="text-base font-semibold" id={titleId}>Recorded in inventory</h2>
-        <div className="mt-2 divide-y divide-border" data-private="">
-          <KV label="Item" value={row.typeName} />
-          <KV label="Quantity recorded" value={(recording.quantity ?? row.quantity).toLocaleString()} />
-          <KV label="Acquisition cost" value={<MoneyAmount value={recording.totalBasis ?? row.totalPrice} />} />
-          <KV label="Unit cost" value={<MoneyAmount value={row.unitPrice} />} />
-          <KV
-            label="Recorded"
-            value={recording.recordedAt
-              ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(recording.recordedAt))
-              : "—"}
-          />
-          <KV label="Character" value={<CharacterName name={row.characterName} />} />
-          <KV label="Status" value="Recorded" />
+        <div className="iw-dialog-body">
+          <div className="mt-2 divide-y divide-border" data-private="">
+            <KV label="Item" value={row.typeName} />
+            <KV label="Quantity recorded" value={(recording.quantity ?? row.quantity).toLocaleString()} />
+            <KV label="Acquisition cost" value={<MoneyAmount value={recording.totalBasis ?? row.totalPrice} />} />
+            <KV label="Unit cost" value={<MoneyAmount value={row.unitPrice} />} />
+            <KV
+              label="Recorded"
+              value={recording.recordedAt
+                ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(recording.recordedAt))
+                : "—"}
+            />
+            <KV label="Character" value={<CharacterName name={row.characterName} />} />
+            <KV label="Status" value="Recorded" />
+          </div>
+          {error ? <p className="mt-3 text-xs text-destructive" role="alert">{error}</p> : null}
         </div>
-        {error ? <p className="mt-3 text-xs text-destructive" role="alert">{error}</p> : null}
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="iw-dialog-footer">
           <button className="iw-button-secondary" onClick={onClose} ref={closeRef} type="button">Close</button>
           <button className="iw-button-danger" disabled={busy} onClick={onRevert} type="button">
             {busy ? "Reverting…" : "Revert inventory recording"}

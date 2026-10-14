@@ -173,12 +173,14 @@ export function ConfirmDialog({
       <section
         aria-labelledby="confirm-title"
         aria-modal="true"
-        className="iw-dialog w-full max-w-md p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-md p-4"
         role="dialog"
       >
         <h2 className="text-base font-semibold" id="confirm-title">{title}</h2>
-        <p className="iw-muted mt-2">{children}</p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="iw-dialog-body">
+          <p className="iw-muted mt-2">{children}</p>
+        </div>
+        <div className="iw-dialog-footer">
           <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
           <button className="iw-button-danger" onClick={onConfirm} type="button">{confirmLabel}</button>
         </div>
