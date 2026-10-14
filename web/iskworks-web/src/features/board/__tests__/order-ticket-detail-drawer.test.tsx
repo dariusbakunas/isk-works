@@ -7,6 +7,7 @@ import { ticketFixture } from "./fixtures";
 
 const industryApi = vi.hoisted(() => ({
   updateTicketStatus: vi.fn(),
+  previewTicketAcquisition: vi.fn(),
   recordTicketAcquisition: vi.fn(),
   recordTicketProduction: vi.fn(),
   updateTicketMetadata: vi.fn(),
@@ -582,7 +583,21 @@ describe("OrderTicketDetailDrawer recording section", () => {
 
     const section = screen.getByRole("region", { name: "Recording" });
     expect(within(section).getByText("Partially recorded")).toBeInTheDocument();
-    expect(within(section).getByRole("button", { name: "Record acquisition" })).toBeInTheDocument();
+    // The record action sits up top, under Status, not in the section.
+    expect(within(section).queryByRole("button", { name: "Record acquisition" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record acquisition" })).toBeInTheDocument();
+  });
+
+  it("has no record action for a batched acquisition or a generic ticket", () => {
+    const { rerender } = render(
+      <OrderTicketDetailDrawer
+        onClose={() => {}}
+        ticket={ticketFixture({ acquisitionRunId: "run-1", recording: recordingFixture })}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Record acquisition" })).not.toBeInTheDocument();
+    rerender(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture({ recording: null })} />);
+    expect(screen.queryByRole("button", { name: /^Record/ })).not.toBeInTheDocument();
   });
 
   it("does not render a RECORDING section when the ticket carries no summary", () => {
@@ -590,7 +605,8 @@ describe("OrderTicketDetailDrawer recording section", () => {
     expect(screen.queryByRole("region", { name: "Recording" })).not.toBeInTheDocument();
   });
 
-  it("records an acquisition and calls onChanged without any workflow mutation", async () => {
+  it("records an acquisition from a dialog and calls onChanged without any workflow mutation", async () => {
+    industryApi.previewTicketAcquisition.mockResolvedValue({ lines: [] });
     industryApi.recordTicketAcquisition.mockResolvedValue({});
     const onChanged = vi.fn();
     render(
@@ -602,9 +618,12 @@ describe("OrderTicketDetailDrawer recording section", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Record acquisition" }));
-    await userEvent.click(screen.getByRole("button", { name: "Record" }));
+    const dialog = screen.getByRole("dialog", { name: "Record acquisition" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Preview" }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Record" }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(industryApi.recordTicketAcquisition).toHaveBeenCalledWith(
       "ticket-1",
       expect.objectContaining({ quantity: 60 }),

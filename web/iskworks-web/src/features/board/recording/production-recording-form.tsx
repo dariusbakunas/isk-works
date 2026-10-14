@@ -2,9 +2,12 @@ import { useMemo, useRef, useState } from "react";
 
 import {
   insufficientAvailable,
+  previewTicketProduction,
   proposedTakes,
   recordTicketProduction,
   type AvailabilityShortage,
+  type RecordingPreview,
+  type RecordProductionBody,
   type TicketSummary,
 } from "../../../api/industry";
 import { MoneyInput } from "../../../components/money-input/money-input";
@@ -13,6 +16,7 @@ import { parseMoneyInput } from "../../../components/money-input/parse-money-inp
 import { InlineAlert } from "../../../components/primitives";
 import { apiMessage } from "../../industry/shared/api-error";
 import { newIdempotencyKey } from "./recording-meta";
+import { RecordingPreviewStep } from "./recording-preview-step";
 
 function isPositiveInteger(value: string): boolean {
   const n = Number(value);
@@ -24,8 +28,8 @@ function isNonNegativeInteger(value: string): boolean {
   return value.trim() !== "" && Number.isFinite(n) && Number.isInteger(n) && n >= 0;
 }
 
-// The type-specific editor behind RecordingSection for a Manufacturing /
-// Reaction ticket. Every default comes from `ticket.executionSnapshot` --
+// The type-specific editor in the Record outcome dialog for a Manufacturing
+// / Reaction ticket: enter, preview what it does to inventory, then record. Every default comes from `ticket.executionSnapshot` --
 // the frozen *intended* plan -- never from a live Build preview: the
 // snapshot is what was planned, the form is the actual execution being
 // recorded. Posts exactly one explicit `record-production`; never a
@@ -101,6 +105,12 @@ export function ProductionRecordingForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [shortages, setShortages] = useState<AvailabilityShortage[] | null>(null);
+  // The preview, and the reserved stock the user agreed to take for it --
+  // recording sends exactly what was previewed.
+  const [preview, setPreview] = useState<{
+    preview: RecordingPreview;
+    takeFrom: { orderId: string; typeId: number }[] | undefined;
+  } | null>(null);
 
   const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
 
@@ -142,7 +152,34 @@ export function ProductionRecordingForm({
     return "";
   }, [runsValid, inputsValid, outputValid, installValid]);
 
-  async function submit(takeFrom?: { orderId: string; typeId: number }[]) {
+  type TakeFromList = { orderId: string; typeId: number }[];
+
+  function body(takeFrom: TakeFromList | undefined): RecordProductionBody {
+    return {
+      idempotencyKey: idempotencyKeyRef.current,
+      runsCompleted: Number(runs),
+      output: { typeId: outputTypeId, quantity: Number(output) },
+      inputs: ticket.prerequisites.map((prerequisite) => ({
+        typeId: prerequisite.typeId,
+        quantity: Number(inputs[prerequisite.id]),
+      })),
+      installationCost:
+        installCostResult.status === "valid" ? (installCostResult.canonical as string) : "0",
+      locationNote: locationNote.trim() || undefined,
+      note: note.trim() || undefined,
+      takeFrom,
+    };
+  }
+
+  // Other Epics reserved stock this recording needs: nothing was recorded,
+  // so offer to take it. Returns whether the error was that.
+  function showShortages(requestError: unknown): boolean {
+    const shortage = insufficientAvailable(requestError);
+    if (shortage) setShortages(shortage.shortages);
+    return shortage !== null;
+  }
+
+  async function requestPreview(takeFrom?: TakeFromList) {
     if (!canSubmit) {
       setError(validationHint || "Check the entered values.");
       return;
@@ -151,28 +188,26 @@ export function ProductionRecordingForm({
     setError("");
     setShortages(null);
     try {
-      await recordTicketProduction(ticket.id, {
-        idempotencyKey: idempotencyKeyRef.current,
-        runsCompleted: Number(runs),
-        output: { typeId: outputTypeId, quantity: Number(output) },
-        inputs: ticket.prerequisites.map((prerequisite) => ({
-          typeId: prerequisite.typeId,
-          quantity: Number(inputs[prerequisite.id]),
-        })),
-        installationCost:
-          installCostResult.status === "valid" ? (installCostResult.canonical as string) : "0",
-        locationNote: locationNote.trim() || undefined,
-        note: note.trim() || undefined,
-        takeFrom,
-      });
+      setPreview({ preview: await previewTicketProduction(ticket.id, body(takeFrom)), takeFrom });
+    } catch (requestError) {
+      if (!showShortages(requestError)) setError(apiMessage(requestError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function record() {
+    if (!preview) return;
+    setBusy(true);
+    setError("");
+    try {
+      await recordTicketProduction(ticket.id, body(preview.takeFrom));
       idempotencyKeyRef.current = newIdempotencyKey();
       onRecorded();
     } catch (requestError) {
-      // Other Epics reserved stock this recording needs: nothing was
-      // recorded, so offer to take it (same idempotency key on retry).
-      const shortage = insufficientAvailable(requestError);
-      if (shortage) {
-        setShortages(shortage.shortages);
+      // Stock moved since the preview: back to the form to take it.
+      if (showShortages(requestError)) {
+        setPreview(null);
       } else {
         setError(apiMessage(requestError));
       }
@@ -181,18 +216,32 @@ export function ProductionRecordingForm({
     }
   }
 
+  if (preview) {
+    return (
+      <RecordingPreviewStep
+        busy={busy}
+        error={error}
+        onBack={() => {
+          setPreview(null);
+          setError("");
+        }}
+        onConfirm={() => void record()}
+        preview={preview.preview}
+      />
+    );
+  }
+
   const actionLabel = ticket.kind === "reaction" ? "Record reaction" : "Record production";
 
   return (
     <form
       aria-label={actionLabel}
-      className="space-y-2 rounded-[2px] border border-border bg-panel-strong/40 p-2"
+      className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        void submit();
+        void requestPreview();
       }}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{actionLabel}</p>
 
       {legacyNoSnapshot ? (
         <InlineAlert title="No frozen plan" tone="info">
@@ -322,7 +371,7 @@ export function ProductionRecordingForm({
         <ReservedByOtherEpics
           busy={busy}
           onCancel={() => setShortages(null)}
-          onTake={(takeFrom) => void submit(takeFrom)}
+          onTake={(takeFrom) => void requestPreview(takeFrom)}
           shortages={shortages}
         />
       ) : null}
@@ -332,7 +381,7 @@ export function ProductionRecordingForm({
           Cancel
         </button>
         <button className="iw-button-primary" disabled={!canSubmit} type="submit">
-          {busy ? "Recording…" : "Record"}
+          {busy ? "Previewing…" : "Preview"}
         </button>
       </div>
     </form>
@@ -377,7 +426,7 @@ function ReservedByOtherEpics({
           onClick={() => onTake(takes.map(({ orderId, typeId }) => ({ orderId, typeId })))}
           type="button"
         >
-          Take {takeLabel} and record
+          Take {takeLabel} and preview
         </button>
         <button className="iw-button-secondary" disabled={busy} onClick={onCancel} type="button">
           Keep their reservations

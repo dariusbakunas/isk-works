@@ -1,9 +1,5 @@
-import { useRef, useState } from "react";
-
 import type { TicketSummary } from "../../../api/industry";
 import { Badge } from "../../../components/primitives";
-import { AcquisitionRecordingForm } from "./acquisition-recording-form";
-import { ProductionRecordingForm } from "./production-recording-form";
 import { RecordingHistory } from "./recording-history";
 import { recordingStateMeta, recordingTerms } from "./recording-meta";
 
@@ -32,8 +28,9 @@ function Row({
 
 // The canonical outer recording panel, shared by Acquisition and
 // Manufacturing/Reaction tickets. It owns: the derived recording state
-// chip, the requested / recorded / remaining / surplus rollup, and
-// expansion of the type-specific editor. It renders NOTHING about workflow
+// chip, the requested / recorded / remaining / surplus rollup, and the
+// history. Recording itself opens from the inspector's Record button (see
+// RecordOutcomeDialog). It renders NOTHING about workflow
 // status -- recording state and workflow status are independent dimensions
 // and a difference between them (Complete + Not recorded, Ready + Recorded)
 // is never surfaced as a warning.
@@ -46,9 +43,6 @@ export function RecordingSection({
    * ticket summary (and any visible Inventory). Never a status change. */
   onRecorded: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const actionRef = useRef<HTMLButtonElement>(null);
-
   const recording = ticket.recording;
   // The backend only returns a summary for Acquisition / Manufacturing /
   // Reaction tickets; anything else has no recording concept.
@@ -56,20 +50,8 @@ export function RecordingSection({
 
   const terms = recordingTerms(ticket.kind);
   const stateMeta = recordingStateMeta[recording.state];
-  const isProduction = ticket.kind === "manufacturing" || ticket.kind === "reaction";
   const isBatchedAcquisition =
     ticket.kind === "acquisition" && ticket.acquisitionRunId !== null;
-
-  function collapse() {
-    setOpen(false);
-    // Return focus to the trigger the user came from.
-    requestAnimationFrame(() => actionRef.current?.focus());
-  }
-
-  function handleRecorded() {
-    collapse();
-    onRecorded();
-  }
 
   return (
     <section aria-label="Recording" className="space-y-2">
@@ -107,30 +89,7 @@ export function RecordingSection({
         <p className="iw-muted text-xs">
           Recorded through its Acquisition Run — record and complete it from the Run.
         </p>
-      ) : open ? (
-        isProduction ? (
-          <ProductionRecordingForm
-            onCancel={collapse}
-            onRecorded={handleRecorded}
-            ticket={ticket}
-          />
-        ) : (
-          <AcquisitionRecordingForm
-            onCancel={collapse}
-            onRecorded={handleRecorded}
-            ticket={ticket}
-          />
-        )
-      ) : (
-        <button
-          className="iw-button-secondary"
-          onClick={() => setOpen(true)}
-          ref={actionRef}
-          type="button"
-        >
-          {terms.action}
-        </button>
-      )}
+      ) : null}
     </section>
   );
 }

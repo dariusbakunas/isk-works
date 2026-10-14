@@ -1,14 +1,22 @@
 import { useRef, useState } from "react";
 
-import { recordTicketAcquisition, type TicketSummary } from "../../../api/industry";
+import {
+  previewTicketAcquisition,
+  recordTicketAcquisition,
+  type RecordAcquisitionBody,
+  type RecordingPreview,
+  type TicketSummary,
+} from "../../../api/industry";
 import { MoneyInput } from "../../../components/money-input/money-input";
 import type { MoneyInputResult } from "../../../components/money-input/parse-money-input";
 import { InlineAlert } from "../../../components/primitives";
 import { apiMessage } from "../../industry/shared/api-error";
 import { newIdempotencyKey } from "./recording-meta";
+import { RecordingPreviewStep } from "./recording-preview-step";
 
-// The type-specific editor behind RecordingSection for an Acquisition
-// ticket. Posts exactly one explicit `record-acquisition` -- never
+// The type-specific editor in the Record outcome dialog for an Acquisition
+// ticket: enter, preview what it does to inventory, then post exactly one
+// explicit `record-acquisition` -- never
 // `/start`, `/complete`, `/cancel`, and never a workflow-status write.
 export function AcquisitionRecordingForm({
   ticket,
@@ -35,6 +43,7 @@ export function AcquisitionRecordingForm({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [preview, setPreview] = useState<RecordingPreview | null>(null);
 
   // Retained across re-renders and retries; replaced only after a confirmed
   // success so the next recording is a new logical operation.
@@ -49,7 +58,17 @@ export function AcquisitionRecordingForm({
   const unitCostValid = unitCostResult.status === "empty" || unitCostResult.status === "valid";
   const canSubmit = quantityValid && unitCostValid && !busy;
 
-  async function submit() {
+  function body(): RecordAcquisitionBody {
+    return {
+      idempotencyKey: idempotencyKeyRef.current,
+      quantity: quantityNumber,
+      unitCost: unitCostResult.status === "valid" ? unitCostResult.canonical : undefined,
+      locationNote: locationNote.trim() || undefined,
+      note: note.trim() || undefined,
+    };
+  }
+
+  async function requestPreview() {
     if (!canSubmit) {
       setError(
         !quantityValid
@@ -61,14 +80,19 @@ export function AcquisitionRecordingForm({
     setBusy(true);
     setError("");
     try {
-      await recordTicketAcquisition(ticket.id, {
-        idempotencyKey: idempotencyKeyRef.current,
-        quantity: quantityNumber,
-        unitCost:
-          unitCostResult.status === "valid" ? unitCostResult.canonical : undefined,
-        locationNote: locationNote.trim() || undefined,
-        note: note.trim() || undefined,
-      });
+      setPreview(await previewTicketAcquisition(ticket.id, body()));
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function record() {
+    setBusy(true);
+    setError("");
+    try {
+      await recordTicketAcquisition(ticket.id, body());
       // Fresh key for whatever the user records next.
       idempotencyKeyRef.current = newIdempotencyKey();
       onRecorded();
@@ -79,16 +103,30 @@ export function AcquisitionRecordingForm({
     }
   }
 
+  if (preview) {
+    return (
+      <RecordingPreviewStep
+        busy={busy}
+        error={error}
+        onBack={() => {
+          setPreview(null);
+          setError("");
+        }}
+        onConfirm={() => void record()}
+        preview={preview}
+      />
+    );
+  }
+
   return (
     <form
       aria-label="Record acquisition"
-      className="space-y-2 rounded-[2px] border border-border bg-panel-strong/40 p-2"
+      className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        void submit();
+        void requestPreview();
       }}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Record acquisition</p>
 
       <label className="block text-xs font-medium text-muted">
         Quantity
@@ -140,7 +178,7 @@ export function AcquisitionRecordingForm({
           Cancel
         </button>
         <button className="iw-button-primary" disabled={!canSubmit} type="submit">
-          {busy ? "Recording…" : "Record"}
+          {busy ? "Previewing…" : "Preview"}
         </button>
       </div>
     </form>

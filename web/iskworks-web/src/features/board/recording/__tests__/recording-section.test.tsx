@@ -1,5 +1,4 @@
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TicketRecordingSummary, TicketSummary } from "../../../../api/industry";
@@ -142,7 +141,6 @@ describe("RecordingSection — state presentation", () => {
     );
 
     expect(stateChipText()).toContain("Recorded");
-    expect(screen.getByRole("button", { name: "Record acquisition" })).toBeInTheDocument();
   });
 
   it("returns nothing when the ticket has no recording summary", () => {
@@ -153,8 +151,8 @@ describe("RecordingSection — state presentation", () => {
   });
 });
 
-describe("RecordingSection — action wiring", () => {
-  it("uses run terminology and a Record production action for a manufacturing ticket", () => {
+describe("RecordingSection — terminology", () => {
+  it("uses run terminology for a manufacturing ticket, with no inline record action", () => {
     render(
       <RecordingSection
         onRecorded={() => {}}
@@ -172,21 +170,13 @@ describe("RecordingSection — action wiring", () => {
     expect(screen.getByText("Planned runs")).toBeInTheDocument();
     expect(screen.getByText("Recorded runs")).toBeInTheDocument();
     expect(screen.getByText("Remaining runs")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Record production" })).toBeInTheDocument();
+    // Recording opens from the inspector's button, above.
+    expect(screen.queryByRole("button", { name: "Record production" })).not.toBeInTheDocument();
   });
 
-  it("opens the inline editor when the action is clicked", async () => {
-    render(<RecordingSection onRecorded={() => {}} ticket={ticket()} />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Record acquisition" }));
-
-    expect(screen.getByRole("form", { name: "Record acquisition" })).toBeInTheDocument();
-  });
-
-  it("hides the action for an Acquisition ticket batched into a Run", () => {
+  it("explains where a batched Acquisition ticket records", () => {
     render(<RecordingSection onRecorded={() => {}} ticket={ticket({ acquisitionRunId: "run-1" })} />);
 
-    expect(screen.queryByRole("button", { name: "Record acquisition" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Recording" })).getByText(/Recorded through its Acquisition Run/)).toBeInTheDocument();
   });
 });
