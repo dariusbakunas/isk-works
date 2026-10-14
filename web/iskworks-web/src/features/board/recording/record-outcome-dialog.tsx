@@ -36,10 +36,10 @@ export function RecordOutcomeDialog({
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className="iw-dialog max-h-[90vh] w-full max-w-md overflow-y-auto p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-md p-4"
         role="dialog"
       >
-        <div className="mb-3 min-w-0">
+        <div className="mb-3 min-w-0 shrink-0">
           <h2 className="text-base font-semibold" id={titleId}>
             {recordingTerms(ticket.kind).action}
           </h2>

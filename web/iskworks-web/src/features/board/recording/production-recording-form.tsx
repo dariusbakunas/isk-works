@@ -256,152 +256,153 @@ export function ProductionRecordingForm({
   return (
     <form
       aria-label={actionLabel}
-      className="space-y-2"
+      className="iw-dialog-pane"
       onSubmit={(event) => {
         event.preventDefault();
         void requestPreview();
       }}
     >
+      <div className="iw-dialog-body space-y-2">
+        {legacyNoSnapshot ? (
+          <InlineAlert title="No frozen plan" tone="info">
+            This ticket predates frozen production planning. Enter the actual production values
+            manually.
+          </InlineAlert>
+        ) : null}
 
-      {legacyNoSnapshot ? (
-        <InlineAlert title="No frozen plan" tone="info">
-          This ticket predates frozen production planning. Enter the actual production values
-          manually.
-        </InlineAlert>
-      ) : null}
+        {facility ? (
+          <dl className="space-y-0.5 rounded-[2px] border border-border/70 bg-panel px-2 py-1 text-[11px]">
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted">Facility</dt>
+              <dd className="min-w-0 flex-1 truncate text-right text-foreground">{facility.name}</dd>
+            </div>
+            {facility.solarSystemName ? (
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">Solar system</dt>
+                <dd className="min-w-0 flex-1 truncate text-right text-foreground">
+                  {facility.solarSystemName}
+                </dd>
+              </div>
+            ) : null}
+            {facility.structureTypeName ? (
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted">Structure</dt>
+                <dd className="min-w-0 flex-1 truncate text-right text-foreground">
+                  {facility.structureTypeName}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
 
-      {facility ? (
-        <dl className="space-y-0.5 rounded-[2px] border border-border/70 bg-panel px-2 py-1 text-[11px]">
-          <div className="flex justify-between gap-2">
-            <dt className="text-muted">Facility</dt>
-            <dd className="min-w-0 flex-1 truncate text-right text-foreground">{facility.name}</dd>
+        <label className="block text-xs font-medium text-muted">
+          Runs completed
+          <input
+            className="iw-input mt-0.5 font-mono"
+            inputMode="numeric"
+            min="1"
+            onChange={(event) => changeRuns(event.target.value)}
+            step="1"
+            type="number"
+            value={runs}
+          />
+        </label>
+
+        <div className="space-y-0.5">
+          <span className="block text-xs font-medium text-muted">Output — {outputName}</span>
+          <input
+            aria-label={`Output quantity for ${outputName}`}
+            className="iw-input font-mono"
+            inputMode="numeric"
+            min="0"
+            onChange={(event) => {
+              setOutput(event.target.value);
+              markTouched("output");
+            }}
+            step="1"
+            type="number"
+            value={output}
+          />
+        </div>
+
+        {ticket.prerequisites.length > 0 ? (
+          <div className="space-y-1">
+            <span className="block text-xs font-medium text-muted">Materials consumed</span>
+            {ticket.prerequisites.map((prerequisite) => (
+              <label className="block text-[11px] text-muted" key={prerequisite.id}>
+                {prerequisite.capturedName}
+                <input
+                  aria-label={`Consumed quantity for ${prerequisite.capturedName}`}
+                  className="iw-input mt-0.5 font-mono"
+                  inputMode="numeric"
+                  min="1"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setInputs((current) => ({ ...current, [prerequisite.id]: value }));
+                    markTouched(`input:${prerequisite.id}`);
+                  }}
+                  step="1"
+                  type="number"
+                  value={inputs[prerequisite.id] ?? ""}
+                />
+              </label>
+            ))}
           </div>
-          {facility.solarSystemName ? (
-            <div className="flex justify-between gap-2">
-              <dt className="text-muted">Solar system</dt>
-              <dd className="min-w-0 flex-1 truncate text-right text-foreground">
-                {facility.solarSystemName}
-              </dd>
-            </div>
-          ) : null}
-          {facility.structureTypeName ? (
-            <div className="flex justify-between gap-2">
-              <dt className="text-muted">Structure</dt>
-              <dd className="min-w-0 flex-1 truncate text-right text-foreground">
-                {facility.structureTypeName}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-      ) : null}
+        ) : null}
 
-      <label className="block text-xs font-medium text-muted">
-        Runs completed
-        <input
-          className="iw-input mt-0.5 font-mono"
-          inputMode="numeric"
-          min="1"
-          onChange={(event) => changeRuns(event.target.value)}
-          step="1"
-          type="number"
-          value={runs}
-        />
-      </label>
+        <label className="block text-xs font-medium text-muted">
+          Installation cost <span className="font-normal">(ISK — actual for this recording)</span>
+          <MoneyInput
+            aria-label="Installation cost (ISK)"
+            className="mt-0.5"
+            onClear={() => {
+              setInstallCost("");
+              markTouched("install");
+            }}
+            onCommit={(canonical) => {
+              setInstallCost(canonical);
+              markTouched("install");
+            }}
+            onValueChange={setInstallCostResult}
+            value={installCost}
+          />
+          <span className="mt-0.5 block text-[10px] font-normal" data-testid="install-cost-source">
+            {actualInstall
+              ? `From ${jobs.length} ESI job${jobs.length === 1 ? "" : "s"}: ${formatIskSummary(String(actualInstall.total))} for ${actualInstall.runs.toLocaleString()} runs`
+              : "Planned estimate — no ESI job cost linked to this ticket"}
+          </span>
+        </label>
 
-      <div className="space-y-0.5">
-        <span className="block text-xs font-medium text-muted">Output — {outputName}</span>
-        <input
-          aria-label={`Output quantity for ${outputName}`}
-          className="iw-input font-mono"
-          inputMode="numeric"
-          min="0"
-          onChange={(event) => {
-            setOutput(event.target.value);
-            markTouched("output");
-          }}
-          step="1"
-          type="number"
-          value={output}
-        />
+        <label className="block text-xs font-medium text-muted">
+          Location / reference <span className="font-normal">(optional)</span>
+          <input
+            className="iw-input mt-0.5"
+            onChange={(event) => setLocationNote(event.target.value)}
+            value={locationNote}
+          />
+        </label>
+
+        <label className="block text-xs font-medium text-muted">
+          Note <span className="font-normal">(optional)</span>
+          <textarea
+            className="iw-input mt-0.5 min-h-14"
+            onChange={(event) => setNote(event.target.value)}
+            value={note}
+          />
+        </label>
+
+        {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
+        {shortages ? (
+          <ReservedByOtherEpics
+            busy={busy}
+            onCancel={() => setShortages(null)}
+            onTake={(takeFrom) => void requestPreview(takeFrom)}
+            shortages={shortages}
+          />
+        ) : null}
       </div>
 
-      {ticket.prerequisites.length > 0 ? (
-        <div className="space-y-1">
-          <span className="block text-xs font-medium text-muted">Materials consumed</span>
-          {ticket.prerequisites.map((prerequisite) => (
-            <label className="block text-[11px] text-muted" key={prerequisite.id}>
-              {prerequisite.capturedName}
-              <input
-                aria-label={`Consumed quantity for ${prerequisite.capturedName}`}
-                className="iw-input mt-0.5 font-mono"
-                inputMode="numeric"
-                min="1"
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setInputs((current) => ({ ...current, [prerequisite.id]: value }));
-                  markTouched(`input:${prerequisite.id}`);
-                }}
-                step="1"
-                type="number"
-                value={inputs[prerequisite.id] ?? ""}
-              />
-            </label>
-          ))}
-        </div>
-      ) : null}
-
-      <label className="block text-xs font-medium text-muted">
-        Installation cost <span className="font-normal">(ISK — actual for this recording)</span>
-        <MoneyInput
-          aria-label="Installation cost (ISK)"
-          className="mt-0.5"
-          onClear={() => {
-            setInstallCost("");
-            markTouched("install");
-          }}
-          onCommit={(canonical) => {
-            setInstallCost(canonical);
-            markTouched("install");
-          }}
-          onValueChange={setInstallCostResult}
-          value={installCost}
-        />
-        <span className="mt-0.5 block text-[10px] font-normal" data-testid="install-cost-source">
-          {actualInstall
-            ? `From ${jobs.length} ESI job${jobs.length === 1 ? "" : "s"}: ${formatIskSummary(String(actualInstall.total))} for ${actualInstall.runs.toLocaleString()} runs`
-            : "Planned estimate — no ESI job cost linked to this ticket"}
-        </span>
-      </label>
-
-      <label className="block text-xs font-medium text-muted">
-        Location / reference <span className="font-normal">(optional)</span>
-        <input
-          className="iw-input mt-0.5"
-          onChange={(event) => setLocationNote(event.target.value)}
-          value={locationNote}
-        />
-      </label>
-
-      <label className="block text-xs font-medium text-muted">
-        Note <span className="font-normal">(optional)</span>
-        <textarea
-          className="iw-input mt-0.5 min-h-14"
-          onChange={(event) => setNote(event.target.value)}
-          value={note}
-        />
-      </label>
-
-      {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
-      {shortages ? (
-        <ReservedByOtherEpics
-          busy={busy}
-          onCancel={() => setShortages(null)}
-          onTake={(takeFrom) => void requestPreview(takeFrom)}
-          shortages={shortages}
-        />
-      ) : null}
-
-      <div className="flex justify-end gap-2">
+      <div className="iw-dialog-footer">
         <button className="iw-button-secondary" disabled={busy} onClick={onCancel} type="button">
           Cancel
         </button>

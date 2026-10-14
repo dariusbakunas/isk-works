@@ -38,32 +38,35 @@ export function TypeToConfirmDialog({
       <section
         aria-labelledby="type-confirm-title"
         aria-modal="true"
-        className="iw-dialog w-full max-w-md p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-md p-4"
         role="dialog"
       >
         <h2 className="text-base font-semibold" id="type-confirm-title">
           {title}
         </h2>
-        <div className="iw-muted mt-2">{children}</div>
         <form
+          className="iw-dialog-pane"
           onSubmit={(event) => {
             event.preventDefault();
             if (matches && !busy) onConfirm(typed);
           }}
         >
-          <label className="mt-3 block text-sm font-semibold" htmlFor="type-confirm-input">
-            Type <strong>{expected}</strong> to confirm
-          </label>
-          <input
-            autoComplete="off"
-            autoFocus
-            className="iw-input mt-1"
-            id="type-confirm-input"
-            onChange={(event) => setTyped(event.target.value)}
-            spellCheck={false}
-            value={typed}
-          />
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="iw-dialog-body">
+            <div className="iw-muted mt-2">{children}</div>
+            <label className="mt-3 block text-sm font-semibold" htmlFor="type-confirm-input">
+              Type <strong>{expected}</strong> to confirm
+            </label>
+            <input
+              autoComplete="off"
+              autoFocus
+              className="iw-input mt-1"
+              id="type-confirm-input"
+              onChange={(event) => setTyped(event.target.value)}
+              spellCheck={false}
+              value={typed}
+            />
+          </div>
+          <div className="iw-dialog-footer">
             <button className="iw-button-secondary" onClick={onCancel} type="button">
               Cancel
             </button>

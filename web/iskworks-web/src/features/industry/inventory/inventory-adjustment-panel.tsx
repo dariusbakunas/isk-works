@@ -1,4 +1,4 @@
-import { Calculator } from "lucide-react";
+import { Calculator, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -159,18 +159,15 @@ export function InventoryAdjustmentPanel({
   return (
     <dialog
       aria-labelledby="inventory-adjustment-title"
-      className="iw-dialog m-auto max-h-[calc(100vh-2rem)] w-[min(760px,calc(100vw-2rem))] overflow-y-auto p-5 text-foreground backdrop:bg-black/70"
+      className="iw-dialog iw-dialog-frame m-auto w-[min(760px,calc(100vw-2rem))] p-5 text-foreground backdrop:bg-black/70"
       onCancel={(event) => { event.preventDefault(); onCancel(); }}
       ref={dialogRef}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <p className="iw-eyebrow">Manual correction</p>
-          <h2 className="text-lg font-semibold" id="inventory-adjustment-title">Adjust Inventory</h2>
-        </div>
-        <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
+      <div className="mb-4 shrink-0">
+        <p className="iw-eyebrow">Manual correction</p>
+        <h2 className="text-lg font-semibold" id="inventory-adjustment-title">Adjust Inventory</h2>
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="iw-dialog-body grid gap-4 lg:grid-cols-2">
         <div className="grid content-start gap-3">
           {!selected ? (
             <>
@@ -237,20 +234,29 @@ export function InventoryAdjustmentPanel({
             <textarea className="iw-input mt-1 min-h-20" value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
           {error ? <InlineAlert title="Adjustment not ready">{error}</InlineAlert> : null}
-          <button className="iw-button-secondary justify-self-start" disabled={busy || (direction === "add" && unitCostResult.status === "invalid")} onClick={runPreview} type="button">
-            <Calculator className="mr-2 h-4 w-4" aria-hidden="true" />
-            {busy ? "Calculating..." : "Preview"}
-          </button>
         </div>
         <div>
           {preview ? (
-            <InventoryPreviewPanel preview={preview} onSave={save} busy={busy} />
+            <InventoryPreviewPanel preview={preview} busy={busy} />
           ) : (
             <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted">
               Enter the adjustment details, then preview the exact inventory result before recording it.
             </div>
           )}
         </div>
+      </div>
+      <div className="iw-dialog-footer">
+        <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
+        <button className="iw-button-secondary" disabled={busy || (direction === "add" && unitCostResult.status === "invalid")} onClick={runPreview} type="button">
+          <Calculator className="mr-2 h-4 w-4" aria-hidden="true" />
+          {busy ? "Calculating..." : "Preview"}
+        </button>
+        {preview ? (
+          <button className="iw-button-primary" disabled={busy} onClick={save} type="button">
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {busy ? "Recording..." : "Record Event"}
+          </button>
+        ) : null}
       </div>
     </dialog>
   );

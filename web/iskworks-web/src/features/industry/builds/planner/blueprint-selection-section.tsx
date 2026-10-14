@@ -333,8 +333,8 @@ export function BlueprintPlanningDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4" role="presentation">
-      <section aria-label={title} aria-modal="true" className="iw-dialog max-h-[calc(100vh-2rem)] w-[min(760px,100%)] overflow-y-auto p-4" role="dialog">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <section aria-label={title} aria-modal="true" className="iw-dialog iw-dialog-frame w-[min(760px,100%)] p-4" role="dialog">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div>
             <p className="iw-eyebrow">Planning assumptions</p>
             <h2 className="text-base font-semibold">{title}</h2>
@@ -343,8 +343,8 @@ export function BlueprintPlanningDialog({
             <X aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
-        {children}
-        <div className="mt-3 flex justify-end border-t border-border pt-3">
+        <div className="iw-dialog-body">{children}</div>
+        <div className="iw-dialog-footer mt-3 border-t border-border pt-3">
           <button className="iw-button-primary" onClick={onClose} type="button">Done</button>
         </div>
       </section>

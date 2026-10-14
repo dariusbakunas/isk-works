@@ -63,15 +63,17 @@ export function RecordingPreviewStep({
   onConfirm: () => void;
 }) {
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Inventory after recording</p>
-      <ul className="divide-y divide-border/70 border-y border-border/70" data-private="">
-        {preview.lines.map((line) => (
-          <PreviewLine key={`${line.effect}:${line.typeId}`} line={line} />
-        ))}
-      </ul>
-      {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
-      <div className="flex justify-end gap-2">
+    <div className="iw-dialog-pane">
+      <div className="iw-dialog-body space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Inventory after recording</p>
+        <ul className="divide-y divide-border/70 border-y border-border/70" data-private="">
+          {preview.lines.map((line) => (
+            <PreviewLine key={`${line.effect}:${line.typeId}`} line={line} />
+          ))}
+        </ul>
+        {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
+      </div>
+      <div className="iw-dialog-footer">
         <button className="iw-button-secondary" disabled={busy} onClick={onBack} type="button">
           Back
         </button>

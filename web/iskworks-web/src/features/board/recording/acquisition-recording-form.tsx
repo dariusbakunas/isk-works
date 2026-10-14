@@ -121,59 +121,60 @@ export function AcquisitionRecordingForm({
   return (
     <form
       aria-label="Record acquisition"
-      className="space-y-2"
+      className="iw-dialog-pane"
       onSubmit={(event) => {
         event.preventDefault();
         void requestPreview();
       }}
     >
+      <div className="iw-dialog-body space-y-2">
+        <label className="block text-xs font-medium text-muted">
+          Quantity
+          <input
+            className="iw-input mt-0.5 font-mono"
+            inputMode="numeric"
+            min="1"
+            onChange={(event) => setQuantity(event.target.value)}
+            step="1"
+            type="number"
+            value={quantity}
+          />
+        </label>
 
-      <label className="block text-xs font-medium text-muted">
-        Quantity
-        <input
-          className="iw-input mt-0.5 font-mono"
-          inputMode="numeric"
-          min="1"
-          onChange={(event) => setQuantity(event.target.value)}
-          step="1"
-          type="number"
-          value={quantity}
-        />
-      </label>
+        <label className="block text-xs font-medium text-muted">
+          Unit cost <span className="font-normal">(ISK — optional)</span>
+          <MoneyInput
+            aria-label="Unit cost (ISK)"
+            className="mt-0.5"
+            onClear={() => setUnitCost("")}
+            onCommit={(canonical) => setUnitCost(canonical)}
+            onValueChange={setUnitCostResult}
+            value={unitCost}
+          />
+        </label>
 
-      <label className="block text-xs font-medium text-muted">
-        Unit cost <span className="font-normal">(ISK — optional)</span>
-        <MoneyInput
-          aria-label="Unit cost (ISK)"
-          className="mt-0.5"
-          onClear={() => setUnitCost("")}
-          onCommit={(canonical) => setUnitCost(canonical)}
-          onValueChange={setUnitCostResult}
-          value={unitCost}
-        />
-      </label>
+        <label className="block text-xs font-medium text-muted">
+          Location / reference <span className="font-normal">(optional)</span>
+          <input
+            className="iw-input mt-0.5"
+            onChange={(event) => setLocationNote(event.target.value)}
+            value={locationNote}
+          />
+        </label>
 
-      <label className="block text-xs font-medium text-muted">
-        Location / reference <span className="font-normal">(optional)</span>
-        <input
-          className="iw-input mt-0.5"
-          onChange={(event) => setLocationNote(event.target.value)}
-          value={locationNote}
-        />
-      </label>
+        <label className="block text-xs font-medium text-muted">
+          Note <span className="font-normal">(optional)</span>
+          <textarea
+            className="iw-input mt-0.5 min-h-14"
+            onChange={(event) => setNote(event.target.value)}
+            value={note}
+          />
+        </label>
 
-      <label className="block text-xs font-medium text-muted">
-        Note <span className="font-normal">(optional)</span>
-        <textarea
-          className="iw-input mt-0.5 min-h-14"
-          onChange={(event) => setNote(event.target.value)}
-          value={note}
-        />
-      </label>
+        {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
+      </div>
 
-      {error ? <InlineAlert title="Recording did not finish">{error}</InlineAlert> : null}
-
-      <div className="flex justify-end gap-2">
+      <div className="iw-dialog-footer">
         <button className="iw-button-secondary" disabled={busy} onClick={onCancel} type="button">
           Cancel
         </button>

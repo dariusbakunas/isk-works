@@ -191,7 +191,7 @@ export function ProductSelectionDialog({
       <section
         aria-labelledby="product-selection-title"
         aria-modal="true"
-        className="iw-dialog w-full max-w-2xl p-4"
+        className="iw-dialog iw-dialog-frame w-full max-w-2xl p-4"
         role="dialog"
       >
         <div className="flex items-start justify-between gap-3">
@@ -211,32 +211,34 @@ export function ProductSelectionDialog({
           value={query}
           onChange={onQuery}
         />
-        {searching ? <p className="iw-muted mt-2 text-xs" role="status">Searching active SDE...</p> : null}
-        {results.length > 0 ? (
-          <div className="mt-3 max-h-[50vh] overflow-y-auto divide-y divide-border border-y border-border">
-            {results.map((entry) => (
-              <button
-                className="flex w-full items-center gap-2 px-2 py-2 text-left hover:bg-panel-strong"
-                key={`${entry.kind}-${entry.kind === "manufacturing" ? entry.result.blueprintTypeId : entry.result.reactionFormulaTypeId}`}
-                onClick={() => onSelect(entry)}
-                type="button"
-              >
-                <EveTypeImage size={40} typeId={entry.result.productTypeId} typeName={entry.result.productName} />
-                <span className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2">
-                  <strong>{entry.result.productName}</strong>
-                  <span className="text-sm text-muted">
-                    {entry.kind === "manufacturing" ? entry.result.blueprintName : entry.result.reactionFormulaName}
-                    {" · "}
-                    {entry.kind === "manufacturing" ? "Manufacturing" : "Reaction"}
+        <div className="iw-dialog-body">
+          {searching ? <p className="iw-muted mt-2 text-xs" role="status">Searching active SDE...</p> : null}
+          {results.length > 0 ? (
+            <div className="mt-3 divide-y divide-border border-y border-border">
+              {results.map((entry) => (
+                <button
+                  className="flex w-full items-center gap-2 px-2 py-2 text-left hover:bg-panel-strong"
+                  key={`${entry.kind}-${entry.kind === "manufacturing" ? entry.result.blueprintTypeId : entry.result.reactionFormulaTypeId}`}
+                  onClick={() => onSelect(entry)}
+                  type="button"
+                >
+                  <EveTypeImage size={40} typeId={entry.result.productTypeId} typeName={entry.result.productName} />
+                  <span className="grid min-w-0 flex-1 gap-1 sm:grid-cols-2">
+                    <strong>{entry.result.productName}</strong>
+                    <span className="text-sm text-muted">
+                      {entry.kind === "manufacturing" ? entry.result.blueprintName : entry.result.reactionFormulaName}
+                      {" · "}
+                      {entry.kind === "manufacturing" ? "Manufacturing" : "Reaction"}
+                    </span>
                   </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : query.trim() && !searching ? (
-          <p className="iw-muted mt-4 border-y border-border py-4 text-sm">No results found.</p>
-        ) : null}
-        <div className="mt-3 flex justify-end">
+                </button>
+              ))}
+            </div>
+          ) : query.trim() && !searching ? (
+            <p className="iw-muted mt-4 border-y border-border py-4 text-sm">No results found.</p>
+          ) : null}
+        </div>
+        <div className="iw-dialog-footer pt-3">
           <button className="iw-button-secondary" onClick={onCancel} type="button">Cancel</button>
         </div>
       </section>
