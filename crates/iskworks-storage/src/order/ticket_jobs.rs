@@ -1,9 +1,11 @@
 //! `TicketJobRepository` for `PgOrderRepository`: stored ticket -> ESI job
 //! links (`ticket_industry_jobs`).
 
+use std::collections::HashSet;
+
 use iskworks_core::order::{
     ObservedIndustryJob, TicketIndustryJob, TicketJobCandidate, TicketJobRepository,
-    TicketJobSyncPlan,
+    TicketJobSyncPlan, TicketJobTarget,
 };
 use iskworks_core::IndustryActivity;
 
@@ -17,6 +19,13 @@ struct CandidateRow {
     type_id: i64,
     runs: Option<i64>,
     created_at: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TargetRow {
+    kind: String,
+    assignee_character_id: Option<Uuid>,
+    type_id: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -165,6 +174,145 @@ impl TicketJobRepository for PgOrderRepository {
             .await
             .map_err(map_error)?;
         }
+        tx.commit().await.map_err(map_error)?;
+        Ok(())
+    }
+
+    async fn ticket_job_target(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<TicketJobTarget, OrderError> {
+        let row: Option<TargetRow> = sqlx::query_as(
+            "SELECT kind, assignee_character_id, type_id FROM tickets \
+             WHERE workspace_id = $1 AND id = $2",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_error)?;
+        let row = row.ok_or(OrderError::TicketNotFound)?;
+        let activity = match ticket_kind_from_str(&row.kind)? {
+            TicketKind::Manufacturing => IndustryActivity::Manufacturing,
+            TicketKind::Reaction => IndustryActivity::Reaction,
+            _ => return Err(OrderError::TicketJobMismatch),
+        };
+        Ok(TicketJobTarget {
+            ticket_id,
+            assignee: row.assignee_character_id.map(ConnectedCharacterId),
+            activity,
+            product_type_id: row.type_id.ok_or(OrderError::TicketJobMismatch)?,
+        })
+    }
+
+    async fn list_ticket_job_exclusions(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<HashSet<(TicketId, i64)>, OrderError> {
+        let rows: Vec<(Uuid, i64)> = sqlx::query_as(
+            "SELECT ticket_id, job_id FROM ticket_industry_job_exclusions WHERE workspace_id = $1",
+        )
+        .bind(workspace_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|(ticket_id, job_id)| (TicketId(ticket_id), job_id))
+            .collect())
+    }
+
+    async fn link_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job: &ObservedIndustryJob,
+    ) -> Result<(), OrderError> {
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        // Unlike a sync, a manual link moves the job off any other ticket.
+        let inserted = sqlx::query(
+            "INSERT INTO ticket_industry_jobs \
+               (workspace_id, job_id, ticket_id, connection_id, activity_id, \
+                blueprint_type_id, product_type_id, facility_id, runs, cost, status, \
+                start_date, end_date, pause_date, linked_at, last_seen_at) \
+             SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15 \
+             WHERE EXISTS (SELECT 1 FROM tickets WHERE id = $3 AND workspace_id = $1) \
+             ON CONFLICT (workspace_id, job_id) DO UPDATE SET \
+               ticket_id = EXCLUDED.ticket_id, connection_id = EXCLUDED.connection_id, \
+               runs = EXCLUDED.runs, cost = EXCLUDED.cost, status = EXCLUDED.status, \
+               start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, \
+               pause_date = EXCLUDED.pause_date, linked_at = EXCLUDED.linked_at, \
+               last_seen_at = EXCLUDED.last_seen_at",
+        )
+        .bind(workspace_id.0)
+        .bind(job.job_id)
+        .bind(ticket_id.0)
+        .bind(job.connection_id.0)
+        .bind(job.activity_id)
+        .bind(job.blueprint_type_id)
+        .bind(job.product_type_id)
+        .bind(job.facility_id)
+        .bind(i64_from_u64(job.runs)?)
+        .bind(job.cost.map(|cost| cost.0))
+        .bind(&job.status)
+        .bind(job.start_date)
+        .bind(job.end_date)
+        .bind(job.pause_date)
+        .bind(now)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if inserted.rows_affected() == 0 {
+            return Err(OrderError::TicketNotFound);
+        }
+        sqlx::query(
+            "DELETE FROM ticket_industry_job_exclusions \
+             WHERE workspace_id = $1 AND ticket_id = $2 AND job_id = $3",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .bind(job.job_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(())
+    }
+
+    async fn unlink_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job_id: i64,
+    ) -> Result<(), OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let deleted = sqlx::query(
+            "DELETE FROM ticket_industry_jobs \
+             WHERE workspace_id = $1 AND ticket_id = $2 AND job_id = $3",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .bind(job_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if deleted.rows_affected() == 0 {
+            return Err(OrderError::TicketJobNotFound);
+        }
+        sqlx::query(
+            "INSERT INTO ticket_industry_job_exclusions \
+               (workspace_id, ticket_id, job_id, excluded_at) VALUES ($1, $2, $3, $4) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .bind(job_id)
+        .bind(crate::db_now())
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
         tx.commit().await.map_err(map_error)?;
         Ok(())
     }

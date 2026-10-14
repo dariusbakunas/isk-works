@@ -132,6 +132,41 @@ pub trait TicketJobRepository: Send + Sync {
         workspace_id: WorkspaceId,
         plan: &TicketJobSyncPlan,
     ) -> Result<(), OrderError>;
+
+    /// What a manual link checks against. `TicketNotFound` for no such
+    /// ticket, `TicketJobMismatch` for one that runs no job (not
+    /// Manufacturing/Reaction).
+    async fn ticket_job_target(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<TicketJobTarget, OrderError>;
+
+    /// `(ticket, job)` pairs the user unlinked, which the matcher skips.
+    async fn list_ticket_job_exclusions(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<HashSet<(TicketId, i64)>, OrderError>;
+
+    /// Links `job` to the ticket by hand (checked by the caller with
+    /// [`job_fits_ticket`]), moving it from any other ticket, and clears the
+    /// pair's exclusion -- in one transaction.
+    async fn link_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job: &ObservedIndustryJob,
+    ) -> Result<(), OrderError>;
+
+    /// Unlinks a job from the ticket and remembers the pair so the matcher
+    /// never links it back. `TicketJobNotFound` if the ticket doesn't have
+    /// that job.
+    async fn unlink_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job_id: i64,
+    ) -> Result<(), OrderError>;
 }
 
 /// One sync of stored links against what ESI reports now.
