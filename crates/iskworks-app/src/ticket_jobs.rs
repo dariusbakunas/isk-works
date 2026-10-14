@@ -61,6 +61,7 @@ impl TicketJobService {
         let plan = plan_ticket_job_sync(
             &candidates,
             &linked,
+            &HashSet::new(),
             &observed,
             &observed_connections,
             Utc::now(),
