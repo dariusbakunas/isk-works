@@ -65,7 +65,8 @@ export type CharacterSourceKind =
   | "industryJobs"
   | "assets"
   | "walletTransactions"
-  | "planets";
+  | "planets"
+  | "calendar";
 export type SourceRefreshState = "missing" | "current" | "refreshing" | "failed";
 
 export interface CharacterSourceDetail {
