@@ -12,12 +12,12 @@ use iskworks_core::{
 };
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
-    CharacterIndustryJobObservation, CharacterLocationObservation,
-    CharacterPlanetDetailObservation, CharacterPlanetObservation, CharacterPublicInfo,
-    CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation, EsiError,
-    EsiResponse, EsiResponseMetadata, EveEntityName, IndustrySystemCostIndex, PkceVerifier,
-    PlanetPinContentObservation, PlanetPinObservation, RefreshedToken, StructureInformation,
-    WalletBalanceObservation, WalletTransactionObservation,
+    CalendarEventDetailObservation, CalendarEventObservation, CharacterIndustryJobObservation,
+    CharacterLocationObservation, CharacterPlanetDetailObservation, CharacterPlanetObservation,
+    CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation,
+    EsiError, EsiResponse, EsiResponseMetadata, EveEntityName, IndustrySystemCostIndex,
+    PkceVerifier, PlanetPinContentObservation, PlanetPinObservation, RefreshedToken,
+    StructureInformation, WalletBalanceObservation, WalletTransactionObservation,
 };
 
 use super::*;
@@ -51,6 +51,7 @@ fn all_scopes() -> Vec<String> {
         INDUSTRY_JOBS_SCOPE.to_string(),
         ASSET_SCOPE.to_string(),
         PLANETS_SCOPE.to_string(),
+        CALENDAR_SCOPE.to_string(),
     ]
 }
 
@@ -67,6 +68,8 @@ struct RecordingRepository {
     entity_names_calls: Mutex<Vec<Vec<i64>>>,
     persisted_sources: Mutex<HashMap<ConnectedCharacterId, Vec<CharacterSourceSyncState>>>,
     deferred: Mutex<Vec<(ConnectedCharacterId, DateTime<Utc>)>>,
+    calendar_copies: Mutex<Vec<CharacterCalendarEvent>>,
+    stored_calendar: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterCalendarEvent>)>>,
 }
 
 #[async_trait]
@@ -176,6 +179,33 @@ impl CharacterSyncRepository for RecordingRepository {
             .cloned()
             .unwrap_or_default())
     }
+
+    async fn calendar_event_copies(
+        &self,
+        _workspace_id: WorkspaceId,
+        event_ids: &[i64],
+    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+        Ok(self
+            .calendar_copies
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|copy| event_ids.contains(&copy.event_id))
+            .cloned()
+            .collect())
+    }
+
+    async fn store_calendar_events(
+        &self,
+        connection_id: ConnectedCharacterId,
+        events: &[CharacterCalendarEvent],
+    ) -> Result<(), InventoryError> {
+        self.stored_calendar
+            .lock()
+            .unwrap()
+            .push((connection_id, events.to_vec()));
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -183,6 +213,11 @@ struct FakeTransport {
     fail: Mutex<HashMap<&'static str, EsiError>>,
     universe_names_calls: Mutex<Vec<Vec<i64>>>,
     skill_queue_override: Mutex<Option<Vec<CharacterSkillQueueEntry>>>,
+    /// Every upcoming event the fake calendar knows, served 50 at a time
+    /// like ESI; `None` serves one event.
+    calendar_override: Mutex<Option<Vec<CalendarEventObservation>>>,
+    calendar_calls: Mutex<Vec<Option<i64>>>,
+    calendar_detail_calls: Mutex<Vec<i64>>,
 }
 
 impl FakeTransport {
@@ -191,14 +226,20 @@ impl FakeTransport {
         fail.insert(endpoint, error);
         Self {
             fail: Mutex::new(fail),
-            universe_names_calls: Mutex::new(Vec::new()),
-            skill_queue_override: Mutex::new(None),
+            ..Self::default()
         }
     }
 
     fn with_skill_queue(entries: Vec<CharacterSkillQueueEntry>) -> Self {
         Self {
             skill_queue_override: Mutex::new(Some(entries)),
+            ..Self::default()
+        }
+    }
+
+    fn with_calendar(events: Vec<CalendarEventObservation>) -> Self {
+        Self {
+            calendar_override: Mutex::new(Some(events)),
             ..Self::default()
         }
     }
@@ -463,6 +504,93 @@ impl EsiTransport for FakeTransport {
             metadata: EsiResponseMetadata::default(),
         })
     }
+
+    async fn character_calendar(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        from_event: Option<i64>,
+    ) -> Result<EsiResponse<CalendarEventObservation>, EsiError> {
+        self.check("character_calendar")?;
+        self.calendar_calls.lock().unwrap().push(from_event);
+        let events = self
+            .calendar_override
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| vec![calendar_summary(1, "Fleet op")]);
+        let start = from_event.map_or(0, |from| {
+            events
+                .iter()
+                .position(|event| event.event_id == from)
+                .map_or(events.len(), |index| index + 1)
+        });
+        Ok(EsiResponse {
+            records: events.into_iter().skip(start).take(50).collect(),
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+
+    async fn character_calendar_event(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        event_id: i64,
+    ) -> Result<EsiResponse<CalendarEventDetailObservation>, EsiError> {
+        self.check("character_calendar_event")?;
+        self.calendar_detail_calls.lock().unwrap().push(event_id);
+        Ok(EsiResponse {
+            records: vec![CalendarEventDetailObservation {
+                event_id,
+                date: calendar_date(),
+                title: "ignored: the summary's title wins".to_string(),
+                importance: 0,
+                duration_minutes: 90,
+                owner_id: Some(98_000_001),
+                owner_name: Some("Test Corp".to_string()),
+                owner_type: Some("corporation".to_string()),
+                text: format!("<b>Details for {event_id}</b>"),
+            }],
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+}
+
+fn calendar_date() -> DateTime<Utc> {
+    "2026-10-20T18:00:00Z".parse().unwrap()
+}
+
+fn calendar_summary(event_id: i64, title: &str) -> CalendarEventObservation {
+    CalendarEventObservation {
+        event_id,
+        event_date: calendar_date(),
+        title: title.to_string(),
+        importance: 0,
+        response: iskworks_esi::CalendarEventResponse::Tentative,
+    }
+}
+
+fn stored_calendar_event(
+    connection_id: ConnectedCharacterId,
+    event_id: i64,
+    title: &str,
+) -> CharacterCalendarEvent {
+    CharacterCalendarEvent {
+        connection_id,
+        event_id,
+        event_date: calendar_date(),
+        title: title.to_string(),
+        importance: 0,
+        response: CalendarEventResponse::Accepted,
+        duration_minutes: 45,
+        owner_id: Some(99_000_001),
+        owner_name: Some("Test Alliance".to_string()),
+        owner_type: Some("alliance".to_string()),
+        text: "stored text".to_string(),
+        observed_at: "2026-10-15T00:00:00Z".parse().unwrap(),
+    }
 }
 
 #[derive(Default)]
@@ -580,11 +708,11 @@ async fn successful_sync_persists_a_summary_for_every_granted_source() {
         .sync_connection(ConnectedCharacterId::new(), no_cancel())
         .await;
 
-    assert_eq!(outcomes.len(), 8);
+    assert_eq!(outcomes.len(), 9);
     assert!(outcomes
         .iter()
         .all(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded));
-    assert_eq!(repository.completed.lock().unwrap().len(), 8);
+    assert_eq!(repository.completed.lock().unwrap().len(), 9);
     assert!(repository.failed.lock().unwrap().is_empty());
     assert_eq!(repository.registered.lock().unwrap().len(), 1);
 }
@@ -645,7 +773,7 @@ async fn missing_asset_scope_fails_only_assets() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 7);
+    assert_eq!(succeeded, 8);
     let failed = repository.failed.lock().unwrap();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].1, CharacterSourceKind::Assets);
@@ -712,7 +840,7 @@ async fn missing_scope_fails_only_that_source_and_leaves_siblings_unaffected() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 7);
+    assert_eq!(succeeded, 8);
     let failed = repository.failed.lock().unwrap();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].1, CharacterSourceKind::IndustryJobs);
@@ -765,7 +893,7 @@ async fn missing_planets_scope_fails_only_planets() {
             .iter()
             .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
             .count(),
-        7
+        8
     );
 }
 
@@ -807,8 +935,8 @@ async fn esi_failure_on_one_source_does_not_abort_the_others() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 7);
-    assert_eq!(repository.completed.lock().unwrap().len(), 7);
+    assert_eq!(succeeded, 8);
+    assert_eq!(repository.completed.lock().unwrap().len(), 8);
     assert_eq!(repository.failed.lock().unwrap().len(), 1);
 }
 
@@ -846,7 +974,7 @@ async fn esi_timeout_on_one_source_fails_it_and_reschedules_in_five_minutes() {
             .iter()
             .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
             .count(),
-        7
+        8
     );
     // Exactly one attempt was made for Location -- no in-pass retry.
     let location_failures = repository
@@ -892,7 +1020,7 @@ async fn token_refresh_failure_skips_every_source_without_writing_any_state() {
     let outcomes = service.sync_connection(connection_id, no_cancel()).await;
     let after = Utc::now();
 
-    assert_eq!(outcomes.len(), 8);
+    assert_eq!(outcomes.len(), 9);
     assert!(outcomes
         .iter()
         .all(|(_, outcome)| *outcome == CharacterSyncOutcome::Skipped));
@@ -973,8 +1101,8 @@ async fn a_source_not_yet_due_is_skipped_but_others_still_sync() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 7);
-    assert_eq!(repository.completed.lock().unwrap().len(), 7);
+    assert_eq!(succeeded, 8);
+    assert_eq!(repository.completed.lock().unwrap().len(), 8);
     assert!(repository
         .failed
         .lock()
@@ -1380,10 +1508,10 @@ async fn every_source_refresh_is_recorded_by_kind_and_result() {
     assert_eq!(runs("location", "failed"), 1);
     assert_eq!(runs("skills", "success"), 1);
     assert_eq!(runs("assets", "success"), 1);
-    assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 8);
+    assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 9);
     assert_eq!(
         recorded.histogram_count("iskworks_esi_sync_duration_seconds", &[]),
-        8
+        9
     );
     let last_success = "iskworks_esi_sync_last_success_timestamp_seconds";
     assert!(recorded.has(last_success, &[("kind", "skills")]));
@@ -1436,4 +1564,154 @@ async fn a_failed_jobs_refresh_does_not_tell_the_hook() {
         .await;
 
     assert!(hook.workspaces.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn calendar_sync_pages_past_fifty_events_and_stores_every_one() {
+    let events: Vec<_> = (1..=120)
+        .map(|id| calendar_summary(id, &format!("Op {id}")))
+        .collect();
+    let transport = Arc::new(FakeTransport::with_calendar(events));
+    let repository = Arc::new(RecordingRepository::default());
+    let connection = connection(all_scopes());
+    let connection_id = connection.id;
+    let service = CharacterSyncService::new(
+        repository.clone(),
+        transport.clone(),
+        Arc::new(FakeTokenProvider {
+            connection,
+            fail: false,
+        }),
+        Arc::new(FakeEsiSyncDispatcher::default()),
+    );
+
+    service.sync_connection(connection_id, no_cancel()).await;
+
+    assert_eq!(
+        *transport.calendar_calls.lock().unwrap(),
+        vec![None, Some(50), Some(100)]
+    );
+    let stored = repository.stored_calendar.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].0, connection_id);
+    assert_eq!(stored[0].1.len(), 120);
+    assert_eq!(transport.calendar_detail_calls.lock().unwrap().len(), 120);
+    let completed = repository.completed.lock().unwrap();
+    let (_, _, summary) = completed
+        .iter()
+        .find(|(_, kind, _)| *kind == CharacterSourceKind::Calendar)
+        .unwrap();
+    assert_eq!(summary["eventCount"], 120);
+    assert_eq!(summary["pages"], 3);
+}
+
+#[tokio::test]
+async fn calendar_sync_takes_summary_fields_and_details_from_esi() {
+    let transport = Arc::new(FakeTransport::default());
+    let repository = Arc::new(RecordingRepository::default());
+    let connection = connection(all_scopes());
+    let connection_id = connection.id;
+    let service = CharacterSyncService::new(
+        repository.clone(),
+        transport.clone(),
+        Arc::new(FakeTokenProvider {
+            connection,
+            fail: false,
+        }),
+        Arc::new(FakeEsiSyncDispatcher::default()),
+    );
+
+    service.sync_connection(connection_id, no_cancel()).await;
+
+    let stored = repository.stored_calendar.lock().unwrap();
+    let event = &stored[0].1[0];
+    assert_eq!(event.event_id, 1);
+    assert_eq!(event.title, "Fleet op");
+    assert_eq!(event.response, CalendarEventResponse::Tentative);
+    assert_eq!(event.duration_minutes, 90);
+    assert_eq!(event.owner_name.as_deref(), Some("Test Corp"));
+    assert_eq!(event.text, "<b>Details for 1</b>");
+}
+
+#[tokio::test]
+async fn calendar_sync_reuses_current_details_and_refetches_changed_events() {
+    let transport = Arc::new(FakeTransport::with_calendar(vec![
+        calendar_summary(1, "Shared op"),
+        calendar_summary(2, "Renamed op"),
+        calendar_summary(3, "New op"),
+    ]));
+    let repository = Arc::new(RecordingRepository::default());
+    let connection = connection(all_scopes());
+    let connection_id = connection.id;
+    // Another character in the workspace already stored event 1 as it is
+    // now, and event 2 under its old title.
+    let corpmate = ConnectedCharacterId::new();
+    repository.calendar_copies.lock().unwrap().extend([
+        stored_calendar_event(corpmate, 1, "Shared op"),
+        stored_calendar_event(corpmate, 2, "Old title"),
+    ]);
+    let service = CharacterSyncService::new(
+        repository.clone(),
+        transport.clone(),
+        Arc::new(FakeTokenProvider {
+            connection,
+            fail: false,
+        }),
+        Arc::new(FakeEsiSyncDispatcher::default()),
+    );
+
+    service.sync_connection(connection_id, no_cancel()).await;
+
+    assert_eq!(*transport.calendar_detail_calls.lock().unwrap(), vec![2, 3]);
+    let stored = repository.stored_calendar.lock().unwrap();
+    let shared = &stored[0].1[0];
+    assert_eq!(shared.connection_id, connection_id);
+    assert_eq!(shared.text, "stored text");
+    assert_eq!(shared.owner_name.as_deref(), Some("Test Alliance"));
+    // The response is this character's own, from the summary.
+    assert_eq!(shared.response, CalendarEventResponse::Tentative);
+    assert_eq!(stored[0].1[1].title, "Renamed op");
+    assert_eq!(stored[0].1[1].text, "<b>Details for 2</b>");
+}
+
+#[tokio::test]
+async fn missing_calendar_scope_fails_only_calendar_and_stores_nothing() {
+    let mut scopes = all_scopes();
+    scopes.retain(|scope| scope != CALENDAR_SCOPE);
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        connection(scopes),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let failed = repository.failed.lock().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1, CharacterSourceKind::Calendar);
+    assert_eq!(
+        failed[0].2,
+        "missing scope: esi-calendar.read_calendar_events.v1"
+    );
+    assert!(repository.stored_calendar.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_event_detail_fails_the_calendar_source_without_storing() {
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::failing("character_calendar_event", EsiError::TemporaryFailure),
+        connection(all_scopes()),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let failed = repository.failed.lock().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1, CharacterSourceKind::Calendar);
+    assert!(repository.stored_calendar.lock().unwrap().is_empty());
 }

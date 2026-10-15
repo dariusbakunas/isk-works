@@ -1144,6 +1144,66 @@ impl EsiTransport for HttpEsiTransport {
             metadata,
         })
     }
+
+    async fn character_calendar(
+        &self,
+        access_token: &str,
+        character_id: i64,
+        from_event: Option<i64>,
+    ) -> Result<EsiResponse<CalendarEventObservation>, EsiError> {
+        let mut url = format!(
+            "{}/latest/characters/{character_id}/calendar/",
+            self.esi_base_url
+        );
+        if let Some(from_event) = from_event {
+            url.push_str(&format!("?from_event={from_event}"));
+        }
+        let response = self
+            .get_json(EsiRoute::CharacterCalendar, url, access_token, None)
+            .await?;
+        let metadata = metadata(&response);
+        let values: Vec<Value> = response
+            .json()
+            .await
+            .map_err(|error| decode_body_error(&error))?;
+        Ok(EsiResponse {
+            records: values
+                .into_iter()
+                .map(parse_calendar_event)
+                .collect::<Result<_, _>>()?,
+            not_modified: false,
+            metadata,
+        })
+    }
+
+    async fn character_calendar_event(
+        &self,
+        access_token: &str,
+        character_id: i64,
+        event_id: i64,
+    ) -> Result<EsiResponse<CalendarEventDetailObservation>, EsiError> {
+        let response = self
+            .get_json(
+                EsiRoute::CharacterCalendarEvent,
+                format!(
+                    "{}/latest/characters/{character_id}/calendar/{event_id}/",
+                    self.esi_base_url
+                ),
+                access_token,
+                None,
+            )
+            .await?;
+        let metadata = metadata(&response);
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|error| decode_body_error(&error))?;
+        Ok(EsiResponse {
+            records: vec![parse_calendar_event_detail(&value)?],
+            not_modified: false,
+            metadata,
+        })
+    }
 }
 
 /// The part of ESI's `/status/` answer the downtime probe reads.

@@ -31,7 +31,7 @@ shortage. Your profit numbers reflect your real costs, not a hypothetical restoc
 - **Opportunities**: a profitability scanner across item scopes, manufacturing and reactions.
 - **Market and prices**: public ESI order books, player-structure markets, EVE client market exports,
   and manual price overrides.
-- **Characters**: read-only ESI sync of skills, blueprints, industry jobs, assets, wallet and planets.
+- **Characters**: read-only ESI sync of skills, blueprints, industry jobs, assets, wallet, planets and calendar events.
 - **Assets, Finance, Calendar, Planetary Interaction**: an asset browser, wallet transactions and
   analytics, a job and extractor calendar, and PI planning.
 - **Self-hostable**: one Docker Compose stack, sign-in via EVE SSO (optionally invite-only), encrypted refresh tokens.

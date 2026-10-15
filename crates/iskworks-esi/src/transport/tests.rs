@@ -1807,3 +1807,86 @@ mod metrics_recording {
         assert_eq!(refreshes("success"), 0);
     }
 }
+
+#[test]
+fn parse_calendar_event_reads_the_summary_and_response() {
+    let event = parse_calendar_event(serde_json::json!({
+        "event_date": "2026-10-20T18:00:00Z",
+        "event_id": 1_234_567,
+        "event_response": "tentative",
+        "importance": 1,
+        "title": "Fleet op"
+    }))
+    .unwrap();
+    assert_eq!(event.event_id, 1_234_567);
+    assert_eq!(event.title, "Fleet op");
+    assert_eq!(event.importance, 1);
+    assert_eq!(event.response, CalendarEventResponse::Tentative);
+    assert_eq!(
+        event.event_date,
+        "2026-10-20T18:00:00Z".parse::<DateTime<Utc>>().unwrap()
+    );
+}
+
+#[test]
+fn parse_calendar_event_reads_unknown_or_missing_responses_as_not_responded() {
+    let missing = parse_calendar_event(serde_json::json!({
+        "event_date": "2026-10-20T18:00:00Z", "event_id": 1, "title": "x"
+    }))
+    .unwrap();
+    let unknown = parse_calendar_event(serde_json::json!({
+        "event_date": "2026-10-20T18:00:00Z", "event_id": 1, "title": "x",
+        "event_response": "maybe"
+    }))
+    .unwrap();
+    assert_eq!(missing.response, CalendarEventResponse::NotResponded);
+    assert_eq!(unknown.response, CalendarEventResponse::NotResponded);
+}
+
+#[test]
+fn parse_calendar_event_detail_keeps_the_raw_text_and_owner() {
+    let detail = parse_calendar_event_detail(&serde_json::json!({
+        "date": "2026-10-20T18:00:00Z",
+        "duration": 90,
+        "event_id": 1_234_567,
+        "importance": 0,
+        "owner_id": 98_000_001,
+        "owner_name": "Test Corp",
+        "owner_type": "corporation",
+        "response": "accepted",
+        "text": "<font size=\"12\">Form up</font><br>in Jita",
+        "title": "Fleet op"
+    }))
+    .unwrap();
+    assert_eq!(detail.duration_minutes, 90);
+    assert_eq!(detail.owner_name.as_deref(), Some("Test Corp"));
+    assert_eq!(detail.owner_type.as_deref(), Some("corporation"));
+    assert_eq!(detail.text, "<font size=\"12\">Form up</font><br>in Jita");
+}
+
+#[tokio::test]
+async fn character_calendar_pages_forward_with_from_event() {
+    const PAGE: &str = concat!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 109\r\nconnection: close\r\n\r\n",
+        r#"[{"event_date":"2026-10-20T18:00:00Z","event_id":42,"event_response":"accepted","importance":0,"title":"Op"}]"#
+    );
+    let (base_url, server) = spawn_scripted_esi(vec![PAGE]).await;
+    let transport = HttpEsiTransport::public(base_url);
+
+    let response = transport
+        .character_calendar("calendar-token", 2_119_000_001, Some(41))
+        .await
+        .unwrap();
+    let seen = server.await.unwrap();
+
+    assert_eq!(
+        seen,
+        vec!["GET /latest/characters/2119000001/calendar/?from_event=41 HTTP/1.1"]
+    );
+    assert_eq!(response.records.len(), 1);
+    assert_eq!(response.records[0].event_id, 42);
+    assert_eq!(
+        response.records[0].response,
+        CalendarEventResponse::Accepted
+    );
+}

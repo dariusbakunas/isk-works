@@ -190,6 +190,7 @@ export const sourceKindLabel: Record<CharacterSourceKind, string> = {
   assets: "Assets",
   walletTransactions: "Wallet Transactions",
   planets: "Planetary Colonies",
+  calendar: "Calendar Events",
 };
 
 export const sourceStateMeta: Record<SourceRefreshState, { label: string; tone: Tone }> = {

@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::inventory::PgInventoryRepository;
 
 mod assets;
+mod calendar_events;
 mod character_sync;
 mod connections;
 mod error;

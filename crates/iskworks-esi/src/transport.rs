@@ -184,6 +184,27 @@ pub trait EsiTransport: Send + Sync {
         let _ = (access_token, character_id, planet_id);
         Err(EsiError::PermanentFailure)
     }
+    /// Up to 50 upcoming events, chronologically after `from_event` (or
+    /// from now without one).
+    async fn character_calendar(
+        &self,
+        access_token: &str,
+        character_id: i64,
+        from_event: Option<i64>,
+    ) -> Result<EsiResponse<CalendarEventObservation>, EsiError> {
+        let _ = (access_token, character_id, from_event);
+        Err(EsiError::PermanentFailure)
+    }
+    /// Always exactly one record on success.
+    async fn character_calendar_event(
+        &self,
+        access_token: &str,
+        character_id: i64,
+        event_id: i64,
+    ) -> Result<EsiResponse<CalendarEventDetailObservation>, EsiError> {
+        let _ = (access_token, character_id, event_id);
+        Err(EsiError::PermanentFailure)
+    }
 }
 
 #[cfg(test)]

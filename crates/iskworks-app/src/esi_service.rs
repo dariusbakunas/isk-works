@@ -19,15 +19,16 @@ use iskworks_core::{
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, AuthenticatedToken,
-    BlueprintAssetObservation, CharacterIndustryJobObservation, CharacterLocationObservation,
+    BlueprintAssetObservation, CalendarEventDetailObservation, CalendarEventObservation,
+    CalendarEventResponse, CharacterIndustryJobObservation, CharacterLocationObservation,
     CharacterPlanetDetailObservation, CharacterPlanetObservation, CharacterPublicInfo,
     CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation, EncryptedSecret,
     EsiError, EsiResponse, EsiResponseMetadata, EsiTransport, HttpEsiTransport, Identity,
     MarketOrderObservation, OAuthState, PkceVerifier, PlanetExtractorObservation,
     PlanetPinContentObservation, PlanetPinObservation, RefreshedToken, SecretCipher,
     StructureInformation, WalletTransactionObservation, ASSET_SCOPE, BLUEPRINT_SCOPE,
-    INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE,
-    SKILL_QUEUE_SCOPE, STRUCTURE_SCOPE, WALLET_SCOPE,
+    CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE,
+    SKILLS_SCOPE, SKILL_QUEUE_SCOPE, STRUCTURE_SCOPE, WALLET_SCOPE,
 };
 use iskworks_storage::{PendingAuthorization, PgEsiRepository, StoredRefreshToken};
 use rust_decimal::Decimal;
@@ -67,9 +68,9 @@ const REQUESTED_SCOPES: [&str; 9] = [
 ];
 /// Requested on every connect but not required by `finish_authorization`:
 /// a character that declines one of these still connects, and only the
-/// feature that needs it (e.g. Planetary Interaction) reports the missing
-/// scope.
-const OPTIONAL_SCOPES: [&str; 1] = [PLANETS_SCOPE];
+/// feature that needs it (e.g. Planetary Interaction, calendar events)
+/// reports the missing scope.
+const OPTIONAL_SCOPES: [&str; 2] = [PLANETS_SCOPE, CALENDAR_SCOPE];
 const WALLET_PAGE_LIMIT: usize = 2_500;
 const MAX_WALLET_REQUESTS: usize = 20;
 /// ESI serves the journal 50 entries to a page over roughly 30 days; this is a

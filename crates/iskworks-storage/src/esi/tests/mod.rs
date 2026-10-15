@@ -8,6 +8,7 @@ use crate::industry::PgIndustryRepository;
 
 mod asset_snapshots;
 mod blueprints;
+mod calendar_events;
 mod character_sources;
 mod planetary_preferences;
 mod public_refresh;

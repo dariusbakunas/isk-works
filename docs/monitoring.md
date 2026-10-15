@@ -199,7 +199,7 @@ ESI's error budget is per IP. If it runs dry, every request from the host is ref
 | `iskworks_esi_sync_last_success_timestamp_seconds` | gauge | `kind` | Unix time of this process's last successful run of `kind`. |
 | `iskworks_esi_token_refresh_total` | counter | `result` (`success`/`reauth_required`/`failed`) | EVE SSO access-token refreshes. `reauth_required` means the character must be reconnected. |
 
-- `kind` is a character data source: `character_info`, `location`, `skills`, `wallet`, `industry_jobs`, `assets`, `wallet_transactions` or `planets`.
+- `kind` is a character data source: `character_info`, `location`, `skills`, `wallet`, `industry_jobs`, `assets`, `wallet_transactions`, `planets` or `calendar`.
 - The worker records its scheduled refreshes. The API records the manual "Sync now" and asset/wallet import buttons.
 - To tell the two apart, use the scrape job, e.g. `max by (kind) (...)` across both for "last success anywhere".
 - A sync that can't start because its token refresh failed counts only in `token_refresh_total`.

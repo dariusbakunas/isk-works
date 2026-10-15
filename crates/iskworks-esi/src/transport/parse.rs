@@ -387,6 +387,46 @@ pub(super) fn parse_character_industry_job(
     })
 }
 
+pub(super) fn parse_calendar_event(raw: Value) -> Result<CalendarEventObservation, EsiError> {
+    Ok(CalendarEventObservation {
+        event_id: required_i64(&raw, "event_id")?,
+        event_date: required_date(&raw, "event_date")?,
+        title: raw
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        importance: optional_i64(&raw, "importance").unwrap_or(0),
+        response: CalendarEventResponse::parse(
+            raw.get("event_response")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        ),
+    })
+}
+
+pub(super) fn parse_calendar_event_detail(
+    raw: &Value,
+) -> Result<CalendarEventDetailObservation, EsiError> {
+    let optional_str = |key: &str| {
+        raw.get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    Ok(CalendarEventDetailObservation {
+        event_id: required_i64(raw, "event_id")?,
+        date: required_date(raw, "date")?,
+        title: optional_str("title").unwrap_or_default(),
+        importance: optional_i64(raw, "importance").unwrap_or(0),
+        duration_minutes: optional_i64(raw, "duration").unwrap_or(0),
+        owner_id: optional_i64(raw, "owner_id"),
+        owner_name: optional_str("owner_name"),
+        owner_type: optional_str("owner_type"),
+        text: optional_str("text").unwrap_or_default(),
+    })
+}
+
 pub(super) fn parse_character_planet(raw: Value) -> Result<CharacterPlanetObservation, EsiError> {
     Ok(CharacterPlanetObservation {
         planet_id: required_i64(&raw, "planet_id")?,

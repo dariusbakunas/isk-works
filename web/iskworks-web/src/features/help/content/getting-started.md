@@ -4,7 +4,7 @@ ISK Works plans EVE Online industry with **your real costs**. Most tools price e
 
 ## 1. Sign in and connect characters
 
-Sign in with EVE Online, then connect your industry characters on **[Characters](/characters)**. ISK Works syncs skills, blueprints, industry jobs, assets, wallet transactions and planets for each one. The [privacy page](/legal) explains what each permission is used for. All access is read-only.
+Sign in with EVE Online, then connect your industry characters on **[Characters](/characters)**. ISK Works syncs skills, blueprints, industry jobs, assets, wallet transactions, planets and calendar events for each one. The [privacy page](/legal) explains what each permission is used for. All access is read-only.
 
 ## 2. Set up your facilities
 
