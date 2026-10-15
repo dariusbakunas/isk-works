@@ -79,7 +79,8 @@ export function DonutSection({
               />
             ))}
           </Pie>
-          <Tooltip content={<DonutTooltip total={total} />} isAnimationActive={false} />
+          {/* Above the centre total, which is a later absolutely positioned sibling. */}
+          <Tooltip content={<DonutTooltip total={total} />} isAnimationActive={false} wrapperStyle={{ zIndex: 10 }} />
         </PieChart>
         <div className="pointer-events-none absolute inset-0 grid place-content-center text-center">
           <Private className="font-mono text-sm font-bold tabular-nums text-foreground">{formatIskAbbreviated(total)}</Private>
