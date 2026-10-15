@@ -4,6 +4,10 @@
 //! link keeps the job's last known state, including what installing it cost.
 //! Links never change a ticket's workflow `status`, which stays
 //! user-controlled.
+//!
+//! Users can also link and unlink jobs by hand: a manual link is checked by
+//! [`job_fits_ticket`], and an unlink is remembered as an exclusion the
+//! matcher honours.
 
 use std::collections::{HashMap, HashSet};
 
@@ -26,6 +30,70 @@ pub struct TicketJobCandidate {
     /// snapshot) claims every matching job.
     pub runs: Option<u64>,
     pub created_at: DateTime<Utc>,
+}
+
+/// What a manual link checks a job against: any Manufacturing/Reaction
+/// ticket, whatever its status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketJobTarget {
+    pub ticket_id: TicketId,
+    pub assignee: Option<ConnectedCharacterId>,
+    pub activity: IndustryActivity,
+    pub product_type_id: i64,
+}
+
+/// Whether `job` may be linked to the ticket by hand: run by its assignee,
+/// for the same activity and exactly its product. Unlike automatic matching
+/// it ignores when the job started, the ticket's status and its runs -- the
+/// cases a manual link exists for.
+pub fn job_fits_ticket(
+    target: &TicketJobTarget,
+    job: &ObservedIndustryJob,
+) -> Result<(), OrderError> {
+    let Some(assignee) = target.assignee else {
+        return Err(OrderError::TicketJobNeedsAssignee);
+    };
+    if job.connection_id == assignee
+        && job.activity() == target.activity
+        && job.product_type_id == Some(target.product_type_id)
+    {
+        Ok(())
+    } else {
+        Err(OrderError::TicketJobMismatch)
+    }
+}
+
+/// A job the user could link to a ticket by hand, and the ticket it is on
+/// now, if any (linking moves it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketJobChoice {
+    pub job: ObservedIndustryJob,
+    pub linked_ticket_id: Option<TicketId>,
+}
+
+/// The jobs ESI reports now that fit the ticket ([`job_fits_ticket`]) and
+/// aren't already linked to it, earliest-started first.
+#[must_use]
+pub fn ticket_job_choices(
+    target: &TicketJobTarget,
+    observed: &[ObservedIndustryJob],
+    linked: &[TicketIndustryJob],
+) -> Vec<TicketJobChoice> {
+    let linked_to: HashMap<i64, TicketId> = linked
+        .iter()
+        .map(|link| (link.job.job_id, link.ticket_id))
+        .collect();
+    let mut choices: Vec<TicketJobChoice> = observed
+        .iter()
+        .filter(|job| job_fits_ticket(target, job).is_ok())
+        .filter(|job| linked_to.get(&job.job_id) != Some(&target.ticket_id))
+        .map(|job| TicketJobChoice {
+            job: job.clone(),
+            linked_ticket_id: linked_to.get(&job.job_id).copied(),
+        })
+        .collect();
+    choices.sort_by_key(|choice| (choice.job.start_date, choice.job.job_id));
+    choices
 }
 
 /// One ESI industry job as last observed.
@@ -97,6 +165,41 @@ pub trait TicketJobRepository: Send + Sync {
         workspace_id: WorkspaceId,
         plan: &TicketJobSyncPlan,
     ) -> Result<(), OrderError>;
+
+    /// What a manual link checks against. `TicketNotFound` for no such
+    /// ticket, `TicketJobMismatch` for one that runs no job (not
+    /// Manufacturing/Reaction).
+    async fn ticket_job_target(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<TicketJobTarget, OrderError>;
+
+    /// `(ticket, job)` pairs the user unlinked, which the matcher skips.
+    async fn list_ticket_job_exclusions(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<HashSet<(TicketId, i64)>, OrderError>;
+
+    /// Links `job` to the ticket by hand (checked by the caller with
+    /// [`job_fits_ticket`]), moving it from any other ticket, and clears the
+    /// pair's exclusion -- in one transaction.
+    async fn link_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job: &ObservedIndustryJob,
+    ) -> Result<(), OrderError>;
+
+    /// Unlinks a job from the ticket and remembers the pair so the matcher
+    /// never links it back. `TicketJobNotFound` if the ticket doesn't have
+    /// that job.
+    async fn unlink_ticket_job(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        job_id: i64,
+    ) -> Result<(), OrderError>;
 }
 
 /// One sync of stored links against what ESI reports now.
@@ -106,7 +209,8 @@ pub trait TicketJobRepository: Send + Sync {
 ///   becomes [`DELIVERED_JOB_STATUS`] once past its end date, or is dropped
 ///   if it vanished early (cancelled).
 /// - Unlinked jobs are matched to `candidates`: same assignee, activity and
-///   product, started no earlier than the ticket was created. Oldest ticket
+///   product, started no earlier than the ticket was created, and not a
+///   `(ticket, job)` pair the user unlinked (`excluded`). Oldest ticket
 ///   first, each claiming earliest-started jobs until its runs (counting
 ///   jobs already linked to it) are covered, so a job counts toward one
 ///   ticket at most.
@@ -114,6 +218,7 @@ pub trait TicketJobRepository: Send + Sync {
 pub fn plan_ticket_job_sync(
     candidates: &[TicketJobCandidate],
     linked: &[TicketIndustryJob],
+    excluded: &HashSet<(TicketId, i64)>,
     observed: &[ObservedIndustryJob],
     observed_connections: &HashSet<ConnectedCharacterId>,
     now: DateTime<Utc>,
@@ -165,7 +270,8 @@ pub fn plan_ticket_job_sync(
                 && job.activity() == ticket.activity
                 && job.product_type_id == Some(ticket.product_type_id)
                 && job.start_date >= ticket.created_at
-                && !claimed.contains(&job.job_id);
+                && !claimed.contains(&job.job_id)
+                && !excluded.contains(&(ticket.ticket_id, job.job_id));
             if fits {
                 claimed.insert(job.job_id);
                 covered_runs += job.runs;
@@ -260,7 +366,14 @@ mod tests {
         observed: &[ObservedIndustryJob],
         now: i64,
     ) -> TicketJobSyncPlan {
-        plan_ticket_job_sync(candidates, linked, observed, &observed_all(), at(now))
+        plan_ticket_job_sync(
+            candidates,
+            linked,
+            &HashSet::new(),
+            observed,
+            &observed_all(),
+            at(now),
+        )
     }
 
     #[test]
@@ -391,7 +504,106 @@ mod tests {
     #[test]
     fn a_linked_job_of_an_unobserved_character_is_left_alone() {
         let linked = [link(1, job(100, 1, 10))];
-        let plan = plan_ticket_job_sync(&[], &linked, &[], &HashSet::new(), at(20));
+        let plan =
+            plan_ticket_job_sync(&[], &linked, &HashSet::new(), &[], &HashSet::new(), at(20));
         assert_eq!(plan, TicketJobSyncPlan::default());
+    }
+
+    #[test]
+    fn a_job_unlinked_from_a_ticket_never_relinks_to_it_but_may_go_to_another() {
+        let excluded = HashSet::from([(ticket_id(1), 100)]);
+        let plan = plan_ticket_job_sync(
+            &[ticket(1, 0, Some(10)), ticket(2, 0, Some(10))],
+            &[],
+            &excluded,
+            &[job(100, 1, 10)],
+            &observed_all(),
+            at(2),
+        );
+        assert_eq!(new_links(&plan, &[]), vec![(ticket_id(2), 100)]);
+    }
+
+    fn target(assignee: Option<ConnectedCharacterId>) -> TicketJobTarget {
+        TicketJobTarget {
+            ticket_id: ticket_id(1),
+            assignee,
+            activity: IndustryActivity::Manufacturing,
+            product_type_id: PLATE,
+        }
+    }
+
+    #[test]
+    fn a_job_fits_a_ticket_by_hand_on_assignee_activity_and_product_only() {
+        // Started long before the ticket, and more runs than it needs: still
+        // fits -- those are the cases a manual link is for.
+        let early = job(100, -50, 500);
+        assert!(job_fits_ticket(&target(Some(character(1))), &early).is_ok());
+    }
+
+    #[test]
+    fn a_job_for_another_character_activity_or_product_does_not_fit() {
+        let target = target(Some(character(1)));
+        let other_character = ObservedIndustryJob {
+            connection_id: character(2),
+            ..job(100, 1, 10)
+        };
+        let reaction = ObservedIndustryJob {
+            activity_id: 9,
+            ..job(100, 1, 10)
+        };
+        let other_product = ObservedIndustryJob {
+            product_type_id: Some(CARBIDE),
+            ..job(100, 1, 10)
+        };
+        let no_product = ObservedIndustryJob {
+            product_type_id: None,
+            ..job(100, 1, 10)
+        };
+        for job in [other_character, reaction, other_product, no_product] {
+            assert!(matches!(
+                job_fits_ticket(&target, &job),
+                Err(OrderError::TicketJobMismatch)
+            ));
+        }
+    }
+
+    #[test]
+    fn choices_are_the_fitting_jobs_not_already_on_the_ticket_with_their_current_ticket() {
+        let target = target(Some(character(1)));
+        let on_this = job(100, 1, 10);
+        let on_other = job(101, 2, 10);
+        let free = job(102, 3, 10);
+        let other_product = ObservedIndustryJob {
+            product_type_id: Some(CARBIDE),
+            ..job(103, 4, 10)
+        };
+        let linked = [link(1, on_this.clone()), link(2, on_other.clone())];
+        let choices = ticket_job_choices(
+            &target,
+            &[free.clone(), other_product, on_this, on_other.clone()],
+            &linked,
+        );
+        // Earliest-started first.
+        assert_eq!(
+            choices,
+            vec![
+                TicketJobChoice {
+                    job: on_other,
+                    linked_ticket_id: Some(ticket_id(2)),
+                },
+                TicketJobChoice {
+                    job: free,
+                    linked_ticket_id: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_ticket_without_an_assignee_fits_no_job() {
+        assert!(matches!(
+            job_fits_ticket(&target(None), &job(100, 1, 10)),
+            Err(OrderError::TicketJobNeedsAssignee)
+        ));
     }
 }

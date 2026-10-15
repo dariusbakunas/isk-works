@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { CharacterDetail, IndustryJob } from "../../api/characters";
 import type { Tone } from "../../components/primitives";
 import { textToneClasses } from "../../components/primitives";
@@ -80,7 +82,16 @@ const miniBarFillClass: Record<Tone, string> = {
 };
 
 // Also used by the Board's ticket inspector for a ticket's matched jobs.
-export function IndustryJobRow({ job, nowMs }: { job: IndustryJob; nowMs: number }) {
+export function IndustryJobRow({
+  job,
+  nowMs,
+  trailing,
+}: {
+  job: IndustryJob;
+  nowMs: number;
+  /** Rendered at the end of the first line, e.g. a row action. */
+  trailing?: ReactNode;
+}) {
   const badge = industryActivityBadge(job.activity);
   const name = industryJobName(job);
   const location = industryJobLocation(job);
@@ -100,6 +111,7 @@ export function IndustryJobRow({ job, nowMs }: { job: IndustryJob; nowMs: number
         <span className={`shrink-0 text-[10px] tabular-nums ${ready ? "text-positive" : "text-muted"}`}>
           {progress.remainingLabel}
         </span>
+        {trailing}
       </div>
       <div className="mt-1 flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[10px] text-muted" title={location}>

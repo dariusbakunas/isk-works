@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+
 use iskworks_app::{IndustryJobDto, TicketJobError};
 use iskworks_core::order::TicketIndustryJob;
 
@@ -39,6 +41,102 @@ pub(super) async fn list_ticket_job_progress(
         }
     }
     Ok(Json(group_by_ticket(&links, jobs)))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TicketJobChoiceDto {
+    job: IndustryJobDto,
+    /// The ticket the job is linked to now, if any -- linking moves it.
+    linked_ticket_id: Option<TicketId>,
+    linked_ticket_display_id: Option<String>,
+}
+
+/// The jobs ESI reports now that could be linked to the ticket by hand:
+/// its assignee's, for its activity and exact product, not already on it.
+/// `ticket_job_needs_assignee` for an unassigned ticket.
+pub(super) async fn list_ticket_job_choices(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+) -> Result<Json<Vec<TicketJobChoiceDto>>, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let service = state.ticket_job_service()?;
+    let choices = service
+        .job_choices(workspace_id, TicketId(ticket_id))
+        .await
+        .map_err(api_error)?;
+    let mut jobs: Vec<IndustryJobDto> = choices
+        .iter()
+        .map(|choice| IndustryJobDto::from_observed(&choice.job))
+        .collect();
+    if let Ok(roster) = state.character_roster_service() {
+        if let Err(error) = roster.label_industry_jobs(workspace_id, &mut jobs).await {
+            tracing::warn!(%error, "naming industry job choices failed");
+        }
+    }
+    let repository = state.order_repository()?;
+    let mut display_ids: HashMap<TicketId, String> = HashMap::new();
+    for linked in choices.iter().filter_map(|choice| choice.linked_ticket_id) {
+        if let Entry::Vacant(entry) = display_ids.entry(linked) {
+            entry.insert(
+                repository
+                    .get_ticket(workspace_id, linked)
+                    .await?
+                    .display_id,
+            );
+        }
+    }
+    Ok(Json(
+        choices
+            .iter()
+            .zip(jobs)
+            .map(|(choice, job)| TicketJobChoiceDto {
+                job,
+                linked_ticket_id: choice.linked_ticket_id,
+                linked_ticket_display_id: choice
+                    .linked_ticket_id
+                    .and_then(|id| display_ids.get(&id).cloned()),
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LinkTicketJobRequest {
+    job_id: i64,
+}
+
+/// Links a job to the ticket by hand, moving it off any other ticket.
+/// `job_does_not_match_ticket` unless the ticket's assignee ran it for the
+/// ticket's activity and exact product; `ticket_job_not_found` if ESI
+/// doesn't report it now.
+pub(super) async fn link_ticket_job(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+    Json(request): Json<LinkTicketJobRequest>,
+) -> Result<StatusCode, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    state
+        .ticket_job_service()?
+        .link_job(workspace_id, TicketId(ticket_id), request.job_id)
+        .await
+        .map_err(api_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Unlinks a job from the ticket; automatic matching won't link it back.
+pub(super) async fn unlink_ticket_job(
+    State(state): State<AppState>,
+    Path((ticket_id, job_id)): Path<(uuid::Uuid, i64)>,
+) -> Result<StatusCode, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    state
+        .ticket_job_service()?
+        .unlink_job(workspace_id, TicketId(ticket_id), job_id)
+        .await
+        .map_err(api_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn api_error(error: TicketJobError) -> ApiError {
