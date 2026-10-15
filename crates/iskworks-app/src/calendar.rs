@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use iskworks_core::calendar_event::{
+    CalendarEventRepository, CalendarEventResponse, WorkspaceCalendarEvent,
+};
 use iskworks_core::{ConnectedCharacterId, IndustryActivity, InventoryError, WorkspaceId};
 use serde::Serialize;
 use thiserror::Error;
@@ -86,6 +89,7 @@ impl CalendarPlanetarySource for PlanetaryService {
 pub struct CalendarService {
     source: Arc<dyn CalendarCharacterSource>,
     planetary: Option<Arc<dyn CalendarPlanetarySource>>,
+    events: Option<Arc<dyn CalendarEventRepository>>,
 }
 
 impl CalendarService {
@@ -94,7 +98,15 @@ impl CalendarService {
         Self {
             source,
             planetary: None,
+            events: None,
         }
+    }
+
+    /// Adds the characters' synced in-game calendar events.
+    #[must_use]
+    pub fn with_events(mut self, events: Arc<dyn CalendarEventRepository>) -> Self {
+        self.events = Some(events);
+        self
     }
 
     #[must_use]
@@ -119,6 +131,16 @@ impl CalendarService {
                     sort_milestones(&mut milestones);
                 }
                 Err(error) => tracing::warn!(%error, "calendar planetary timers unavailable"),
+            }
+        }
+        if let Some(events) = &self.events {
+            // Like PI, in-game events are an optional layer.
+            match events.workspace_calendar_events(workspace_id).await {
+                Ok(rows) => {
+                    milestones.extend(project_event_milestones(&rows, range));
+                    sort_milestones(&mut milestones);
+                }
+                Err(error) => tracing::warn!(%error, "calendar events unavailable"),
             }
         }
         Ok(milestones)
@@ -187,6 +209,35 @@ pub struct CalendarPlanetaryMilestone {
     pub event: PlanetaryTimerEvent,
 }
 
+/// One character that can see an in-game event, with its own response.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarEventCharacter {
+    pub connection_id: ConnectedCharacterId,
+    pub eve_character_id: i64,
+    pub character_name: String,
+    pub response: CalendarEventResponse,
+}
+
+/// An in-game EVE calendar event, once however many of the workspace's
+/// characters see it. `common` names the first of `characters` by name.
+/// `text` is raw player-authored markup: render it as text, never HTML.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarEventMilestone {
+    #[serde(flatten)]
+    pub common: CalendarMilestoneCommon,
+    pub occurs_at: DateTime<Utc>,
+    pub event_id: i64,
+    pub duration_minutes: i64,
+    pub importance: i64,
+    pub owner_id: Option<i64>,
+    pub owner_name: Option<String>,
+    pub owner_type: Option<String>,
+    pub text: String,
+    pub characters: Vec<CalendarEventCharacter>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CalendarMilestone {
@@ -202,6 +253,10 @@ pub enum CalendarMilestone {
         #[serde(flatten)]
         milestone: CalendarPlanetaryMilestone,
     },
+    Event {
+        #[serde(flatten)]
+        milestone: CalendarEventMilestone,
+    },
 }
 
 impl CalendarMilestone {
@@ -211,6 +266,7 @@ impl CalendarMilestone {
             Self::Industry { milestone } => &milestone.common.id,
             Self::Skill { milestone } => &milestone.common.id,
             Self::Planetary { milestone } => &milestone.common.id,
+            Self::Event { milestone } => &milestone.common.id,
         }
     }
 
@@ -219,6 +275,7 @@ impl CalendarMilestone {
             Self::Industry { milestone } => milestone.occurs_at,
             Self::Skill { milestone } => milestone.occurs_at,
             Self::Planetary { milestone } => milestone.occurs_at,
+            Self::Event { milestone } => milestone.occurs_at,
         }
     }
 }
@@ -375,6 +432,75 @@ pub fn project_planetary_milestones(
                     event: timer.event.clone(),
                 },
             }
+        })
+        .collect()
+}
+
+/// One milestone per `event_id`, however many characters see it: a corp or
+/// alliance event shows up in every member's calendar. Shared fields come
+/// from the most recently synced copy; each character keeps its own
+/// response. Characters are listed by name.
+#[must_use]
+pub fn project_event_milestones(
+    rows: &[WorkspaceCalendarEvent],
+    range: CalendarRange,
+) -> Vec<CalendarMilestone> {
+    let mut by_event: std::collections::BTreeMap<i64, Vec<&WorkspaceCalendarEvent>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        by_event.entry(row.event.event_id).or_default().push(row);
+    }
+    by_event
+        .into_iter()
+        .filter_map(|(event_id, mut copies)| {
+            let latest = copies
+                .iter()
+                .max_by_key(|copy| (copy.event.observed_at, copy.event.connection_id.0))
+                .map(|copy| copy.event.clone())?;
+            if !range.contains(latest.event_date) {
+                return None;
+            }
+            copies.sort_by(|left, right| {
+                left.character_name
+                    .cmp(&right.character_name)
+                    .then_with(|| left.event.connection_id.0.cmp(&right.event.connection_id.0))
+            });
+            copies.dedup_by_key(|copy| copy.event.connection_id);
+            let first = copies.first()?;
+            let common = CalendarMilestoneCommon {
+                id: format!("event:{event_id}"),
+                connection_id: first.event.connection_id,
+                eve_character_id: first.eve_character_id,
+                character_name: first.character_name.clone(),
+                title: if latest.title.trim().is_empty() {
+                    format!("Event {event_id}")
+                } else {
+                    latest.title.clone()
+                },
+            };
+            let characters = copies
+                .iter()
+                .map(|copy| CalendarEventCharacter {
+                    connection_id: copy.event.connection_id,
+                    eve_character_id: copy.eve_character_id,
+                    character_name: copy.character_name.clone(),
+                    response: copy.event.response,
+                })
+                .collect();
+            Some(CalendarMilestone::Event {
+                milestone: CalendarEventMilestone {
+                    common,
+                    occurs_at: latest.event_date,
+                    event_id,
+                    duration_minutes: latest.duration_minutes,
+                    importance: latest.importance,
+                    owner_id: latest.owner_id,
+                    owner_name: latest.owner_name,
+                    owner_type: latest.owner_type,
+                    text: latest.text,
+                    characters,
+                },
+            })
         })
         .collect()
 }

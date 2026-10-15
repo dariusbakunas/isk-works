@@ -186,9 +186,9 @@ impl AppState {
             repository.clone(),
             self.sde_repository.clone(),
         ));
-        self.calendar_service = Some(Arc::new(CalendarService::new(
-            character_roster_service.clone(),
-        )));
+        self.calendar_service = Some(Arc::new(
+            CalendarService::new(character_roster_service.clone()).with_events(repository.clone()),
+        ));
         self.character_roster_service = Some(character_roster_service);
         self.planetary_characters = Some(repository.clone());
         self.planetary_preferences = Some(repository.clone());
