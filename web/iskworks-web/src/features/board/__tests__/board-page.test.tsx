@@ -34,6 +34,7 @@ const industryApi = vi.hoisted(() => ({
   createTicket: vi.fn(),
   updateTicketMetadata: vi.fn(),
   listBuilds: vi.fn(),
+  listFacilities: vi.fn(),
 }));
 
 const charactersApi = vi.hoisted(() => ({
@@ -204,6 +205,7 @@ describe("BoardPage", () => {
     industryApi.listTicketJobProgress.mockResolvedValue([]);
     industryApi.listAcquisitionRuns.mockResolvedValue([]);
     industryApi.listBuilds.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
   });
 
   it("draws a progress bar on an In Progress ticket matched to an ESI job", async () => {
@@ -948,6 +950,7 @@ describe("BoardPage ticket drag-and-drop", () => {
     charactersApi.listCharacters.mockResolvedValue([]);
     industryApi.listAcquisitionRuns.mockResolvedValue([]);
     industryApi.listBuilds.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
   });
 
   // A lane move is a bare `PATCH /api/tickets/:id { status }` and nothing
@@ -1245,6 +1248,7 @@ describe("BoardPage explicit recording integration", () => {
     charactersApi.listCharacters.mockResolvedValue([]);
     industryApi.listAcquisitionRuns.mockResolvedValue([]);
     industryApi.listBuilds.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
   });
 
   const snapshot = {
@@ -1447,6 +1451,7 @@ describe("BoardPage filters + URL state", () => {
     industryApi.listPriceSources.mockResolvedValue([]);
     industryApi.listAcquisitionRuns.mockResolvedValue([]);
     industryApi.listBuilds.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
     industryApi.listOrders.mockResolvedValue([orderA, orderB]);
     industryApi.listTickets.mockResolvedValue([tAcqA, tManA, tGenA, tManB, tGenStandalone]);
     charactersApi.listCharacters.mockResolvedValue([valka, freya]);
