@@ -386,7 +386,8 @@ fn collect_entity_ids(sources: &[CharacterSourceSyncState], ids: &mut HashSet<i6
             | CharacterSourceKind::IndustryJobs
             | CharacterSourceKind::Assets
             | CharacterSourceKind::WalletTransactions
-            | CharacterSourceKind::Planets => {}
+            | CharacterSourceKind::Planets
+            | CharacterSourceKind::Calendar => {}
         }
     }
 }

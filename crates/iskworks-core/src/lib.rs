@@ -8,6 +8,7 @@ pub mod build_cost;
 pub mod build_graph;
 pub mod build_materials;
 pub mod build_worksheet;
+pub mod calendar_event;
 mod candidate;
 pub mod canonical_planner;
 mod component_expansion;

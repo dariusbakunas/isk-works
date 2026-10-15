@@ -455,6 +455,63 @@ impl EsiTransport for FixtureEsiTransport {
             },
         })
     }
+
+    async fn character_calendar(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        from_event: Option<i64>,
+    ) -> Result<EsiResponse<CalendarEventObservation>, EsiError> {
+        let records = if from_event.is_some() {
+            Vec::new()
+        } else {
+            FIXTURE_CALENDAR_EVENTS
+                .iter()
+                .map(
+                    |(event_id, days_ahead, title, _, _)| CalendarEventObservation {
+                        event_id: *event_id,
+                        event_date: fixture_calendar_date(*days_ahead),
+                        title: (*title).to_string(),
+                        importance: i64::from(*event_id == FIXTURE_CALENDAR_EVENTS[0].0),
+                        response: CalendarEventResponse::NotResponded,
+                    },
+                )
+                .collect()
+        };
+        Ok(EsiResponse {
+            records,
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+
+    async fn character_calendar_event(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        event_id: i64,
+    ) -> Result<EsiResponse<CalendarEventDetailObservation>, EsiError> {
+        let (event_id, days_ahead, title, duration_minutes, owner) = FIXTURE_CALENDAR_EVENTS
+            .iter()
+            .copied()
+            .find(|event| event.0 == event_id)
+            .ok_or(EsiError::PermanentFailure)?;
+        Ok(EsiResponse {
+            records: vec![CalendarEventDetailObservation {
+                event_id,
+                date: fixture_calendar_date(days_ahead),
+                title: title.to_string(),
+                importance: 0,
+                duration_minutes,
+                owner_id: Some(1_000_125),
+                owner_name: Some(owner.to_string()),
+                owner_type: Some("corporation".to_string()),
+                text: format!("<font size=\"12\">{title}</font><br>Form up in <b>Jita</b>."),
+            }],
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
 }
 
 /// Real Q-3HS5 planets (III, IV, VI) so fixture-mode PI resolves names.
@@ -477,8 +534,27 @@ pub(super) fn fixture_identity() -> Identity {
             INDUSTRY_JOBS_SCOPE.to_string(),
             MARKET_STRUCTURE_SCOPE.to_string(),
             PLANETS_SCOPE.to_string(),
+            CALENDAR_SCOPE.to_string(),
         ]),
     }
+}
+
+/// `(event_id, days ahead, title, duration minutes, owner)`.
+const FIXTURE_CALENDAR_EVENTS: [(i64, i64, &str, i64, &str); 3] = [
+    (8_100_001, 2, "Moon mining op", 120, "Fixture Industries"),
+    (8_100_002, 5, "Corp meeting", 60, "Fixture Industries"),
+    (
+        8_100_003,
+        9,
+        "Alliance tournament practice",
+        0,
+        "Fixture Industries",
+    ),
+];
+
+fn fixture_calendar_date(days_ahead: i64) -> DateTime<Utc> {
+    let date = (Utc::now() + Duration::days(days_ahead)).date_naive();
+    date.and_hms_opt(19, 0, 0).unwrap().and_utc()
 }
 
 pub(super) fn fixture_asset(

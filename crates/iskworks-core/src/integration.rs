@@ -70,6 +70,9 @@ pub enum CharacterSourceKind {
     /// scope is optional, so this source never degrades the roster badge
     /// (see [`CharacterSourceKind::is_optional`]).
     Planets,
+    /// Upcoming in-game calendar events (`/characters/{id}/calendar/` +
+    /// details), stored in their own table. Optional scope, like `Planets`.
+    Calendar,
 }
 
 impl CharacterSourceKind {
@@ -84,6 +87,7 @@ impl CharacterSourceKind {
             Self::Assets => "assets",
             Self::WalletTransactions => "wallet_transactions",
             Self::Planets => "planets",
+            Self::Calendar => "calendar",
         }
     }
 
@@ -98,12 +102,13 @@ impl CharacterSourceKind {
             "assets" => Some(Self::Assets),
             "wallet_transactions" => Some(Self::WalletTransactions),
             "planets" => Some(Self::Planets),
+            "calendar" => Some(Self::Calendar),
             _ => None,
         }
     }
 
     #[must_use]
-    pub fn all() -> [Self; 8] {
+    pub fn all() -> [Self; 9] {
         [
             Self::CharacterInfo,
             Self::Location,
@@ -113,15 +118,16 @@ impl CharacterSourceKind {
             Self::Assets,
             Self::WalletTransactions,
             Self::Planets,
+            Self::Calendar,
         ]
     }
 
-    /// Sources backed by an optional ESI scope. Many characters never run PI,
-    /// so a missing scope or a stale/failed fetch here is a per-feature
+    /// Sources backed by an optional ESI scope. Many characters never run PI
+    /// or use the in-game calendar, so a missing scope or a stale/failed fetch here is a per-feature
     /// concern, not a character-health one.
     #[must_use]
     pub fn is_optional(self) -> bool {
-        matches!(self, Self::Planets)
+        matches!(self, Self::Planets | Self::Calendar)
     }
 }
 
@@ -167,6 +173,7 @@ fn source_stale_after(kind: CharacterSourceKind) -> chrono::Duration {
         CharacterSourceKind::Assets => chrono::Duration::minutes(60),
         CharacterSourceKind::WalletTransactions => chrono::Duration::minutes(30),
         CharacterSourceKind::Planets => chrono::Duration::minutes(30),
+        CharacterSourceKind::Calendar => chrono::Duration::minutes(30),
     };
     refresh_interval * 2
 }
@@ -509,6 +516,23 @@ mod tests {
             MarketRefreshState::Failed,
             None,
             Some("missing scope: esi-planets.manage_planets.v1"),
+        ));
+        assert_eq!(
+            character_health(ConnectionStatus::Connected, &sources, now),
+            CharacterHealth::Healthy
+        );
+    }
+
+    #[test]
+    fn an_optional_calendar_source_never_degrades_health() {
+        let now = Utc::now();
+        let mut sources = all_fresh(now);
+        sources.retain(|source| source.source_kind != CharacterSourceKind::Calendar);
+        sources.push(source(
+            CharacterSourceKind::Calendar,
+            MarketRefreshState::Failed,
+            None,
+            Some("missing scope: esi-calendar.read_calendar_events.v1"),
         ));
         assert_eq!(
             character_health(ConnectionStatus::Connected, &sources, now),

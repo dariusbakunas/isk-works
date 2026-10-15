@@ -5,13 +5,14 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use iskworks_core::{
+    calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
     training::{derive_training_state, SkillQueueEntry, TrainingState},
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
-    InventoryError,
+    InventoryError, WorkspaceId,
 };
 use iskworks_esi::{
-    EsiError, EsiTransport, EveEntityName, ASSET_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE,
-    PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, WALLET_SCOPE,
+    EsiError, EsiTransport, EveEntityName, ASSET_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE,
+    LOCATION_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, WALLET_SCOPE,
 };
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -20,6 +21,10 @@ use crate::esi_service::{reconnect_status, EsiApplicationError, EsiSyncDispatche
 use crate::sync_metrics::{record_sync_run, SyncResult};
 
 const LEASE_SECONDS: i64 = 120;
+/// ESI returns at most this many calendar events per page.
+const CALENDAR_PAGE_LIMIT: usize = 50;
+/// Upper bound on calendar pages per sync (500 upcoming events).
+const MAX_CALENDAR_PAGES: usize = 10;
 
 /// A source this pass claimed: the repository's lease, and when work on
 /// it began (for the sync duration metric).
@@ -95,6 +100,19 @@ pub trait CharacterSyncRepository: Send + Sync {
         &self,
         connection_id: ConnectedCharacterId,
     ) -> Result<Vec<CharacterSourceSyncState>, InventoryError>;
+    /// Stored copies of these calendar events in the workspace, any
+    /// connection's (see `CalendarEventRepository`).
+    async fn calendar_event_copies(
+        &self,
+        workspace_id: WorkspaceId,
+        event_ids: &[i64],
+    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError>;
+    /// Makes `events` the connection's whole stored calendar.
+    async fn store_calendar_events(
+        &self,
+        connection_id: ConnectedCharacterId,
+        events: &[CharacterCalendarEvent],
+    ) -> Result<(), InventoryError>;
 }
 
 #[async_trait]
@@ -184,6 +202,23 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
     ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
         self.character_source_state(connection_id).await
     }
+
+    async fn calendar_event_copies(
+        &self,
+        workspace_id: WorkspaceId,
+        event_ids: &[i64],
+    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+        CalendarEventRepository::workspace_calendar_event_copies(self, workspace_id, event_ids)
+            .await
+    }
+
+    async fn store_calendar_events(
+        &self,
+        connection_id: ConnectedCharacterId,
+        events: &[CharacterCalendarEvent],
+    ) -> Result<(), InventoryError> {
+        CalendarEventRepository::replace_calendar_events(self, connection_id, events).await
+    }
 }
 
 /// Gets a valid (refreshed-if-needed) ESI access token for a connection.
@@ -229,6 +264,15 @@ fn pad_skipped(
     outcomes
 }
 
+fn calendar_response(response: iskworks_esi::CalendarEventResponse) -> CalendarEventResponse {
+    match response {
+        iskworks_esi::CalendarEventResponse::Accepted => CalendarEventResponse::Accepted,
+        iskworks_esi::CalendarEventResponse::Declined => CalendarEventResponse::Declined,
+        iskworks_esi::CalendarEventResponse::Tentative => CalendarEventResponse::Tentative,
+        iskworks_esi::CalendarEventResponse::NotResponded => CalendarEventResponse::NotResponded,
+    }
+}
+
 fn refresh_interval(kind: CharacterSourceKind) -> Duration {
     match kind {
         CharacterSourceKind::CharacterInfo => Duration::hours(24),
@@ -239,6 +283,8 @@ fn refresh_interval(kind: CharacterSourceKind) -> Duration {
         CharacterSourceKind::Assets => Duration::minutes(60),
         CharacterSourceKind::WalletTransactions => Duration::minutes(30),
         CharacterSourceKind::Planets => Duration::minutes(30),
+        // ESI caches the calendar for 5 minutes; this stays well above it.
+        CharacterSourceKind::Calendar => Duration::minutes(30),
     }
 }
 
@@ -457,7 +503,7 @@ impl CharacterSyncService {
             );
         }
 
-        let mut outcomes = Vec::with_capacity(8);
+        let mut outcomes = Vec::with_capacity(9);
         let mut resolvable_ids = Vec::new();
 
         if cancel.is_cancelled() {
@@ -693,6 +739,35 @@ impl CharacterSyncService {
             None => CharacterSyncOutcome::Skipped,
         };
         outcomes.push((CharacterSourceKind::Planets, outcome));
+
+        if cancel.is_cancelled() {
+            return pad_skipped(outcomes);
+        }
+        let outcome = match self
+            .claim_source(connection_id, CharacterSourceKind::Calendar, now)
+            .await
+        {
+            Some(claim) => {
+                let result = if granted(&connection, CALENDAR_SCOPE) {
+                    self.sync_calendar_events(&access_token, &connection, now)
+                        .await
+                } else {
+                    Err(SourceFailure::from(format!(
+                        "missing scope: {CALENDAR_SCOPE}"
+                    )))
+                };
+                self.finish_source(
+                    connection_id,
+                    CharacterSourceKind::Calendar,
+                    claim,
+                    now,
+                    result,
+                )
+                .await
+            }
+            None => CharacterSyncOutcome::Skipped,
+        };
+        outcomes.push((CharacterSourceKind::Calendar, outcome));
 
         if !cancel.is_cancelled() {
             resolvable_ids.extend(self.previously_synced_resolvable_ids(connection_id).await);
@@ -983,6 +1058,121 @@ impl CharacterSyncService {
             layouts.push(layout);
         }
         Ok(serde_json::json!({ "planets": layouts }))
+    }
+
+    /// Pages through the upcoming events (`from_event` = the last event
+    /// seen), fetches details only for events with no current stored copy in
+    /// the workspace, and replaces the connection's stored set -- events ESI
+    /// no longer lists are dropped. Any failed call fails the source before
+    /// anything is stored. The summary only records counts.
+    async fn sync_calendar_events(
+        &self,
+        access_token: &str,
+        connection: &ConnectedCharacter,
+        now: DateTime<Utc>,
+    ) -> Result<Value, SourceFailure> {
+        let character_id = connection.eve_character_id;
+        let mut summaries = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut from_event = None;
+        let mut pages = 0;
+        while pages < MAX_CALENDAR_PAGES {
+            let page = self
+                .transport
+                .character_calendar(access_token, character_id, from_event)
+                .await
+                .map_err(SourceFailure::from)?
+                .records;
+            pages += 1;
+            let full_page = page.len() >= CALENDAR_PAGE_LIMIT;
+            let mut advanced = false;
+            for event in page {
+                from_event = Some(event.event_id);
+                if seen.insert(event.event_id) {
+                    advanced = true;
+                    summaries.push(event);
+                }
+            }
+            if !full_page || !advanced {
+                break;
+            }
+        }
+
+        let event_ids: Vec<i64> = summaries.iter().map(|event| event.event_id).collect();
+        let copies = self
+            .repository
+            .calendar_event_copies(connection.workspace_id, &event_ids)
+            .await
+            .map_err(|error| SourceFailure::from(error.to_string()))?;
+        let mut events = Vec::with_capacity(summaries.len());
+        let mut details_fetched = 0;
+        for summary in summaries {
+            let reusable = copies
+                .iter()
+                .filter(|copy| {
+                    copy.event_id == summary.event_id
+                        && copy.details_current(
+                            summary.event_date,
+                            &summary.title,
+                            summary.importance,
+                        )
+                })
+                // This connection's own copy first, then the newest.
+                .max_by_key(|copy| (copy.connection_id == connection.id, copy.observed_at));
+            let (duration_minutes, owner_id, owner_name, owner_type, text) = match reusable {
+                Some(copy) => (
+                    copy.duration_minutes,
+                    copy.owner_id,
+                    copy.owner_name.clone(),
+                    copy.owner_type.clone(),
+                    copy.text.clone(),
+                ),
+                None => {
+                    let detail = self
+                        .transport
+                        .character_calendar_event(access_token, character_id, summary.event_id)
+                        .await
+                        .map_err(SourceFailure::from)?
+                        .records
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| {
+                            format!("ESI returned no details for event {}", summary.event_id)
+                        })?;
+                    details_fetched += 1;
+                    (
+                        detail.duration_minutes.max(0),
+                        detail.owner_id,
+                        detail.owner_name,
+                        detail.owner_type,
+                        detail.text,
+                    )
+                }
+            };
+            events.push(CharacterCalendarEvent {
+                connection_id: connection.id,
+                event_id: summary.event_id,
+                event_date: summary.event_date,
+                title: summary.title,
+                importance: summary.importance,
+                response: calendar_response(summary.response),
+                duration_minutes,
+                owner_id,
+                owner_name,
+                owner_type,
+                text,
+                observed_at: now,
+            });
+        }
+        self.repository
+            .store_calendar_events(connection.id, &events)
+            .await
+            .map_err(|error| SourceFailure::from(error.to_string()))?;
+        Ok(serde_json::json!({
+            "eventCount": events.len(),
+            "detailsFetched": details_fetched,
+            "pages": pages,
+        }))
     }
 
     async fn fetch_industry_jobs_summary(

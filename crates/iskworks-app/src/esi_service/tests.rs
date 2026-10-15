@@ -61,6 +61,40 @@ fn planets_scope_is_requested_but_not_required() {
     assert!(require_requested_scopes(&identity).is_ok());
 }
 
+#[test]
+fn calendar_scope_is_requested_but_not_required() {
+    assert!(authorization_scopes().contains(&CALENDAR_SCOPE.to_string()));
+    assert!(fixture_identity().scopes.contains(CALENDAR_SCOPE));
+    let identity = Identity {
+        character_id: 1,
+        character_name: "No calendar".to_string(),
+        scopes: REQUESTED_SCOPES.iter().map(ToString::to_string).collect(),
+    };
+    assert!(require_requested_scopes(&identity).is_ok());
+}
+
+#[tokio::test]
+async fn fixture_transport_serves_calendar_events_with_details() {
+    let transport = FixtureEsiTransport;
+    let events = transport
+        .character_calendar("fixture-token", 1, None)
+        .await
+        .unwrap();
+    assert_eq!(events.records.len(), 3);
+    for event in &events.records {
+        let detail = transport
+            .character_calendar_event("fixture-token", 1, event.event_id)
+            .await
+            .unwrap();
+        assert_eq!(detail.records[0].title, event.title);
+    }
+    let next = transport
+        .character_calendar("fixture-token", 1, Some(events.records[2].event_id))
+        .await
+        .unwrap();
+    assert!(next.records.is_empty());
+}
+
 #[tokio::test]
 async fn fixture_transport_returns_a_character_source_for_every_new_scope() {
     let transport = FixtureEsiTransport;
