@@ -63,7 +63,36 @@ export interface CalendarImportMilestone extends CalendarPlanetaryCommon {
 
 export type CalendarPlanetaryMilestone = CalendarExtractorMilestone | CalendarImportMilestone;
 
-export type CalendarMilestone = CalendarIndustryMilestone | CalendarSkillMilestone | CalendarPlanetaryMilestone;
+export type CalendarEventResponse = "accepted" | "declined" | "tentative" | "not_responded";
+
+export interface CalendarEventCharacter {
+  connectionId: string;
+  eveCharacterId: number;
+  characterName: string;
+  response: CalendarEventResponse;
+}
+
+/**
+ * An in-game EVE calendar event, once however many characters see it.
+ * `text` is raw player-authored markup: render it as text, never as HTML.
+ */
+export interface CalendarEventMilestone extends CalendarMilestoneCommon {
+  kind: "event";
+  eventId: number;
+  durationMinutes: number;
+  importance: number;
+  ownerId: number | null;
+  ownerName: string | null;
+  ownerType: string | null;
+  text: string;
+  characters: CalendarEventCharacter[];
+}
+
+export type CalendarMilestone =
+  | CalendarIndustryMilestone
+  | CalendarSkillMilestone
+  | CalendarPlanetaryMilestone
+  | CalendarEventMilestone;
 
 export async function getCalendarMilestones(from: Date, to: Date): Promise<CalendarMilestone[]> {
   const query = new URLSearchParams({

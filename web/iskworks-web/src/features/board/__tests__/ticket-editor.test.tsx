@@ -184,6 +184,7 @@ const characters: CharacterRosterEntry[] = [
     trainingQueue: [],
     trainingObservedAt: null,
     trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
     manufacturingActiveJobs: null,
     manufacturingMaxJobs: null,
     reactionActiveJobs: null,

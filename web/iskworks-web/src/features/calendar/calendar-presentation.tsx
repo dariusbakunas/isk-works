@@ -1,5 +1,6 @@
 import {
   Atom,
+  CalendarClock,
   Copy,
   Factory,
   FlaskConical,
@@ -12,9 +13,9 @@ import {
 import type { CalendarMilestone } from "../../api/calendar";
 
 export interface CalendarMilestonePresentation {
-  kindLabel: "Industry" | "Skill" | "Planetary";
+  kindLabel: "Industry" | "Skill" | "Planetary" | "Event";
   activityLabel: string;
-  tone: "industry" | "skill" | "planetary";
+  tone: "industry" | "skill" | "planetary" | "event";
   icon: LucideIcon;
   accessibleLabel: string;
 }
@@ -31,6 +32,17 @@ const industryPresentation: Record<string, { label: string; icon: LucideIcon }> 
 };
 
 export function presentCalendarMilestone(milestone: CalendarMilestone): CalendarMilestonePresentation {
+  if (milestone.kind === "event") {
+    const names = milestone.characters.map((character) => character.characterName);
+    const audience = names.length > 0 ? names.join(", ") : milestone.characterName;
+    return {
+      kindLabel: "Event",
+      activityLabel: "In-game event",
+      tone: "event",
+      icon: CalendarClock,
+      accessibleLabel: `${milestone.title}, in-game event for ${audience}`,
+    };
+  }
   if (milestone.kind === "planetary") {
     const activityLabel = milestone.event === "extractorExpiry" ? "Extractor expiry" : "Factory input runs out (estimate)";
     return {

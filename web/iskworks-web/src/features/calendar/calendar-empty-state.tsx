@@ -7,7 +7,7 @@ export function CalendarEmptyState({ filtered }: { filtered: boolean }) {
       <Icon aria-hidden="true" className="h-5 w-5" />
       <div>
         <p className="font-semibold text-foreground">{filtered ? "No milestones match these filters" : "No calendar milestones yet"}</p>
-        <p>{filtered ? "Try showing another milestone type or character." : "Industry completions, queued skill finishes and planetary timers will appear here after synchronization."}</p>
+        <p>{filtered ? "Try showing another milestone type or character." : "Industry completions, queued skill finishes, planetary timers and in-game calendar events will appear here after synchronization."}</p>
       </div>
     </div>
   );

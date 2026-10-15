@@ -46,6 +46,9 @@ export interface CharacterRosterEntry {
   // The `skills` source still succeeds (total SP is a separate scope), so
   // this cannot be read off sources[].lastError like other missing scopes.
   trainingQueueScopeMissing: boolean;
+  // The connection has not granted esi-calendar.read_calendar_events.v1, so
+  // none of its in-game calendar events reach the Calendar.
+  calendarScopeMissing: boolean;
   manufacturingActiveJobs: number | null;
   manufacturingMaxJobs: number | null;
   reactionActiveJobs: number | null;

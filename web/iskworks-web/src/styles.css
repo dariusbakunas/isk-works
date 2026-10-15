@@ -327,6 +327,7 @@ body {
 .iw-calendar {
   --iw-calendar-skill: #8f7ac8;
   --iw-calendar-planetary: #3a9e8a;
+  --iw-calendar-event: #c98a3e;
   --iw-calendar-faint: #5a6878;
   --iw-calendar-grid: #202938;
 }
@@ -411,11 +412,13 @@ body {
 .iw-calendar-chip-industry { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); }
 .iw-calendar-chip-skill { background: color-mix(in srgb, var(--iw-calendar-skill) 14%, transparent); color: var(--iw-calendar-skill); }
 .iw-calendar-chip-planetary { background: color-mix(in srgb, var(--iw-calendar-planetary) 14%, transparent); color: var(--iw-calendar-planetary); }
+.iw-calendar-chip-event { background: color-mix(in srgb, var(--iw-calendar-event) 14%, transparent); color: var(--iw-calendar-event); }
 .iw-calendar-chip[data-past="true"] { opacity: 0.5; }
 .iw-calendar-chip[aria-pressed="true"] { outline: 1px solid currentColor; outline-offset: -1px; }
 .iw-calendar-more { padding-left: 6px; color: var(--color-muted); font-size: 0.625rem; text-align: left; }
 .iw-calendar-empty { position: absolute; inset: 4.5rem 12% auto; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--color-border); border-radius: 3px; background: color-mix(in srgb, var(--color-panel-strong) 94%, transparent); padding: 12px; color: var(--color-muted); font-size: 0.6875rem; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); }
 .iw-calendar-agenda { display: none; }
+.iw-calendar-scope-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--color-border); border-left: 3px solid var(--iw-calendar-event); border-radius: 3px; background: var(--color-panel); padding: 8px 10px; color: var(--color-muted); font-size: 0.6875rem; }
 .iw-calendar-week { min-height: 300px; }
 .iw-calendar-week-grid { display: grid; max-height: min(38rem, calc(100vh - 14rem)); grid-template-columns: repeat(7, minmax(0, 1fr)); overflow-x: hidden; overflow-y: auto; border: 1px solid var(--iw-calendar-grid); border-radius: 3px; }
 .iw-calendar-week-day { min-width: 0; min-height: 300px; border-right: 1px solid var(--iw-calendar-grid); background: var(--color-panel); }
@@ -431,6 +434,8 @@ body {
 .iw-calendar-week-card-industry { color: var(--color-primary); }
 .iw-calendar-week-card-skill { color: var(--iw-calendar-skill); }
 .iw-calendar-week-card-planetary { color: var(--iw-calendar-planetary); }
+.iw-calendar-week-card-event { color: var(--iw-calendar-event); }
+.iw-calendar-week-card-block { align-content: start; border-left-width: 5px; background: color-mix(in srgb, currentColor 14%, var(--color-panel)); }
 .iw-calendar-week-card time { font-size: 0.625rem; font-weight: 700; }
 .iw-calendar-week-card-title { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--color-foreground); font-size: 0.6875rem; font-weight: 600; line-height: 1.2; }
 .iw-calendar-week-card-title svg { width: 10px; height: 10px; flex: none; color: currentColor; }
@@ -451,6 +456,7 @@ body {
 .iw-calendar-year-month-header [data-kind="industry"] { color: var(--color-primary); }
 .iw-calendar-year-month-header [data-kind="skill"] { color: var(--iw-calendar-skill); }
 .iw-calendar-year-month-header [data-kind="planetary"] { color: var(--iw-calendar-planetary); }
+.iw-calendar-year-month-header [data-kind="event"] { color: var(--iw-calendar-event); }
 .iw-calendar-year-weekdays,
 .iw-calendar-year-days { display: grid; min-width: 0; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .iw-calendar-year-weekdays { margin-bottom: 3px; }
@@ -465,6 +471,7 @@ body {
 .iw-calendar-year-markers [data-kind="industry"] { background: color-mix(in srgb, var(--color-primary) 24%, var(--color-panel)); color: var(--color-primary); }
 .iw-calendar-year-markers [data-kind="skill"] { background: color-mix(in srgb, var(--iw-calendar-skill) 24%, var(--color-panel)); color: var(--iw-calendar-skill); }
 .iw-calendar-year-markers [data-kind="planetary"] { background: color-mix(in srgb, var(--iw-calendar-planetary) 24%, var(--color-panel)); color: var(--iw-calendar-planetary); }
+.iw-calendar-year-markers [data-kind="event"] { background: color-mix(in srgb, var(--iw-calendar-event) 24%, var(--color-panel)); color: var(--iw-calendar-event); }
 
 @media (max-width: 69.999rem) and (min-width: 48rem) {
   .iw-calendar-year-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }

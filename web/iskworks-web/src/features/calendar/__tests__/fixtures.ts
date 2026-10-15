@@ -75,3 +75,31 @@ export const CALENDAR_MILESTONE_FIXTURES: CalendarMilestone[] = [
   }),
 ];
 
+
+/** An in-game event seen by both fixture characters. */
+export const calendarEvent = (
+  eventId: number,
+  occursAt: string,
+  title: string,
+  overrides: Partial<Extract<CalendarMilestone, { kind: "event" }>> = {},
+): Extract<CalendarMilestone, { kind: "event" }> => ({
+  kind: "event",
+  id: `event:${eventId}`,
+  connectionId: "0aa719e8-f94f-4ef1-8f47-cf649d3b2d95",
+  eveCharacterId: 90000001,
+  characterName: "Alix Morgan",
+  title,
+  occursAt,
+  eventId,
+  durationMinutes: 90,
+  importance: 1,
+  ownerId: 98000001,
+  ownerName: "Morgan Industries",
+  ownerType: "corporation",
+  text: "<font size=\"12\">Form up</font><br>in <b>Jita</b> &amp; bring <a href=\"showinfo:1\">ore</a>",
+  characters: [
+    { connectionId: "0aa719e8-f94f-4ef1-8f47-cf649d3b2d95", eveCharacterId: 90000001, characterName: "Alix Morgan", response: "accepted" },
+    { connectionId: "874c445a-67f4-4368-9028-b785770a2e52", eveCharacterId: 90000002, characterName: "Bryn Vale", response: "tentative" },
+  ],
+  ...overrides,
+});

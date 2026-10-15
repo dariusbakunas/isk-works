@@ -52,6 +52,7 @@ function detail(overrides: Partial<CharacterDetail> = {}): CharacterDetail {
     trainingQueue: [],
     trainingObservedAt: new Date(NOW - 5 * MIN).toISOString(),
     trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
     manufacturingActiveJobs: null,
     manufacturingMaxJobs: null,
     reactionActiveJobs: null,

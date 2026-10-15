@@ -8,6 +8,8 @@ export interface CalendarCharacterOption {
   connectionId: string;
   eveCharacterId: number;
   characterName: string;
+  /** Has not granted the calendar scope, so none of its events show. */
+  calendarScopeMissing?: boolean;
 }
 
 export function CalendarFilters({
@@ -37,6 +39,7 @@ export function CalendarFilters({
           ["industry", "Industry", "Industry milestones"],
           ["skill", "Skills", "Skill milestones"],
           ["planetary", "Planetary", "Planetary timers"],
+          ["event", "Events", "In-game calendar events"],
         ]}
         value={type}
       />
@@ -143,7 +146,7 @@ function CharacterMenu({ characters, onChange, selected }: {
             return (
               <button
                 aria-checked={checked}
-                aria-label={character.characterName}
+                aria-label={character.calendarScopeMissing ? `${character.characterName}, no calendar access` : character.characterName}
                 className="iw-calendar-character-option"
                 key={character.connectionId}
                 onClick={() => toggle(character.connectionId)}
@@ -152,7 +155,10 @@ function CharacterMenu({ characters, onChange, selected }: {
                 type="button"
               >
                 <EveCharacterPortrait characterId={character.eveCharacterId} characterName={character.characterName} size={32} />
-                <span className="min-w-0 flex-1 truncate" title={character.characterName}>{character.characterName}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate" title={character.characterName}>{character.characterName}</span>
+                  {character.calendarScopeMissing ? <span className="block text-[0.625rem] text-muted">No calendar access</span> : null}
+                </span>
                 <Check aria-hidden="true" className={`h-3.5 w-3.5 ${checked ? "opacity-100" : "opacity-0"}`} />
               </button>
             );
