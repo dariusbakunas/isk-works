@@ -19,6 +19,13 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::InvalidQuantity => (StatusCode::BAD_REQUEST, "invalid_quantity", false),
         OrderError::InvalidTicketTitle => (StatusCode::BAD_REQUEST, "invalid_ticket_title", false),
         OrderError::TicketEpicFixed => (StatusCode::BAD_REQUEST, "ticket_epic_fixed", false),
+        OrderError::TicketJobMismatch => {
+            (StatusCode::BAD_REQUEST, "job_does_not_match_ticket", false)
+        }
+        OrderError::TicketJobNeedsAssignee => {
+            (StatusCode::BAD_REQUEST, "ticket_job_needs_assignee", false)
+        }
+        OrderError::TicketJobNotFound => (StatusCode::NOT_FOUND, "ticket_job_not_found", false),
         OrderError::TicketKindDoesNotMatchBuildRecipe => (
             StatusCode::BAD_REQUEST,
             "ticket_kind_does_not_match_build_recipe",

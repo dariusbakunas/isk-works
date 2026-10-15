@@ -429,6 +429,12 @@ pub enum OrderError {
     InvalidTicketTitle,
     #[error("a ticket's Epic is set when it is created and cannot be changed")]
     TicketEpicFixed,
+    #[error("that industry job wasn't run by the ticket's assignee for its activity and product")]
+    TicketJobMismatch,
+    #[error("assign the ticket before linking industry jobs to it")]
+    TicketJobNeedsAssignee,
+    #[error("industry job not found")]
+    TicketJobNotFound,
     #[error("the selected Build's recipe does not match the requested ticket kind")]
     TicketKindDoesNotMatchBuildRecipe,
     #[error("ticket's type does not match the requirement/prerequisite it would fulfill")]
