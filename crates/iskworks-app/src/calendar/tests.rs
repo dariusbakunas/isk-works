@@ -519,3 +519,180 @@ async fn persisted_calendar_source_never_crosses_workspace_boundaries(pool: sqlx
     assert!(milestones[0].id().ends_with(":101"));
     assert!(!milestones[0].id().contains(":202"));
 }
+
+mod events {
+    use iskworks_core::calendar_event::{
+        CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent,
+        WorkspaceCalendarEvent,
+    };
+
+    use super::*;
+    use crate::calendar::project_event_milestones;
+
+    fn row(
+        event_id: i64,
+        connection: u128,
+        name: &str,
+        response: CalendarEventResponse,
+        observed_hour: u32,
+    ) -> WorkspaceCalendarEvent {
+        WorkspaceCalendarEvent {
+            event: CharacterCalendarEvent {
+                connection_id: ConnectedCharacterId(Uuid::from_u128(connection)),
+                event_id,
+                event_date: instant(20, 18),
+                title: format!("Op {event_id} @{observed_hour}"),
+                importance: 1,
+                response,
+                duration_minutes: 90,
+                owner_id: Some(98_000_001),
+                owner_name: Some("Test Corp".into()),
+                owner_type: Some("corporation".into()),
+                text: "<b>Form up</b>".into(),
+                observed_at: instant(15, observed_hour),
+            },
+            eve_character_id: i64::try_from(connection).unwrap(),
+            character_name: name.into(),
+        }
+    }
+
+    #[test]
+    fn an_event_seen_by_several_characters_is_one_milestone_with_each_response() {
+        let rows = vec![
+            row(7, 2, "Valka", CalendarEventResponse::Accepted, 3),
+            row(7, 1, "Aeva", CalendarEventResponse::Declined, 9),
+            row(7, 3, "Zed", CalendarEventResponse::NotResponded, 6),
+        ];
+
+        let milestones = project_event_milestones(&rows, october_range());
+
+        assert_eq!(milestones.len(), 1);
+        let json = serde_json::to_value(&milestones[0]).unwrap();
+        assert_eq!(json["kind"], "event");
+        assert_eq!(json["id"], "event:7");
+        assert_eq!(json["eventId"], 7);
+        assert_eq!(json["occursAt"], "2026-10-20T18:00:00Z");
+        assert_eq!(json["durationMinutes"], 90);
+        assert_eq!(json["importance"], 1);
+        assert_eq!(json["ownerName"], "Test Corp");
+        assert_eq!(json["ownerType"], "corporation");
+        assert_eq!(json["text"], "<b>Form up</b>");
+        // Shared fields come from the most recently synced copy.
+        assert_eq!(json["title"], "Op 7 @9");
+        // The common character is the first by name.
+        assert_eq!(json["characterName"], "Aeva");
+        assert!(json.get("milestone").is_none());
+        let characters = json["characters"].as_array().unwrap();
+        let summary: Vec<(&str, &str)> = characters
+            .iter()
+            .map(|character| {
+                (
+                    character["characterName"].as_str().unwrap(),
+                    character["response"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("Aeva", "declined"),
+                ("Valka", "accepted"),
+                ("Zed", "not_responded")
+            ]
+        );
+    }
+
+    #[test]
+    fn distinct_events_stay_apart_and_the_range_is_half_open() {
+        let mut at_end = row(9, 1, "Aeva", CalendarEventResponse::Accepted, 1);
+        at_end.event.event_date = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).single().unwrap();
+        let mut at_start = row(8, 1, "Aeva", CalendarEventResponse::Accepted, 1);
+        at_start.event.event_date = instant(1, 0);
+        let rows = vec![
+            row(7, 1, "Aeva", CalendarEventResponse::Accepted, 1),
+            at_start,
+            at_end,
+        ];
+
+        let milestones = project_event_milestones(&rows, october_range());
+
+        let ids: Vec<&str> = milestones.iter().map(CalendarMilestone::id).collect();
+        assert_eq!(ids, vec!["event:7", "event:8"]);
+    }
+
+    struct FakeEvents(Result<Vec<WorkspaceCalendarEvent>, ()>);
+
+    #[async_trait]
+    impl CalendarEventRepository for FakeEvents {
+        async fn calendar_events(
+            &self,
+            _: ConnectedCharacterId,
+        ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+            unreachable!("the calendar reads the workspace view")
+        }
+        async fn workspace_calendar_event_copies(
+            &self,
+            _: WorkspaceId,
+            _: &[i64],
+        ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+            unreachable!("the calendar reads the workspace view")
+        }
+        async fn replace_calendar_events(
+            &self,
+            _: ConnectedCharacterId,
+            _: &[CharacterCalendarEvent],
+        ) -> Result<(), InventoryError> {
+            unreachable!("loading the calendar never writes")
+        }
+        async fn workspace_calendar_events(
+            &self,
+            _: WorkspaceId,
+        ) -> Result<Vec<WorkspaceCalendarEvent>, InventoryError> {
+            self.0
+                .clone()
+                .map_err(|()| InventoryError::Persistence("boom".into()))
+        }
+    }
+
+    fn events_service(
+        rows: Result<Vec<WorkspaceCalendarEvent>, ()>,
+    ) -> (WorkspaceId, CalendarService) {
+        let workspace = WorkspaceId(Uuid::from_u128(100));
+        let mut owned = detail("Valka", 10);
+        owned.industry_jobs.push(industry_job(1, instant(25, 8)));
+        let source = Arc::new(FakeCalendarSource {
+            details: HashMap::from([(workspace, vec![owned])]),
+            requested: Mutex::new(Vec::new()),
+        });
+        let service = CalendarService::new(source).with_events(Arc::new(FakeEvents(rows)));
+        (workspace, service)
+    }
+
+    #[tokio::test]
+    async fn events_join_the_calendar_in_time_order() {
+        let (workspace, service) = events_service(Ok(vec![row(
+            7,
+            1,
+            "Aeva",
+            CalendarEventResponse::Accepted,
+            1,
+        )]));
+
+        let milestones = service.range(workspace, october_range()).await.unwrap();
+
+        let ids: Vec<&str> = milestones.iter().map(CalendarMilestone::id).collect();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], "event:7");
+        assert!(ids[1].starts_with("industry:"));
+    }
+
+    #[tokio::test]
+    async fn an_events_failure_leaves_the_rest_of_the_calendar_intact() {
+        let (workspace, service) = events_service(Err(()));
+
+        let milestones = service.range(workspace, october_range()).await.unwrap();
+
+        assert_eq!(milestones.len(), 1);
+        assert!(milestones[0].id().starts_with("industry:"));
+    }
+}
