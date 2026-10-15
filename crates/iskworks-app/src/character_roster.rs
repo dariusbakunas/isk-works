@@ -11,7 +11,7 @@ use iskworks_core::{
     ADVANCED_MASS_REACTIONS_SKILL_ID, LABORATORY_OPERATION_SKILL_ID, MASS_PRODUCTION_SKILL_ID,
     MASS_REACTIONS_SKILL_ID,
 };
-use iskworks_esi::SKILL_QUEUE_SCOPE;
+use iskworks_esi::{CALENDAR_SCOPE, SKILL_QUEUE_SCOPE};
 use iskworks_sde::SdeReadRepository;
 use iskworks_storage::{FacilityLabel, PgEsiRepository};
 use rust_decimal::Decimal;
@@ -65,6 +65,9 @@ pub struct CharacterRosterEntry {
     /// a different scope), so this cannot be read off `sources[].lastError`
     /// the way other missing scopes are.
     pub training_queue_scope_missing: bool,
+    /// The connection has not granted `esi-calendar.read_calendar_events.v1`,
+    /// so none of its in-game calendar events are synced.
+    pub calendar_scope_missing: bool,
     pub manufacturing_active_jobs: Option<u64>,
     pub manufacturing_max_jobs: Option<u64>,
     pub reaction_active_jobs: Option<u64>,
@@ -739,6 +742,10 @@ fn assemble_entry(
         .granted_scopes
         .iter()
         .any(|scope| scope == SKILL_QUEUE_SCOPE);
+    let calendar_scope_missing = !connection
+        .granted_scopes
+        .iter()
+        .any(|scope| scope == CALENDAR_SCOPE);
     let training_queue = parse_training_queue(skills_summary, skill_names);
     let training_observed_at =
         find(sources, CharacterSourceKind::Skills).and_then(|s| s.observed_at);
@@ -763,6 +770,7 @@ fn assemble_entry(
         training_queue,
         training_observed_at,
         training_queue_scope_missing,
+        calendar_scope_missing,
         manufacturing_active_jobs: job_counts.as_ref().map(|counts| counts.manufacturing),
         manufacturing_max_jobs: slot_max.as_ref().map(|max| max.manufacturing),
         reaction_active_jobs: job_counts.as_ref().map(|counts| counts.reaction),

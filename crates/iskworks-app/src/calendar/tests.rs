@@ -41,6 +41,7 @@ fn detail(name: &str, connection: u128) -> CharacterDetail {
             training_queue: Vec::new(),
             training_observed_at: None,
             training_queue_scope_missing: false,
+            calendar_scope_missing: false,
             manufacturing_active_jobs: None,
             manufacturing_max_jobs: None,
             reaction_active_jobs: None,
