@@ -326,6 +326,65 @@ pub struct CharacterSkillQueueEntry {
     pub level_end_sp: Option<i64>,
 }
 
+/// A character's answer to an in-game calendar event.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarEventResponse {
+    Accepted,
+    Declined,
+    Tentative,
+    NotResponded,
+}
+
+impl CalendarEventResponse {
+    /// ESI's spelling, also the stored value.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Tentative => "tentative",
+            Self::NotResponded => "not_responded",
+        }
+    }
+
+    /// Unknown values read as not responded rather than failing the sync.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "accepted" => Self::Accepted,
+            "declined" => Self::Declined,
+            "tentative" => Self::Tentative,
+            _ => Self::NotResponded,
+        }
+    }
+}
+
+/// One row of `GET /characters/{id}/calendar/`: an upcoming event summary.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct CalendarEventObservation {
+    pub event_id: i64,
+    pub event_date: DateTime<Utc>,
+    pub title: String,
+    pub importance: i64,
+    pub response: CalendarEventResponse,
+}
+
+/// `GET /characters/{id}/calendar/{event_id}/`. `text` is player-authored
+/// markup, kept raw.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct CalendarEventDetailObservation {
+    pub event_id: i64,
+    pub date: DateTime<Utc>,
+    pub title: String,
+    pub importance: i64,
+    pub duration_minutes: i64,
+    pub owner_id: Option<i64>,
+    pub owner_name: Option<String>,
+    pub owner_type: Option<String>,
+    pub text: String,
+}
+
 /// One row of `GET /characters/{id}/planets/`: a PI colony header.
 /// `last_update` is when the owner last touched the colony in game -- the
 /// pin contents in [`CharacterPlanetDetailObservation`] are a snapshot as of

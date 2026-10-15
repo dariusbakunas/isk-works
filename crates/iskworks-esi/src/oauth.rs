@@ -17,6 +17,8 @@ pub const MARKET_STRUCTURE_SCOPE: &str = "esi-markets.structure_markets.v1";
 /// Read access to the character's PI colonies (ESI names it "manage", but
 /// the endpoints ISK Works calls are read-only).
 pub const PLANETS_SCOPE: &str = "esi-planets.manage_planets.v1";
+/// Read access to the character's in-game calendar (no responding).
+pub const CALENDAR_SCOPE: &str = "esi-calendar.read_calendar_events.v1";
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct OAuthState(String);
