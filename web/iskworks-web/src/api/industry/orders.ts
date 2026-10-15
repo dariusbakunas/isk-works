@@ -409,6 +409,19 @@ export interface Ticket {
   materialComponentCost?: Money | null;
   ownInstallationCost?: Money | null;
   totalProductionCost?: Money | null;
+  // The owning plan operation's frozen evidence -- `null` wherever
+  // `occurrenceKey` is.
+  planEvidence?: TicketPlanEvidence | null;
+}
+
+// The subset of a frozen plan operation's evidence the web reads. The
+// facility profile is referenced by id only (its name is not frozen), so
+// it resolves against the live facility list and may be gone.
+export interface TicketPlanEvidence {
+  effectiveMe: number | null;
+  effectiveTe: number | null;
+  jobCount: number;
+  installation: { facilityProfileId: string | null } | null;
 }
 
 // The canonical manual Ticket creation contract -- one request shape,

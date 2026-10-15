@@ -6,6 +6,7 @@ import {
   deleteTicket,
   updateTicketMetadata,
   updateTicketStatus,
+  type FacilityProfile,
   type TicketStatus,
   type TicketSummary,
 } from "../../api/industry";
@@ -50,6 +51,7 @@ export function OrderTicketDetailDrawer({
   onOpenEpic,
   jobs = [],
   nowMs = Date.now(),
+  facilityById,
 }: {
   ticket: TicketSummary;
   /** The owning Epic's display name, when `ticket.orderId` is set and the
@@ -74,12 +76,18 @@ export function OrderTicketDetailDrawer({
   jobs?: IndustryJob[];
   /** The Board's clock, so job progress ticks with the cards. */
   nowMs?: number;
+  /** The workspace's facility profiles, so a generated step ticket (whose
+   * execution snapshot carries no facility) can still name where its job
+   * was planned, from its plan evidence's facility profile id. */
+  facilityById?: ReadonlyMap<string, FacilityProfile>;
 }) {
   const kindMeta = orderTicketKindMeta[ticket.kind];
   const statusMeta = orderTicketStatusMeta[ticket.status];
   const snapshot = ticket.executionSnapshot;
   const blueprint = snapshot?.blueprint ?? null;
-  const facility = snapshot?.facility ?? null;
+  const plannedFacilityId = ticket.planEvidence?.installation?.facilityProfileId ?? null;
+  const facility =
+    snapshot?.facility ?? (plannedFacilityId ? (facilityById?.get(plannedFacilityId) ?? null) : null);
   // `actual*` is only present on tickets completed before completion
   // stopped pricing anything; completing a ticket never sets it. Prefer it
   // when present, otherwise fall back to the Build/Order-frozen estimate

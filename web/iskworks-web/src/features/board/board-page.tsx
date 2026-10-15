@@ -5,6 +5,7 @@ import { listCharacters, type CharacterRosterEntry, type IndustryJob } from "../
 import {
   listAcquisitionRuns,
   listBuilds,
+  listFacilities,
   listOrders,
   listPriceSources,
   listTicketJobProgress,
@@ -12,6 +13,7 @@ import {
   updateTicketStatus,
   type AcquisitionRun,
   type Build,
+  type FacilityProfile,
   type OrderSummary,
   type PriceSource,
   type Ticket,
@@ -157,6 +159,7 @@ export function BoardPage() {
   // from the Board's own data so a failure here never blanks the Board.
   const [jobsByTicketId, setJobsByTicketId] = useState<Map<string, IndustryJob[]>>(new Map());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [facilityById, setFacilityById] = useState<Map<string, FacilityProfile>>(new Map());
 
   // Board filters -- a distinct state dimension from Inspector selection
   // (`openOrderId`/`openTicketId` above). Derived live from the URL on
@@ -197,8 +200,19 @@ export function BoardPage() {
     };
   }, []);
 
+  // Names the planned facility on generated step tickets (see the ticket
+  // drawer). Optional context, so a failure never blanks the Board.
+  function loadFacilities() {
+    return listFacilities()
+      .then((facilities) => setFacilityById(new Map(facilities.map((facility) => [facility.id, facility]))))
+      .catch(() => {
+        // The drawer just omits the Installation section.
+      });
+  }
+
   function load() {
     void loadJobProgress();
+    void loadFacilities();
     // Fetches everything once (small, personal-scale dataset), including
     // every archived Order -- "Show archived" applies purely client-side
     // afterward, so toggling it is instant with no refetch. `listCharacters`
@@ -844,6 +858,7 @@ export function BoardPage() {
           onOpenEpic={openTicket.orderId ? () => openEpic(openTicket.orderId as string) : undefined}
           jobs={jobsByTicketId.get(openTicket.id)}
           nowMs={nowMs}
+          facilityById={facilityById}
           ticket={openTicket}
         />
       ) : openOrder ? (

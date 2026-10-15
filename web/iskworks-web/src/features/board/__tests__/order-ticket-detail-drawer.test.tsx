@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OrderTicketDetailDrawer } from "../order-ticket-detail-drawer";
+import { facilityProfile } from "../../industry/builds/graph/__tests__/fixtures";
 import { ticketFixture } from "./fixtures";
 
 const industryApi = vi.hoisted(() => ({
@@ -290,6 +291,39 @@ describe("OrderTicketDetailDrawer", () => {
     render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture()} />);
 
     expect(screen.queryByText("Blocked by")).not.toBeInTheDocument();
+  });
+
+  it("names a generated step ticket's planned facility from its plan evidence", () => {
+    const reactor = facilityProfile({ id: "fac-rxn", name: "0-VG7A — Reactions", solarSystemName: "0-VG7A" });
+    render(
+      <OrderTicketDetailDrawer
+        facilityById={new Map([[reactor.id, reactor]])}
+        onClose={() => {}}
+        ticket={ticketFixture({
+          kind: "reaction",
+          planEvidence: { effectiveMe: null, effectiveTe: null, jobCount: 1, installation: { facilityProfileId: "fac-rxn" } },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Installation")).toBeInTheDocument();
+    expect(screen.getByText("0-VG7A — Reactions")).toBeInTheDocument();
+    expect(screen.getByText("0-VG7A")).toBeInTheDocument();
+  });
+
+  it("omits the Installation section when the planned facility profile is gone", () => {
+    render(
+      <OrderTicketDetailDrawer
+        facilityById={new Map()}
+        onClose={() => {}}
+        ticket={ticketFixture({
+          kind: "reaction",
+          planEvidence: { effectiveMe: null, effectiveTe: null, jobCount: 1, installation: { facilityProfileId: "fac-gone" } },
+        })}
+      />,
+    );
+
+    expect(screen.queryByText("Installation")).not.toBeInTheDocument();
   });
 });
 
