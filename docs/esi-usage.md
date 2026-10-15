@@ -24,13 +24,20 @@ This page explains how.
 |---|---|
 | Location | 10 min |
 | Wallet balance | 15 min |
-| Wallet transactions / journal, industry jobs, planets | 30 min |
+| Wallet transactions / journal, industry jobs, planets, calendar events | 30 min |
 | Skills, assets, blueprints | 60 min |
 | Public character info | 24 h |
 | Citadel markets you've added | 15 min |
 
 None of these intervals is shorter than ESI's own cache time for that data. A
 manual "sync now" is limited to once a minute per character.
+
+Planets and calendar events use optional scopes: a character that doesn't grant
+them still connects, and only that feature is missing. Calendar events are read
+from `/characters/{id}/calendar/` (50 per page, paged with `from_event`). An
+event's details (`/calendar/{event_id}/`) are fetched only when ISK Works hasn't
+stored that event yet, or its date, title or importance changed. ISK Works never
+reads attendee lists and never responds to events.
 
 ## How it stays within the rules
 
