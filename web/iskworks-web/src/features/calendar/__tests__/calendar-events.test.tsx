@@ -30,6 +30,7 @@ const CARA = "5d1c5b8e-2f43-4b6e-9a51-0c7e2f9a1b23";
 const opEvent = calendarEvent(42, "2026-10-02T19:00:00Z", "Moon mining op");
 
 beforeEach(() => {
+  window.localStorage.clear();
   getCalendar.mockReset().mockResolvedValue([...CALENDAR_MILESTONE_FIXTURES, opEvent]);
   getCharacters.mockReset().mockResolvedValue([
     { connectionId: ALIX, eveCharacterId: 90000001, characterName: "Alix Morgan", calendarScopeMissing: false },
@@ -111,9 +112,10 @@ test("characters without the calendar scope get a reconnect hint", async () => {
   vi.stubGlobal("location", { ...window.location, reload });
   try {
     render(<MemoryRouter initialEntries={["/calendar?view=month&date=2026-10-02&type=all&tz=eve"]}><CalendarPage /></MemoryRouter>);
-    const hint = await screen.findByRole("note");
-    expect(hint).toHaveTextContent("In-game calendar events aren't available for Cara Lind");
-    await userEvent.click(within(hint).getByRole("button", { name: "Reconnect with calendar access" }));
+    const hint = await screen.findByRole("note", { name: "Calendar access" });
+    expect(hint).toHaveTextContent("Calendar events are missing for Cara Lind.");
+    expect(hint).toHaveTextContent("log in as Cara Lind on EVE's page");
+    await userEvent.click(within(hint).getByRole("button", { name: "Grant calendar access" }));
     await waitFor(() => expect(authorize).toHaveBeenCalledOnce());
     await userEvent.click(screen.getByRole("button", { name: /Filter by character/ }));
     expect(screen.getByRole("menuitemcheckbox", { name: "Cara Lind, no calendar access" })).toBeInTheDocument();
