@@ -11,6 +11,7 @@ import { CalendarInspector, type CalendarInspectorSelection } from "./calendar-i
 import { CalendarMonthView, milestonesForDay } from "./calendar-month";
 import { milestoneCharacterSummary, milestoneConnectionIds } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
+import { CalendarScopeHint } from "./calendar-scope-hint";
 import { parseCalendarUrlState, serializeCalendarUrlState, type CalendarUrlState } from "./calendar-url-state";
 import { CalendarWeekView } from "./calendar-week";
 import { CalendarYearView } from "./calendar-year";
@@ -134,14 +135,7 @@ export function CalendarPage() {
         />
       </div>
       {error ? <InlineAlert title="Calendar unavailable">{error}</InlineAlert> : null}
-      {showCalendarScopeHint ? (
-        <div className="iw-calendar-scope-hint" role="note">
-          <p>
-            In-game calendar events aren't available for {withoutCalendar.map((character) => character.characterName).join(", ")}: {withoutCalendar.length === 1 ? "this character hasn't" : "these characters haven't"} granted calendar access.
-          </p>
-          <button className="iw-button-secondary" onClick={() => void reconnectWithCalendar()} type="button">Reconnect with calendar access</button>
-        </div>
-      ) : null}
+      {showCalendarScopeHint ? <CalendarScopeHint characters={withoutCalendar} onGrant={() => void reconnectWithCalendar()} /> : null}
       <div aria-busy={loading} className="relative min-h-80">
         {state.view === "month" ? (
           <CalendarMonthView

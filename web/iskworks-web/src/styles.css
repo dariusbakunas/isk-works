@@ -418,7 +418,15 @@ body {
 .iw-calendar-more { padding-left: 6px; color: var(--color-muted); font-size: 0.625rem; text-align: left; }
 .iw-calendar-empty { position: absolute; inset: 4.5rem 12% auto; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--color-border); border-radius: 3px; background: color-mix(in srgb, var(--color-panel-strong) 94%, transparent); padding: 12px; color: var(--color-muted); font-size: 0.6875rem; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); }
 .iw-calendar-agenda { display: none; }
-.iw-calendar-scope-hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--color-border); border-left: 3px solid var(--iw-calendar-event); border-radius: 3px; background: var(--color-panel); padding: 8px 10px; color: var(--color-muted); font-size: 0.6875rem; }
+.iw-calendar-scope-hint { display: flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); border-left: 3px solid var(--iw-calendar-event); border-radius: 3px; background: var(--color-panel); padding: 6px 8px 6px 10px; color: var(--color-muted); font-size: 0.6875rem; }
+.iw-calendar-scope-hint > .iw-button-secondary { flex: none; }
+.iw-calendar-scope-hint-toggle { color: var(--color-primary); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.iw-calendar-scope-hint-list { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: var(--color-foreground); }
+@media (max-width: 47.999rem) {
+  .iw-calendar-scope-hint { flex-wrap: wrap; }
+  .iw-calendar-scope-hint > div { flex-basis: 100%; }
+  .iw-calendar-scope-hint > .iw-button-secondary { margin-right: auto; }
+}
 .iw-calendar-week { min-height: 300px; }
 .iw-calendar-week-grid { display: grid; max-height: min(38rem, calc(100vh - 14rem)); grid-template-columns: repeat(7, minmax(0, 1fr)); overflow-x: hidden; overflow-y: auto; border: 1px solid var(--iw-calendar-grid); border-radius: 3px; }
 .iw-calendar-week-day { min-width: 0; min-height: 300px; border-right: 1px solid var(--iw-calendar-grid); background: var(--color-panel); }
