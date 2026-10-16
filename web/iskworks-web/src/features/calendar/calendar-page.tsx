@@ -3,11 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { getCalendarMilestones, type CalendarMilestone } from "../../api/calendar";
 import { listCharacters } from "../../api/characters";
+import { beginAuthorization } from "../../api/esi";
 import { InlineAlert, LoadingState, PageHeader } from "../../components/primitives";
 import { CalendarFilters, type CalendarCharacterOption } from "./calendar-filters";
 import { dateKey, dateKeyForMonth, formatDateLabel, formatMonthLabel, formatWeekLabel, monthFromDateKey, monthRange, shiftCalendarDate, weekRange, yearRange } from "./calendar-dates";
 import { CalendarInspector, type CalendarInspectorSelection } from "./calendar-inspector";
 import { CalendarMonthView, milestonesForDay } from "./calendar-month";
+import { milestoneCharacterSummary, milestoneConnectionIds } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
 import { parseCalendarUrlState, serializeCalendarUrlState, type CalendarUrlState } from "./calendar-url-state";
 import { CalendarWeekView } from "./calendar-week";
@@ -34,7 +36,14 @@ export function CalendarPage() {
   useEffect(() => {
     let active = true;
     listCharacters().then((entries) => {
-      if (active) setCharacters(entries.map(({ connectionId, eveCharacterId, characterName }) => ({ connectionId, eveCharacterId, characterName })));
+      if (active) {
+        setCharacters(entries.map(({ connectionId, eveCharacterId, characterName, calendarScopeMissing }) => ({
+          connectionId,
+          eveCharacterId,
+          characterName,
+          calendarScopeMissing,
+        })));
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -64,13 +73,28 @@ export function CalendarPage() {
 
   const filtered = milestones.filter((milestone) =>
     (state.type === "all" || milestone.kind === state.type)
-    && (state.characters.length === 0 || state.characters.includes(milestone.connectionId)));
+    // An in-game event belongs to every character that sees it.
+    && (state.characters.length === 0 || milestoneConnectionIds(milestone).some((id) => state.characters.includes(id))));
+  const withoutCalendar = characters.filter((character) =>
+    character.calendarScopeMissing
+    && (state.characters.length === 0 || state.characters.includes(character.connectionId)));
+  const showCalendarScopeHint = withoutCalendar.length > 0 && (state.type === "all" || state.type === "event");
   const selectedDayMilestones = milestonesForDay(filtered, state.date, state.timezone);
 
   function setState(next: CalendarUrlState, replace: boolean) {
     setSearchParams(serializeCalendarUrlState(next), { replace });
     setSelection(null);
     setReturnFocusSelector(undefined);
+  }
+
+  async function reconnectWithCalendar() {
+    try {
+      const started = await beginAuthorization();
+      if (started.fixtureMode) window.location.reload();
+      else window.location.assign(started.authorizationUrl);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not start EVE authorization.");
+    }
   }
 
   function selectDay(key: string, rows: CalendarMilestone[], source: "day" | "overflow") {
@@ -84,7 +108,7 @@ export function CalendarPage() {
 
   return (
     <section className="iw-calendar space-y-3">
-      <PageHeader eyebrow="Operations" title="Calendar">Industry completions, queued skill finishes and planetary timers from your synchronized characters.</PageHeader>
+      <PageHeader eyebrow="Operations" title="Calendar">Industry completions, queued skill finishes, planetary timers and in-game calendar events from your synchronized characters.</PageHeader>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <button aria-label={`Previous ${state.view}`} className="iw-icon-button" onClick={() => setState({ ...state, date: shiftCalendarDate(state.date, state.view, -1) }, false)} type="button"><ChevronLeft aria-hidden="true" className="h-4 w-4" /></button>
@@ -110,6 +134,14 @@ export function CalendarPage() {
         />
       </div>
       {error ? <InlineAlert title="Calendar unavailable">{error}</InlineAlert> : null}
+      {showCalendarScopeHint ? (
+        <div className="iw-calendar-scope-hint" role="note">
+          <p>
+            In-game calendar events aren't available for {withoutCalendar.map((character) => character.characterName).join(", ")}: {withoutCalendar.length === 1 ? "this character hasn't" : "these characters haven't"} granted calendar access.
+          </p>
+          <button className="iw-button-secondary" onClick={() => void reconnectWithCalendar()} type="button">Reconnect with calendar access</button>
+        </div>
+      ) : null}
       <div aria-busy={loading} className="relative min-h-80">
         {state.view === "month" ? (
           <CalendarMonthView
@@ -160,7 +192,7 @@ export function CalendarPage() {
           return <button aria-label={`Open ${milestone.title}`} data-calendar-trigger={`agenda-${milestone.id}`} key={milestone.id} onClick={() => {
             setReturnFocusSelector(`[data-calendar-trigger="agenda-${milestone.id}"]`);
             setSelection({ kind: "milestone", milestone });
-          }} type="button"><span>{milestone.title}</span><small>{presentation.activityLabel} · {milestone.characterName}</small></button>;
+          }} type="button"><span>{milestone.title}</span><small>{presentation.activityLabel} · {milestoneCharacterSummary(milestone)}</small></button>;
         }) : !loading && !error ? <p>No milestones this day.</p> : null}
       </section> : null}
       {selection ? <CalendarInspector onClose={() => setSelection(null)} returnFocusSelector={returnFocusSelector} selection={selection} timezone={state.timezone} /> : null}

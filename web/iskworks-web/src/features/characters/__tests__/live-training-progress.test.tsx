@@ -132,6 +132,7 @@ function characterEntryFixture(overrides: Partial<CharacterRosterEntry> = {}): C
     trainingQueue: [],
     trainingObservedAt: null,
     trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
     manufacturingActiveJobs: 8,
     manufacturingMaxJobs: 10,
     reactionActiveJobs: 0,

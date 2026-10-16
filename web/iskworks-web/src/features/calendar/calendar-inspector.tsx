@@ -5,6 +5,7 @@ import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { formatDateLabel, formatTime, type CalendarTimezone } from "./calendar-dates";
+import { eventEndsAt, eventPlainText, formatEventDuration, milestoneCharacterSummary, ownerTypeLabel, responseLabel } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
 
 export type CalendarInspectorSelection =
@@ -54,8 +55,10 @@ function CharacterHeader({ milestone, timezone }: { milestone: CalendarMilestone
 function MilestoneBody({ milestone, timezone }: { milestone: CalendarMilestone; timezone: CalendarTimezone }) {
   return (
     <div className="space-y-3 pb-4">
-      <CharacterHeader milestone={milestone} timezone={timezone} />
-      {milestone.kind === "industry" ? (
+      {milestone.kind === "event" ? null : <CharacterHeader milestone={milestone} timezone={timezone} />}
+      {milestone.kind === "event" ? (
+        <EventBody milestone={milestone} timezone={timezone} />
+      ) : milestone.kind === "industry" ? (
         <IndustryBody milestone={milestone} timezone={timezone} />
       ) : milestone.kind === "skill" ? (
         <SkillBody milestone={milestone} timezone={timezone} />
@@ -137,6 +140,45 @@ function PlanetaryBody({ milestone, timezone }: { milestone: Extract<CalendarMil
   );
 }
 
+function EventBody({ milestone, timezone }: { milestone: Extract<CalendarMilestone, { kind: "event" }>; timezone: CalendarTimezone }) {
+  const endsAt = eventEndsAt(milestone);
+  const duration = formatEventDuration(milestone.durationMinutes);
+  const owner = milestone.ownerName
+    ? [milestone.ownerName, ownerTypeLabel(milestone.ownerType)].filter(Boolean).join(" · ")
+    : ownerTypeLabel(milestone.ownerType);
+  // Raw player markup, reduced to text and rendered as text: never HTML.
+  const text = eventPlainText(milestone.text);
+  return (
+    <div className="space-y-3 px-3 text-xs">
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <Fact label="Starts" value={formatTime(milestone.occursAt, timezone)} />
+        {endsAt ? <Fact label="Ends" value={formatTime(endsAt, timezone)} /> : null}
+        <Fact label="Duration" value={duration ?? "Not set"} />
+        <Fact label="Importance" value={milestone.importance > 0 ? "Important" : "Normal"} />
+        {owner ? <Fact label="Owner" value={owner} /> : null}
+      </dl>
+      <section aria-label="Character responses" className="space-y-1">
+        <h3 className="text-[0.625rem] font-semibold uppercase text-muted">Characters</h3>
+        <ul className="divide-y divide-border rounded border border-border">
+          {milestone.characters.map((character) => (
+            <li className="flex items-center gap-2 p-2" key={character.connectionId}>
+              <EveCharacterPortrait characterId={character.eveCharacterId} characterName={character.characterName} size={32} />
+              <span className="min-w-0 flex-1 truncate font-semibold">{character.characterName}</span>
+              <span className="text-muted" data-response={character.response}>{responseLabel[character.response]}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      {text ? (
+        <section aria-label="Event description" className="space-y-1">
+          <h3 className="text-[0.625rem] font-semibold uppercase text-muted">Description</h3>
+          <p className="whitespace-pre-wrap break-words rounded border border-border bg-panel-strong p-2 text-foreground">{text}</p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function Fact({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-[0.625rem] font-semibold uppercase text-muted">{label}</dt><dd className="mt-0.5 text-foreground">{value}</dd></div>;
 }
@@ -150,14 +192,15 @@ function GroupedDayBody({ dateKey, milestones, onSelect, timezone }: {
   const industry = milestones.filter((milestone) => milestone.kind === "industry").length;
   const skill = milestones.filter((milestone) => milestone.kind === "skill").length;
   const planetary = milestones.filter((milestone) => milestone.kind === "planetary").length;
+  const events = milestones.filter((milestone) => milestone.kind === "event").length;
   return (
     <div className="space-y-2 px-3 pb-4">
-      <p className="text-xs font-semibold text-muted">{industry} Industry · {skill} Skill · {planetary} Planetary</p>
+      <p className="text-xs font-semibold text-muted">{industry} Industry · {skill} Skill · {planetary} Planetary · {events} Event</p>
       <div className="divide-y divide-border rounded border border-border">
         {milestones.map((milestone) => (
           <button aria-label={`Open ${milestone.title}`} className="flex w-full items-center gap-2 p-2 text-left hover:bg-panel-strong" key={milestone.id} onClick={() => onSelect(milestone)} type="button">
             <EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={32} />
-            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{milestone.title}</span><span className="text-[0.625rem] text-muted">{formatTime(milestone.occursAt, timezone)} · {milestone.characterName}</span></span>
+            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{milestone.title}</span><span className="text-[0.625rem] text-muted">{formatTime(milestone.occursAt, timezone)} · {milestoneCharacterSummary(milestone)}</span></span>
           </button>
         ))}
       </div>

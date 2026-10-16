@@ -54,6 +54,7 @@ function entry(overrides: Partial<CharacterRosterEntry> = {}): CharacterRosterEn
     ],
     trainingObservedAt: null,
     trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
     manufacturingActiveJobs: 0,
     manufacturingMaxJobs: null,
     reactionActiveJobs: 0,

@@ -22,9 +22,9 @@ test("renders twelve accessible month buttons in calendar order", () => {
   render(<CalendarYearView {...props} />);
   const buttons = screen.getAllByRole("button");
   expect(buttons).toHaveLength(12);
-  expect(buttons[0]).toHaveAccessibleName("January 2026, 1 Industry, 0 Skill, 0 Planetary");
-  expect(buttons[9]).toHaveAccessibleName("October 2026, 1 Industry, 1 Skill, 0 Planetary");
-  expect(buttons[11]).toHaveAccessibleName("December 2026, 0 Industry, 0 Skill, 0 Planetary");
+  expect(buttons[0]).toHaveAccessibleName("January 2026, 1 Industry, 0 Skill, 0 Planetary, 0 Event");
+  expect(buttons[9]).toHaveAccessibleName("October 2026, 1 Industry, 1 Skill, 0 Planetary, 0 Event");
+  expect(buttons[11]).toHaveAccessibleName("December 2026, 0 Industry, 0 Skill, 0 Planetary, 0 Event");
 });
 
 test("renders Monday-first real month days with mixed type markers", () => {

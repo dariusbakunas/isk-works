@@ -55,6 +55,7 @@ function detailFixture(overrides: Partial<CharacterDetail> = {}): CharacterDetai
     ],
     trainingObservedAt: new Date().toISOString(),
     trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
     manufacturingActiveJobs: 8,
     manufacturingMaxJobs: 10,
     reactionActiveJobs: 0,

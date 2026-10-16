@@ -2,6 +2,7 @@ import type { CalendarMilestone } from "../../api/calendar";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { CalendarEmptyState } from "./calendar-empty-state";
 import { dateKey, formatDateLabel, formatTime, isToday, weekDateKeys, type CalendarTimezone } from "./calendar-dates";
+import { eventEndsAt, milestoneCharacterSummary } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
 
 export function CalendarWeekView({
@@ -44,20 +45,29 @@ export function CalendarWeekView({
                   const presentation = presentCalendarMilestone(milestone);
                   const Icon = presentation.icon;
                   const triggerId = `week-milestone-${milestone.id}`;
+                  // An event with a duration is a block spanning its time,
+                  // taller the longer it runs; everything else is a point.
+                  const endsAt = milestone.kind === "event" ? eventEndsAt(milestone) : null;
+                  const time = endsAt
+                    ? `${formatTime(milestone.occursAt, timezone)} – ${formatTime(endsAt, timezone)}`
+                    : formatTime(milestone.occursAt, timezone);
+                  const spanMinutes = milestone.kind === "event" && endsAt ? Math.min(milestone.durationMinutes, 480) : 0;
                   return (
                     <button
-                      aria-label={`${milestone.title}, ${presentation.activityLabel} for ${milestone.characterName}, ${formatTime(milestone.occursAt, timezone)}`}
+                      aria-label={`${milestone.title}, ${presentation.activityLabel} for ${milestoneCharacterSummary(milestone)}, ${time}`}
                       aria-pressed={selectedMilestoneId === milestone.id}
-                      className={`iw-calendar-week-card iw-calendar-week-card-${presentation.tone}`}
+                      className={`iw-calendar-week-card iw-calendar-week-card-${presentation.tone}${endsAt ? " iw-calendar-week-card-block" : ""}`}
                       data-calendar-trigger={triggerId}
-                      data-past={new Date(milestone.occursAt) < now}
+                      data-duration-minutes={endsAt ? spanMinutes : undefined}
+                      data-past={(endsAt ?? new Date(milestone.occursAt)) < now}
                       key={milestone.id}
                       onClick={() => onSelectMilestone(milestone, triggerId)}
+                      style={endsAt ? { minHeight: `${3.5 + spanMinutes / 60}rem` } : undefined}
                       type="button"
                     >
-                      <time>{formatTime(milestone.occursAt, timezone)}</time>
+                      <time>{time}</time>
                       <span className="iw-calendar-week-card-title"><Icon aria-hidden="true" /> <span>{milestone.title}</span></span>
-                      <span className="iw-calendar-week-card-character"><EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={16} /><span>{milestone.characterName}</span></span>
+                      <span className="iw-calendar-week-card-character"><EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={16} /><span>{milestoneCharacterSummary(milestone)}</span></span>
                     </button>
                   );
                 }) : <span aria-hidden="true" className="iw-calendar-week-empty-day">—</span>}

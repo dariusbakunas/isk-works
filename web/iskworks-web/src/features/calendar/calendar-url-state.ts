@@ -1,6 +1,6 @@
 import { dateKey, type CalendarTimezone } from "./calendar-dates";
 
-export type CalendarTypeFilter = "all" | "industry" | "skill" | "planetary";
+export type CalendarTypeFilter = "all" | "industry" | "skill" | "planetary" | "event";
 export type CalendarView = "month" | "week" | "year";
 
 export interface CalendarUrlState {
@@ -30,7 +30,7 @@ export function parseCalendarUrlState(params: URLSearchParams, now = new Date())
   return {
     view,
     date: parseDate(params.get("date")) ?? dateKey(now, timezone),
-    type: type === "industry" || type === "skill" || type === "planetary" ? type : "all",
+    type: type === "industry" || type === "skill" || type === "planetary" || type === "event" ? type : "all",
     characters,
     timezone,
   };

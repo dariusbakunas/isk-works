@@ -29,11 +29,11 @@ test("summarizes a grouped day, drills into a row, returns Back, and closes", ()
   const onClose = vi.fn();
   render(<CalendarInspector onClose={onClose} selection={{ kind: "day", dateKey: "2026-10-02", milestones }} timezone="eve" />);
   expect(screen.getByRole("heading", { name: "Friday, October 2, 2026" })).toBeInTheDocument();
-  expect(screen.getByText("3 Industry · 2 Skill · 0 Planetary")).toBeInTheDocument();
+  expect(screen.getByText("3 Industry · 2 Skill · 0 Planetary · 0 Event")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Open Scimitar/ }));
   expect(screen.getByRole("heading", { name: "Scimitar" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back to Friday, October 2, 2026" }));
-  expect(screen.getByText("3 Industry · 2 Skill · 0 Planetary")).toBeInTheDocument();
+  expect(screen.getByText("3 Industry · 2 Skill · 0 Planetary · 0 Event")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close calendar inspector" }));
   expect(onClose).toHaveBeenCalledOnce();
 });
