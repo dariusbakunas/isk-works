@@ -172,7 +172,24 @@ export function BuildStagesView({
     ),
   });
 
-  const nodesById = new Map<string, ExecutionNode>(plan?.nodes.map((node) => [node.id, node]) ?? []);
+  // An Epic's Plan lists remaining work by default: steps whose ticket is
+  // done are hidden until "Show completed steps" is on.
+  const [showCompleted, setShowCompletedState] = useState(rememberedShowCompleted);
+  function setShowCompleted(next: boolean) {
+    rememberShowCompleted(next);
+    setShowCompletedState(next);
+    if (!next && selection?.kind === "production" && epic?.nodes[selection.nodeId]?.ticketStatus === "complete") {
+      setSelection(null);
+    }
+  }
+  const hideCompleted = epic !== null && !showCompleted;
+  const completedCount = epic
+    ? (plan?.nodes.filter((node) => epic.nodes[node.id]?.ticketStatus === "complete").length ?? 0)
+    : 0;
+  const visibleNodes = (plan?.nodes ?? []).filter(
+    (node) => !hideCompleted || epic?.nodes[node.id]?.ticketStatus !== "complete",
+  );
+  const nodesById = new Map<string, ExecutionNode>(visibleNodes.map((node) => [node.id, node]));
   // Root always holds the unique maximum stage (proven by the backend's own
   // stage algorithm: every other operation is strictly less deep), so the
   // LAST entry in the already-ordered `stages` array is always exactly the
@@ -230,6 +247,20 @@ export function BuildStagesView({
           ) : null}
 
           {plan.warnings.length > 0 ? <StageWarningsBanner warnings={plan.warnings} /> : null}
+
+          {epic && completedCount > 0 ? (
+            <label className="mb-3 flex w-fit items-center gap-2 text-xs text-muted">
+              <input
+                checked={showCompleted}
+                onChange={(event) => setShowCompleted(event.target.checked)}
+                type="checkbox"
+              />
+              Show completed steps
+              {!showCompleted ? (
+                <span className="text-[11px]">({completedCount.toLocaleString()} hidden)</span>
+              ) : null}
+            </label>
+          ) : null}
 
           {plan.acquisitions.length > 0 ? (
             <AcquisitionSection
@@ -303,6 +334,27 @@ export function BuildStagesView({
       )}
     </section>
   );
+}
+
+const SHOW_COMPLETED_KEY = "iskworks:plan-show-completed";
+
+// Browser storage can be unavailable (private mode, blocked site data):
+// remembering is a convenience, never required.
+function rememberedShowCompleted(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_COMPLETED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function rememberShowCompleted(show: boolean) {
+  try {
+    if (show) window.localStorage.setItem(SHOW_COMPLETED_KEY, "true");
+    else window.localStorage.removeItem(SHOW_COMPLETED_KEY);
+  } catch {
+    /* not remembered */
+  }
 }
 
 function nodeList(stage: ExecutionStage, nodesById: Map<string, ExecutionNode>): ExecutionNode[] {
