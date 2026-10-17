@@ -150,11 +150,46 @@ function rowFor(id: string): HTMLElement {
 
 describe("BuildStagesView with an Epic selected", () => {
   beforeEach(() => {
+    // Completed steps are shown here unless a test says otherwise.
+    window.localStorage.setItem("iskworks:plan-show-completed", "true");
     getOrderExecutionPlan.mockResolvedValue(epicPlan());
     getOrder.mockResolvedValue(DETAIL);
   });
   afterEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("hides completed steps by default and shows them on request", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
+
+    expect(await screen.findByRole("table", { name: "Final Production" })).toBeInTheDocument();
+    // The only Stage 1 step is done, so the whole stage is gone.
+    expect(document.querySelector('tr[data-row-key="reaction"]')).toBeNull();
+    expect(screen.queryByRole("table", { name: "Stage 1" })).not.toBeInTheDocument();
+    expect(screen.getByText("(1 hidden)")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: /Show completed steps/ }));
+
+    expect(within(rowFor("reaction")).getByText("T-7 · Done")).toBeInTheDocument();
+    expect(window.localStorage.getItem("iskworks:plan-show-completed")).toBe("true");
+
+    await user.click(screen.getByRole("checkbox", { name: /Show completed steps/ }));
+    expect(document.querySelector('tr[data-row-key="reaction"]')).toBeNull();
+    expect(window.localStorage.getItem("iskworks:plan-show-completed")).toBeNull();
+  });
+
+  it("offers no toggle when no step is done", async () => {
+    const plan = epicPlan();
+    plan.epic.nodes.reaction = { ...plan.epic.nodes.reaction, ticketStatus: "inProgress" };
+    getOrderExecutionPlan.mockResolvedValue(plan);
+    render(<BuildStagesView active editor={editorStub()} epicId="epic-1" />);
+
+    await screen.findByRole("table", { name: "Final Production" });
+    expect(rowFor("reaction")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Show completed steps/ })).not.toBeInTheDocument();
   });
 
   it("renders the Epic's frozen plan in the Plan's own layout", async () => {
