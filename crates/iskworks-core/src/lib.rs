@@ -3,6 +3,7 @@ mod application;
 mod assets;
 mod auth;
 mod blueprint;
+mod blueprint_library;
 mod build;
 pub mod build_cost;
 pub mod build_graph;
@@ -52,6 +53,7 @@ pub use auth::{
     SESSION_TTL_DAYS,
 };
 pub use blueprint::*;
+pub use blueprint_library::*;
 pub use build::{
     BuildPlan, BuildPlanningError, BuildPlanningService, ReactionPlan, ReactionPlanningError,
     ReactionPlanningService,
