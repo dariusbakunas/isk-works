@@ -2308,3 +2308,36 @@ describe("Create Build from a library blueprint", () => {
     expect(picker).not.toHaveTextContent(/30 licensed runs/);
   });
 });
+
+describe("Builds section tabs", () => {
+  test("Plans and Blueprints are tabs of Builds, and Blueprints is not read as a build id", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+      if (url.endsWith("/api/builds")) return mockResponse([]);
+      if (url.includes("/api/industry/blueprints/filters")) return mockResponse({ categories: [], groups: [], characters: [], locations: [] });
+      if (url.includes("/api/industry/blueprints")) return mockResponse({
+        rows: [],
+        total: 0,
+        summary: { originals: 0, copies: 0, characters: 0, latestObservedAt: null },
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    renderApp("/builds");
+    const tabs = await screen.findByRole("navigation", { name: "Builds views" });
+    expect(within(tabs).getByRole("link", { name: "Plans" })).toHaveAttribute("aria-current", "page");
+
+    await user.click(within(tabs).getByRole("link", { name: "Blueprints" }));
+
+    expect(await screen.findByText(/No synced blueprints yet/)).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/builds/blueprints");
+    expect(within(screen.getByRole("navigation", { name: "Builds views" })).getByRole("link", { name: "Blueprints" }))
+      .toHaveAttribute("aria-current", "page");
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/builds/blueprints"), expect.anything());
+  });
+});

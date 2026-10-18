@@ -41,6 +41,7 @@ import {
 } from "./features/industry/builds/build-worksheet-editor";
 import { BuildWorkspacePage } from "./features/industry/builds/build-workspace-page";
 import { BuildsPage } from "./features/industry/builds/builds-page";
+import { BlueprintsPage } from "./features/industry/blueprints/blueprints-page";
 import { BoardPage } from "./features/board/board-page";
 import { CalendarPage } from "./features/calendar/calendar-page";
 import { FacilitiesPage } from "./features/industry/facilities/facilities-page";
@@ -351,6 +352,7 @@ function ProtectedShell({
         <Route path="/opportunities" element={<OpportunitiesPage />} />
         <Route path="/builds" element={<BuildsPage />} />
         <Route path="/builds/new" element={<CreateBuildPage />} />
+        <Route path="/builds/blueprints" element={<BlueprintsPage />} />
         <Route
           path="/builds/:rootBuildId/producers/:producerBuildId"
           element={<BuildWorkspacePage />}
