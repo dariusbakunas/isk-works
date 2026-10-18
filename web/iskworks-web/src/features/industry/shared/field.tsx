@@ -12,6 +12,7 @@ interface FieldProps {
   max?: number;
   step?: number;
   disabled?: boolean;
+  placeholder?: string;
   className?: string;
 }
 
@@ -29,6 +30,7 @@ export function Field({
   max,
   step,
   disabled = false,
+  placeholder,
   className = "",
 }: FieldProps) {
   return (
@@ -53,6 +55,7 @@ export function Field({
           max={max}
           step={step}
           disabled={disabled}
+          placeholder={placeholder}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onFocus={onFocus}
