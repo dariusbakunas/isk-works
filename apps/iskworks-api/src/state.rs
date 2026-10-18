@@ -54,6 +54,7 @@ pub struct AppState {
     finance_repository: Option<Arc<iskworks_storage::PgFinanceRepository>>,
     finance_analytics_repository: Option<Arc<dyn iskworks_core::FinanceAnalyticsRepository>>,
     asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
+    blueprint_library_repository: Option<Arc<dyn iskworks_core::BlueprintLibraryRepository>>,
     pub(crate) market_repository: Option<Arc<dyn MarketRepository>>,
     adjusted_price_repository: Option<Arc<dyn AdjustedPriceRepository>>,
     public_market_service: Option<Arc<PublicMarketService>>,
@@ -89,6 +90,7 @@ impl AppState {
             finance_repository: None,
             finance_analytics_repository: None,
             asset_browser_repository: None,
+            blueprint_library_repository: None,
             market_repository: None,
             adjusted_price_repository: None,
             public_market_service: None,
@@ -251,6 +253,15 @@ impl AppState {
         repository: Arc<iskworks_storage::PgAssetBrowserRepository>,
     ) -> Self {
         self.asset_browser_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_blueprint_library_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::BlueprintLibraryRepository>,
+    ) -> Self {
+        self.blueprint_library_repository = Some(repository);
         self
     }
 
@@ -689,6 +700,16 @@ impl AppState {
         self.asset_browser_repository.clone().ok_or_else(|| {
             ApiError::Inventory(InventoryError::Persistence(
                 "Asset browser persistence is unavailable.".to_string(),
+            ))
+        })
+    }
+
+    pub(crate) fn blueprint_library_repository(
+        &self,
+    ) -> Result<Arc<dyn iskworks_core::BlueprintLibraryRepository>, ApiError> {
+        self.blueprint_library_repository.clone().ok_or_else(|| {
+            ApiError::Industry(IndustryError::Persistence(
+                "Blueprint library persistence is unavailable.".to_string(),
             ))
         })
     }

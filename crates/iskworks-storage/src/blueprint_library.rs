@@ -480,18 +480,20 @@ mod tests {
         sqlx::query("INSERT INTO market_location_names (workspace_id,location_id,location_name,owner_id,solar_system_id,resolved_by_connection_id,resolved_at,updated_at) VALUES ($1,60003760,'Jita IV - Moon 4',1000125,30000142,$2,$3,$3)")
             .bind(workspace_id.0).bind(connection_id).bind(now).execute(&mut *tx).await.expect("location");
 
-        let observations: [(
+        /// (id, workspace, owner, item, type, name, kind, ME, TE, runs)
+        type Observation<'a> = (
             Uuid,
             Uuid,
             Uuid,
             i64,
             i64,
-            &str,
-            &str,
+            &'a str,
+            &'a str,
             i16,
             i16,
             Option<i64>,
-        ); 6] = [
+        );
+        let observations: [Observation; 6] = [
             (
                 Uuid::new_v4(),
                 workspace_id.0,

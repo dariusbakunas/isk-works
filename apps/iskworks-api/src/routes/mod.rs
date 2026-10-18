@@ -1,6 +1,7 @@
 pub(crate) mod admin;
 pub(crate) mod assets;
 pub(crate) mod auth;
+pub(crate) mod blueprint_library;
 pub(crate) mod builds;
 pub(crate) mod calendar;
 pub(crate) mod characters;
