@@ -19,6 +19,7 @@ use uuid::Uuid;
 mod admin;
 mod assets;
 mod auth;
+mod blueprint_library;
 mod cascade;
 mod erase;
 mod esi;
@@ -39,6 +40,7 @@ pub use auth::{
     AuthPurgeOutcome, OwnerHashCheck, PendingLoginAuthorization, PgAuthMaintenance,
     PgSessionRepository, PgUserRepository,
 };
+pub use blueprint_library::PgBlueprintLibraryRepository;
 pub use esi::{
     EsiObservationPruneOutcome, FacilityLabel, PendingAuthorization, PgEsiRepository,
     StoredRefreshToken,

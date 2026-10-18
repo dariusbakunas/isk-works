@@ -169,6 +169,7 @@ pub fn build_router(state: AppState) -> Router {
     let authenticated_router = Router::new()
         .route("/api/esi/status", get(esi_status))
         .merge(routes::assets::router())
+        .merge(routes::blueprint_library::router())
         .merge(routes::workspace::router())
         .merge(routes::sde::router())
         .merge(routes::builds::router())
