@@ -54,6 +54,12 @@ const emptyFacility: FacilityInput = {
   rigs: [],
 };
 
+// Mousedown inside a suggestion list would blur its input, which closes the
+// list before the option's click lands; keeping focus lets the click through.
+function keepInputFocus(event: React.MouseEvent) {
+  event.preventDefault();
+}
+
 const securityLabels: Record<SecurityClass, string> = {
   highSec: "High sec",
   lowSec: "Low sec",
@@ -136,6 +142,7 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
   const [structureNeedsReconnection, setStructureNeedsReconnection] = useState(false);
   const [structureTypeOpen, setStructureTypeOpen] = useState(false);
   const [assumptionsOpen, setAssumptionsOpen] = useState(false);
+  const [solarSystemOpen, setSolarSystemOpen] = useState(false);
   const [costIndexState, setCostIndexState] = useState<{
     status: "idle" | "loading" | "esi" | "manual" | "unavailable";
     fetchedAt?: string;
@@ -379,10 +386,11 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                           }));
                         }}
                         onFocus={() => setStructureTypeOpen(true)}
+                        onBlur={() => setStructureTypeOpen(false)}
                       />
                       {structureTypeLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
                       {!structureTypeLookup.searching && structureTypeOpen && !form.structureTypeId ? (
-                        <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                        <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl" onMouseDown={keepInputFocus}>
                           {structureTypeLookup.results.length > 0 ? structureTypeLookup.results.map((type) => (
                             <button
                               className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
@@ -421,6 +429,7 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                         value={form.solarSystemName}
                         onChange={(value) => {
                           setCostIndexState({ status: "idle" });
+                          setSolarSystemOpen(true);
                           setForm((current) => ({
                             ...current,
                             solarSystemName: value,
@@ -428,10 +437,12 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                             manualSystemCostIndex: null,
                           }));
                         }}
+                        onFocus={() => setSolarSystemOpen(true)}
+                        onBlur={() => setSolarSystemOpen(false)}
                   />
                   {solarSystemLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
-                  {!solarSystemLookup.searching && !form.solarSystemId && form.solarSystemName.trim().length >= 2 ? (
-                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                  {!solarSystemLookup.searching && solarSystemOpen && !form.solarSystemId && form.solarSystemName.trim().length >= 2 ? (
+                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl" onMouseDown={keepInputFocus}>
                       {solarSystemLookup.results.length > 0 ? solarSystemLookup.results.map((system) => (
                         <button
                           className="block w-full px-3 py-2 text-left text-sm hover:bg-panel-strong"
@@ -554,10 +565,11 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                         if (pastedId) void resolveStructureById(pastedId);
                       }}
                       onFocus={() => setKnownStructureOpen(true)}
+                      onBlur={() => setKnownStructureOpen(false)}
                     />
                     {knownStructureLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching resolved ESI structures...</p> : null}
                     {!knownStructureLookup.searching && knownStructureOpen && !form.structureId ? (
-                      <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                      <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl" onMouseDown={keepInputFocus}>
                         {knownStructureLookup.results.length > 0 ? knownStructureLookup.results.map((structure) => (
                           <button
                             className="block w-full px-3 py-2 text-left hover:bg-panel-strong"
@@ -622,10 +634,11 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                       setForm((current) => ({ ...current, structureId: null }));
                     }}
                     onFocus={() => setStationOpen(true)}
+                    onBlur={() => setStationOpen(false)}
                   />
                   {stationLookup.searching ? <p className="iw-muted mt-1 text-xs">Searching active SDE...</p> : null}
                   {!stationLookup.searching && stationOpen && !form.structureId ? (
-                    <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl">
+                    <div className="absolute z-40 mt-1 max-h-56 w-full overflow-y-auto border border-border bg-panel shadow-xl" onMouseDown={keepInputFocus}>
                       {stationLookup.results.length > 0 ? stationLookup.results.map((station) => (
                         <button
                           className="block w-full px-3 py-2 text-left hover:bg-panel-strong"

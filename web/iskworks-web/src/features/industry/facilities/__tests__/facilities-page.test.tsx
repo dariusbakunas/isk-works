@@ -112,6 +112,33 @@ describe("FacilitiesPage", () => {
     expect(within(assumptions).queryByLabelText("Facility tax %")).not.toBeInTheDocument();
   });
 
+  test("the structure suggestions close when focus leaves the field, and still accept a click", async () => {
+    industryApi.searchKnownStructures.mockResolvedValue([{
+      structureId: 1_035_466_617_946,
+      structureName: "1DQ1-A - Raitaru",
+      structureTypeId: null,
+      structureTypeName: "Raitaru",
+      solarSystemId: 30_004_759,
+      solarSystemName: "1DQ1-A",
+      securityClass: "nullSec",
+    }]);
+    industryApi.getSystemCostIndex.mockRejectedValue(new Error("offline"));
+    const user = userEvent.setup();
+    render(<FacilitiesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New Facility" }));
+    await screen.findByRole("dialog", { name: "New Facility" });
+
+    await user.click(screen.getByLabelText("Structure"));
+    expect(await screen.findByRole("button", { name: /1DQ1-A - Raitaru/ }, { timeout: 1000 })).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Name"));
+    expect(screen.queryByRole("button", { name: /1DQ1-A - Raitaru/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Structure"));
+    await user.click(await screen.findByRole("button", { name: /1DQ1-A - Raitaru/ }, { timeout: 1000 }));
+    expect(screen.getByLabelText("Structure")).toHaveValue("1DQ1-A - Raitaru");
+  });
+
   test("a manual facility shows every assumption inline", async () => {
     const user = userEvent.setup();
     render(<FacilitiesPage />);
