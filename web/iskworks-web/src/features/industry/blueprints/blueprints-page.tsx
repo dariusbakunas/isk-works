@@ -33,14 +33,14 @@ import {
 import { useBlueprintLibrary } from "./use-blueprint-library";
 
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
-  { key: "blueprint", label: "Blueprint", width: "minmax(14rem,2fr)", sort: "blueprint" },
-  { key: "product", label: "Product", width: "minmax(9rem,1.2fr)", sort: "product", hideBelow: "tablet" },
-  { key: "kind", label: "Kind", width: "4.5rem", sort: "kind" },
-  { key: "me", label: "ME", width: "3rem", sort: "me", numeric: true },
-  { key: "te", label: "TE", width: "3rem", sort: "te", numeric: true },
-  { key: "runs", label: "Runs", width: "4rem", sort: "runs", numeric: true },
-  { key: "character", label: "Character", width: "minmax(7rem,1fr)", sort: "character", hideBelow: "desktop" },
-  { key: "location", label: "Location", width: "minmax(10rem,1.5fr)", sort: "location", hideBelow: "desktop" },
+  { key: "blueprint", label: "Blueprint", width: "minmax(240px,1fr)", sort: "blueprint" },
+  { key: "product", label: "Product", width: "180px", sort: "product", hideBelow: "tablet" },
+  { key: "kind", label: "Kind", width: "64px", sort: "kind" },
+  { key: "me", label: "ME", width: "48px", sort: "me", numeric: true },
+  { key: "te", label: "TE", width: "48px", sort: "te", numeric: true },
+  { key: "runs", label: "Runs", width: "64px", sort: "runs", numeric: true },
+  { key: "character", label: "Character", width: "140px", sort: "character", hideBelow: "desktop" },
+  { key: "location", label: "Location", width: "220px", sort: "location", hideBelow: "desktop" },
 ];
 
 const KIND_OPTIONS: Array<{ value: BlueprintLibraryKind; label: string }> = [
@@ -141,7 +141,7 @@ export function BlueprintsPage() {
             </span>
           </div>
           {library.error ? <div className="border-b border-border bg-destructive/10 px-3 py-1.5 text-destructive" role="alert">{library.error}</div> : null}
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div aria-busy={library.loading} className={`min-h-0 flex-1 overflow-auto transition-opacity ${library.loading && library.rows.length > 0 ? "opacity-60" : ""}`}>
             {library.loading && library.rows.length === 0 ? (
               <State>Loading blueprints...</State>
             ) : ownsNothing ? (
@@ -212,7 +212,11 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
       </span>
     ),
     product: <span className="block truncate" title={row.productGroupName ?? undefined}>{row.productName ?? "—"}</span>,
-    kind: <Badge square tone={row.kind === "original" ? "primary" : row.kind === "copy" ? "batch" : "muted"}>{row.kind === "original" ? "BPO" : row.kind === "copy" ? "BPC" : "?"}</Badge>,
+    kind: (
+      <span title={row.kind === "original" ? "Original" : row.kind === "copy" ? "Copy" : "ESI did not say whether this is an original or a copy"}>
+        <Badge square tone={row.kind === "original" ? "primary" : row.kind === "copy" ? "batch" : "muted"}>{row.kind === "original" ? "BPO" : row.kind === "copy" ? "BPC" : "?"}</Badge>
+      </span>
+    ),
     me: row.materialEfficiency,
     te: row.timeEfficiency,
     runs: <span title={row.kind === "original" ? "Unlimited runs" : undefined}>{formatRuns(row)}</span>,
