@@ -17,6 +17,7 @@ const industryApi = vi.hoisted(() => ({
   searchKnownStructures: vi.fn(),
   searchNpcStations: vi.fn(),
   searchSolarSystems: vi.fn(),
+  resolveKnownStructure: vi.fn(),
 }));
 
 const sdeApi = vi.hoisted(() => ({
@@ -93,6 +94,69 @@ describe("FacilitiesPage", () => {
     sdeApi.searchStructureTypes.mockResolvedValue([]);
     sdeApi.searchStructureRigs.mockResolvedValue([]);
     sdeApi.searchReactionRigs.mockResolvedValue([]);
+  });
+
+  test("a new facility defaults to an Upwell structure with the derived assumptions collapsed", async () => {
+    const user = userEvent.setup();
+    render(<FacilitiesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New Facility" }));
+    await screen.findByRole("dialog", { name: "New Facility" });
+
+    expect(screen.getByLabelText("Kind")).toHaveValue("upwellStructure");
+    expect(screen.getByText(/paste it here/)).toBeInTheDocument();
+    const assumptions = screen.getByText("Location, bonuses & costs").closest("details")!;
+    expect(assumptions).not.toHaveAttribute("open");
+    expect(within(assumptions).getByLabelText("Structure material reduction %")).toBeInTheDocument();
+    // Facility tax is never derived, so it stays outside the collapsed section.
+    expect(within(assumptions).queryByLabelText("Facility tax %")).not.toBeInTheDocument();
+  });
+
+  test("a manual facility shows every assumption inline", async () => {
+    const user = userEvent.setup();
+    render(<FacilitiesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New Facility" }));
+    await screen.findByRole("dialog", { name: "New Facility" });
+    await user.selectOptions(screen.getByLabelText("Kind"), "manual");
+
+    expect(screen.queryByText("Location, bonuses & costs")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Structure material reduction %").closest("details")).toBeNull();
+  });
+
+  test("pasting a Show Info link resolves the structure and fills in its details", async () => {
+    industryApi.resolveKnownStructure.mockResolvedValue({
+      configured: true,
+      structure: {
+        structureId: 1_035_466_617_946,
+        structureName: "1DQ1-A - Raitaru",
+        structureTypeId: 35_825,
+        structureTypeName: "Raitaru",
+        solarSystemId: 30_004_759,
+        solarSystemName: "1DQ1-A",
+        securityClass: "nullSec",
+      },
+      needsReconnection: false,
+      eligibleCharacterCount: 1,
+      warnings: [],
+    });
+    sdeApi.getStructureManufacturingModifiers.mockResolvedValue({
+      materialReductionPercent: "1",
+      timeReductionPercent: "15",
+      jobCostReductionPercent: "3",
+    });
+    industryApi.getSystemCostIndex.mockRejectedValue(new Error("offline"));
+    const user = userEvent.setup();
+    render(<FacilitiesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New Facility" }));
+    await screen.findByRole("dialog", { name: "New Facility" });
+    await user.click(screen.getByLabelText("Structure"));
+    await user.paste("<url=showinfo:35825//1035466617946>1DQ1-A - Raitaru</url>");
+
+    expect(industryApi.resolveKnownStructure).toHaveBeenCalledWith(1_035_466_617_946);
+    expect(await screen.findByDisplayValue("1DQ1-A - Raitaru")).toBeInTheDocument();
+    expect(await screen.findByText("Raitaru · 1DQ1-A · Null sec · ME 1% · TE 15% · job cost 3%")).toBeInTheDocument();
   });
 
   test("switching role to reaction clears captured rigs and resets structure bonus fields", async () => {
