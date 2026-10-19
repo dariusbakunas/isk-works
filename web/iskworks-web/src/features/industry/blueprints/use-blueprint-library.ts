@@ -4,6 +4,7 @@ import {
   getBlueprintLibraryFacets,
   listBlueprintLibrary,
   type BlueprintLibraryFacets,
+  type BlueprintLibraryPage,
   type BlueprintLibraryQuery,
   type BlueprintLibraryRow,
   type BlueprintLibrarySummary,
@@ -13,6 +14,19 @@ import { apiMessage } from "../shared/api-error";
 // A workspace rarely owns more than a few hundred blueprints, so the first
 // page usually is everything; "Load more" covers the rest.
 export const BLUEPRINT_PAGE_SIZE = 500;
+
+async function fetchAllPages(query: BlueprintLibraryQuery): Promise<BlueprintLibraryPage> {
+  const first = await listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 });
+  const rows = [...first.rows];
+  let total = first.total;
+  while (rows.length < total) {
+    const next = await listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: rows.length });
+    if (next.rows.length === 0) break;
+    rows.push(...next.rows);
+    total = next.total;
+  }
+  return { ...first, rows, total };
+}
 
 export interface BlueprintLibraryState {
   rows: BlueprintLibraryRow[];
@@ -25,7 +39,11 @@ export interface BlueprintLibraryState {
   loadMore: () => void;
 }
 
-export function useBlueprintLibrary(query: BlueprintLibraryQuery): BlueprintLibraryState {
+/**
+ * `loadAll` fetches every page before showing any: grouping happens on the
+ * client, and a group built from a partial page under-reports its rows.
+ */
+export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = false): BlueprintLibraryState {
   const [rows, setRows] = useState<BlueprintLibraryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<BlueprintLibrarySummary | null>(null);
@@ -46,7 +64,7 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery): BlueprintLibr
     const current = ++sequence.current;
     setLoading(true);
     setError(null);
-    listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 })
+    (loadAll ? fetchAllPages(query) : listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 }))
       .then((page) => {
         if (current !== sequence.current) return;
         setRows(page.rows);
@@ -60,7 +78,7 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery): BlueprintLibr
         if (current === sequence.current) setLoading(false);
       });
     // `queryKey` stands in for `query`, which callers rebuild every render.
-  }, [queryKey]);
+  }, [queryKey, loadAll]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || rows.length >= total) return;

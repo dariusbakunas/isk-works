@@ -214,12 +214,24 @@ describe("Blueprints page", () => {
     expect(screen.getByRole("link", { name: "Characters" })).toHaveAttribute("href", "/characters");
   });
 
-  test("Load more fetches the next page", async () => {
-    const user = userEvent.setup();
+  test("grouped views load every page, so no group is partial", async () => {
     vi.mocked(listBlueprintLibrary)
       .mockResolvedValueOnce(page(rows.slice(0, 2), 4))
       .mockResolvedValueOnce(page(rows.slice(2), 4));
     renderPage();
+
+    expect(await screen.findByText("Mystery Blueprint")).toBeInTheDocument();
+    expect(listBlueprintLibrary).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 2 }));
+    expect(screen.getByText("4 of 4 blueprints")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+  });
+
+  test("Load more fetches the next page when ungrouped", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listBlueprintLibrary)
+      .mockResolvedValueOnce(page(rows.slice(0, 2), 4))
+      .mockResolvedValueOnce(page(rows.slice(2), 4));
+    renderPage("/builds/blueprints?groupBy=none");
 
     await user.click(await screen.findByRole("button", { name: "Load more" }));
 
