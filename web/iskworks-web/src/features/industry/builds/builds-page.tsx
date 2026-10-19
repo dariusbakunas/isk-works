@@ -24,6 +24,7 @@ import {
 } from "./build-library-filters";
 import { BuildLibraryCard } from "./components/build-library-card";
 import { BuildLibraryToolbar } from "./components/build-library-toolbar";
+import { BuildsSectionTabs } from "./builds-section-tabs";
 
 type AsyncState<T> =
   | { status: "loading" }
@@ -73,6 +74,7 @@ export function BuildsPage() {
       <PageHeader eyebrow="Production planning" title="Builds">
         Durable build intentions, captured recipes, and retained planning assumptions.
       </PageHeader>
+      <BuildsSectionTabs className="-mt-1 mb-3 border-b border-border" />
 
       {state.status === "loading" ? <Panel>Loading Builds...</Panel> : null}
       {state.status === "error" ? (

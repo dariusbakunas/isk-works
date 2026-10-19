@@ -2240,3 +2240,104 @@ function mockResponse(body: unknown, ok = true, status = 200) {
     json: async () => body,
   };
 }
+
+describe("Create Build from a library blueprint", () => {
+  function observation(id: string, kind: "original" | "copy", licensedRuns: number | null) {
+    return {
+      id,
+      workspaceId: "workspace-1",
+      ownerId: "owner-1",
+      ownerName: "Valka",
+      eveItemId: id === "original-1" ? 1001 : 1002,
+      blueprintTypeId: 6830,
+      blueprintName: "Rifter Blueprint",
+      kind,
+      materialEfficiency: 10,
+      timeEfficiency: 20,
+      licensedRuns,
+      locationId: 60003760,
+      locationFlag: "Hangar",
+      locationName: "Jita IV - Moon 4",
+      observedAt: "2026-07-27T16:00:00Z",
+      importedAt: "2026-07-27T16:00:00Z",
+    };
+  }
+
+  test("observationId preselects that blueprint over the default available pick", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+      if (url.endsWith("/api/sde")) return mockResponse({
+        configured: true,
+        active: {
+          importId: "import-1",
+          sourceVersion: "123456",
+          sourceLabel: "fixture.zip",
+          sourceChecksum: "abc",
+          completedAt: "2026-07-25T12:00:00Z",
+          counts: { types: 4, blueprints: 1, materialLines: 1, productLines: 1, skippedBlueprints: 0 },
+        },
+      });
+      if (url.includes("/api/blueprints/6830/plan")) return mockResponse({
+        blueprintTypeId: 6830,
+        blueprintName: "Rifter Blueprint",
+        runs: 1,
+        durationSeconds: 600,
+        materials: [{ typeId: 34, typeName: "Tritanium", quantityPerRun: 1000, totalQuantity: 1000 }],
+        products: [{ typeId: 5876, typeName: "Rifter", quantityPerRun: 1, totalQuantity: 1 }],
+      });
+      // Without observationId the 30-run copy would be the default pick.
+      if (url.includes("/api/industry/blueprints/observations")) return mockResponse([
+        observation("copy-1", "copy", 30),
+        observation("original-1", "original", null),
+      ]);
+      if (url.endsWith("/api/price-sources") || url.endsWith("/api/industry/facilities")) return mockResponse([]);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    renderApp("/builds/new?blueprintTypeId=6830&observationId=original-1");
+
+    await user.click(await screen.findByRole("button", { name: "Edit blueprint" }));
+    expect(await screen.findByRole("button", { name: "Use available blueprint" })).toHaveAttribute("aria-pressed", "true");
+    const picker = screen.getByRole("combobox", { name: "Available blueprint" });
+    expect(picker).toHaveTextContent(/Rifter Blueprint Original/);
+    expect(picker).not.toHaveTextContent(/30 licensed runs/);
+  });
+});
+
+describe("Builds section tabs", () => {
+  test("Plans and Blueprints are tabs of Builds, and Blueprints is not read as a build id", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+      if (url.endsWith("/api/builds")) return mockResponse([]);
+      if (url.includes("/api/industry/blueprints/filters")) return mockResponse({ categories: [], groups: [], characters: [], locations: [] });
+      if (url.includes("/api/industry/blueprints")) return mockResponse({
+        rows: [],
+        total: 0,
+        summary: { originals: 0, copies: 0, characters: 0, latestObservedAt: null },
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    renderApp("/builds");
+    const tabs = await screen.findByRole("navigation", { name: "Builds views" });
+    expect(within(tabs).getByRole("link", { name: "Plans" })).toHaveAttribute("aria-current", "page");
+
+    await user.click(within(tabs).getByRole("link", { name: "Blueprints" }));
+
+    expect(await screen.findByText(/No synced blueprints yet/)).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/builds/blueprints");
+    expect(within(screen.getByRole("navigation", { name: "Builds views" })).getByRole("link", { name: "Blueprints" }))
+      .toHaveAttribute("aria-current", "page");
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/builds/blueprints"), expect.anything());
+  });
+});

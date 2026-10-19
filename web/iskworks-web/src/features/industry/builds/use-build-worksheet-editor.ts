@@ -306,6 +306,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     routeBlueprintLoaded.current = true;
     const blueprintTypeId = Number(searchParams.get("blueprintTypeId"));
     if (!Number.isSafeInteger(blueprintTypeId) || blueprintTypeId <= 0) return;
+    const observationId = searchParams.get("observationId") ?? "";
 
     planBuild(blueprintTypeId, 1)
       .then((loadedRecipe) => {
@@ -322,7 +323,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
           groupName: null,
           published: true,
           manufacturingAvailable: true,
-        });
+        }, observationId);
       })
       .catch(() => setSearchParams({}, { replace: true }));
   }, [initialBuild, sdeReady, searchParams, setSearchParams]);
@@ -337,6 +338,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   async function selectProduct(
     kind: "manufacturing",
     result: BlueprintSearchResult,
+    preferredObservationId?: string,
   ): Promise<void>;
   async function selectProduct(
     kind: "reaction",
@@ -345,6 +347,9 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   async function selectProduct(
     kind: "manufacturing" | "reaction",
     result: BlueprintSearchResult | ReactionFormulaSearchResult,
+    // A specific owned blueprint to start from (the Blueprints library's
+    // "Plan build"); ignored when it is no longer listed for this type.
+    preferredObservationId = "",
   ) {
     const parsedRuns = parseRuns(runs);
     if (!parsedRuns) {
@@ -374,7 +379,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     }
     try {
       const observations = await listBlueprintObservations((result as BlueprintSearchResult).blueprintTypeId);
-      const availableBlueprint = selectAvailableBlueprint(observations, parsedRuns);
+      const availableBlueprint = selectAvailableBlueprint(observations, parsedRuns, preferredObservationId);
       setObservedBlueprints(observations);
       setSelectedObservationId(availableBlueprint?.id ?? "");
       setBlueprintMode(availableBlueprint ? "observedAsset" : "manual");
