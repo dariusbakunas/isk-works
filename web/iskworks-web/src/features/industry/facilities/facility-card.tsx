@@ -3,7 +3,11 @@ import { Building2, Pencil, Trash2 } from "lucide-react";
 import type { FacilityProfile } from "../../../api/industry";
 import { EveTypeImage } from "../../../components/eve-type-image";
 import { Badge } from "../../../components/primitives";
+import { WarningBadge } from "../../../components/warning-badge";
 import { effectiveFacilityReductionPercent, formatBonusPercent } from "./facility-bonus";
+import type { FacilityDefaultRoles } from "./facility-defaults-model";
+
+const VISIBLE_DEFAULT_CHIPS = 3;
 
 const KIND_LABELS: Record<FacilityProfile["kind"], string> = {
   upwellStructure: "Upwell",
@@ -31,12 +35,40 @@ function Bonus({ label, value }: { label: string; value: number }) {
   );
 }
 
+function DefaultFor({ roles }: { roles: FacilityDefaultRoles }) {
+  const shown = roles.targets.slice(0, VISIBLE_DEFAULT_CHIPS);
+  const hidden = roles.targets.length - shown.length;
+  return (
+    <div
+      aria-label={`Default for: ${roles.targets.join(", ")}`}
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
+      title={roles.targets.join(", ")}
+    >
+      <span className="iw-muted text-xs">Default for</span>
+      {shown.map((target) => (
+        <Badge key={target} tone="muted">{target}</Badge>
+      ))}
+      {hidden > 0 ? <Badge tone="muted">+{hidden}</Badge> : null}
+      {roles.coverageLost.length > 0 ? (
+        <WarningBadge
+          label="Rig coverage warnings"
+          warnings={roles.coverageLost.map(
+            (target) => `Default for ${target}, but its rigs no longer cover that target.`,
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function FacilityCard({
   profile,
+  defaultFor,
   onEdit,
   onDelete,
 }: {
   profile: FacilityProfile;
+  defaultFor?: FacilityDefaultRoles;
   onEdit: (profile: FacilityProfile) => void;
   onDelete: (profile: FacilityProfile) => void;
 }) {
@@ -81,6 +113,8 @@ export function FacilityCard({
       <p className="iw-muted min-w-0 truncate text-xs" title={meta || undefined}>
         {meta || "System not set"}
       </p>
+
+      {defaultFor && defaultFor.targets.length > 0 ? <DefaultFor roles={defaultFor} /> : null}
 
       {hasBonus ? (
         <div className="grid grid-cols-2 gap-2 border-t border-border pt-2">

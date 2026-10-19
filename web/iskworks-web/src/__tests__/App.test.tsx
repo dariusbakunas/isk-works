@@ -2341,3 +2341,36 @@ describe("Builds section tabs", () => {
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/builds/blueprints"), expect.anything());
   });
 });
+
+describe("Facilities section tabs", () => {
+  test("Defaults is a tab of Facilities", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+      if (url.endsWith("/api/industry/facilities")) return mockResponse([]);
+      if (url.endsWith("/api/industry/facility-defaults")) return mockResponse({
+        targets: [
+          { role: "manufacturing", filterId: 5, name: "Small T1 Ships", default: null, suggestion: null, status: "none" },
+          { role: "manufacturing", filterId: null, name: "Everything else", default: null, suggestion: null, status: "none" },
+        ],
+        bonuses: [],
+      });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    renderApp("/facilities");
+    const tabs = await screen.findByRole("navigation", { name: "Facilities views" });
+    expect(within(tabs).getByRole("link", { name: "Facilities" })).toHaveAttribute("aria-current", "page");
+
+    await user.click(within(tabs).getByRole("link", { name: "Defaults" }));
+
+    expect(await screen.findByText("Small T1 Ships")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/facilities/defaults");
+    expect(within(screen.getByRole("navigation", { name: "Facilities views" })).getByRole("link", { name: "Defaults" }))
+      .toHaveAttribute("aria-current", "page");
+  });
+});

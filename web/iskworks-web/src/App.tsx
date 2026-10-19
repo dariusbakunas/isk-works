@@ -45,6 +45,7 @@ import { BlueprintsPage } from "./features/industry/blueprints/blueprints-page";
 import { BoardPage } from "./features/board/board-page";
 import { CalendarPage } from "./features/calendar/calendar-page";
 import { FacilitiesPage } from "./features/industry/facilities/facilities-page";
+import { FacilityDefaultsPage } from "./features/industry/facilities/facility-defaults-page";
 import { FinanceWorkspace } from "./features/finance/finance-workspace";
 import { PriceSourceDetailPage } from "./features/industry/prices/price-source-detail-page";
 import {
@@ -370,6 +371,7 @@ function ProtectedShell({
         <Route path="/prices/new" element={<NewPriceSourcePage />} />
         <Route path="/prices/:priceSourceId" element={<PriceSourceDetailPage />} />
         <Route path="/facilities" element={<FacilitiesPage />} />
+        <Route path="/facilities/defaults" element={<FacilityDefaultsPage />} />
         <Route path="/planetary" element={<PlanetaryPage />} />
         <Route path="/finance/*" element={<FinanceWorkspace />} />
         {/* EVE character connection management lives on /characters; these
