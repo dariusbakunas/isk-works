@@ -28,8 +28,6 @@ struct BlueprintLibraryHttpQuery {
     location_ids: Option<String>,
     min_me: Option<u8>,
     min_te: Option<u8>,
-    #[serde(default)]
-    usable_only: bool,
     activity: Option<BlueprintActivity>,
     #[serde(default)]
     sort: BlueprintLibrarySort,
@@ -57,7 +55,6 @@ impl BlueprintLibraryHttpQuery {
             location_ids: parse_csv(self.location_ids.as_deref(), "location", parse_id)?,
             min_me: self.min_me,
             min_te: self.min_te,
-            usable_only: self.usable_only,
             activity: self.activity,
             sort: self.sort,
             order: self.order,

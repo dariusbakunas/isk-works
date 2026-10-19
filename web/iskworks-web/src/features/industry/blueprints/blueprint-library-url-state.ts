@@ -18,7 +18,6 @@ export interface BlueprintLibraryView {
   locationIds: number[];
   minMe: number | null;
   minTe: number | null;
-  usableOnly: boolean;
   activity: BlueprintLibraryActivity | null;
   sort: BlueprintLibrarySort;
   order: BlueprintLibraryOrder;
@@ -34,7 +33,6 @@ export const DEFAULT_VIEW: BlueprintLibraryView = {
   locationIds: [],
   minMe: null,
   minTe: null,
-  usableOnly: false,
   activity: null,
   sort: "blueprint",
   order: "asc",
@@ -77,7 +75,6 @@ export function parseBlueprintLibraryView(params: URLSearchParams): BlueprintLib
     locationIds: ids(params.get("locationIds")),
     minMe: bounded(params.get("minMe"), 10),
     minTe: bounded(params.get("minTe"), 20),
-    usableOnly: params.get("usableOnly") === "true",
     activity: oneOf(params.get("activity"), ACTIVITIES),
     sort: oneOf(params.get("sort"), SORTS) ?? DEFAULT_VIEW.sort,
     order: params.get("order") === "desc" ? "desc" : "asc",
@@ -99,7 +96,6 @@ export function blueprintLibraryViewParams(view: BlueprintLibraryView): URLSearc
   list("locationIds", view.locationIds);
   if (view.minMe !== null) params.set("minMe", String(view.minMe));
   if (view.minTe !== null) params.set("minTe", String(view.minTe));
-  if (view.usableOnly) params.set("usableOnly", "true");
   if (view.activity) params.set("activity", view.activity);
   if (view.sort !== DEFAULT_VIEW.sort) params.set("sort", view.sort);
   if (view.order !== DEFAULT_VIEW.order) params.set("order", view.order);
@@ -123,7 +119,6 @@ export function hasActiveFilters(view: BlueprintLibraryView): boolean {
     || view.locationIds.length > 0
     || view.minMe !== null
     || view.minTe !== null
-    || view.usableOnly
     || view.activity !== null
   );
 }

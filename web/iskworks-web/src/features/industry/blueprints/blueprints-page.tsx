@@ -20,7 +20,7 @@ import { CharacterName } from "../../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
 import { BlueprintInspector } from "./blueprint-inspector";
-import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns, isUsable } from "./blueprint-format";
+import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns } from "./blueprint-format";
 import {
   DEFAULT_VIEW,
   blueprintLibraryQuery,
@@ -174,7 +174,6 @@ export function BlueprintsPage() {
                         cells={cells(row)}
                         key={row.observationId}
                         rowKey={row.observationId}
-                        status={isUsable(row) ? "neutral" : "warning"}
                       />
                     ))}
                   </OperationalTableGroup>
@@ -265,10 +264,6 @@ function Filters({ library, onChange, view }: { library: ReturnType<typeof useBl
               {option.label}
             </FinanceCheckbox>
           ))}
-          <FinanceCheckbox checked={view.usableOnly} onChange={() => onChange({ usableOnly: !view.usableOnly })}>
-            <span className="block">Usable only</span>
-            <span className="text-[0.625rem] text-muted">Originals and copies with runs left</span>
-          </FinanceCheckbox>
           <FinanceCheckbox checked={view.activity === "reaction"} onChange={() => onChange({ activity: view.activity === "reaction" ? null : "reaction" })}>
             Reaction formulas only
           </FinanceCheckbox>

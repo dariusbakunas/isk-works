@@ -157,31 +157,30 @@ impl BlueprintLibraryRepository for PgBlueprintLibraryRepository {
                    AND (cardinality($8::bigint[])=0 OR location_id=ANY($8))
                    AND ($9::integer IS NULL OR material_efficiency>=$9)
                    AND ($10::integer IS NULL OR time_efficiency>=$10)
-                   AND (NOT $11 OR blueprint_kind='original' OR COALESCE(licensed_runs,0)>0)
-                   AND ($12::text IS NULL OR activity=$12)
+                   AND ($11::text IS NULL OR activity=$11)
                )
                SELECT * FROM filtered
                ORDER BY
-                 CASE WHEN $13='blueprint' AND $14='asc' THEN lower(blueprint_name) END ASC,
-                 CASE WHEN $13='blueprint' AND $14='desc' THEN lower(blueprint_name) END DESC,
-                 CASE WHEN $13='product' AND $14='asc' THEN lower(product_name) END ASC NULLS LAST,
-                 CASE WHEN $13='product' AND $14='desc' THEN lower(product_name) END DESC NULLS LAST,
-                 CASE WHEN $13='kind' AND $14='asc' THEN blueprint_kind END ASC,
-                 CASE WHEN $13='kind' AND $14='desc' THEN blueprint_kind END DESC,
-                 CASE WHEN $13='me' AND $14='asc' THEN material_efficiency END ASC,
-                 CASE WHEN $13='me' AND $14='desc' THEN material_efficiency END DESC,
-                 CASE WHEN $13='te' AND $14='asc' THEN time_efficiency END ASC,
-                 CASE WHEN $13='te' AND $14='desc' THEN time_efficiency END DESC,
-                 CASE WHEN $13='runs' AND $14='asc' THEN runs_key END ASC,
-                 CASE WHEN $13='runs' AND $14='desc' THEN runs_key END DESC,
-                 CASE WHEN $13='character' AND $14='asc' THEN lower(character_name) END ASC NULLS LAST,
-                 CASE WHEN $13='character' AND $14='desc' THEN lower(character_name) END DESC NULLS LAST,
-                 CASE WHEN $13='location' AND $14='asc' THEN lower(location_name) END ASC NULLS LAST,
-                 CASE WHEN $13='location' AND $14='desc' THEN lower(location_name) END DESC NULLS LAST,
-                 CASE WHEN $13='observed' AND $14='asc' THEN observed_at END ASC,
-                 CASE WHEN $13='observed' AND $14='desc' THEN observed_at END DESC,
+                 CASE WHEN $12='blueprint' AND $13='asc' THEN lower(blueprint_name) END ASC,
+                 CASE WHEN $12='blueprint' AND $13='desc' THEN lower(blueprint_name) END DESC,
+                 CASE WHEN $12='product' AND $13='asc' THEN lower(product_name) END ASC NULLS LAST,
+                 CASE WHEN $12='product' AND $13='desc' THEN lower(product_name) END DESC NULLS LAST,
+                 CASE WHEN $12='kind' AND $13='asc' THEN blueprint_kind END ASC,
+                 CASE WHEN $12='kind' AND $13='desc' THEN blueprint_kind END DESC,
+                 CASE WHEN $12='me' AND $13='asc' THEN material_efficiency END ASC,
+                 CASE WHEN $12='me' AND $13='desc' THEN material_efficiency END DESC,
+                 CASE WHEN $12='te' AND $13='asc' THEN time_efficiency END ASC,
+                 CASE WHEN $12='te' AND $13='desc' THEN time_efficiency END DESC,
+                 CASE WHEN $12='runs' AND $13='asc' THEN runs_key END ASC,
+                 CASE WHEN $12='runs' AND $13='desc' THEN runs_key END DESC,
+                 CASE WHEN $12='character' AND $13='asc' THEN lower(character_name) END ASC NULLS LAST,
+                 CASE WHEN $12='character' AND $13='desc' THEN lower(character_name) END DESC NULLS LAST,
+                 CASE WHEN $12='location' AND $13='asc' THEN lower(location_name) END ASC NULLS LAST,
+                 CASE WHEN $12='location' AND $13='desc' THEN lower(location_name) END DESC NULLS LAST,
+                 CASE WHEN $12='observed' AND $13='asc' THEN observed_at END ASC,
+                 CASE WHEN $12='observed' AND $13='desc' THEN observed_at END DESC,
                  lower(blueprint_name),connection_id NULLS LAST,eve_item_id,observation_id
-               LIMIT $15 OFFSET $16"#
+               LIMIT $14 OFFSET $15"#
         );
         let rows = sqlx::query_as::<_, LibraryRow>(&sql)
             .bind(workspace_id.0)
@@ -194,7 +193,6 @@ impl BlueprintLibraryRepository for PgBlueprintLibraryRepository {
             .bind(&query.location_ids)
             .bind(query.min_me.map(i32::from))
             .bind(query.min_te.map(i32::from))
-            .bind(query.usable_only)
             .bind(activity)
             .bind(sort)
             .bind(order)
@@ -682,7 +680,7 @@ mod tests {
 
     #[sqlx::test(migrations = "../../migrations")]
     #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
-    async fn filters_by_kind_category_efficiency_usability_and_activity(pool: PgPool) {
+    async fn filters_by_kind_category_efficiency_and_activity(pool: PgPool) {
         let seed = seed(&pool).await;
         let names = |page: BlueprintLibraryPage| {
             page.rows
@@ -702,23 +700,19 @@ mod tests {
         .await;
         assert_eq!(copies.total, 2);
 
-        let ships_usable = list(
+        let ships_originals = list(
             &pool,
             seed.workspace_id,
             BlueprintLibraryQuery {
                 category_ids: vec![6],
-                usable_only: true,
+                kinds: vec![BlueprintKind::Original],
                 ..Default::default()
             },
         )
         .await;
         assert_eq!(
-            names(ships_usable),
-            [
-                ("Rifter Blueprint".to_string(), BlueprintKind::Original),
-                ("Rifter Blueprint".to_string(), BlueprintKind::Copy),
-            ],
-            "the exhausted Merlin copy is not usable"
+            names(ships_originals),
+            [("Rifter Blueprint".to_string(), BlueprintKind::Original)]
         );
 
         let me_ten = list(

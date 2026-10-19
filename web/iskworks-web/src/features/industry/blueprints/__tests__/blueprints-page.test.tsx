@@ -150,12 +150,10 @@ describe("Blueprints page", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Copies" }));
     await user.click(screen.getByRole("checkbox", { name: /Ship/ }));
-    await user.click(screen.getByRole("checkbox", { name: /Usable only/ }));
 
     await waitFor(() => expect(listBlueprintLibrary).toHaveBeenLastCalledWith(expect.objectContaining({
       kinds: ["copy"],
       categoryIds: [6],
-      usableOnly: true,
     })));
     expect(screen.getByTestId("location")).toHaveTextContent("kinds=copy");
     expect(screen.getByTestId("location")).toHaveTextContent("categoryIds=6");

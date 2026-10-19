@@ -23,10 +23,6 @@ export function formatRuns(row: RunsFields): string {
   return row.licensedRuns === null ? "0" : row.licensedRuns.toLocaleString();
 }
 
-export function isUsable(row: RunsFields): boolean {
-  return hasUnlimitedRuns(row) || (row.licensedRuns ?? 0) > 0;
-}
-
 /** ME / TE do not apply to reactions. */
 export function formatEfficiency(row: Pick<BlueprintLibraryRow, "activity">, value: number): string {
   return row.activity === "reaction" ? "—" : String(value);

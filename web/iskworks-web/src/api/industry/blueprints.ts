@@ -87,7 +87,6 @@ export interface BlueprintLibraryQuery {
   locationIds?: number[];
   minMe?: number | null;
   minTe?: number | null;
-  usableOnly?: boolean;
   activity?: BlueprintLibraryActivity | null;
   sort?: BlueprintLibrarySort;
   order?: BlueprintLibraryOrder;
@@ -108,7 +107,6 @@ export function blueprintLibraryParams(query: BlueprintLibraryQuery): URLSearchP
   list("locationIds", query.locationIds);
   if (query.minMe != null) params.set("minMe", String(query.minMe));
   if (query.minTe != null) params.set("minTe", String(query.minTe));
-  if (query.usableOnly) params.set("usableOnly", "true");
   if (query.activity) params.set("activity", query.activity);
   if (query.sort) params.set("sort", query.sort);
   if (query.order) params.set("order", query.order);
