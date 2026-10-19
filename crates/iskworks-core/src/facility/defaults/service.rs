@@ -263,10 +263,18 @@ fn build_view(snapshot: &Snapshot) -> Result<FacilityDefaultsView, FacilityError
                 }
                 None => (None, false),
             };
+            // A suggestion is only worth showing when accepting it would
+            // change the facility new Builds get: not the target's own
+            // default, nor (with no default) the fallback it already uses.
+            let current = default
+                .map(|default| default.facility_profile_id)
+                .or_else(|| {
+                    filter_id
+                        .and(stored(None))
+                        .map(|fallback| fallback.facility_profile_id)
+                });
             let suggestion = suggest_facility(&snapshot.profiles, role, probes)?
-                .filter(|(profile, _)| {
-                    !default.is_some_and(|default| default.facility_profile_id == profile.id)
-                })
+                .filter(|(profile, _)| current != Some(profile.id))
                 .map(|(profile, bonus)| {
                     choice(
                         profile,

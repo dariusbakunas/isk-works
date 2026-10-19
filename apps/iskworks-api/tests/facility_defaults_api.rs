@@ -316,6 +316,12 @@ async fn put_assigns_and_clears_defaults_and_returns_the_new_view() {
     assert_eq!(small["default"]["facilityName"], "Azbel");
     assert_eq!(small["suggestion"], serde_json::Value::Null);
     assert_eq!(row(&view, "manufacturing", Some(3))["status"], "fallback");
+    // The fallback (Raitaru) still has a better-ranked alternative.
+    assert_eq!(
+        row(&view, "manufacturing", None)["suggestion"]["facilityName"],
+        "Azbel"
+    );
+
     assert_eq!(row(&view, "reaction", Some(16))["status"], "none");
     let stored = repository.defaults.lock().unwrap().clone();
     assert!(stored
@@ -336,6 +342,24 @@ async fn put_assigns_and_clears_defaults_and_returns_the_new_view() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(row(&view, "manufacturing", None)["status"], "none");
     assert_eq!(row(&view, "manufacturing", Some(3))["status"], "none");
+}
+
+#[tokio::test]
+async fn a_suggestion_matching_the_fallback_already_in_use_is_hidden() {
+    let repository = rigged_workspace();
+    repository.defaults.lock().unwrap().push(FacilityDefault {
+        role: FacilityRole::Manufacturing,
+        target_filter_id: None,
+        facility_profile_id: id(2),
+        rig_covered_at_assignment: false,
+    });
+
+    let (_, view) = send(app(repository), "GET", None).await;
+
+    // Small T1 Ships already gets Azbel through the fallback.
+    let small = row(&view, "manufacturing", Some(5));
+    assert_eq!(small["status"], "fallback");
+    assert_eq!(small["suggestion"], serde_json::Value::Null);
 }
 
 #[tokio::test]
