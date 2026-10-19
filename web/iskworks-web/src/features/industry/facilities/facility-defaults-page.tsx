@@ -25,11 +25,11 @@ import { bonusFor, effectiveChoice, suggestionAssignments, targetKey } from "./f
 import { FacilitiesSectionTabs } from "./facilities-section-tabs";
 
 const COLUMNS: OperationalColumn[] = [
-  { key: "target", label: "Target", width: "minmax(11rem, 1fr)" },
+  { key: "target", label: "Target", width: "minmax(10rem, 1fr)" },
   { key: "facility", label: "Default facility", width: "minmax(16rem, 2fr)" },
   { key: "material", label: "ME", title: "Material bonus for this target", width: "5rem", align: "right", numeric: true },
   { key: "time", label: "TE", title: "Time bonus for this target", width: "5rem", align: "right", numeric: true },
-  { key: "status", label: "Status", width: "11rem" },
+  { key: "status", label: "Status", width: "9.5rem" },
 ];
 
 const ROLE_GROUPS: Array<{ role: FacilityRole; label: string }> = [
@@ -180,7 +180,7 @@ function TargetRow({
       cells={{
         target: <span className={isFallback ? "italic" : undefined}>{target.name}</span>,
         facility: (
-          <div className="min-w-0">
+          <div className="w-full min-w-0">
             <select
               aria-label={`Default facility for ${label}`}
               className="iw-input w-full"
