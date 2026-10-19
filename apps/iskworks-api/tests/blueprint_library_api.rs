@@ -119,7 +119,7 @@ async fn list_passes_filters_through_and_serializes_camel_case() {
         app(fake.clone()),
         &format!(
             "/api/industry/blueprints?search=rif&kinds=original%2Ccopy&categoryIds=6&groupIds=25%2C26\
-             &connectionIds={connection}&locationIds=60003760&minMe=8&minTe=16&usableOnly=true\
+             &connectionIds={connection}&locationIds=60003760&minMe=8&minTe=16&needsResearch=true\
              &activity=manufacturing&sort=runs&order=desc&limit=50&offset=100"
         ),
     )
@@ -134,7 +134,7 @@ async fn list_passes_filters_through_and_serializes_camel_case() {
     assert_eq!(query.connection_ids, [connection]);
     assert_eq!(query.location_ids, [60_003_760]);
     assert_eq!((query.min_me, query.min_te), (Some(8), Some(16)));
-    assert!(query.usable_only);
+    assert!(query.needs_research);
     assert_eq!(query.activity, Some(BlueprintActivity::Manufacturing));
     assert_eq!(query.sort, BlueprintLibrarySort::Runs);
     assert_eq!(query.order, BlueprintLibraryOrder::Desc);
@@ -159,7 +159,7 @@ async fn list_defaults_to_the_first_page() {
     assert_eq!(status, StatusCode::OK);
     let query = fake.queries.lock().unwrap().pop().expect("list called");
     assert_eq!((query.limit, query.offset), (200, 0));
-    assert!(query.kinds.is_empty() && !query.usable_only);
+    assert!(query.kinds.is_empty() && query.min_me.is_none());
 }
 
 #[tokio::test]

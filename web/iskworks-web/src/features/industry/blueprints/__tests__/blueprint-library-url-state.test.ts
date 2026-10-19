@@ -28,7 +28,7 @@ describe("blueprint library URL state", () => {
       locationIds: [60003760],
       minMe: 8,
       minTe: 16,
-      usableOnly: true,
+      needsResearch: true,
       activity: "manufacturing" as const,
       sort: "runs" as const,
       order: "desc" as const,

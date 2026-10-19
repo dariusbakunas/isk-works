@@ -20,7 +20,7 @@ import { CharacterName } from "../../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
 import { BlueprintInspector } from "./blueprint-inspector";
-import { formatRuns, groupBlueprints, isUsable } from "./blueprint-format";
+import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns } from "./blueprint-format";
 import {
   DEFAULT_VIEW,
   blueprintLibraryQuery,
@@ -35,7 +35,7 @@ import { useBlueprintLibrary } from "./use-blueprint-library";
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
   { key: "blueprint", label: "Blueprint", width: "minmax(240px,1fr)", sort: "blueprint" },
   { key: "product", label: "Product", width: "180px", sort: "product", hideBelow: "tablet" },
-  { key: "kind", label: "Kind", width: "64px", sort: "kind" },
+  { key: "kind", label: "Kind", width: "76px", sort: "kind" },
   { key: "me", label: "ME", width: "48px", sort: "me", numeric: true },
   { key: "te", label: "TE", width: "48px", sort: "te", numeric: true },
   { key: "runs", label: "Runs", width: "64px", sort: "runs", numeric: true },
@@ -174,7 +174,6 @@ export function BlueprintsPage() {
                         cells={cells(row)}
                         key={row.observationId}
                         rowKey={row.observationId}
-                        status={isUsable(row) ? "neutral" : "warning"}
                       />
                     ))}
                   </OperationalTableGroup>
@@ -212,14 +211,18 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
       </span>
     ),
     product: <span className="block truncate" title={row.productGroupName ?? undefined}>{row.productName ?? "—"}</span>,
-    kind: (
-      <span title={row.kind === "original" ? "Original" : row.kind === "copy" ? "Copy" : "ESI did not say whether this is an original or a copy"}>
-        <Badge square tone={row.kind === "original" ? "primary" : row.kind === "copy" ? "batch" : "muted"}>{row.kind === "original" ? "BPO" : row.kind === "copy" ? "BPC" : "?"}</Badge>
+    kind: row.activity === "reaction" ? (
+      <span title="Reaction formula">
+        <Badge square tone="reaction">Reaction</Badge>
+      </span>
+    ) : (
+      <span title={row.kind === "copy" ? "Copy" : row.kind === "original" ? "Original" : "Original, never used (ESI reports a stack quantity)"}>
+        <Badge square tone={row.kind === "copy" ? "batch" : "primary"}>{row.kind === "copy" ? "BPC" : "BPO"}</Badge>
       </span>
     ),
-    me: row.materialEfficiency,
-    te: row.timeEfficiency,
-    runs: <span title={row.kind === "original" ? "Unlimited runs" : undefined}>{formatRuns(row)}</span>,
+    me: formatEfficiency(row, row.materialEfficiency),
+    te: formatEfficiency(row, row.timeEfficiency),
+    runs: <span title={hasUnlimitedRuns(row) ? "Unlimited runs" : undefined}>{formatRuns(row)}</span>,
     character: row.characterName ? <CharacterName className="block truncate" name={row.characterName} /> : "—",
     location: <span className="block truncate" title={row.locationName ?? undefined}>{row.locationName ?? `Location ${row.locationId}`}</span>,
   };
@@ -261,9 +264,9 @@ function Filters({ library, onChange, view }: { library: ReturnType<typeof useBl
               {option.label}
             </FinanceCheckbox>
           ))}
-          <FinanceCheckbox checked={view.usableOnly} onChange={() => onChange({ usableOnly: !view.usableOnly })}>
-            <span className="block">Usable only</span>
-            <span className="text-[0.625rem] text-muted">Originals and copies with runs left</span>
+          <FinanceCheckbox checked={view.needsResearch} onChange={() => onChange({ needsResearch: !view.needsResearch })}>
+            <span className="block">Needs research</span>
+            <span className="text-[0.625rem] text-muted">Originals below ME 10 or TE 20</span>
           </FinanceCheckbox>
           <FinanceCheckbox checked={view.activity === "reaction"} onChange={() => onChange({ activity: view.activity === "reaction" ? null : "reaction" })}>
             Reaction formulas only

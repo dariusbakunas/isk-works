@@ -123,6 +123,26 @@ describe("Blueprints page", () => {
     expect(screen.getByText("BPO")).toBeInTheDocument();
   });
 
+  test("reaction formulas show Reaction, no ME/TE and unlimited runs even when ESI gave no kind", async () => {
+    vi.mocked(listBlueprintLibrary).mockResolvedValue(page([{ ...rows[2], kind: "unknown" }]));
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Owned blueprints" });
+    const formula = within(table).getAllByRole("row").find((element) => element.textContent?.includes("Reaction Formula"))!;
+    const cells = within(formula).getAllByRole("cell").map((cell) => cell.textContent);
+    expect(cells.slice(2, 6)).toEqual(["Reaction", "—", "—", "∞"]);
+    expect(within(formula).queryByText("?")).not.toBeInTheDocument();
+  });
+
+  test("an unknown-kind blueprint is a never-used original: BPO with unlimited runs", async () => {
+    vi.mocked(listBlueprintLibrary).mockResolvedValue(page([{ ...rows[0], kind: "unknown", materialEfficiency: 0, timeEfficiency: 0 }]));
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Owned blueprints" });
+    const fresh = within(table).getAllByRole("row").find((element) => element.textContent?.includes("Rifter Blueprint"))!;
+    expect(within(fresh).getAllByRole("cell").map((cell) => cell.textContent).slice(2, 6)).toEqual(["BPO", "0", "0", "∞"]);
+  });
+
   test("filters write the URL and reach the API", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -130,12 +150,12 @@ describe("Blueprints page", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Copies" }));
     await user.click(screen.getByRole("checkbox", { name: /Ship/ }));
-    await user.click(screen.getByRole("checkbox", { name: /Usable only/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Needs research/ }));
 
     await waitFor(() => expect(listBlueprintLibrary).toHaveBeenLastCalledWith(expect.objectContaining({
       kinds: ["copy"],
       categoryIds: [6],
-      usableOnly: true,
+      needsResearch: true,
     })));
     expect(screen.getByTestId("location")).toHaveTextContent("kinds=copy");
     expect(screen.getByTestId("location")).toHaveTextContent("categoryIds=6");
