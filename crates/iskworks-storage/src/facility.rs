@@ -10,6 +10,9 @@ use uuid::Uuid;
 
 use crate::sde_read::SECURITY_CLASS_CASE_SQL;
 
+mod defaults;
+pub(crate) use defaults::list_defaults;
+
 #[derive(Clone)]
 pub struct PgFacilityRepository {
     pool: PgPool,
@@ -243,6 +246,7 @@ impl PgFacilityRepository {
         expected_revision: u64,
     ) -> Result<IndustryFacilityProfile, FacilityError> {
         let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
         let changed = sqlx::query(
             "UPDATE industry_facility_profiles SET archived_at = $1, updated_at = $1, revision = revision + 1 WHERE workspace_id = $2 AND id = $3 AND revision = $4 AND archived_at IS NULL",
         )
@@ -250,10 +254,16 @@ impl PgFacilityRepository {
         .bind(workspace_id.0)
         .bind(id.0)
         .bind(as_i64(expected_revision)?)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_error)?
         .rows_affected();
+        if changed > 0 {
+            // An archived facility drops out of the workspace defaults,
+            // leaving those targets unset.
+            defaults::clear_facility(&mut *tx, id).await?;
+        }
+        tx.commit().await.map_err(map_error)?;
         if changed == 0 {
             let existing = self.get(workspace_id, id).await?;
             return Err(if existing.archived_at.is_some() {

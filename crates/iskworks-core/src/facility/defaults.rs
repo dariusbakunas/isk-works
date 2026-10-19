@@ -11,6 +11,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
+use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +52,33 @@ pub struct FacilityDefaultAssignment {
     pub role: FacilityRole,
     pub filter_id: Option<i64>,
     pub facility_profile_id: Option<FacilityProfileId>,
+}
+
+/// One write to a workspace's defaults.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum FacilityDefaultChange {
+    Set(FacilityDefault),
+    Clear {
+        role: FacilityRole,
+        target_filter_id: Option<i64>,
+    },
+}
+
+/// Storage for workspace facility defaults.
+#[async_trait]
+pub trait FacilityDefaultsRepository: Send + Sync {
+    async fn list_facility_defaults(
+        &self,
+        workspace_id: crate::WorkspaceId,
+    ) -> Result<Vec<FacilityDefault>, FacilityError>;
+
+    /// Applies every change atomically. A `Set` naming a facility outside the
+    /// workspace, archived, or of a different role is a `Validation` error.
+    async fn apply_facility_default_changes(
+        &self,
+        workspace_id: crate::WorkspaceId,
+        changes: Vec<FacilityDefaultChange>,
+    ) -> Result<(), FacilityError>;
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

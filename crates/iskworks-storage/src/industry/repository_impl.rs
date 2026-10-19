@@ -805,6 +805,15 @@ impl IndustryRepository for PgIndustryRepository {
         classify_source_result(&self.pool, workspace_id, source_id, result.rows_affected()).await
     }
 
+    async fn facility_defaults(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<iskworks_core::facility_defaults::FacilityDefault>, IndustryError> {
+        crate::facility::list_defaults(&self.pool, workspace_id)
+            .await
+            .map_err(IndustryError::Facility)
+    }
+
     async fn get_facility_profile(
         &self,
         workspace_id: WorkspaceId,

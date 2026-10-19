@@ -150,6 +150,14 @@ pub struct IndustryTargetFilter {
     pub group_ids: Vec<i64>,
 }
 
+/// The industry activity a rig modifier table belongs to.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RigActivity {
+    Manufacturing,
+    Reaction,
+}
+
 /// What a rig's bonuses are allowed to affect, resolved for one activity.
 /// A `None` field is unrestricted (no `filterID`, or an SDE without the
 /// dataset).
@@ -465,6 +473,22 @@ pub trait SdeReadRepository: Send + Sync {
     /// applicability and are treated as unrestricted.
     async fn industry_target_filters(&self) -> Result<Vec<IndustryTargetFilter>, SdeError> {
         Ok(Vec::new())
+    }
+    /// Every target filter tagged with the activity whose rigs reference it
+    /// (manufacturing rigs or reaction rigs) in the active SDE. A filter no
+    /// rig references is omitted.
+    async fn industry_target_filters_by_activity(
+        &self,
+    ) -> Result<Vec<(RigActivity, IndustryTargetFilter)>, SdeError> {
+        Ok(Vec::new())
+    }
+    /// The category of each known group in the active SDE.
+    async fn group_categories(
+        &self,
+        group_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, i64>, SdeError> {
+        let _ = group_ids;
+        Ok(std::collections::BTreeMap::new())
     }
     async fn rig_manufacturing_modifiers(
         &self,
