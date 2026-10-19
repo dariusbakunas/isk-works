@@ -53,6 +53,9 @@ pub struct BlueprintLibraryQuery {
     pub location_ids: Vec<i64>,
     pub min_me: Option<u8>,
     pub min_te: Option<u8>,
+    /// Originals that can still be researched: manufacturing, ME < 10 or
+    /// TE < 20. Copies and reaction formulas cannot be researched.
+    pub needs_research: bool,
     pub activity: Option<BlueprintActivity>,
     pub sort: BlueprintLibrarySort,
     pub order: BlueprintLibraryOrder,
@@ -70,6 +73,7 @@ pub struct ValidatedBlueprintLibraryQuery {
     pub location_ids: Vec<i64>,
     pub min_me: Option<u8>,
     pub min_te: Option<u8>,
+    pub needs_research: bool,
     pub activity: Option<BlueprintActivity>,
     pub sort: BlueprintLibrarySort,
     pub order: BlueprintLibraryOrder,
@@ -104,6 +108,7 @@ impl BlueprintLibraryQuery {
             location_ids: self.location_ids,
             min_me: self.min_me,
             min_te: self.min_te,
+            needs_research: self.needs_research,
             activity: self.activity,
             sort: self.sort,
             order: self.order,

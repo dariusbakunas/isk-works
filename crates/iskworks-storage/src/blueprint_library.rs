@@ -158,6 +158,8 @@ impl BlueprintLibraryRepository for PgBlueprintLibraryRepository {
                    AND ($9::integer IS NULL OR material_efficiency>=$9)
                    AND ($10::integer IS NULL OR time_efficiency>=$10)
                    AND ($11::text IS NULL OR activity=$11)
+                   AND (NOT $16 OR (activity='manufacturing' AND blueprint_kind<>'copy'
+                        AND (material_efficiency<10 OR time_efficiency<20)))
                )
                SELECT * FROM filtered
                ORDER BY
@@ -198,6 +200,7 @@ impl BlueprintLibraryRepository for PgBlueprintLibraryRepository {
             .bind(order)
             .bind(i64::from(query.limit))
             .bind(i64::from(query.offset))
+            .bind(query.needs_research)
             .fetch_all(&self.pool)
             .await
             .map_err(map_error)?;
@@ -726,6 +729,21 @@ mod tests {
         )
         .await;
         assert_eq!(me_ten.total, 2, "Rifter BPO and Merlin BPC are ME 10");
+
+        let research = list(
+            &pool,
+            seed.workspace_id,
+            BlueprintLibraryQuery {
+                needs_research: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(
+            names(research),
+            [("Mystery Blueprint".to_string(), BlueprintKind::Original)],
+            "the maxed Rifter BPO, copies and the reaction formula are not research candidates"
+        );
 
         let reactions = list(
             &pool,

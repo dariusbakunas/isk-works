@@ -264,6 +264,10 @@ function Filters({ library, onChange, view }: { library: ReturnType<typeof useBl
               {option.label}
             </FinanceCheckbox>
           ))}
+          <FinanceCheckbox checked={view.needsResearch} onChange={() => onChange({ needsResearch: !view.needsResearch })}>
+            <span className="block">Needs research</span>
+            <span className="text-[0.625rem] text-muted">Originals below ME 10 or TE 20</span>
+          </FinanceCheckbox>
           <FinanceCheckbox checked={view.activity === "reaction"} onChange={() => onChange({ activity: view.activity === "reaction" ? null : "reaction" })}>
             Reaction formulas only
           </FinanceCheckbox>
