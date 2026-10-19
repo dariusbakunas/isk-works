@@ -512,10 +512,10 @@ pub(super) struct OrderTicketSummary {
     #[serde(flatten)]
     ticket: Ticket,
     /// Every currently-unmet prerequisite of this ticket -- the derived
-    /// dependency/blocker read model, computed regardless of the ticket's
-    /// own workflow `status` (a `Complete` ticket with an unmet
-    /// prerequisite still lists it). Empty for Acquisition/Generic
-    /// tickets, which have no prerequisites.
+    /// dependency/blocker read model. Empty for a `Complete` or `Canceled`
+    /// ticket, which has nothing left to wait on (completing its Epic
+    /// releases the reservations that met its prerequisites), and for
+    /// Acquisition/Generic tickets, which have no prerequisites.
     blocked_by: Vec<TicketBlockerRef>,
     /// This ticket's own frozen material need -- empty for Acquisition,
     /// populated for Manufacturing/Reaction regardless of status (the
@@ -557,9 +557,16 @@ pub(super) async fn list_order_tickets(
             .order_id
             .and_then(|order_id| held_by_order.get(&order_id))
             .unwrap_or(&no_holdings);
-        // Derived independently of `ticket.status` -- dependency state is
-        // reported, workflow state is user-controlled.
-        let blocked_by = ticket_blockers(&*repository, workspace_id, held, &prerequisites).await?;
+        // A finished ticket waits on nothing. Otherwise derived
+        // independently of the open lane (To Do / In Progress) it sits in.
+        let blocked_by = if matches!(
+            ticket.status,
+            TicketStatus::Complete | TicketStatus::Canceled
+        ) {
+            Vec::new()
+        } else {
+            ticket_blockers(&*repository, workspace_id, held, &prerequisites).await?
+        };
         // Derived recording summary. Acquisition: requested = ticket
         // quantity, recorded = Σ recorded_quantity. Manufacturing/Reaction:
         // requested = execution_snapshot.runs (frozen at creation for the

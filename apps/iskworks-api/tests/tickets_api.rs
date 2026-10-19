@@ -1022,3 +1022,40 @@ async fn patch_status_leaves_the_derived_blocker_list_untouched(pool: PgPool) {
         "the derived blocker list is independent of the workflow status write"
     );
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn finished_tickets_report_no_blockers(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let before = get_ticket(&fx.app, fx.manufacturing_ticket_id).await;
+    assert!(!before["blockedBy"].as_array().unwrap().is_empty());
+
+    // A Complete or Canceled ticket has nothing left to wait on, even if
+    // its prerequisites are still unmet.
+    for finished in ["complete", "canceled"] {
+        let (status, _) = patch_json(
+            &fx.app,
+            &format!("/api/tickets/{}", fx.manufacturing_ticket_id),
+            serde_json::json!({ "status": finished }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let ticket = get_ticket(&fx.app, fx.manufacturing_ticket_id).await;
+        assert_eq!(
+            ticket["blockedBy"].as_array().unwrap(),
+            &Vec::<serde_json::Value>::new(),
+            "{finished} ticket must not list blockers"
+        );
+    }
+
+    // Reopening it brings the blockers back.
+    let (status, _) = patch_json(
+        &fx.app,
+        &format!("/api/tickets/{}", fx.manufacturing_ticket_id),
+        serde_json::json!({ "status": "todo" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let reopened = get_ticket(&fx.app, fx.manufacturing_ticket_id).await;
+    assert_eq!(reopened["blockedBy"], before["blockedBy"]);
+}
