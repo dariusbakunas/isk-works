@@ -62,6 +62,9 @@ pub struct FacilityDefaultsView {
 
 pub const FALLBACK_TARGET_NAME: &str = "Everything else";
 
+/// Far above the SDE's 18 targets plus two fallbacks; bounds one request.
+const MAX_ASSIGNMENTS: usize = 100;
+
 #[derive(Clone)]
 pub struct FacilityDefaultsService {
     repository: Arc<dyn FacilityDefaultsRepository>,
@@ -147,8 +150,13 @@ impl FacilityDefaultsService {
         workspace_id: WorkspaceId,
         assignments: Vec<FacilityDefaultAssignment>,
     ) -> Result<FacilityDefaultsView, FacilityError> {
+        if assignments.len() > MAX_ASSIGNMENTS {
+            return Err(FacilityError::Validation(format!(
+                "at most {MAX_ASSIGNMENTS} assignments per request"
+            )));
+        }
         let snapshot = self.snapshot(workspace_id).await?;
-        let mut changes = Vec::with_capacity(assignments.len());
+        let mut changes = Vec::new();
         for assignment in assignments {
             let Some(facility_profile_id) = assignment.facility_profile_id else {
                 // Clearing is allowed for any target, including one the

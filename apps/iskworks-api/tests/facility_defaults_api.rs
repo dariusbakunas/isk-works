@@ -410,3 +410,20 @@ async fn put_rejects_a_wrong_role_an_archived_facility_or_an_unknown_target() {
     }
     assert!(repository.defaults.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn put_rejects_an_oversized_assignment_batch() {
+    let repository = rigged_workspace();
+    let assignments: Vec<_> = (0..101)
+        .map(|_| serde_json::json!({"role": "manufacturing", "filterId": null, "facilityProfileId": null}))
+        .collect();
+
+    let (status, body) = send(
+        app(repository.clone()),
+        "PUT",
+        Some(serde_json::json!({ "assignments": assignments })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
