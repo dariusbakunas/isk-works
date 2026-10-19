@@ -53,7 +53,7 @@ export function BlueprintsPage() {
   const view = useMemo(() => parseBlueprintLibraryView(searchParams), [searchParams]);
   const [searchText, setSearchText] = useState(view.search);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const library = useBlueprintLibrary(blueprintLibraryQuery(view));
+  const library = useBlueprintLibrary(blueprintLibraryQuery(view), view.groupBy !== "none");
 
   function update(patch: Partial<BlueprintLibraryView>) {
     setSearchParams(blueprintLibraryViewParams({ ...view, ...patch }), { replace: true });
