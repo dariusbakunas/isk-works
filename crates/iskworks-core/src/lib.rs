@@ -69,6 +69,8 @@ pub use component_expansion::{
     ContributionSource, FulfillmentScope, FulfillmentScopeOverride,
     PreviewComponentExpansionCommand, ResolvedComponent,
 };
+/// Workspace default facility per EVE industry target filter.
+pub use facility::defaults as facility_defaults;
 pub use facility::{
     calculate_adjusted_price_eiv, decide_facility_import, export_command, facility_identity,
     find_active_facility_match, parse_profile, preview_blueprint_effects, preview_facility,

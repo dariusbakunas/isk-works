@@ -8,6 +8,8 @@
 //!   affect, and the rig-selection helpers previews funnel through.
 //! - [`parse`] — deriving/matching facility identity and parsing a command
 //!   into a persisted profile (and the inverse export).
+//! - [`defaults`] — workspace default facility per EVE industry target
+//!   filter: target specificity, resolution, per-target bonus and suggestions.
 //! - [`import`] — the per-item decision of a facility profile import.
 //! - [`preview`] — adjusted-price EIV plus the manufacturing/reaction preview
 //!   calculators and installation-cost breakdown.
@@ -16,6 +18,7 @@
 //! before the split, so existing `use iskworks_core::{...}` paths are
 //! unchanged.
 
+pub mod defaults;
 mod import;
 mod parse;
 mod preview;

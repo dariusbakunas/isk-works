@@ -542,7 +542,7 @@ fn duration_basis_detail(split: JobSplit, source: &str) -> String {
     }
 }
 
-fn reduction_factor(
+pub(crate) fn reduction_factor(
     base_percent: Decimal,
     mut extras: impl Iterator<Item = Decimal>,
 ) -> Result<Decimal, FacilityError> {
