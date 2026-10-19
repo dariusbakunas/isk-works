@@ -32,6 +32,28 @@ pub struct TargetFilter {
     pub group_ids: BTreeSet<i64>,
 }
 
+/// The SDE's activity-tagged filters as policy targets.
+pub fn target_filters_from_sde(
+    filters: Vec<(
+        iskworks_sde::RigActivity,
+        iskworks_sde::IndustryTargetFilter,
+    )>,
+) -> Vec<TargetFilter> {
+    filters
+        .into_iter()
+        .map(|(activity, filter)| TargetFilter {
+            filter_id: filter.filter_id,
+            role: match activity {
+                iskworks_sde::RigActivity::Manufacturing => FacilityRole::Manufacturing,
+                iskworks_sde::RigActivity::Reaction => FacilityRole::Reaction,
+            },
+            name: filter.name,
+            category_ids: filter.category_ids.into_iter().collect(),
+            group_ids: filter.group_ids.into_iter().collect(),
+        })
+        .collect()
+}
+
 /// A stored default: `target_filter_id = None` is the role's fallback.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,6 +145,35 @@ pub fn matching_targets(
     matches.into_iter().map(|(filter, _)| filter).collect()
 }
 
+/// Every default that could apply to a new `role` job producing `product`,
+/// in priority order: matching targets most specific first, then the
+/// fallback. Callers take the first one whose facility is still usable.
+pub fn default_candidates(
+    role: FacilityRole,
+    product: ProductClassification,
+    filters: &[TargetFilter],
+    defaults: &[FacilityDefault],
+) -> Vec<ResolvedDefault> {
+    let default_for = |target: Option<i64>| {
+        defaults
+            .iter()
+            .find(|default| default.role == role && default.target_filter_id == target)
+    };
+    matching_targets(role, product, filters)
+        .into_iter()
+        .filter_map(|filter| {
+            default_for(Some(filter.filter_id)).map(|default| ResolvedDefault {
+                facility_profile_id: default.facility_profile_id,
+                source: DefaultSource::Target(filter.filter_id),
+            })
+        })
+        .chain(default_for(None).map(|default| ResolvedDefault {
+            facility_profile_id: default.facility_profile_id,
+            source: DefaultSource::Fallback,
+        }))
+        .collect()
+}
+
 /// The default facility for a new `role` job producing `product`: the most
 /// specific matching target with a default, else the role's fallback.
 pub fn resolve_default(
@@ -131,25 +182,9 @@ pub fn resolve_default(
     filters: &[TargetFilter],
     defaults: &[FacilityDefault],
 ) -> Option<ResolvedDefault> {
-    let default_for = |target: Option<i64>| {
-        defaults
-            .iter()
-            .find(|default| default.role == role && default.target_filter_id == target)
-    };
-    matching_targets(role, product, filters)
+    default_candidates(role, product, filters, defaults)
         .into_iter()
-        .find_map(|filter| {
-            default_for(Some(filter.filter_id)).map(|default| ResolvedDefault {
-                facility_profile_id: default.facility_profile_id,
-                source: DefaultSource::Target(filter.filter_id),
-            })
-        })
-        .or_else(|| {
-            default_for(None).map(|default| ResolvedDefault {
-                facility_profile_id: default.facility_profile_id,
-                source: DefaultSource::Fallback,
-            })
-        })
+        .next()
 }
 
 /// The classifications standing in for "everything `filter` targets": each

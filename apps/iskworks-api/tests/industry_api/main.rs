@@ -40,6 +40,7 @@ struct FixtureIndustryRepository {
     >,
     blueprint_observations:
         std::collections::HashMap<uuid::Uuid, iskworks_core::BlueprintObservation>,
+    facility_defaults: Vec<iskworks_core::facility_defaults::FacilityDefault>,
     /// Market-evidence coherence fixtures (Part A). When
     /// `live_market_items` is non-empty it is the price source; a
     /// `resolve_market_evidence` freezes a copy under a fresh batch id in
@@ -622,6 +623,13 @@ impl IndustryRepository for FixtureIndustryRepository {
         })
     }
 
+    async fn facility_defaults(
+        &self,
+        _workspace_id: iskworks_core::WorkspaceId,
+    ) -> Result<Vec<iskworks_core::facility_defaults::FacilityDefault>, IndustryError> {
+        Ok(self.facility_defaults.clone())
+    }
+
     async fn get_facility_profile(
         &self,
         _workspace_id: iskworks_core::WorkspaceId,
@@ -889,6 +897,72 @@ impl SdeReadRepository for FixtureSdeRepository {
             92_100 => Some(92_010),
             _ => None,
         })
+    }
+
+    async fn type_classifications(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::SdeTypeClassification>, SdeError>
+    {
+        let classify = |category_id: i64, category: &str, group_id: i64, group: &str| {
+            iskworks_sde::SdeTypeClassification {
+                category_id: Some(category_id),
+                category_name: Some(category.to_string()),
+                group_id: Some(group_id),
+                group_name: Some(group.to_string()),
+            }
+        };
+        Ok(type_ids
+            .iter()
+            .filter_map(|type_id| match type_id {
+                5_876 => Some((*type_id, classify(6, "Ship", 25, "Frigate"))),
+                90_001 => Some((
+                    *type_id,
+                    classify(17, "Commodity", 334, "Construction Components"),
+                )),
+                _ => None,
+            })
+            .collect())
+    }
+
+    /// The fixture's facility-default targets: Ships and Small T1 Ships for
+    /// the Rifter (5_876, Frigate), Components for the Rifter Hull Section
+    /// (90_001, Construction Components), and one reaction target.
+    async fn industry_target_filters_by_activity(
+        &self,
+    ) -> Result<
+        Vec<(
+            iskworks_sde::RigActivity,
+            iskworks_sde::IndustryTargetFilter,
+        )>,
+        SdeError,
+    > {
+        let filter = |filter_id: i64, name: &str, category_ids: Vec<i64>, group_ids: Vec<i64>| {
+            iskworks_sde::IndustryTargetFilter {
+                filter_id,
+                name: name.to_string(),
+                category_ids,
+                group_ids,
+            }
+        };
+        Ok(vec![
+            (
+                iskworks_sde::RigActivity::Manufacturing,
+                filter(3, "Ships", vec![6, 32], vec![]),
+            ),
+            (
+                iskworks_sde::RigActivity::Manufacturing,
+                filter(5, "Small T1 Ships", vec![], vec![25, 31, 420]),
+            ),
+            (
+                iskworks_sde::RigActivity::Manufacturing,
+                filter(14, "Components", vec![], vec![334]),
+            ),
+            (
+                iskworks_sde::RigActivity::Reaction,
+                filter(16, "Hybrid Reactions", vec![], vec![974]),
+            ),
+        ])
     }
 
     async fn reaction_formula(
@@ -1390,6 +1464,7 @@ mod stages_descendant_production_configuration;
 // end to end through the HTTP routes (fake repository, no Postgres).
 // ===========================================================================
 mod canonical_producers;
+mod facility_defaults;
 
 // ---------------------------------------------------------------------------
 // Linked-build fixtures

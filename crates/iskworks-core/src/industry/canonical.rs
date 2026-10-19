@@ -208,6 +208,14 @@ impl IndustryService {
         edge_writes: &[crate::canonical_planner::PlannedEdgeWrite],
     ) -> Result<Vec<NewCanonicalProducer>, IndustryError> {
         let mut producers: Vec<NewCanonicalProducer> = Vec::new();
+        let creates_any = edge_writes
+            .iter()
+            .any(|write| matches!(write.producer, PlannedProducer::Create { .. }));
+        let defaults = if creates_any {
+            Some(self.load_facility_defaults(consumer.workspace_id).await?)
+        } else {
+            None
+        };
         for write in edge_writes {
             let PlannedProducer::Create { key } = write.producer else {
                 continue;
@@ -240,6 +248,20 @@ impl IndustryService {
                     facility_override: None,
                     blueprint_selection: None,
                 });
+            // The workspace default only matters when the consumer's row
+            // carries no explicit facility of its own.
+            let default_facility = match (&resolution.facility_override, &defaults) {
+                (None, Some(defaults)) => {
+                    self.default_facility(
+                        consumer.workspace_id,
+                        defaults,
+                        selection,
+                        recipe.primary_product().type_id,
+                    )
+                    .await?
+                }
+                _ => None,
+            };
             let now = Utc::now();
             let name = format!("{} build", recipe.primary_product().type_name);
             producers.push(NewCanonicalProducer {
@@ -253,6 +275,7 @@ impl IndustryService {
                         &resolution,
                         selection,
                         draft,
+                        default_facility,
                     ),
                     recipe,
                     runs: 1,
