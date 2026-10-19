@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { FacilityProfile } from "../../../../api/industry";
@@ -18,6 +19,7 @@ const industryApi = vi.hoisted(() => ({
   searchNpcStations: vi.fn(),
   searchSolarSystems: vi.fn(),
   resolveKnownStructure: vi.fn(),
+  getFacilityDefaults: vi.fn(),
 }));
 
 const sdeApi = vi.hoisted(() => ({
@@ -38,6 +40,14 @@ vi.mock("../../../../api/sde", async () => {
   const actual = await vi.importActual<typeof import("../../../../api/sde")>("../../../../api/sde");
   return { ...actual, ...sdeApi };
 });
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={["/facilities"]}>
+      <FacilitiesPage />
+    </MemoryRouter>,
+  );
+}
 
 function reactionProfile(overrides: Partial<FacilityProfile> = {}): FacilityProfile {
   return {
@@ -88,6 +98,7 @@ describe("FacilitiesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     industryApi.listFacilities.mockResolvedValue([]);
+    industryApi.getFacilityDefaults.mockResolvedValue({ targets: [], bonuses: [] });
     industryApi.searchSolarSystems.mockResolvedValue([]);
     industryApi.searchNpcStations.mockResolvedValue([]);
     industryApi.searchKnownStructures.mockResolvedValue([]);
@@ -98,7 +109,7 @@ describe("FacilitiesPage", () => {
 
   test("a new facility defaults to an Upwell structure with the derived assumptions collapsed", async () => {
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -124,7 +135,7 @@ describe("FacilitiesPage", () => {
     }]);
     industryApi.getSystemCostIndex.mockRejectedValue(new Error("offline"));
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -141,7 +152,7 @@ describe("FacilitiesPage", () => {
 
   test("a manual facility shows every assumption inline", async () => {
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -174,7 +185,7 @@ describe("FacilitiesPage", () => {
     });
     industryApi.getSystemCostIndex.mockRejectedValue(new Error("offline"));
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -188,7 +199,7 @@ describe("FacilitiesPage", () => {
 
   test("switching role to reaction clears captured rigs and resets structure bonus fields", async () => {
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -210,7 +221,7 @@ describe("FacilitiesPage", () => {
     const profile = reactionProfile({ name: "Alliance Tatara" });
     industryApi.listFacilities.mockResolvedValue([profile]);
     industryApi.deleteFacility.mockResolvedValue(undefined);
-    render(<FacilitiesPage />);
+    renderPage();
 
     // The row action's label is generic (no facility name) so it is not
     // captured in session replay; the confirm dialog's button is distinct.
@@ -221,12 +232,46 @@ describe("FacilitiesPage", () => {
     expect(industryApi.deleteFacility).toHaveBeenCalledWith(profile.id, profile.revision);
   });
 
+  test("a card lists the targets its facility is the default for and flags lost rig coverage", async () => {
+    industryApi.listFacilities.mockResolvedValue([manufacturingProfile()]);
+    const choice = { facilityProfileId: "facility-mfg", facilityName: "Sotiyo", materialBonusPercent: "1", timeBonusPercent: "20" };
+    industryApi.getFacilityDefaults.mockResolvedValue({
+      targets: ["Small T1 Ships", "Medium T1 Ships", "Equipment", "Charges"].map((name, index) => ({
+        role: "manufacturing",
+        filterId: index + 1,
+        name,
+        default: choice,
+        suggestion: null,
+        status: name === "Charges" ? "coverageLost" : "set",
+      })),
+      bonuses: [],
+    });
+
+    renderPage();
+
+    const defaults = await screen.findByLabelText("Default for: Small T1 Ships, Medium T1 Ships, Equipment, Charges");
+    expect(within(defaults).getByText("Small T1 Ships")).toBeInTheDocument();
+    expect(within(defaults).getByText("Equipment")).toBeInTheDocument();
+    expect(within(defaults).queryByText("Charges")).not.toBeInTheDocument();
+    expect(within(defaults).getByText("+1")).toBeInTheDocument();
+    expect(within(defaults).getByRole("button", { name: "1 rig coverage warnings" })).toBeInTheDocument();
+  });
+
+  test("a card without defaults shows no Default for row", async () => {
+    industryApi.listFacilities.mockResolvedValue([manufacturingProfile()]);
+
+    renderPage();
+
+    expect(await screen.findByText("Sotiyo")).toBeInTheDocument();
+    expect(screen.queryByText("Default for")).not.toBeInTheDocument();
+  });
+
   test("archived legacy facilities are hidden", async () => {
     industryApi.listFacilities.mockResolvedValue([
       reactionProfile({ id: "active", name: "Active Tatara" }),
       reactionProfile({ id: "archived", name: "Old Tatara", archivedAt: "2026-08-01T00:00:00Z" }),
     ]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     expect(await screen.findByText("Active Tatara")).toBeInTheDocument();
     expect(screen.queryByText("Old Tatara")).not.toBeInTheDocument();
@@ -235,7 +280,7 @@ describe("FacilitiesPage", () => {
   test("editing an existing reaction facility preserves its role in the form", async () => {
     industryApi.listFacilities.mockResolvedValue([reactionProfile()]);
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     await screen.findByRole("dialog", { name: "Edit Facility" });
@@ -260,7 +305,7 @@ describe("FacilitiesPage", () => {
     });
 
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -302,7 +347,7 @@ describe("FacilitiesPage", () => {
     });
 
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("button", { name: "New Facility" }));
     await screen.findByRole("dialog", { name: "New Facility" });
@@ -317,7 +362,7 @@ describe("FacilitiesPage", () => {
 
   test("a manufacturing profile card shows the Manufacturing badge", async () => {
     industryApi.listFacilities.mockResolvedValue([manufacturingProfile()]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     const card = (await screen.findByRole("heading", { name: "Sotiyo" })).closest("section")!;
     expect(within(card).getByText("Manufacturing")).toBeInTheDocument();
@@ -326,7 +371,7 @@ describe("FacilitiesPage", () => {
 
   test("a reaction profile card shows the Reaction badge", async () => {
     industryApi.listFacilities.mockResolvedValue([reactionProfile({ name: "Alliance Tatara" })]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     const card = (await screen.findByRole("heading", { name: "Alliance Tatara" })).closest("section")!;
     expect(within(card).getByText("Reaction")).toBeInTheDocument();
@@ -348,7 +393,7 @@ describe("FacilitiesPage", () => {
         }],
       }),
     ]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     const card = (await screen.findByRole("heading", { name: "Sotiyo" })).closest("section")!;
     expect(within(card).getByText("5%")).toBeInTheDocument();
@@ -369,7 +414,7 @@ describe("FacilitiesPage", () => {
         }],
       }),
     ]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     const card = (await screen.findByRole("heading", { name: "Sotiyo" })).closest("section")!;
     expect(within(card).getByText("5.04%")).toBeInTheDocument();
@@ -382,7 +427,7 @@ describe("FacilitiesPage", () => {
       reactionProfile({ id: "r1", name: "Tatara Prime" }),
     ]);
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     expect(await screen.findByRole("heading", { name: "Sotiyo Prime" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tatara Prime" })).toBeInTheDocument();
@@ -407,7 +452,7 @@ describe("FacilitiesPage", () => {
       reactionProfile({ id: "r1", name: "Azbel Reactor" }),
     ]);
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await screen.findByRole("heading", { name: "Azbel North" });
     await user.type(screen.getByRole("searchbox", { name: "Search facilities" }), "azbel");
@@ -424,7 +469,7 @@ describe("FacilitiesPage", () => {
   test("filtered-empty state is distinct from the no-facilities state and offers a reset", async () => {
     industryApi.listFacilities.mockResolvedValue([manufacturingProfile({ name: "Sotiyo Prime" })]);
     const user = userEvent.setup();
-    render(<FacilitiesPage />);
+    renderPage();
 
     await user.click(await screen.findByRole("tab", { name: "Reactions" }));
 
@@ -437,7 +482,7 @@ describe("FacilitiesPage", () => {
 
   test("the no-facilities empty state has no filter bar", async () => {
     industryApi.listFacilities.mockResolvedValue([]);
-    render(<FacilitiesPage />);
+    renderPage();
 
     expect(await screen.findByText("No Facility Profiles")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Manufacturing" })).not.toBeInTheDocument();

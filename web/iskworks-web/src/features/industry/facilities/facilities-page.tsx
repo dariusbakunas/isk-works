@@ -4,12 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   deleteFacility,
   exportFacilities,
+  getFacilityDefaults,
   listFacilities,
+  type FacilityDefaultsView,
   type FacilityProfile,
 } from "../../../api/industry";
 import { ConfirmDialog, EmptyState, InlineAlert, PageHeader, Panel } from "../../../components/primitives";
 import { apiMessage } from "../shared/api-error";
+import { FacilitiesSectionTabs } from "./facilities-section-tabs";
 import { FacilityCard } from "./facility-card";
+import { defaultsByFacility } from "./facility-defaults-model";
 import {
   EMPTY_FACILITY_FILTERS,
   FACILITY_ACTIVITY_FILTERS,
@@ -30,9 +34,13 @@ export function FacilitiesPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [deleting, setDeleting] = useState<FacilityProfile | null>(null);
   const [filters, setFilters] = useState<FacilityFilterState>(EMPTY_FACILITY_FILTERS);
+  const [defaults, setDefaults] = useState<FacilityDefaultsView | null>(null);
 
   function load() {
     listFacilities().then(setFacilities).catch((requestError) => setError(apiMessage(requestError)));
+    // The "Default for" chips are a convenience: a failure leaves them off
+    // rather than blocking the page.
+    getFacilityDefaults().then(setDefaults).catch(() => setDefaults(null));
   }
 
   useEffect(load, []);
@@ -90,12 +98,14 @@ export function FacilitiesPage() {
     [activeFacilities, filters],
   );
   const filtersActive = hasActiveFacilityFilters(filters);
+  const defaultRoles = useMemo(() => defaultsByFacility(defaults), [defaults]);
 
   return (
     <>
       <PageHeader eyebrow="Industry assumptions" title="Facilities">
         Reusable manufacturing locations and modifiers. Existing Build snapshots remain unchanged when profiles are edited.
       </PageHeader>
+      <FacilitiesSectionTabs />
       {error ? <InlineAlert title="Facility action unavailable">{error}</InlineAlert> : null}
       {exportError ? <InlineAlert title="Export failed">{exportError}</InlineAlert> : null}
       <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -185,7 +195,13 @@ export function FacilitiesPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {visibleFacilities.map((profile) => (
-              <FacilityCard key={profile.id} onDelete={setDeleting} onEdit={edit} profile={profile} />
+              <FacilityCard
+                defaultFor={defaultRoles.get(profile.id)}
+                key={profile.id}
+                onDelete={setDeleting}
+                onEdit={edit}
+                profile={profile}
+              />
             ))}
           </div>
         )}
