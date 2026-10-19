@@ -5,14 +5,29 @@ export function kindLabel(kind: BlueprintLibraryKind): string {
   return kind === "original" ? "Original" : kind === "copy" ? "Copy" : "Unknown";
 }
 
+type RunsFields = Pick<BlueprintLibraryRow, "activity" | "kind" | "licensedRuns">;
+
+/**
+ * Reaction formulas cannot be researched or copied, so they are always
+ * originals with unlimited runs -- whatever kind ESI reported for them.
+ */
+export function hasUnlimitedRuns(row: RunsFields): boolean {
+  return row.activity === "reaction" || row.kind === "original";
+}
+
 /** Originals never run out; a copy with no recorded runs has none left. */
-export function formatRuns(row: Pick<BlueprintLibraryRow, "kind" | "licensedRuns">): string {
-  if (row.kind === "original") return "∞";
+export function formatRuns(row: RunsFields): string {
+  if (hasUnlimitedRuns(row)) return "∞";
   return row.licensedRuns === null ? "0" : row.licensedRuns.toLocaleString();
 }
 
-export function isUsable(row: Pick<BlueprintLibraryRow, "kind" | "licensedRuns">): boolean {
-  return row.kind === "original" || (row.licensedRuns ?? 0) > 0;
+export function isUsable(row: RunsFields): boolean {
+  return hasUnlimitedRuns(row) || (row.licensedRuns ?? 0) > 0;
+}
+
+/** ME / TE do not apply to reactions. */
+export function formatEfficiency(row: Pick<BlueprintLibraryRow, "activity">, value: number): string {
+  return row.activity === "reaction" ? "—" : String(value);
 }
 
 /**

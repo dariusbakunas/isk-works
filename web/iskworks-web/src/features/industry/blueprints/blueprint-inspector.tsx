@@ -43,8 +43,8 @@ export function BlueprintInspector({ blueprint, onClose }: { blueprint: Blueprin
         )}
       </div>
       <Section title="Blueprint">
-        <Value label="Kind" value={kindLabel(blueprint.kind)} />
-        <Value label="ME / TE" value={`${blueprint.materialEfficiency} / ${blueprint.timeEfficiency}`} />
+        <Value label="Kind" value={blueprint.activity === "reaction" ? "Reaction formula" : kindLabel(blueprint.kind)} />
+        <Value label="ME / TE" value={blueprint.activity === "reaction" ? "—" : `${blueprint.materialEfficiency} / ${blueprint.timeEfficiency}`} />
         <Value label="Runs" value={formatRuns(blueprint)} />
         <Value label="Activity" value={blueprint.activity === "reaction" ? "Reaction" : "Manufacturing"} />
       </Section>

@@ -20,7 +20,7 @@ import { CharacterName } from "../../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
 import { BlueprintInspector } from "./blueprint-inspector";
-import { formatRuns, groupBlueprints, isUsable } from "./blueprint-format";
+import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns, isUsable } from "./blueprint-format";
 import {
   DEFAULT_VIEW,
   blueprintLibraryQuery,
@@ -35,7 +35,7 @@ import { useBlueprintLibrary } from "./use-blueprint-library";
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
   { key: "blueprint", label: "Blueprint", width: "minmax(240px,1fr)", sort: "blueprint" },
   { key: "product", label: "Product", width: "180px", sort: "product", hideBelow: "tablet" },
-  { key: "kind", label: "Kind", width: "64px", sort: "kind" },
+  { key: "kind", label: "Kind", width: "76px", sort: "kind" },
   { key: "me", label: "ME", width: "48px", sort: "me", numeric: true },
   { key: "te", label: "TE", width: "48px", sort: "te", numeric: true },
   { key: "runs", label: "Runs", width: "64px", sort: "runs", numeric: true },
@@ -212,14 +212,18 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
       </span>
     ),
     product: <span className="block truncate" title={row.productGroupName ?? undefined}>{row.productName ?? "—"}</span>,
-    kind: (
+    kind: row.activity === "reaction" ? (
+      <span title="Reaction formula">
+        <Badge square tone="reaction">Reaction</Badge>
+      </span>
+    ) : (
       <span title={row.kind === "original" ? "Original" : row.kind === "copy" ? "Copy" : "ESI did not say whether this is an original or a copy"}>
         <Badge square tone={row.kind === "original" ? "primary" : row.kind === "copy" ? "batch" : "muted"}>{row.kind === "original" ? "BPO" : row.kind === "copy" ? "BPC" : "?"}</Badge>
       </span>
     ),
-    me: row.materialEfficiency,
-    te: row.timeEfficiency,
-    runs: <span title={row.kind === "original" ? "Unlimited runs" : undefined}>{formatRuns(row)}</span>,
+    me: formatEfficiency(row, row.materialEfficiency),
+    te: formatEfficiency(row, row.timeEfficiency),
+    runs: <span title={hasUnlimitedRuns(row) ? "Unlimited runs" : undefined}>{formatRuns(row)}</span>,
     character: row.characterName ? <CharacterName className="block truncate" name={row.characterName} /> : "—",
     location: <span className="block truncate" title={row.locationName ?? undefined}>{row.locationName ?? `Location ${row.locationId}`}</span>,
   };

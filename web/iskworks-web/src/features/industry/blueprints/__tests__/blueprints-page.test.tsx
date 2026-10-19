@@ -123,6 +123,17 @@ describe("Blueprints page", () => {
     expect(screen.getByText("BPO")).toBeInTheDocument();
   });
 
+  test("reaction formulas show Reaction, no ME/TE and unlimited runs even when ESI gave no kind", async () => {
+    vi.mocked(listBlueprintLibrary).mockResolvedValue(page([{ ...rows[2], kind: "unknown" }]));
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Owned blueprints" });
+    const formula = within(table).getAllByRole("row").find((element) => element.textContent?.includes("Reaction Formula"))!;
+    const cells = within(formula).getAllByRole("cell").map((cell) => cell.textContent);
+    expect(cells.slice(2, 6)).toEqual(["Reaction", "—", "—", "∞"]);
+    expect(within(formula).queryByText("?")).not.toBeInTheDocument();
+  });
+
   test("filters write the URL and reach the API", async () => {
     const user = userEvent.setup();
     renderPage();
