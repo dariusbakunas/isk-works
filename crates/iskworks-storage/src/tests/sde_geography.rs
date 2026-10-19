@@ -183,6 +183,25 @@ async fn staged_sde_import_activates_and_supports_search_and_recipe_lookup(pool:
         filters.iter().map(|f| f.filter_id).collect::<Vec<_>>(),
         vec![3, 18]
     );
+    // Each filter takes the activity of the rig table referencing it.
+    let by_activity = repository
+        .industry_target_filters_by_activity()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_activity
+            .iter()
+            .map(|(activity, filter)| (*activity, filter.filter_id))
+            .collect::<Vec<_>>(),
+        vec![
+            (iskworks_sde::RigActivity::Manufacturing, 3),
+            (iskworks_sde::RigActivity::Reaction, 18)
+        ]
+    );
+    assert_eq!(
+        repository.group_categories(&[25, 999]).await.unwrap(),
+        std::collections::BTreeMap::from([(25, 6)])
+    );
     let rigs = repository
         .search_structure_rigs("Standup M-Set", 10, Some(35_825))
         .await

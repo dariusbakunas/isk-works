@@ -241,6 +241,14 @@ pub trait IndustryRepository: Send + Sync {
             chrono::Utc::now(),
         ))
     }
+    /// The workspace's facility defaults, which new root and producer Builds
+    /// take their facility from. Empty when unsupported.
+    async fn facility_defaults(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<crate::facility_defaults::FacilityDefault>, IndustryError> {
+        Ok(Vec::new())
+    }
     async fn get_facility_profile(
         &self,
         _workspace_id: WorkspaceId,

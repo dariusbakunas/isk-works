@@ -1157,6 +1157,82 @@ impl SdeReadRepository for PgSdeRepository {
             .collect())
     }
 
+    async fn industry_target_filters_by_activity(
+        &self,
+    ) -> Result<
+        Vec<(
+            iskworks_sde::RigActivity,
+            iskworks_sde::IndustryTargetFilter,
+        )>,
+        SdeError,
+    > {
+        // A filter's activity is whichever rig modifier table references it;
+        // EVE keeps manufacturing (1-15) and reaction (16-18) filters apart.
+        let rows = sqlx::query_as::<_, ActivityTargetFilterRow>(
+            r#"WITH active AS (SELECT id FROM sde_imports WHERE active=true),
+               referenced AS (
+                 SELECT DISTINCT 'manufacturing' AS activity, filter_id
+                 FROM sde_structure_rig_modifiers modifier
+                 JOIN active ON active.id=modifier.import_id,
+                      unnest(modifier.material_filter_ids || modifier.time_filter_ids) AS filter_id
+                 UNION
+                 SELECT DISTINCT 'reaction', filter_id
+                 FROM sde_reaction_rig_modifiers modifier
+                 JOIN active ON active.id=modifier.import_id,
+                      unnest(modifier.material_filter_ids || modifier.time_filter_ids) AS filter_id
+               )
+               SELECT referenced.activity, filter.filter_id, filter.name_en,
+                      filter.category_ids, filter.group_ids
+               FROM referenced
+               JOIN active ON true
+               JOIN sde_industry_target_filters filter
+                 ON filter.import_id=active.id AND filter.filter_id=referenced.filter_id
+               ORDER BY filter.filter_id, referenced.activity"#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let activity = if row.activity == "reaction" {
+                    iskworks_sde::RigActivity::Reaction
+                } else {
+                    iskworks_sde::RigActivity::Manufacturing
+                };
+                (
+                    activity,
+                    iskworks_sde::IndustryTargetFilter {
+                        filter_id: row.filter_id,
+                        name: row.name_en,
+                        category_ids: row.category_ids,
+                        group_ids: row.group_ids,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    async fn group_categories(
+        &self,
+        group_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, i64>, SdeError> {
+        if group_ids.is_empty() {
+            return Ok(std::collections::BTreeMap::new());
+        }
+        let rows = sqlx::query_as::<_, (i64, i64)>(
+            r#"SELECT g.group_id, g.category_id
+               FROM sde_imports import
+               JOIN sde_groups g ON g.import_id=import.id
+               WHERE import.active=true AND g.group_id = ANY($1) AND g.category_id IS NOT NULL"#,
+        )
+        .bind(group_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows.into_iter().collect())
+    }
+
     async fn search_solar_systems(
         &self,
         query: &str,
@@ -1784,6 +1860,15 @@ fn rig_modifier_query(table: &str, multiplier: &str) -> String {
 
 #[derive(sqlx::FromRow)]
 struct IndustryTargetFilterRow {
+    filter_id: i64,
+    name_en: String,
+    category_ids: Vec<i64>,
+    group_ids: Vec<i64>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ActivityTargetFilterRow {
+    activity: String,
     filter_id: i64,
     name_en: String,
     category_ids: Vec<i64>,

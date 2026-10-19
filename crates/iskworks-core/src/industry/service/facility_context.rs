@@ -218,7 +218,7 @@ impl IndustryService {
     /// facility rig's target filter is matched against. An unknown product
     /// (no active SDE, or absent from it) yields the default, under which a
     /// `Restricted` rig contributes nothing.
-    async fn resolve_product_classification(
+    pub(super) async fn resolve_product_classification(
         &self,
         product_type_id: i64,
     ) -> Result<crate::ProductClassification, IndustryError> {

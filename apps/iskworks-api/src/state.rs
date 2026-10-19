@@ -51,6 +51,8 @@ pub struct AppState {
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
     facility_repository: Option<Arc<iskworks_storage::PgFacilityRepository>>,
+    facility_defaults_repository:
+        Option<Arc<dyn iskworks_core::facility_defaults::FacilityDefaultsRepository>>,
     finance_repository: Option<Arc<iskworks_storage::PgFinanceRepository>>,
     finance_analytics_repository: Option<Arc<dyn iskworks_core::FinanceAnalyticsRepository>>,
     asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
@@ -87,6 +89,7 @@ impl AppState {
             planetary_characters: None,
             planetary_preferences: None,
             facility_repository: None,
+            facility_defaults_repository: None,
             finance_repository: None,
             finance_analytics_repository: None,
             asset_browser_repository: None,
@@ -226,6 +229,15 @@ impl AppState {
         repository: Arc<iskworks_storage::PgFacilityRepository>,
     ) -> Self {
         self.facility_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_facility_defaults_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::facility_defaults::FacilityDefaultsRepository>,
+    ) -> Self {
+        self.facility_defaults_repository = Some(repository);
         self
     }
 
@@ -672,6 +684,22 @@ impl AppState {
                 "Facility persistence is unavailable.".to_string(),
             ))
         })
+    }
+
+    pub(crate) fn facility_defaults_service(
+        &self,
+    ) -> Result<iskworks_core::facility_defaults::FacilityDefaultsService, ApiError> {
+        let repository = self.facility_defaults_repository.clone().ok_or_else(|| {
+            ApiError::Facility(FacilityError::Persistence(
+                "Facility persistence is unavailable.".to_string(),
+            ))
+        })?;
+        Ok(
+            iskworks_core::facility_defaults::FacilityDefaultsService::new(
+                repository,
+                self.sde_repository.clone(),
+            ),
+        )
     }
 
     pub(crate) fn finance_repository(

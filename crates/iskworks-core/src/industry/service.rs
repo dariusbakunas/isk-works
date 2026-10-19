@@ -4,6 +4,7 @@ use crate::GraphMarketEvidence;
 
 mod blueprint_backfill;
 mod facility_context;
+mod facility_defaults;
 mod preview;
 mod projection;
 mod recipe_capture;
@@ -24,17 +25,20 @@ pub(super) fn prepopulated_draft_planning(
     resolution: &crate::ComponentResolution,
     recipe_selection: RecipeSelection,
     parent_draft: Option<&DraftPlanningInput>,
+    default_facility: Option<FacilityProfileId>,
 ) -> Option<DraftPlanningSnapshot> {
-    // Prefer the row's own per-row facility override; absent that, fall
-    // back to the parent's own facility for the matching kind, so a fresh
-    // linked build isn't left with no facility selected just because the
-    // user never overrode this particular row -- only its own facility id
-    // carries over, never the parent's blueprint ME/TE or EIV, which
-    // describe the parent's own job, not the child's.
+    // Prefer the row's own per-row facility override, then the workspace
+    // default for the product's rig target (already resolved by the caller,
+    // fallback included); absent both, fall back to the parent's own
+    // facility for the matching kind, so a fresh linked build isn't left
+    // with no facility selected -- only its own facility id carries over,
+    // never the parent's blueprint ME/TE or EIV, which describe the parent's
+    // own job, not the child's.
     let facility_source = resolution
         .facility_override
         .as_ref()
         .map(|override_| override_.facility_profile_id)
+        .or(default_facility)
         .or_else(|| {
             parent_draft.and_then(|draft| match recipe_selection {
                 RecipeSelection::Manufacturing { .. } => draft
@@ -482,6 +486,9 @@ impl IndustryService {
             ),
             None => None,
         };
+        let draft_planning = self
+            .with_default_root_facility(workspace_id, command.recipe, &recipe, draft_planning)
+            .await?;
         let draft_planning = draft_planning
             .map(|input| crate::normalize_draft_planning(input, command.runs))
             .transpose()?

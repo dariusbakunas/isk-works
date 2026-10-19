@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use iskworks_app::SystemCostIndex;
+use iskworks_core::facility_defaults::{FacilityDefaultAssignment, FacilityDefaultsView};
 use iskworks_core::{
     BuildId, CreateFacilityProfileCommand, FacilityPreviewCommand, FacilityProfileId, Money,
     ResolvedMarketLocation,
@@ -43,9 +44,44 @@ pub(crate) fn router() -> Router<AppState> {
         )
         .route("/api/industry/facilities/import", post(import_facilities))
         .route(
+            "/api/industry/facility-defaults",
+            get(get_facility_defaults).put(put_facility_defaults),
+        )
+        .route(
             "/api/builds/:build_id/facility-preview",
             post(preview_build_facility),
         )
+}
+
+async fn get_facility_defaults(
+    State(state): State<AppState>,
+) -> Result<Json<FacilityDefaultsView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .facility_defaults_service()?
+            .view(workspace_id)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FacilityDefaultsRequest {
+    assignments: Vec<FacilityDefaultAssignment>,
+}
+
+async fn put_facility_defaults(
+    State(state): State<AppState>,
+    Json(request): Json<FacilityDefaultsRequest>,
+) -> Result<Json<FacilityDefaultsView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .facility_defaults_service()?
+            .assign(workspace_id, request.assignments)
+            .await?,
+    ))
 }
 
 async fn get_system_cost_index(

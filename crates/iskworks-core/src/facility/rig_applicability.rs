@@ -82,7 +82,7 @@ impl From<iskworks_sde::RigApplicability> for RigApplicability {
 /// `Unrestricted` always does; `Restricted` requires the product's category
 /// or group to be listed, and an unknown classification never matches a
 /// `Restricted` filter.
-fn rig_target_applies(filter: &RigTargetFilter, product: ProductClassification) -> bool {
+pub(crate) fn rig_target_applies(filter: &RigTargetFilter, product: ProductClassification) -> bool {
     match filter {
         RigTargetFilter::Unrestricted => true,
         RigTargetFilter::Restricted {
