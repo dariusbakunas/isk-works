@@ -134,6 +134,15 @@ describe("Blueprints page", () => {
     expect(within(formula).queryByText("?")).not.toBeInTheDocument();
   });
 
+  test("an unknown-kind blueprint is a never-used original: BPO with unlimited runs", async () => {
+    vi.mocked(listBlueprintLibrary).mockResolvedValue(page([{ ...rows[0], kind: "unknown", materialEfficiency: 0, timeEfficiency: 0 }]));
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Owned blueprints" });
+    const fresh = within(table).getAllByRole("row").find((element) => element.textContent?.includes("Rifter Blueprint"))!;
+    expect(within(fresh).getAllByRole("cell").map((cell) => cell.textContent).slice(2, 6)).toEqual(["BPO", "0", "0", "∞"]);
+  });
+
   test("filters write the URL and reach the API", async () => {
     const user = userEvent.setup();
     renderPage();

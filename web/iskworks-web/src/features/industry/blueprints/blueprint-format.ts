@@ -2,17 +2,19 @@ import type { BlueprintLibraryKind, BlueprintLibraryRow } from "../../../api/ind
 import type { BlueprintGrouping } from "./blueprint-library-url-state";
 
 export function kindLabel(kind: BlueprintLibraryKind): string {
-  return kind === "original" ? "Original" : kind === "copy" ? "Copy" : "Unknown";
+  return kind === "original" ? "Original" : kind === "copy" ? "Copy" : "Original (never used)";
 }
 
 type RunsFields = Pick<BlueprintLibraryRow, "activity" | "kind" | "licensedRuns">;
 
 /**
- * Reaction formulas cannot be researched or copied, so they are always
- * originals with unlimited runs -- whatever kind ESI reported for them.
+ * Originals have unlimited runs. "unknown" is also an original: ESI reports
+ * a positive quantity (not -1/-2) for a stack of never-used originals. And
+ * reaction formulas cannot be researched or copied, so they are always
+ * originals whatever kind ESI reported.
  */
 export function hasUnlimitedRuns(row: RunsFields): boolean {
-  return row.activity === "reaction" || row.kind === "original";
+  return row.activity === "reaction" || row.kind !== "copy";
 }
 
 /** Originals never run out; a copy with no recorded runs has none left. */

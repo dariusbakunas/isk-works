@@ -217,8 +217,8 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
         <Badge square tone="reaction">Reaction</Badge>
       </span>
     ) : (
-      <span title={row.kind === "original" ? "Original" : row.kind === "copy" ? "Copy" : "ESI did not say whether this is an original or a copy"}>
-        <Badge square tone={row.kind === "original" ? "primary" : row.kind === "copy" ? "batch" : "muted"}>{row.kind === "original" ? "BPO" : row.kind === "copy" ? "BPC" : "?"}</Badge>
+      <span title={row.kind === "copy" ? "Copy" : row.kind === "original" ? "Original" : "Original, never used (ESI reports a stack quantity)"}>
+        <Badge square tone={row.kind === "copy" ? "batch" : "primary"}>{row.kind === "copy" ? "BPC" : "BPO"}</Badge>
       </span>
     ),
     me: formatEfficiency(row, row.materialEfficiency),
