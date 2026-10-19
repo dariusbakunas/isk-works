@@ -486,6 +486,9 @@ impl IndustryService {
             ),
             None => None,
         };
+        let draft_planning = self
+            .with_default_root_facility(workspace_id, command.recipe, &recipe, draft_planning)
+            .await?;
         let draft_planning = draft_planning
             .map(|input| crate::normalize_draft_planning(input, command.runs))
             .transpose()?

@@ -64,4 +64,65 @@ impl IndustryService {
         }
         Ok(None)
     }
+
+    /// A new root Build created without a facility for its recipe kind gets
+    /// the workspace default for its product (ME/TE 0, no EIV); a draft-less
+    /// command gets a draft holding just that facility. An explicit facility
+    /// -- e.g. the one an opportunity was priced against -- is never
+    /// replaced.
+    pub(in crate::industry) async fn with_default_root_facility(
+        &self,
+        workspace_id: WorkspaceId,
+        selection: RecipeSelection,
+        recipe: &BuildRecipe,
+        draft: Option<DraftPlanningInput>,
+    ) -> Result<Option<DraftPlanningInput>, IndustryError> {
+        let has_facility = draft.as_ref().is_some_and(|input| match selection {
+            RecipeSelection::Manufacturing { .. } => input.manufacturing_facility.is_some(),
+            RecipeSelection::Reaction { .. } => input.reaction_facility.is_some(),
+        });
+        if has_facility {
+            return Ok(draft);
+        }
+        let context = self.load_facility_defaults(workspace_id).await?;
+        let product_type_id = recipe.primary_product().type_id;
+        let Some(facility_profile_id) = self
+            .default_facility(workspace_id, &context, selection, product_type_id)
+            .await?
+        else {
+            return Ok(draft);
+        };
+        let Some(mut input) = draft else {
+            let resolution = crate::ComponentResolution {
+                type_id: product_type_id,
+                recipe: selection,
+                facility_override: None,
+                blueprint_selection: None,
+            };
+            return Ok(super::prepopulated_draft_planning(
+                &resolution,
+                selection,
+                None,
+                Some(facility_profile_id),
+            )
+            .map(|snapshot| snapshot.input));
+        };
+        match selection {
+            RecipeSelection::Manufacturing { .. } => {
+                input.manufacturing_facility = Some(FacilityPreviewCommand {
+                    facility_profile_id,
+                    blueprint_me: 0,
+                    blueprint_te: 0,
+                    estimated_item_value: None,
+                });
+            }
+            RecipeSelection::Reaction { .. } => {
+                input.reaction_facility = Some(ReactionFacilityPreviewCommand {
+                    facility_profile_id,
+                    estimated_item_value: None,
+                });
+            }
+        }
+        Ok(Some(input))
+    }
 }
