@@ -67,6 +67,13 @@ impl FacilityDefaultsRepository for PgFacilityRepository {
         list_defaults(&self.pool, workspace_id).await
     }
 
+    async fn list_facility_profiles(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<iskworks_core::IndustryFacilityProfile>, FacilityError> {
+        self.list(workspace_id).await
+    }
+
     async fn apply_facility_default_changes(
         &self,
         workspace_id: WorkspaceId,

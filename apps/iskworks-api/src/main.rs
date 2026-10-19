@@ -140,7 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_production_repository(production_repository)
         .with_order_repository(order_repository)
         .with_ticket_job_repository(ticket_job_repository)
-        .with_facility_repository(facility_repository)
+        .with_facility_repository(facility_repository.clone())
+        .with_facility_defaults_repository(facility_repository)
         .with_finance_analytics_repository(
             finance_repository.clone() as Arc<dyn iskworks_core::FinanceAnalyticsRepository>
         )

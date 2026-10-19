@@ -94,6 +94,12 @@ pub trait FacilityDefaultsRepository: Send + Sync {
         workspace_id: crate::WorkspaceId,
     ) -> Result<Vec<FacilityDefault>, FacilityError>;
 
+    /// Every facility profile of the workspace, archived ones included.
+    async fn list_facility_profiles(
+        &self,
+        workspace_id: crate::WorkspaceId,
+    ) -> Result<Vec<IndustryFacilityProfile>, FacilityError>;
+
     /// Applies every change atomically. A `Set` naming a facility outside the
     /// workspace, archived, or of a different role is a `Validation` error.
     async fn apply_facility_default_changes(
@@ -360,6 +366,12 @@ pub fn default_status(
         None => DefaultStatus::None,
     }
 }
+
+mod service;
+pub use service::{
+    DefaultTargetRow, FacilityChoice, FacilityDefaultsService, FacilityDefaultsView,
+    FacilityTargetBonusRow,
+};
 
 #[cfg(test)]
 mod tests;
