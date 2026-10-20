@@ -21,6 +21,7 @@ mod finance_categories;
 pub mod industry;
 mod integration;
 mod inventory;
+mod inventory_runway;
 mod invite;
 mod job_split;
 pub mod logistics;
@@ -118,6 +119,7 @@ pub use inventory::{
     InventoryRepository, InventoryService, MoneyDelta, PostAdjustmentCommand, PostInventoryCommand,
     ReverseInventoryCommand,
 };
+pub use inventory_runway::*;
 pub use invite::{generate_invite_code, hash_invite_code_from_raw, InviteGrant, InviteId};
 pub use job_split::JobSplit;
 pub use market::*;
