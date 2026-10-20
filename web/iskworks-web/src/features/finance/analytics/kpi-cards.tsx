@@ -4,7 +4,7 @@ import type { AnalyticsDelta, AnalyticsKpis, FeesKpi } from "../../../api/financ
 import { formatIskAbbreviated, formatIskSummary } from "../../../components/money";
 import { Private } from "../../../observability/private";
 import { deltaPresentation, numeric, shortDate, type DeltaPresentation, type DeltaTone } from "./analytics-format";
-import { Sparkline } from "./sparkline";
+import { Sparkline } from "../../../components/sparkline";
 
 const TONE_CLASS: Record<DeltaTone, string> = {
   good: "text-income",
