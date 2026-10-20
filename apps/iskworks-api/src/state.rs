@@ -47,6 +47,7 @@ pub struct AppState {
     ticket_job_repository: Option<Arc<dyn TicketJobRepository>>,
     character_roster_service: Option<Arc<CharacterRosterService>>,
     calendar_service: Option<Arc<CalendarService>>,
+    jobs_service: Option<Arc<iskworks_app::JobsService>>,
     planetary_characters: Option<Arc<dyn PlanetaryCharacterSource>>,
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
@@ -89,6 +90,7 @@ impl AppState {
             ticket_job_repository: None,
             character_roster_service: None,
             calendar_service: None,
+            jobs_service: None,
             planetary_characters: None,
             planetary_preferences: None,
             facility_repository: None,
@@ -199,6 +201,10 @@ impl AppState {
         self.calendar_service = Some(Arc::new(
             CalendarService::new(character_roster_service.clone()).with_events(repository.clone()),
         ));
+        self.jobs_service = Some(Arc::new(iskworks_app::JobsService::new(
+            character_roster_service.clone(),
+            repository.clone(),
+        )));
         self.character_roster_service = Some(character_roster_service);
         self.planetary_characters = Some(repository.clone());
         self.planetary_preferences = Some(repository.clone());
@@ -279,6 +285,13 @@ impl AppState {
         repository: Arc<dyn iskworks_core::InventoryConsumptionRepository>,
     ) -> Self {
         self.inventory_consumption_repository = Some(repository);
+        self
+    }
+
+    /// For tests: the Jobs read model with fake sources.
+    #[must_use]
+    pub fn with_jobs_service(mut self, service: Arc<iskworks_app::JobsService>) -> Self {
+        self.jobs_service = Some(service);
         self
     }
 
@@ -765,6 +778,14 @@ impl AppState {
                     "Inventory consumption persistence is unavailable.".to_string(),
                 ))
             })
+    }
+
+    pub(crate) fn jobs_service(&self) -> Result<Arc<iskworks_app::JobsService>, ApiError> {
+        self.jobs_service.clone().ok_or_else(|| {
+            ApiError::Inventory(InventoryError::Persistence(
+                "Jobs persistence is unavailable.".to_string(),
+            ))
+        })
     }
 
     pub(crate) fn asset_browser_repository(
