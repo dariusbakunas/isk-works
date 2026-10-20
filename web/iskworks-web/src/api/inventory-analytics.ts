@@ -84,3 +84,63 @@ export function getInventoryRunway(
   const query = category ? `?${new URLSearchParams({ category })}` : "";
   return request(`/api/inventory/runway${query}`, { signal });
 }
+
+export type ConsumptionGranularity = "day" | "week";
+
+export interface ConsumptionBucket {
+  /** `YYYY-MM-DD`; weeks start on Monday (UTC). */
+  start: string;
+  /** Not over yet, or cut short by the range end. */
+  partial: boolean;
+  total: string;
+  /** Non-zero categories only, in display order. */
+  byCategory: Array<{ category: MaterialCategory; value: string }>;
+}
+
+export interface ConsumedMaterial {
+  typeId: number;
+  name: string;
+  category: MaterialCategory;
+  quantity: number;
+  value: string;
+  sharePercent: number;
+  /** Quantity per week for the 8 weeks ending with the range end's week, oldest first. */
+  weeklyQuantity: number[];
+  onHand: number;
+  /** `null` until the material has 4 weeks of history. */
+  averagePerWeek: number | null;
+  daysOfCover: number | null;
+}
+
+export interface InventoryConsumption {
+  from: string;
+  to: string;
+  granularity: ConsumptionGranularity;
+  earliestObservedAt: string | null;
+  kpis: {
+    consumedValue: string;
+    materialsUsed: number;
+    busiestBucket: { start: string; value: string } | null;
+    topCategory: MaterialCategory | null;
+  };
+  buckets: ConsumptionBucket[];
+  /** Ignores the category filter, so the donut can switch categories. */
+  categories: Array<{ category: MaterialCategory; value: string; sharePercent: number }>;
+  /** Largest value first. */
+  materials: ConsumedMaterial[];
+}
+
+export interface ConsumptionQuery {
+  /** Omit for everything since the first recorded consumption. */
+  from: string | null;
+  to: string;
+  granularity: ConsumptionGranularity;
+  category: MaterialCategory | null;
+}
+
+export function getInventoryConsumption(query: ConsumptionQuery, signal?: AbortSignal): Promise<InventoryConsumption> {
+  const params = new URLSearchParams({ to: query.to, granularity: query.granularity });
+  if (query.from) params.set("from", query.from);
+  if (query.category) params.set("category", query.category);
+  return request(`/api/inventory/consumption?${params}`, { signal });
+}

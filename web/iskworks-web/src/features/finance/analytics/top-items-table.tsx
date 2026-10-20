@@ -3,7 +3,7 @@ import { MoneyAmount } from "../../../components/money";
 import { Private } from "../../../observability/private";
 import { numeric } from "./analytics-format";
 import { NoData } from "./category-donuts";
-import { Sparkline } from "./sparkline";
+import { Sparkline } from "../../../components/sparkline";
 
 const GRID = "grid grid-cols-[minmax(8rem,1fr)_6.5rem_4.5rem_5.5rem_6.5rem_4rem_3.5rem] items-center gap-2";
 

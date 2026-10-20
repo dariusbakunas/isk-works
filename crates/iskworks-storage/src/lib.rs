@@ -30,6 +30,7 @@ mod industry;
 mod inventory;
 mod invite;
 mod market;
+mod material_types;
 mod order;
 mod pool;
 mod pool_metrics;

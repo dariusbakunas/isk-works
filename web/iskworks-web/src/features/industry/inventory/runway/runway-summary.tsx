@@ -3,33 +3,10 @@ import { Link } from "react-router";
 
 import type { RunwayEpicReadiness, RunwayKpis } from "../../../../api/inventory-analytics";
 import { formatIskAbbreviated, formatIskSummary } from "../../../../components/money";
-import { ProgressBar, textToneClasses, type Tone } from "../../../../components/primitives";
+import { ProgressBar } from "../../../../components/primitives";
 import { Private } from "../../../../observability/private";
+import { InventoryKpiCard as KpiCard } from "../inventory-kpi-card";
 import { coverageTone, formatPercent } from "./runway-format";
-
-function KpiCard({
-  label,
-  value,
-  title,
-  tone,
-  detail,
-}: {
-  label: string;
-  value: string;
-  title?: string;
-  tone: Tone;
-  detail: string;
-}) {
-  return (
-    <div className="iw-panel min-w-0 px-3 py-2" data-testid="runway-kpi">
-      <div className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted">{label}</div>
-      <div className={`mt-0.5 whitespace-nowrap font-mono text-lg font-bold tabular-nums ${textToneClasses[tone]}`} title={title}>
-        {value}
-      </div>
-      <div className="mt-0.5 text-[0.625rem] text-muted">{detail}</div>
-    </div>
-  );
-}
 
 export function RunwayKpiStrip({ kpis }: { kpis: RunwayKpis }) {
   const short = kpis.materialsShort > 0;

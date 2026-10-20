@@ -5,8 +5,8 @@
 use std::collections::BTreeMap;
 
 use iskworks_core::{
-    material_category, InventoryError, InventoryRunwayRepository, MaterialCategory, RunwayEpic,
-    RunwayEventConsumption, RunwayFacts, RunwayRequirement, RunwayStockPool, RunwayTypeFact,
+    InventoryError, InventoryRunwayRepository, RunwayEpic, RunwayEventConsumption, RunwayFacts,
+    RunwayRequirement, RunwayStockPool, RunwayTypeFact,
 };
 
 use super::*;
@@ -155,49 +155,6 @@ impl PgOrderRepository {
             })
             .collect()
     }
-
-    /// Name and category from the active SDE import; types it lacks keep
-    /// their captured name and fall into "Other".
-    async fn runway_types(
-        &self,
-        names: BTreeMap<i64, String>,
-    ) -> Result<Vec<RunwayTypeFact>, InventoryError> {
-        let type_ids: Vec<i64> = names.keys().copied().collect();
-        let rows: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT t.type_id, t.name_en, g.name_en, c.name_en \
-             FROM sde_types t \
-             JOIN sde_imports i ON i.id = t.import_id AND i.active \
-             LEFT JOIN sde_groups g ON g.import_id = t.import_id AND g.group_id = t.group_id \
-             LEFT JOIN sde_categories c \
-               ON c.import_id = g.import_id AND c.category_id = g.category_id \
-             WHERE t.type_id = ANY($1)",
-        )
-        .bind(&type_ids)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(persistence)?;
-        let mut facts: BTreeMap<i64, RunwayTypeFact> = rows
-            .into_iter()
-            .map(|(type_id, name, group, category)| {
-                (
-                    type_id,
-                    RunwayTypeFact {
-                        type_id,
-                        name,
-                        category: material_category(group.as_deref(), category.as_deref()),
-                    },
-                )
-            })
-            .collect();
-        for (type_id, name) in names {
-            facts.entry(type_id).or_insert(RunwayTypeFact {
-                type_id,
-                name,
-                category: MaterialCategory::Other,
-            });
-        }
-        Ok(facts.into_values().collect())
-    }
 }
 
 #[async_trait]
@@ -209,7 +166,15 @@ impl InventoryRunwayRepository for PgOrderRepository {
             self.runway_event_consumption(workspace_id),
             self.runway_pools(workspace_id),
         )?;
-        let types = self.runway_types(names).await?;
+        let types = crate::material_types::material_types(&self.pool, names)
+            .await?
+            .into_iter()
+            .map(|(type_id, name, category)| RunwayTypeFact {
+                type_id,
+                name,
+                category,
+            })
+            .collect();
         Ok(RunwayFacts {
             epics,
             requirements,

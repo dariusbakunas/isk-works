@@ -792,12 +792,14 @@ fn map_sqlx(error: sqlx::Error) -> InventoryError {
     InventoryError::Persistence(error.to_string())
 }
 
+mod consumption;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use iskworks_core::{InventoryRepository, Money};
 
-    async fn fixture(pool: &PgPool) -> (InventoryItemKey, PgInventoryRepository) {
+    pub(super) async fn fixture(pool: &PgPool) -> (InventoryItemKey, PgInventoryRepository) {
         let workspace_id = Uuid::new_v4();
         let owner_id = Uuid::new_v4();
         let import_id = Uuid::new_v4();
@@ -847,7 +849,7 @@ mod tests {
         )
     }
 
-    fn posting(
+    pub(super) fn posting(
         key: &InventoryItemKey,
         revision: u64,
         quantity: i64,
