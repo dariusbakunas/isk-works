@@ -19,6 +19,7 @@ mod finance;
 mod finance_analytics;
 mod finance_categories;
 pub mod industry;
+mod industry_jobs;
 mod integration;
 mod inventory;
 mod inventory_consumption;
@@ -105,6 +106,7 @@ pub use industry::{
     RecipeCurrency, RecipeSelection, RenameBuildCommand, TaskExecutionSnapshot, UpdateBuildCommand,
     UpdatePriceSourceCommand,
 };
+pub use industry_jobs::*;
 pub use integration::{
     character_health, exact_total, industry_job_slot_max, is_running_job_status, CharacterHealth,
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
