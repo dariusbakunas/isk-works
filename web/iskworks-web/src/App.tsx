@@ -14,7 +14,7 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 
 import { getSession, logout } from "./api/auth";
@@ -56,6 +56,12 @@ import { MarketImportsPage } from "./features/industry/market/market-imports-pag
 import { MarketBrowserPage } from "./features/industry/market-browser/market-browser-page";
 import { InventoryPage } from "./features/industry/inventory/inventory-page";
 import { RunwayPage } from "./features/industry/inventory/runway/runway-page";
+// Consumption pulls in the charting library, so it loads on demand.
+const ConsumptionPage = lazy(() =>
+  import("./features/industry/inventory/consumption/consumption-page").then((module) => ({
+    default: module.ConsumptionPage,
+  })),
+);
 import { OpportunitiesPage } from "./features/industry/opportunities/opportunities-page";
 import { PlanetaryPage } from "./features/industry/planetary/planetary-page";
 import { AssetsWorkspacePage } from "./features/assets/assets-workspace-page";
@@ -366,6 +372,10 @@ function ProtectedShell({
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/inventory/runway" element={<RunwayPage />} />
+        <Route
+          path="/inventory/consumption"
+          element={<Suspense fallback={<div className="iw-panel p-3 text-sm text-muted">Loading consumption…</div>}><ConsumptionPage /></Suspense>}
+        />
         <Route path="/assets" element={<AssetsWorkspacePage />} />
         <Route path="/market" element={<MarketBrowserPage />} />
         <Route path="/prices" element={<PricesPage />} />
