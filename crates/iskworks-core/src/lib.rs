@@ -25,6 +25,7 @@ mod invite;
 mod job_split;
 pub mod logistics;
 mod market;
+mod material_category;
 mod opportunity;
 mod opportunity_quality;
 pub mod order;
@@ -120,6 +121,7 @@ pub use inventory::{
 pub use invite::{generate_invite_code, hash_invite_code_from_raw, InviteGrant, InviteId};
 pub use job_split::JobSplit;
 pub use market::*;
+pub use material_category::{material_category, MaterialCategory};
 pub use opportunity::*;
 pub use opportunity_quality::{
     OpportunityEligibility, OpportunityEligibilityStatus, OpportunityEvidenceQuality,
