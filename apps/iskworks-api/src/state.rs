@@ -56,6 +56,8 @@ pub struct AppState {
     finance_repository: Option<Arc<iskworks_storage::PgFinanceRepository>>,
     finance_analytics_repository: Option<Arc<dyn iskworks_core::FinanceAnalyticsRepository>>,
     inventory_runway_repository: Option<Arc<dyn iskworks_core::InventoryRunwayRepository>>,
+    inventory_consumption_repository:
+        Option<Arc<dyn iskworks_core::InventoryConsumptionRepository>>,
     asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
     blueprint_library_repository: Option<Arc<dyn iskworks_core::BlueprintLibraryRepository>>,
     pub(crate) market_repository: Option<Arc<dyn MarketRepository>>,
@@ -94,6 +96,7 @@ impl AppState {
             finance_repository: None,
             finance_analytics_repository: None,
             inventory_runway_repository: None,
+            inventory_consumption_repository: None,
             asset_browser_repository: None,
             blueprint_library_repository: None,
             market_repository: None,
@@ -267,6 +270,15 @@ impl AppState {
         repository: Arc<dyn iskworks_core::InventoryRunwayRepository>,
     ) -> Self {
         self.inventory_runway_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_inventory_consumption_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::InventoryConsumptionRepository>,
+    ) -> Self {
+        self.inventory_consumption_repository = Some(repository);
         self
     }
 
@@ -741,6 +753,18 @@ impl AppState {
                 "Inventory runway persistence is unavailable.".to_string(),
             ))
         })
+    }
+
+    pub(crate) fn inventory_consumption_repository(
+        &self,
+    ) -> Result<Arc<dyn iskworks_core::InventoryConsumptionRepository>, ApiError> {
+        self.inventory_consumption_repository
+            .clone()
+            .ok_or_else(|| {
+                ApiError::Inventory(InventoryError::Persistence(
+                    "Inventory consumption persistence is unavailable.".to_string(),
+                ))
+            })
     }
 
     pub(crate) fn asset_browser_repository(
