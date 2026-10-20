@@ -254,6 +254,15 @@ pub fn industry_job_slot_max(primary_level: i64, advanced_level: i64) -> u64 {
     (1 + primary_level + advanced_level).max(1) as u64
 }
 
+/// A job's ESI status occupies one of its category's concurrent slots. EVE
+/// holds the slot for `paused` jobs and for `ready` jobs (timer finished,
+/// awaiting delivery) exactly as it does for `active` ones -- only
+/// `delivered`/`cancelled`/`reverted` free it.
+#[must_use]
+pub fn is_running_job_status(status: &str) -> bool {
+    matches!(status, "active" | "paused" | "ready")
+}
+
 /// The three independent job-slot pools a running industry job can occupy.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

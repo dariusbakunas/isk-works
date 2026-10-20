@@ -435,13 +435,10 @@ pub struct PlanetExtractorObservation {
     pub head_count: i64,
 }
 
-/// One row of `GET /characters/{id}/industry/jobs/`. ESI only returns
-/// currently-running jobs here unless `?include_completed=true` is passed
-/// (ISK Works does not), so in practice every row is `active`, `paused` or
-/// `ready`. Optional fields are carried through even though the Industry tab
-/// does not render all of them yet -- they are cheap to persist now and
-/// valuable for a future job-history view (per the design's "preserve
-/// enough source data to render and reconcile jobs"). `blueprint_id`,
+/// One row of `GET /characters/{id}/industry/jobs/?include_completed=true`:
+/// running jobs (`active`, `paused`, `ready`) plus the last 90 days of
+/// finished ones (`delivered`, `cancelled`, `reverted`). `blueprint_id` is
+/// kept so a job can be matched to the Blueprint library (its ME/TE);
 /// `installer_id`, `blueprint_location_id` and `output_location_id` are the
 /// deliberate omissions: ISK Works has no location-tree reconciliation for
 /// character jobs.
@@ -449,6 +446,8 @@ pub struct PlanetExtractorObservation {
 pub struct CharacterIndustryJobObservation {
     pub job_id: i64,
     pub activity_id: i64,
+    /// The installed blueprint's item id.
+    pub blueprint_id: Option<i64>,
     pub blueprint_type_id: i64,
     /// The item this job yields: the built product (manufacturing), the
     /// reaction output, or -- for research/copy/invention -- the blueprint

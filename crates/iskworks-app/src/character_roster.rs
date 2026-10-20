@@ -530,14 +530,10 @@ struct ActiveJobCounts {
     research: u64,
 }
 
-/// A job's ESI status occupies one of its category's concurrent slots. EVE
-/// holds the slot for `paused` jobs and for `ready` jobs (timer finished,
-/// awaiting delivery) exactly as it does for `active` ones -- only
-/// `delivered`/`cancelled`/`reverted` free it. The summary cards and the
-/// Active Jobs list both key off this, so "8 / 10 Manufacturing" always
-/// matches the number of rows shown.
+/// The summary cards and the Active Jobs list both key off this, so
+/// "8 / 10 Manufacturing" always matches the number of rows shown.
 fn is_slot_occupying(status: &str) -> bool {
-    matches!(status, "active" | "paused" | "ready")
+    iskworks_core::is_running_job_status(status)
 }
 
 /// Slot-occupying jobs bucketed into the three independent slot pools via

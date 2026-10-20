@@ -6,13 +6,15 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use iskworks_core::{
     calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
+    is_running_job_status,
     training::{derive_training_state, SkillQueueEntry, TrainingState},
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
     InventoryError, WorkspaceId,
 };
 use iskworks_esi::{
-    EsiError, EsiTransport, EveEntityName, ASSET_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE,
-    LOCATION_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, WALLET_SCOPE,
+    CharacterIndustryJobObservation, EsiError, EsiTransport, EveEntityName, ASSET_SCOPE,
+    CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE,
+    SKILL_QUEUE_SCOPE, WALLET_SCOPE,
 };
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -89,6 +91,14 @@ pub trait CharacterSyncRepository: Send + Sync {
     /// IDs -- unresolved IDs are simply absent, never fetched here.
     async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError>;
     async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError>;
+    /// Upserts every job of one jobs sync (running and finished) into the
+    /// Jobs history. The source summary keeps only running jobs.
+    async fn record_industry_jobs(
+        &self,
+        connection_id: ConnectedCharacterId,
+        jobs: &[CharacterIndustryJobObservation],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError>;
     /// Every source's current persisted state for this connection --
     /// needed so name resolution can also pick up a corporation/solar-system
     /// id that was fetched on some earlier pass (before this ID's name was
@@ -117,6 +127,16 @@ pub trait CharacterSyncRepository: Send + Sync {
 
 #[async_trait]
 impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
+    async fn record_industry_jobs(
+        &self,
+        connection_id: ConnectedCharacterId,
+        jobs: &[CharacterIndustryJobObservation],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        self.record_industry_jobs(connection_id, jobs, observed_at)
+            .await
+    }
+
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
@@ -632,7 +652,7 @@ impl CharacterSyncService {
         {
             Some(claim) => {
                 let result = if granted(&connection, INDUSTRY_JOBS_SCOPE) {
-                    self.fetch_industry_jobs_summary(&access_token, &connection)
+                    self.fetch_industry_jobs_summary(&access_token, connection_id, &connection, now)
                         .await
                 } else {
                     Err(SourceFailure::from(format!(
@@ -1175,22 +1195,33 @@ impl CharacterSyncService {
         }))
     }
 
+    /// Records every returned job (running and the last 90 days of finished
+    /// ones) in the Jobs history, and summarises only the running ones:
+    /// roster slots, calendar and ticket linking read the summary and must
+    /// see what they did before completed jobs were requested.
     async fn fetch_industry_jobs_summary(
         &self,
         access_token: &str,
+        connection_id: ConnectedCharacterId,
         connection: &ConnectedCharacter,
+        observed_at: DateTime<Utc>,
     ) -> Result<Value, SourceFailure> {
         let response = self
             .transport
             .character_industry_jobs(access_token, connection.eve_character_id)
             .await
             .map_err(SourceFailure::from)?;
-        let active_count = response
+        self.repository
+            .record_industry_jobs(connection_id, &response.records, observed_at)
+            .await
+            .map_err(|error| SourceFailure::from(error.to_string()))?;
+        let running: Vec<&CharacterIndustryJobObservation> = response
             .records
             .iter()
-            .filter(|job| job.status == "active")
-            .count();
-        let jobs = serde_json::to_value(&response.records).map_err(SourceFailure::from)?;
+            .filter(|job| is_running_job_status(&job.status))
+            .collect();
+        let active_count = running.iter().filter(|job| job.status == "active").count();
+        let jobs = serde_json::to_value(&running).map_err(SourceFailure::from)?;
         Ok(serde_json::json!({ "jobs": jobs, "activeCount": active_count }))
     }
 

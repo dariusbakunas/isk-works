@@ -323,6 +323,7 @@ impl EsiTransport for FixtureEsiTransport {
             CharacterIndustryJobObservation {
                 job_id,
                 activity_id,
+                blueprint_id: None,
                 blueprint_type_id,
                 product_type_id: Some(product_type_id),
                 facility_id,

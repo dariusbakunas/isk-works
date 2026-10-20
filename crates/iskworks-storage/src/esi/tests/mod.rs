@@ -10,6 +10,7 @@ mod asset_snapshots;
 mod blueprints;
 mod calendar_events;
 mod character_sources;
+mod industry_jobs;
 mod planetary_preferences;
 mod public_refresh;
 mod wallet_names;

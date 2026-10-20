@@ -366,6 +366,7 @@ pub(super) fn parse_character_industry_job(
     Ok(CharacterIndustryJobObservation {
         job_id: required_i64(&raw, "job_id")?,
         activity_id: required_i64(&raw, "activity_id")?,
+        blueprint_id: optional_i64(&raw, "blueprint_id"),
         blueprint_type_id: required_i64(&raw, "blueprint_type_id")?,
         product_type_id: optional_i64(&raw, "product_type_id"),
         facility_id: required_i64(&raw, "facility_id")?,

@@ -70,10 +70,24 @@ struct RecordingRepository {
     deferred: Mutex<Vec<(ConnectedCharacterId, DateTime<Utc>)>>,
     calendar_copies: Mutex<Vec<CharacterCalendarEvent>>,
     stored_calendar: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterCalendarEvent>)>>,
+    recorded_jobs: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterIndustryJobObservation>)>>,
 }
 
 #[async_trait]
 impl CharacterSyncRepository for RecordingRepository {
+    async fn record_industry_jobs(
+        &self,
+        connection_id: ConnectedCharacterId,
+        jobs: &[CharacterIndustryJobObservation],
+        _observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        self.recorded_jobs
+            .lock()
+            .unwrap()
+            .push((connection_id, jobs.to_vec()));
+        Ok(())
+    }
+
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
@@ -432,26 +446,51 @@ impl EsiTransport for FakeTransport {
     ) -> Result<EsiResponse<CharacterIndustryJobObservation>, EsiError> {
         self.check("character_industry_jobs")?;
         Ok(EsiResponse {
-            records: vec![CharacterIndustryJobObservation {
-                job_id: 500_001,
-                activity_id: 1,
-                blueprint_type_id: 691,
-                product_type_id: Some(626),
-                facility_id: 1_050_474_463_169,
-                station_id: None,
-                runs: 2,
-                licensed_runs: Some(100),
-                cost: None,
-                probability: None,
-                duration_seconds: Some(14_400),
-                status: "active".to_string(),
-                start_date: Utc::now() - Duration::hours(1),
-                end_date: Utc::now() + Duration::hours(3),
-                pause_date: None,
-                completed_date: None,
-                completed_character_id: None,
-                successful_runs: None,
-            }],
+            records: vec![
+                CharacterIndustryJobObservation {
+                    job_id: 500_001,
+                    activity_id: 1,
+                    blueprint_id: Some(1_040_000_000_001),
+                    blueprint_type_id: 691,
+                    product_type_id: Some(626),
+                    facility_id: 1_050_474_463_169,
+                    station_id: None,
+                    runs: 2,
+                    licensed_runs: Some(100),
+                    cost: None,
+                    probability: None,
+                    duration_seconds: Some(14_400),
+                    status: "active".to_string(),
+                    start_date: Utc::now() - Duration::hours(1),
+                    end_date: Utc::now() + Duration::hours(3),
+                    pause_date: None,
+                    completed_date: None,
+                    completed_character_id: None,
+                    successful_runs: None,
+                },
+                // Finished jobs come back too (`include_completed=true`).
+                CharacterIndustryJobObservation {
+                    job_id: 500_000,
+                    activity_id: 1,
+                    blueprint_id: Some(1_040_000_000_001),
+                    blueprint_type_id: 691,
+                    product_type_id: Some(626),
+                    facility_id: 1_050_474_463_169,
+                    station_id: None,
+                    runs: 1,
+                    licensed_runs: Some(100),
+                    cost: None,
+                    probability: None,
+                    duration_seconds: Some(7_200),
+                    status: "delivered".to_string(),
+                    start_date: Utc::now() - Duration::days(2),
+                    end_date: Utc::now() - Duration::days(1),
+                    pause_date: None,
+                    completed_date: Some(Utc::now() - Duration::days(1)),
+                    completed_character_id: Some(2_119_000_001),
+                    successful_runs: Some(1),
+                },
+            ],
             not_modified: false,
             metadata: EsiResponseMetadata::default(),
         })
@@ -715,6 +754,40 @@ async fn successful_sync_persists_a_summary_for_every_granted_source() {
     assert_eq!(repository.completed.lock().unwrap().len(), 9);
     assert!(repository.failed.lock().unwrap().is_empty());
     assert_eq!(repository.registered.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn industry_jobs_records_every_job_but_summarises_only_running_ones() {
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        connection(all_scopes()),
+    );
+    let connection_id = ConnectedCharacterId::new();
+
+    service.sync_connection(connection_id, no_cancel()).await;
+
+    let recorded = repository.recorded_jobs.lock().unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].0, connection_id);
+    let ids: Vec<i64> = recorded[0].1.iter().map(|job| job.job_id).collect();
+    assert_eq!(ids, vec![500_001, 500_000]);
+
+    // Roster, calendar and ticket linking read the summary: it must keep
+    // exactly what it held before completed jobs were requested.
+    let completed = repository.completed.lock().unwrap();
+    let (_, _, summary) = completed
+        .iter()
+        .find(|(_, kind, _)| *kind == CharacterSourceKind::IndustryJobs)
+        .expect("jobs summary persisted");
+    let summary_ids: Vec<i64> = summary["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|job| job["job_id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(summary_ids, vec![500_001]);
+    assert_eq!(summary["activeCount"], 1);
 }
 
 #[tokio::test]
