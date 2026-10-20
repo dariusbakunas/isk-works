@@ -48,22 +48,6 @@ jobs:
     name: Rust tests (incl. Postgres)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        # Docker's official image via AWS's public mirror: Docker Hub rate
-        # limits anonymous pulls from shared runners.
-        image: public.ecr.aws/docker/library/postgres:16-alpine
-        env:
-          POSTGRES_USER: iskworks
-          POSTGRES_PASSWORD: iskworks
-          POSTGRES_DB: iskworks
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U iskworks"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       # #[sqlx::test] creates a throwaway database per test from this server.
       DATABASE_URL: postgres://iskworks:iskworks@localhost:5432/iskworks
@@ -71,6 +55,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The runner image ships PostgreSQL (installed, not running). Using it
+      # means no image pull: anonymous pulls from shared runner IPs keep
+      # hitting registry limits (Docker Hub rate limit, ECR Public "Data
+      # limit exceeded"), and logging in would need a secret this workflow
+      # must not have.
+      - name: Start Postgres
+        run: |
+          sudo systemctl start postgresql.service
+          pg_isready --host=localhost --timeout=30
+          sudo -u postgres psql -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE iskworks LOGIN SUPERUSER PASSWORD 'iskworks'"
+          sudo -u postgres createdb --owner=iskworks iskworks
+          psql "$DATABASE_URL" -Atc "SELECT version()"
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           toolchain: stable
