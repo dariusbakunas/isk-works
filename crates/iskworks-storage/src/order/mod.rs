@@ -40,6 +40,7 @@ mod recording_queries;
 mod repository_impl;
 mod reservations;
 mod rows;
+mod runway;
 mod ticket_jobs;
 
 #[cfg(test)]
