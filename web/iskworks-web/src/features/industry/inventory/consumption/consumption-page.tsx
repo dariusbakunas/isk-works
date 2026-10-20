@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router";
 import { MATERIAL_CATEGORIES, type ConsumptionGranularity } from "../../../../api/inventory-analytics";
 import { formatIskAbbreviated, formatIskSummary } from "../../../../components/money";
 import { EmptyState, InlineAlert, PageHeader, Panel } from "../../../../components/primitives";
-import { InventoryKpiCard } from "../inventory-kpi-card";
+import { KpiCard } from "../../../../components/kpi-card";
 import { InventorySectionTabs } from "../inventory-section-tabs";
 import { categoryFromParam } from "../runway/runway-table";
 import { CategoryDonut, ConsumptionChart } from "./consumption-charts";
@@ -166,22 +166,22 @@ export function ConsumptionPage() {
             </div>
           ) : null}
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <InventoryKpiCard
+            <KpiCard
               detail={`${longDate(data.from)} – ${longDate(data.to)}`}
               label="Consumed this period"
               title={formatIskSummary(data.kpis.consumedValue)}
               tone="primary"
               value={formatIskAbbreviated(data.kpis.consumedValue, { currency: true })}
             />
-            <InventoryKpiCard detail="distinct materials" label="Materials used" tone="primary" value={String(data.kpis.materialsUsed)} />
-            <InventoryKpiCard
+            <KpiCard detail="distinct materials" label="Materials used" tone="primary" value={String(data.kpis.materialsUsed)} />
+            <KpiCard
               detail={busiest ? bucketRange(busiest.start, data.granularity) : "nothing consumed"}
               label={`Busiest ${data.granularity}`}
               title={busiest ? formatIskSummary(busiest.value) : undefined}
               tone="primary"
               value={busiest ? formatIskAbbreviated(busiest.value, { currency: true }) : "—"}
             />
-            <InventoryKpiCard detail="by ISK value" label="Most-used category" tone="primary" value={data.kpis.topCategory ?? "—"} />
+            <KpiCard detail="by ISK value" label="Most-used category" tone="primary" value={data.kpis.topCategory ?? "—"} />
           </div>
           <div className="grid gap-3 lg:grid-cols-[1fr_15rem]">
             <section aria-label="Consumption over time" className="iw-panel min-w-0 p-3">

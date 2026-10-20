@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Factory,
   Globe2,
+  Hammer,
   Kanban,
   Landmark,
   Shield,
@@ -47,6 +48,7 @@ import { CalendarPage } from "./features/calendar/calendar-page";
 import { FacilitiesPage } from "./features/industry/facilities/facilities-page";
 import { FacilityDefaultsPage } from "./features/industry/facilities/facility-defaults-page";
 import { FinanceWorkspace } from "./features/finance/finance-workspace";
+import { JobsPage } from "./features/jobs/jobs-page";
 import { PriceSourceDetailPage } from "./features/industry/prices/price-source-detail-page";
 import {
   NewPriceSourcePage,
@@ -83,6 +85,7 @@ const navItems = [
   { label: "Characters", path: "/characters", icon: Users },
   { label: "Builds", path: "/builds", icon: Factory },
   { label: "Board", path: "/board", icon: Kanban },
+  { label: "Jobs", path: "/jobs", icon: Hammer },
   { label: "Calendar", path: "/calendar", icon: CalendarDays },
   { label: "Inventory", path: "/inventory", icon: Boxes },
   { label: "Assets", path: "/assets", icon: Warehouse },
@@ -369,6 +372,7 @@ function ProtectedShell({
         <Route path="/builds/:buildId/edit" element={<BuildWorkspacePage canonicalize />} />
         <Route path="/orders/:orderId" element={<OrderDeepLinkRedirect />} />
         <Route path="/board" element={<BoardPage />} />
+        <Route path="/jobs/*" element={<JobsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/inventory/runway" element={<RunwayPage />} />

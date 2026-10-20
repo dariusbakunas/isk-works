@@ -101,7 +101,7 @@ describe("ConsumptionPage", () => {
     renderPage();
 
     expect(screen.getByRole("status", { name: "Loading consumption" })).toBeInTheDocument();
-    const kpis = await screen.findAllByTestId("inventory-kpi");
+    const kpis = await screen.findAllByTestId("kpi-card");
     expect(kpis[0]).toHaveTextContent("2.3B ISK");
     expect(kpis[2]).toHaveTextContent("1.41B ISK");
     expect(kpis[2]).toHaveTextContent("Oct 12 – Oct 18");
@@ -130,7 +130,7 @@ describe("ConsumptionPage", () => {
   test("range and granularity refetch and are kept in the URL", async () => {
     const fetchMock = stubFetch();
     renderPage();
-    await screen.findAllByTestId("inventory-kpi");
+    await screen.findAllByTestId("kpi-card");
 
     fireEvent.click(within(screen.getByRole("group", { name: "Range" })).getByRole("button", { name: "30d" }));
     await waitFor(() => expect(consumptionCalls(fetchMock)).toHaveLength(2));
@@ -177,6 +177,6 @@ describe("ConsumptionPage", () => {
 
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(sampleConsumption()), { status: 200 }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findAllByTestId("inventory-kpi")).toHaveLength(4);
+    expect(await screen.findAllByTestId("kpi-card")).toHaveLength(4);
   });
 });

@@ -1,4 +1,10 @@
 import type { IndustryActivity, IndustryJob } from "../../api/characters";
+
+/** The fields the naming helpers read, so any job shape (the character
+ * inspector's, the Jobs page's) can use them. */
+type NamedJob = Pick<IndustryJob, "activity" | "runs" | "productName" | "blueprintName">;
+type LocatedJob = Pick<IndustryJob, "facilityName" | "solarSystemName">;
+type TimedJob = Pick<IndustryJob, "status" | "startDate" | "endDate" | "pauseDate">;
 import type { Tone } from "../../components/primitives";
 
 // Row badge vocabulary: three activity families,
@@ -47,7 +53,7 @@ export function industryActivitySubtype(activity: IndustryActivity): string | nu
 // research subtype (`ME` / `TE` / `Invent` / `Reverse Eng`) as a trailing
 // tag -- the subtype is folded into the job name rather than shown as a
 // fourth badge.
-export function industryJobName(job: IndustryJob): string {
+export function industryJobName(job: NamedJob): string {
   const base = jobBaseName(job);
   const withRuns = job.runs > 1 ? `${base} ×${job.runs.toLocaleString("en-US")}` : base;
   // Copying already reads as "... (copy)"; don't also append "Copy".
@@ -56,7 +62,7 @@ export function industryJobName(job: IndustryJob): string {
   return subtype ? `${withRuns} ${subtype}` : withRuns;
 }
 
-function jobBaseName(job: IndustryJob): string {
+function jobBaseName(job: NamedJob): string {
   switch (job.activity) {
     case "manufacturing":
     case "reaction":
@@ -75,7 +81,7 @@ function jobBaseName(job: IndustryJob): string {
 // system token is stripped: "Q-3HS5 — Q-3HS5 Trading Hub" -> "Q-3HS5 —
 // Trading Hub", and a structure named exactly after its system collapses
 // to just the system.
-export function industryJobLocation(job: IndustryJob): string {
+export function industryJobLocation(job: LocatedJob): string {
   const system = job.solarSystemName?.trim() ?? "";
   const facility = job.facilityName?.trim() ?? "";
   if (system && facility) {
@@ -121,7 +127,7 @@ export interface JobProgress {
 // / "Ready" rather than a negative countdown. Zero / invalid / unknown
 // durations don't divide -- they collapse to 0 % (or 100 % if we at least
 // know the job is done).
-export function industryJobProgress(job: IndustryJob, nowMs: number): JobProgress {
+export function industryJobProgress(job: TimedJob, nowMs: number): JobProgress {
   const start = job.startDate ? Date.parse(job.startDate) : Number.NaN;
   const end = job.endDate ? Date.parse(job.endDate) : Number.NaN;
   const paused = job.status === "paused";
