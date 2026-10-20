@@ -55,6 +55,7 @@ import {
 import { MarketImportsPage } from "./features/industry/market/market-imports-page";
 import { MarketBrowserPage } from "./features/industry/market-browser/market-browser-page";
 import { InventoryPage } from "./features/industry/inventory/inventory-page";
+import { RunwayPage } from "./features/industry/inventory/runway/runway-page";
 import { OpportunitiesPage } from "./features/industry/opportunities/opportunities-page";
 import { PlanetaryPage } from "./features/industry/planetary/planetary-page";
 import { AssetsWorkspacePage } from "./features/assets/assets-workspace-page";
@@ -364,6 +365,7 @@ function ProtectedShell({
         <Route path="/board" element={<BoardPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/runway" element={<RunwayPage />} />
         <Route path="/assets" element={<AssetsWorkspacePage />} />
         <Route path="/market" element={<MarketBrowserPage />} />
         <Route path="/prices" element={<PricesPage />} />
