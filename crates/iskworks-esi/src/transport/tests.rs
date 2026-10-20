@@ -618,6 +618,51 @@ fn only_the_real_esi_host_waits_out_tranquility_downtime() {
 }
 
 #[tokio::test]
+async fn character_industry_jobs_asks_for_completed_jobs_too() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = vec![0_u8; 4096];
+        let read = socket.read(&mut request).await.unwrap();
+        let request = String::from_utf8(request[..read].to_vec()).unwrap();
+        assert!(request.starts_with(
+            "GET /latest/characters/2119000001/industry/jobs/?include_completed=true HTTP/1.1"
+        ));
+        let body = serde_json::json!([{
+            "job_id": 1,
+            "activity_id": 1,
+            "blueprint_id": 1_040_000_000_001_i64,
+            "blueprint_type_id": 691,
+            "facility_id": 60_003_760,
+            "runs": 2,
+            "successful_runs": 2,
+            "status": "delivered",
+            "start_date": "2026-09-09T00:00:00Z",
+            "end_date": "2026-09-09T01:00:00Z",
+            "completed_date": "2026-09-09T02:00:00Z",
+        }])
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    });
+    let transport = HttpEsiTransport::public(format!("http://{address}"));
+
+    let response = transport
+        .character_industry_jobs("jobs-token", 2_119_000_001)
+        .await
+        .unwrap();
+    server.await.unwrap();
+
+    assert_eq!(response.records.len(), 1);
+    assert_eq!(response.records[0].status, "delivered");
+    assert_eq!(response.records[0].blueprint_id, Some(1_040_000_000_001));
+}
+
+#[tokio::test]
 async fn structure_market_orders_uses_bearer_auth_and_paginates() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -1058,6 +1103,7 @@ fn parse_character_industry_job_reads_the_full_esi_row_shape() {
     });
     let job = parse_character_industry_job(raw).unwrap();
     assert_eq!(job.job_id, 500_123);
+    assert_eq!(job.blueprint_id, Some(1_040_000_000_001));
     assert_eq!(job.activity_id, 8);
     assert_eq!(job.product_type_id, Some(11_378));
     assert_eq!(job.station_id, Some(60_003_760));

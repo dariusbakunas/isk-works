@@ -21,6 +21,7 @@ mod calendar_events;
 mod character_sync;
 mod connections;
 mod error;
+mod industry_jobs;
 mod planetary;
 mod retention;
 mod sync_runs;

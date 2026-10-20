@@ -39,6 +39,11 @@ event's details (`/calendar/{event_id}/`) are fetched only when ISK Works hasn't
 stored that event yet, or its date, title or importance changed. ISK Works never
 reads attendee lists and never responds to events.
 
+Industry jobs are read from `/characters/{id}/industry/jobs/` with
+`include_completed=true`, so one request per character returns both running jobs
+and the last 90 days of finished ones. ISK Works stores every job it sees, which
+is how the Jobs page keeps history past ESI's 90 days without extra requests.
+
 ## How it stays within the rules
 
 - **It identifies itself.** Every request carries a `User-Agent` with the app

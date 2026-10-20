@@ -19,6 +19,7 @@ mod finance;
 mod finance_analytics;
 mod finance_categories;
 pub mod industry;
+mod industry_jobs;
 mod integration;
 mod inventory;
 mod inventory_consumption;
@@ -105,11 +106,12 @@ pub use industry::{
     RecipeCurrency, RecipeSelection, RenameBuildCommand, TaskExecutionSnapshot, UpdateBuildCommand,
     UpdatePriceSourceCommand,
 };
+pub use industry_jobs::*;
 pub use integration::{
-    character_health, exact_total, industry_job_slot_max, CharacterHealth, CharacterSourceKind,
-    CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId, ConnectionStatus,
-    EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, IndustryActivity, IndustrySlotBucket,
-    ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
+    character_health, exact_total, industry_job_slot_max, is_running_job_status, CharacterHealth,
+    CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
+    ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, IndustryActivity,
+    IndustrySlotBucket, ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
     ADVANCED_MASS_REACTIONS_SKILL_ID, LABORATORY_OPERATION_SKILL_ID, MASS_PRODUCTION_SKILL_ID,
     MASS_REACTIONS_SKILL_ID,
 };

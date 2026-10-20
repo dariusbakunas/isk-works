@@ -18,6 +18,7 @@ mod character_sync;
 mod descendant_production_configuration;
 mod esi_service;
 mod execution_plan;
+mod jobs;
 mod manual_sync_gate;
 mod operation_metrics;
 mod order_plan;
@@ -45,6 +46,10 @@ pub use esi_service::{
     EsiSyncDispatcher, MarketAccessResolution, MarketAccessResolver, SystemCostIndex,
 };
 pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
+pub use jobs::{
+    ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,
+    JobsCharacterSource, JobsService, JobsSyncState, SlotUsage,
+};
 pub use order_plan::{OrderPlanCoordinator, OrderPlanError};
 pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,

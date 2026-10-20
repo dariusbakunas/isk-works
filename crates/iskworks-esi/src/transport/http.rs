@@ -1063,7 +1063,8 @@ impl EsiTransport for HttpEsiTransport {
             .get_json(
                 EsiRoute::CharacterIndustryJobs,
                 format!(
-                    "{}/latest/characters/{character_id}/industry/jobs/",
+                    // Completed jobs (last 90 days) too, for the Jobs history.
+                    "{}/latest/characters/{character_id}/industry/jobs/?include_completed=true",
                     self.esi_base_url
                 ),
                 access_token,
