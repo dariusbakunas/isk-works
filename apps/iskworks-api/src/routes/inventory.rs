@@ -49,6 +49,7 @@ pub(crate) fn router() -> Router<AppState> {
         )
         .route("/api/inventory/export", get(export_inventory))
         .route("/api/inventory/import", post(import_inventory))
+        .merge(analytics::router())
 }
 
 #[derive(Debug, Deserialize)]
@@ -1092,6 +1093,8 @@ fn inventory_item_response(
         warnings,
     })
 }
+
+mod analytics;
 
 #[cfg(test)]
 mod tests;
