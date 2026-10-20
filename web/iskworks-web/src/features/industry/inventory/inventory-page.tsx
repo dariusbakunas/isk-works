@@ -17,6 +17,7 @@ import {
   type InventoryFilterId,
 } from "./inventory-filters";
 import { InventoryInspector } from "./inventory-inspector";
+import { InventorySectionTabs } from "./inventory-section-tabs";
 import { InventoryPostingPanel } from "./inventory-posting-panel";
 import { ImportInventoryModal } from "./inventory-import-modal";
 import { apiMessage, type LoadState } from "./shared";
@@ -154,6 +155,7 @@ export function InventoryPage() {
       <PageHeader eyebrow="Accounting inventory" title="Inventory">
         Owner-wide item balances, exact historical cost, and current planning-price comparisons.
       </PageHeader>
+      <InventorySectionTabs />
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <label className="min-w-56 text-sm font-semibold">
           Price Override
