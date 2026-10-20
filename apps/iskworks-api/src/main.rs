@@ -82,6 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(PgOrderRepository::new(repository.pool().clone())) as Arc<dyn OrderRepository>;
     let ticket_job_repository = Arc::new(PgOrderRepository::new(repository.pool().clone()))
         as Arc<dyn iskworks_core::order::TicketJobRepository>;
+    let inventory_runway_repository = Arc::new(PgOrderRepository::new(repository.pool().clone()))
+        as Arc<dyn iskworks_core::InventoryRunwayRepository>;
     let esi_repository = Arc::new(PgEsiRepository::new(repository.pool().clone()));
     let pg_market_repository = Arc::new(PgMarketRepository::new(repository.pool().clone()));
     let market_repository = pg_market_repository.clone() as Arc<dyn MarketRepository>;
@@ -140,6 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_production_repository(production_repository)
         .with_order_repository(order_repository)
         .with_ticket_job_repository(ticket_job_repository)
+        .with_inventory_runway_repository(inventory_runway_repository)
         .with_facility_repository(facility_repository.clone())
         .with_facility_defaults_repository(facility_repository)
         .with_finance_analytics_repository(

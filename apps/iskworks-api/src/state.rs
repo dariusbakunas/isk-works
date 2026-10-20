@@ -55,6 +55,7 @@ pub struct AppState {
         Option<Arc<dyn iskworks_core::facility_defaults::FacilityDefaultsRepository>>,
     finance_repository: Option<Arc<iskworks_storage::PgFinanceRepository>>,
     finance_analytics_repository: Option<Arc<dyn iskworks_core::FinanceAnalyticsRepository>>,
+    inventory_runway_repository: Option<Arc<dyn iskworks_core::InventoryRunwayRepository>>,
     asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
     blueprint_library_repository: Option<Arc<dyn iskworks_core::BlueprintLibraryRepository>>,
     pub(crate) market_repository: Option<Arc<dyn MarketRepository>>,
@@ -92,6 +93,7 @@ impl AppState {
             facility_defaults_repository: None,
             finance_repository: None,
             finance_analytics_repository: None,
+            inventory_runway_repository: None,
             asset_browser_repository: None,
             blueprint_library_repository: None,
             market_repository: None,
@@ -256,6 +258,15 @@ impl AppState {
         repository: Arc<dyn iskworks_core::FinanceAnalyticsRepository>,
     ) -> Self {
         self.finance_analytics_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_inventory_runway_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::InventoryRunwayRepository>,
+    ) -> Self {
+        self.inventory_runway_repository = Some(repository);
         self
     }
 
@@ -718,6 +729,16 @@ impl AppState {
         self.finance_analytics_repository.clone().ok_or_else(|| {
             ApiError::Finance(FinanceError::Persistence(
                 "Finance analytics persistence is unavailable.".to_string(),
+            ))
+        })
+    }
+
+    pub(crate) fn inventory_runway_repository(
+        &self,
+    ) -> Result<Arc<dyn iskworks_core::InventoryRunwayRepository>, ApiError> {
+        self.inventory_runway_repository.clone().ok_or_else(|| {
+            ApiError::Inventory(InventoryError::Persistence(
+                "Inventory runway persistence is unavailable.".to_string(),
             ))
         })
     }
