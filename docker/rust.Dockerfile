@@ -7,10 +7,12 @@
 # Build context is the repository root: sqlx::migrate!("../../migrations")
 # embeds migrations relative to each crate at compile time, and the workspace
 # members are path dependencies, so the whole workspace is needed.
-# Base images come from AWS's public mirror of Docker's official images
-# (same images as Docker Hub's `library/`), which avoids Docker Hub's
-# anonymous pull rate limit on shared CI runners.
-FROM public.ecr.aws/docker/library/rust:1-bookworm AS builder
+# Base images are Docker's official images (`library/`), pulled through
+# Google's public Docker Hub mirror by default: anonymous pulls from shared CI
+# runners hit Docker Hub's rate limit and ECR Public's data limit. Override
+# with --build-arg BASE_REGISTRY=docker.io/library (or another mirror).
+ARG BASE_REGISTRY=mirror.gcr.io/library
+FROM ${BASE_REGISTRY}/rust:1-bookworm AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
@@ -35,7 +37,7 @@ RUN --mount=type=cache,id=iskworks-cargo-registry,target=/usr/local/cargo/regist
     && cp target/release/iskworks-api target/release/iskworks-admin \
           target/release/iskworks-worker target/release/iskworks-sde-import /out/
 
-FROM public.ecr.aws/docker/library/debian:bookworm-slim AS iskworks-api
+FROM ${BASE_REGISTRY}/debian:bookworm-slim AS iskworks-api
 
 # Set via --build-arg in CI (e.g. "v1.2.3 (a1b2c3d)"); defaults to "dev" for
 # local `docker build` and the CI sanity-build that doesn't pass it.
@@ -59,7 +61,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
 
 ENTRYPOINT ["/usr/local/bin/iskworks-api"]
 
-FROM public.ecr.aws/docker/library/debian:bookworm-slim AS iskworks-worker
+FROM ${BASE_REGISTRY}/debian:bookworm-slim AS iskworks-worker
 
 ARG APP_VERSION=dev
 
@@ -75,7 +77,7 @@ ENV APP_VERSION=$APP_VERSION
 
 ENTRYPOINT ["/usr/local/bin/iskworks-worker"]
 
-FROM public.ecr.aws/docker/library/debian:bookworm-slim AS iskworks-sde-import
+FROM ${BASE_REGISTRY}/debian:bookworm-slim AS iskworks-sde-import
 
 RUN useradd --system --create-home --shell /usr/sbin/nologin iskworks
 
