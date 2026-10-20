@@ -5,7 +5,7 @@ import type { RunwayEpicReadiness, RunwayKpis } from "../../../../api/inventory-
 import { formatIskAbbreviated, formatIskSummary } from "../../../../components/money";
 import { ProgressBar } from "../../../../components/primitives";
 import { Private } from "../../../../observability/private";
-import { InventoryKpiCard as KpiCard } from "../inventory-kpi-card";
+import { KpiCard } from "../../../../components/kpi-card";
 import { coverageTone, formatPercent } from "./runway-format";
 
 export function RunwayKpiStrip({ kpis }: { kpis: RunwayKpis }) {

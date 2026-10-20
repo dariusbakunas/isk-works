@@ -109,7 +109,7 @@ describe("RunwayPage", () => {
     renderPage();
 
     expect(screen.getByRole("status", { name: "Loading runway" })).toBeInTheDocument();
-    const kpis = await screen.findAllByTestId("inventory-kpi");
+    const kpis = await screen.findAllByTestId("kpi-card");
     expect(kpis).toHaveLength(4);
     expect(kpis[0]).toHaveTextContent("229.8M ISK");
     expect(kpis[1]).toHaveTextContent("1 of 2");
@@ -133,7 +133,7 @@ describe("RunwayPage", () => {
     const tabs = screen.getByRole("navigation", { name: "Inventory views" });
     expect(within(tabs).getByRole("link", { name: "Stock" })).toHaveAttribute("href", "/inventory");
     expect(within(tabs).getByRole("link", { name: "Runway" })).toHaveAttribute("aria-current", "page");
-    await screen.findAllByTestId("inventory-kpi");
+    await screen.findAllByTestId("kpi-card");
   });
 
   test("expanding a material shows its per-Epic breakdown", async () => {
@@ -165,7 +165,7 @@ describe("RunwayPage", () => {
   test("the category filter refetches with ?category=", async () => {
     const fetchMock = stubFetch();
     renderPage();
-    await screen.findAllByTestId("inventory-kpi");
+    await screen.findAllByTestId("kpi-card");
 
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "Moon Materials" } });
 
@@ -179,7 +179,7 @@ describe("RunwayPage", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     renderPage();
-    await screen.findAllByTestId("inventory-kpi");
+    await screen.findAllByTestId("kpi-card");
 
     fireEvent.click(screen.getByRole("button", { name: "Shopping list" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy as EVE multibuy" }));
@@ -237,6 +237,6 @@ describe("RunwayPage", () => {
 
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(sampleRunway()), { status: 200 }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findAllByTestId("inventory-kpi")).toHaveLength(4);
+    expect(await screen.findAllByTestId("kpi-card")).toHaveLength(4);
   });
 });
