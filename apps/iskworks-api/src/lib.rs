@@ -348,9 +348,9 @@ pub(crate) struct HealthResponse {
     pub environment_label: Option<String>,
 }
 
-/// Whether ESI is paused for Tranquility's daily downtime, so the web app
-/// can say why EVE data isn't refreshing. Costs ESI nothing outside the
-/// downtime window and at most one shared `/status/` check per 30 s inside it.
+/// Whether ESI is paused because Tranquility is down, so the web app
+/// can say why EVE data isn't refreshing. Costs ESI nothing unless it's
+/// paused, and at most one shared `/status/` check per 30 s while it is.
 async fn esi_status(State(state): State<AppState>) -> Json<iskworks_esi::EsiAvailability> {
     Json(match state.esi_status() {
         Some(transport) => transport.availability().await,

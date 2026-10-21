@@ -58,12 +58,14 @@ is how the Jobs page keeps history past ESI's 90 days without extra requests.
 - **It guards the error limit.** ESI allows about 100 failed requests per minute
   per IP. Once fewer than 20 remain, or ESI answers `420`, the app stops all ESI
   traffic until the window resets.
-- **It sits out daily downtime.** Tranquility goes down at 11:00 UTC every day,
+- **It sits out downtime.** Tranquility goes down at 11:00 UTC every day,
   usually for under 5 minutes, and every ESI request fails while it's down. From
   10:58 UTC the app stops calling ESI. From 11:00 it checks ESI's `/status/`
   route every 30 s, and resumes on the first healthy answer. Without this, a
-  minute of failed requests would use up the whole error budget. The pause ends
-  at 11:30 UTC at the latest.
+  minute of failed requests would use up the whole error budget. There is no
+  deadline: a downtime that runs long stays paused until `/status/` is healthy.
+  An unscheduled downtime is handled the same way: a `502`, `503` or `504` from
+  ESI at any time pauses all ESI calls until `/status/` answers healthy.
 - **It respects rate limits.** ESI limits each group of routes per character
   (or per IP for public data). The app reads ESI's rate-limit headers on every
   response. When a group is nearly used up, it pauses that group briefly, and
