@@ -340,7 +340,7 @@ function ProductionInspector({
                 </>
               ) : null}
               {readOnly ? (
-                // The Epic froze no facility, only its cost evidence.
+                // The facility the Epic froze; unnamed if none, or its profile was deleted.
                 <InspectorRow label="Facility" value={node.facilityName ?? "Not recorded"} />
               ) : (
                 <>
