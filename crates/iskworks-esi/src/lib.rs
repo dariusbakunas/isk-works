@@ -16,15 +16,16 @@ pub use crypto::{EncryptedSecret, SecretCipher};
 pub use metrics::init_metrics;
 pub use oauth::{
     authorization_url, hash_state, new_pkce, OAuthState, PkceVerifier, ASSET_SCOPE,
-    BLUEPRINT_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_STRUCTURE_SCOPE,
-    PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, STRUCTURE_SCOPE, WALLET_SCOPE,
+    BLUEPRINT_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_ORDERS_SCOPE,
+    MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, STRUCTURE_SCOPE,
+    WALLET_SCOPE,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use test_support::UnusedEsiTransport;
 pub use transport::{
     AdjustedPrice, AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
     CalendarEventDetailObservation, CalendarEventObservation, CalendarEventResponse,
-    CharacterIndustryJobObservation, CharacterLocationObservation,
+    CharacterIndustryJobObservation, CharacterLocationObservation, CharacterOrderObservation,
     CharacterPlanetDetailObservation, CharacterPlanetObservation, CharacterPublicInfo,
     CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation, EsiAvailability,
     EsiError, EsiResponse, EsiResponseMetadata, EsiTransport, EveEntityName, HttpEsiTransport,

@@ -388,6 +388,36 @@ pub(super) fn parse_character_industry_job(
     })
 }
 
+pub(super) fn parse_character_order(raw: Value) -> Result<CharacterOrderObservation, EsiError> {
+    let price = raw
+        .get("price")
+        .map(Value::to_string)
+        .and_then(|value| Decimal::from_str(&value).ok())
+        .ok_or(EsiError::InvalidResponse)?;
+    Ok(CharacterOrderObservation {
+        order_id: required_i64(&raw, "order_id")?,
+        type_id: required_i64(&raw, "type_id")?,
+        region_id: required_i64(&raw, "region_id")?,
+        location_id: required_i64(&raw, "location_id")?,
+        is_buy_order: raw
+            .get("is_buy_order")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        is_corporation: raw
+            .get("is_corporation")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        price,
+        volume_remain: required_u64(&raw, "volume_remain")?,
+        volume_total: required_u64(&raw, "volume_total")?,
+        min_volume: raw.get("min_volume").and_then(Value::as_u64).unwrap_or(1),
+        order_range: required_str(&raw, "range")?,
+        issued_at: required_date(&raw, "issued")?,
+        duration_days: required_u32(&raw, "duration")?,
+        escrow: optional_decimal(&raw, "escrow"),
+    })
+}
+
 pub(super) fn parse_calendar_event(raw: Value) -> Result<CalendarEventObservation, EsiError> {
     Ok(CalendarEventObservation {
         event_id: required_i64(&raw, "event_id")?,

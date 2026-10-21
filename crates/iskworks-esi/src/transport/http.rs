@@ -1211,6 +1211,37 @@ impl EsiTransport for HttpEsiTransport {
             metadata,
         })
     }
+
+    async fn character_orders(
+        &self,
+        access_token: &str,
+        character_id: i64,
+    ) -> Result<EsiResponse<CharacterOrderObservation>, EsiError> {
+        let response = self
+            .get_json(
+                EsiRoute::CharacterOrders,
+                format!(
+                    "{}/latest/characters/{character_id}/orders/",
+                    self.esi_base_url
+                ),
+                access_token,
+                None,
+            )
+            .await?;
+        let metadata = metadata(&response);
+        let values: Vec<Value> = response
+            .json()
+            .await
+            .map_err(|error| decode_body_error(&error))?;
+        Ok(EsiResponse {
+            records: values
+                .into_iter()
+                .map(parse_character_order)
+                .collect::<Result<_, _>>()?,
+            not_modified: false,
+            metadata,
+        })
+    }
 }
 
 /// The part of ESI's `/status/` answer the downtime probe reads.

@@ -205,6 +205,16 @@ pub trait EsiTransport: Send + Sync {
         let _ = (access_token, character_id, event_id);
         Err(EsiError::PermanentFailure)
     }
+    /// Every active order the character placed, personal and corporation.
+    /// Not paged.
+    async fn character_orders(
+        &self,
+        access_token: &str,
+        character_id: i64,
+    ) -> Result<EsiResponse<CharacterOrderObservation>, EsiError> {
+        let _ = (access_token, character_id);
+        Err(EsiError::PermanentFailure)
+    }
 }
 
 #[cfg(test)]
