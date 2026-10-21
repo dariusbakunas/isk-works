@@ -161,6 +161,16 @@ impl From<MarketError> for ApiError {
     }
 }
 
+impl From<iskworks_app::MarketOrdersError> for ApiError {
+    fn from(value: iskworks_app::MarketOrdersError) -> Self {
+        match value {
+            iskworks_app::MarketOrdersError::Market(error) => Self::Market(error),
+            iskworks_app::MarketOrdersError::Inventory(error) => Self::Inventory(error),
+            iskworks_app::MarketOrdersError::Sde(error) => error.into(),
+        }
+    }
+}
+
 impl From<OpportunityError> for ApiError {
     fn from(value: OpportunityError) -> Self {
         Self::Opportunity(value)

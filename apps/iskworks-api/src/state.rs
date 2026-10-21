@@ -64,6 +64,7 @@ pub struct AppState {
     pub(crate) market_repository: Option<Arc<dyn MarketRepository>>,
     adjusted_price_repository: Option<Arc<dyn AdjustedPriceRepository>>,
     public_market_service: Option<Arc<PublicMarketService>>,
+    market_orders_service: Option<Arc<iskworks_app::MarketOrdersService>>,
     pub(crate) auth_service: Option<Arc<AuthService>>,
     pub(crate) admin_config: iskworks_core::AdminConfig,
     invite_admin_repository: Option<Arc<dyn iskworks_core::InviteAdminRepository>>,
@@ -104,6 +105,7 @@ impl AppState {
             market_repository: None,
             adjusted_price_repository: None,
             public_market_service: None,
+            market_orders_service: None,
             auth_service: None,
             admin_config: iskworks_core::AdminConfig::default(),
             invite_admin_repository: None,
@@ -285,6 +287,16 @@ impl AppState {
         repository: Arc<dyn iskworks_core::InventoryConsumptionRepository>,
     ) -> Self {
         self.inventory_consumption_repository = Some(repository);
+        self
+    }
+
+    /// For tests: the Market Orders read model with fake sources.
+    #[must_use]
+    pub fn with_market_orders_service(
+        mut self,
+        service: Arc<iskworks_app::MarketOrdersService>,
+    ) -> Self {
+        self.market_orders_service = Some(service);
         self
     }
 
@@ -814,6 +826,36 @@ impl AppState {
                 "Market persistence is unavailable.".to_string(),
             ))
         })
+    }
+
+    /// The Market Orders read model, built from the ESI, market and
+    /// inventory stores (unless a test injected one). Structure resolution
+    /// is added when EVE SSO is configured.
+    pub(crate) fn market_orders_service(
+        &self,
+    ) -> Result<Arc<iskworks_app::MarketOrdersService>, ApiError> {
+        if let Some(service) = &self.market_orders_service {
+            return Ok(service.clone());
+        }
+        let esi = self.esi_repository.clone().ok_or_else(|| {
+            ApiError::Inventory(InventoryError::Persistence(
+                "Market order persistence is unavailable.".to_string(),
+            ))
+        })?;
+        let market = self.market_repository()?;
+        let mut service = iskworks_app::MarketOrdersService::new(
+            esi.clone(),
+            esi,
+            market.clone(),
+            self.sde_repository.clone(),
+            self.inventory_repository()?,
+        );
+        if let Some(esi_service) = &self.esi_service {
+            service = service.with_structure_resolver(Arc::new(
+                iskworks_app::EsiStructureLocationResolver::new(esi_service.clone(), market),
+            ));
+        }
+        Ok(Arc::new(service))
     }
 
     pub(crate) fn market_service(&self) -> Result<MarketService, ApiError> {

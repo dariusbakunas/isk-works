@@ -178,6 +178,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::orders::router())
         .merge(routes::order_acquisition_runs::router())
         .merge(routes::market::router())
+        .merge(routes::market_orders::router())
         .merge(routes::facilities::router())
         .merge(routes::finance::router())
         .merge(routes::finance_analytics::router())
