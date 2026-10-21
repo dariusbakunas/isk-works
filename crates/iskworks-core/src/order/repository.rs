@@ -646,6 +646,12 @@ pub trait OrderRepository: Send + Sync {
         &self,
         order_id: OrderId,
     ) -> Result<Vec<PlanOperation>, OrderError>;
+    /// `list_order_plan_operations` for several Orders in one read.
+    /// Grouped by Order, each in `list_order_plan_operations`' order.
+    async fn list_order_plan_operations_for_orders(
+        &self,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<PlanOperation>, OrderError>;
 
     /// Resolves the `PriceSource` backing an already-captured price
     /// snapshot -- used to freeze `Ticket::price_source_id` at ticket
@@ -680,6 +686,14 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError>;
+    /// The workspace's tickets among `ticket_ids`, in one read. An id
+    /// with no such ticket is simply absent (`get_ticket` would fail with
+    /// `TicketNotFound`).
+    async fn get_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_ids: &[TicketId],
+    ) -> Result<Vec<Ticket>, OrderError>;
     async fn list_tickets(
         &self,
         workspace_id: WorkspaceId,
@@ -698,6 +712,13 @@ pub trait OrderRepository: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         order_id: OrderId,
+    ) -> Result<Vec<Ticket>, OrderError>;
+    /// `list_tickets_for_order` for several Orders in one read. Grouped
+    /// by Order, each in `list_tickets_for_order`' order.
+    async fn list_tickets_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
     ) -> Result<Vec<Ticket>, OrderError>;
     /// Per requirement of `order_id`: Σ its active (`reserved`) and
     /// consumed allocations. A requirement with no allocation reports
@@ -788,6 +809,12 @@ pub trait OrderRepository: Send + Sync {
     async fn list_order_requirement_fulfillments(
         &self,
         order_requirement_id: OrderRequirementId,
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
+    /// `list_order_requirement_fulfillments` for several requirements in
+    /// one read. Grouped by requirement, each oldest link first.
+    async fn list_order_requirement_fulfillments_for_requirements(
+        &self,
+        order_requirement_ids: &[OrderRequirementId],
     ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
 
     /// Same idempotency rule as `link_order_requirement_to_ticket`.

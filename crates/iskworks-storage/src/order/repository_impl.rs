@@ -228,15 +228,24 @@ impl OrderRepository for PgOrderRepository {
         &self,
         order_id: OrderId,
     ) -> Result<Vec<PlanOperation>, OrderError> {
+        self.list_order_plan_operations_for_orders(&[order_id])
+            .await
+    }
+
+    async fn list_order_plan_operations_for_orders(
+        &self,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<PlanOperation>, OrderError> {
         sqlx::query_as::<_, PlanOperationRow>(
             "SELECT id, order_id, occurrence_key, parent_occurrence_key, build_id, activity, \
              runs, persisted_runs, product_type_id, product_name, output_per_run, \
              produced_quantity, blueprint_or_formula_type_id, material_component_cost, \
              own_installation_cost, total_production_cost, complete, evidence, created_at, \
              consumed_quantity, surplus_quantity, surplus_retained_basis \
-             FROM order_plan_operations WHERE order_id = $1 ORDER BY created_at, occurrence_key",
+             FROM order_plan_operations WHERE order_id = ANY($1) \
+             ORDER BY order_id, created_at, occurrence_key",
         )
-        .bind(order_id.0)
+        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
@@ -576,10 +585,10 @@ impl OrderRepository for PgOrderRepository {
         .collect()
     }
 
-    async fn list_tickets_for_order(
+    async fn get_tickets(
         &self,
         workspace_id: WorkspaceId,
-        order_id: OrderId,
+        ticket_ids: &[TicketId],
     ) -> Result<Vec<Ticket>, OrderError> {
         sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
@@ -589,10 +598,45 @@ impl OrderRepository for PgOrderRepository {
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
              own_installation_cost, total_production_cost, plan_evidence \
-             FROM tickets WHERE workspace_id = $1 AND order_id = $2 ORDER BY display_id",
+             FROM tickets WHERE workspace_id = $1 AND id = ANY($2) ORDER BY display_id",
         )
         .bind(workspace_id.0)
-        .bind(order_id.0)
+        .bind(ticket_ids.iter().map(|id| id.0).collect::<Vec<_>>())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?
+        .into_iter()
+        .map(TicketRow::into_ticket)
+        .collect()
+    }
+
+    async fn list_tickets_for_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<Ticket>, OrderError> {
+        self.list_tickets_for_orders(workspace_id, &[order_id])
+            .await
+    }
+
+    async fn list_tickets_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<Ticket>, OrderError> {
+        sqlx::query_as::<_, TicketRow>(
+            "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
+             quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
+             actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
+             price_source_id, acquisition_run_id, acquired_quantity, \
+             execution_snapshot, created_at, updated_at, completed_at, archived_at, \
+             occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
+             own_installation_cost, total_production_cost, plan_evidence \
+             FROM tickets WHERE workspace_id = $1 AND order_id = ANY($2) \
+             ORDER BY order_id, display_id",
+        )
+        .bind(workspace_id.0)
+        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
@@ -946,11 +990,25 @@ impl OrderRepository for PgOrderRepository {
         &self,
         order_requirement_id: OrderRequirementId,
     ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
+        self.list_order_requirement_fulfillments_for_requirements(&[order_requirement_id])
+            .await
+    }
+
+    async fn list_order_requirement_fulfillments_for_requirements(
+        &self,
+        order_requirement_ids: &[OrderRequirementId],
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
         sqlx::query_as::<_, OrderRequirementFulfillmentRow>(
             "SELECT id, order_requirement_id, ticket_id, allocated_quantity, linked_at \
-             FROM order_requirement_fulfillments WHERE order_requirement_id = $1 ORDER BY linked_at",
+             FROM order_requirement_fulfillments WHERE order_requirement_id = ANY($1) \
+             ORDER BY order_requirement_id, linked_at",
         )
-        .bind(order_requirement_id.0)
+        .bind(
+            order_requirement_ids
+                .iter()
+                .map(|id| id.0)
+                .collect::<Vec<_>>(),
+        )
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
