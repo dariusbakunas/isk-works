@@ -62,6 +62,18 @@ fn planets_scope_is_requested_but_not_required() {
 }
 
 #[test]
+fn market_orders_scope_is_requested_but_not_required() {
+    assert!(authorization_scopes().contains(&MARKET_ORDERS_SCOPE.to_string()));
+    assert!(fixture_identity().scopes.contains(MARKET_ORDERS_SCOPE));
+    let identity = Identity {
+        character_id: 1,
+        character_name: "No orders".to_string(),
+        scopes: REQUESTED_SCOPES.iter().map(ToString::to_string).collect(),
+    };
+    assert!(require_requested_scopes(&identity).is_ok());
+}
+
+#[test]
 fn calendar_scope_is_requested_but_not_required() {
     assert!(authorization_scopes().contains(&CALENDAR_SCOPE.to_string()));
     assert!(fixture_identity().scopes.contains(CALENDAR_SCOPE));

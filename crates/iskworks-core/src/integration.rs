@@ -73,6 +73,9 @@ pub enum CharacterSourceKind {
     /// Upcoming in-game calendar events (`/characters/{id}/calendar/` +
     /// details), stored in their own table. Optional scope, like `Planets`.
     Calendar,
+    /// The character's active market orders (`/characters/{id}/orders/`),
+    /// stored in their own table. Optional scope, like `Planets`.
+    MarketOrders,
 }
 
 impl CharacterSourceKind {
@@ -88,6 +91,7 @@ impl CharacterSourceKind {
             Self::WalletTransactions => "wallet_transactions",
             Self::Planets => "planets",
             Self::Calendar => "calendar",
+            Self::MarketOrders => "market_orders",
         }
     }
 
@@ -103,12 +107,13 @@ impl CharacterSourceKind {
             "wallet_transactions" => Some(Self::WalletTransactions),
             "planets" => Some(Self::Planets),
             "calendar" => Some(Self::Calendar),
+            "market_orders" => Some(Self::MarketOrders),
             _ => None,
         }
     }
 
     #[must_use]
-    pub fn all() -> [Self; 9] {
+    pub fn all() -> [Self; 10] {
         [
             Self::CharacterInfo,
             Self::Location,
@@ -119,15 +124,17 @@ impl CharacterSourceKind {
             Self::WalletTransactions,
             Self::Planets,
             Self::Calendar,
+            Self::MarketOrders,
         ]
     }
 
-    /// Sources backed by an optional ESI scope. Many characters never run PI
-    /// or use the in-game calendar, so a missing scope or a stale/failed fetch here is a per-feature
-    /// concern, not a character-health one.
+    /// Sources backed by an optional ESI scope. Many characters never run PI,
+    /// use the in-game calendar or trade, so a missing scope or a
+    /// stale/failed fetch here is a per-feature concern, not a
+    /// character-health one.
     #[must_use]
     pub fn is_optional(self) -> bool {
-        matches!(self, Self::Planets | Self::Calendar)
+        matches!(self, Self::Planets | Self::Calendar | Self::MarketOrders)
     }
 }
 
@@ -174,6 +181,8 @@ fn source_stale_after(kind: CharacterSourceKind) -> chrono::Duration {
         CharacterSourceKind::WalletTransactions => chrono::Duration::minutes(30),
         CharacterSourceKind::Planets => chrono::Duration::minutes(30),
         CharacterSourceKind::Calendar => chrono::Duration::minutes(30),
+        // ESI caches a character's orders for 20 minutes.
+        CharacterSourceKind::MarketOrders => chrono::Duration::minutes(20),
     };
     refresh_interval * 2
 }
@@ -530,6 +539,34 @@ mod tests {
             character_health(ConnectionStatus::Connected, &sources, now),
             CharacterHealth::Healthy
         );
+    }
+
+    #[test]
+    fn an_optional_market_orders_source_never_degrades_health() {
+        let now = Utc::now();
+        let mut sources = all_fresh(now);
+        sources.retain(|source| source.source_kind != CharacterSourceKind::MarketOrders);
+        sources.push(source(
+            CharacterSourceKind::MarketOrders,
+            MarketRefreshState::Failed,
+            None,
+            Some("missing scope: esi-markets.read_character_orders.v1"),
+        ));
+        assert_eq!(
+            character_health(ConnectionStatus::Connected, &sources, now),
+            CharacterHealth::Healthy
+        );
+    }
+
+    #[test]
+    fn market_orders_source_round_trips_its_db_name() {
+        let kind = CharacterSourceKind::MarketOrders;
+        assert_eq!(kind.as_db_str(), "market_orders");
+        assert_eq!(
+            CharacterSourceKind::from_db_str("market_orders"),
+            Some(kind)
+        );
+        assert!(CharacterSourceKind::all().contains(&kind));
     }
 
     #[test]

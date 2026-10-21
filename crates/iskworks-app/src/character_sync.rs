@@ -305,6 +305,8 @@ fn refresh_interval(kind: CharacterSourceKind) -> Duration {
         CharacterSourceKind::Planets => Duration::minutes(30),
         // ESI caches the calendar for 5 minutes; this stays well above it.
         CharacterSourceKind::Calendar => Duration::minutes(30),
+        // Matches ESI's 20-minute cache on a character's orders.
+        CharacterSourceKind::MarketOrders => Duration::minutes(20),
     }
 }
 
@@ -523,7 +525,7 @@ impl CharacterSyncService {
             );
         }
 
-        let mut outcomes = Vec::with_capacity(9);
+        let mut outcomes = Vec::with_capacity(CharacterSourceKind::all().len());
         let mut resolvable_ids = Vec::new();
 
         if cancel.is_cancelled() {

@@ -536,6 +536,7 @@ pub(super) fn fixture_identity() -> Identity {
             MARKET_STRUCTURE_SCOPE.to_string(),
             PLANETS_SCOPE.to_string(),
             CALENDAR_SCOPE.to_string(),
+            MARKET_ORDERS_SCOPE.to_string(),
         ]),
     }
 }

@@ -1093,7 +1093,7 @@ async fn token_refresh_failure_skips_every_source_without_writing_any_state() {
     let outcomes = service.sync_connection(connection_id, no_cancel()).await;
     let after = Utc::now();
 
-    assert_eq!(outcomes.len(), 9);
+    assert_eq!(outcomes.len(), CharacterSourceKind::all().len());
     assert!(outcomes
         .iter()
         .all(|(_, outcome)| *outcome == CharacterSyncOutcome::Skipped));
