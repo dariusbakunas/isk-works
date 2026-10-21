@@ -14,7 +14,7 @@ export async function getHealth(): Promise<HealthResponse> {
   return requestJson<HealthResponse>("/api/health");
 }
 
-/** `GET /api/esi/status`: whether ESI is paused for EVE's daily downtime. */
+/** `GET /api/esi/status`: whether ESI is paused because EVE's servers are down. */
 export interface EsiStatusResponse {
   downtime: boolean;
   /** While in downtime, roughly when to ask again. */

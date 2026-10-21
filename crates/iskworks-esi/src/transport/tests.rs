@@ -529,6 +529,35 @@ async fn a_status_answer_from_before_the_restart_keeps_the_pause() {
     assert_eq!(server.await.unwrap(), vec!["GET /latest/status/ HTTP/1.1"]);
 }
 
+fn mid_morning() -> DateTime<Utc> {
+    "2026-10-07T08:00:00Z".parse().unwrap()
+}
+
+#[tokio::test]
+async fn a_gateway_error_outside_downtime_pauses_until_status_is_healthy() {
+    // An emergency downtime: the market call gets a 503, so the next call
+    // checks /status/ (still down) instead of sending, and the one after
+    // waits for the next check. A third connection would find no server.
+    let (base_url, server) = spawn_scripted_esi(vec![UNAVAILABLE, UNAVAILABLE]).await;
+    let transport =
+        HttpEsiTransport::public(base_url).with_downtime_guard(Arc::default(), mid_morning);
+
+    assert!(transport.market_prices().await.is_err());
+    for _ in 0..2 {
+        assert!(matches!(
+            transport.market_prices().await,
+            Err(EsiError::ServerDowntime { .. })
+        ));
+    }
+    assert_eq!(
+        server.await.unwrap(),
+        vec![
+            "GET /latest/markets/prices/ HTTP/1.1",
+            "GET /latest/status/ HTTP/1.1"
+        ]
+    );
+}
+
 #[tokio::test]
 async fn availability_reports_downtime_without_extra_esi_requests() {
     let (base_url, server) = spawn_scripted_esi(vec![UNAVAILABLE]).await;

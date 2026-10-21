@@ -65,14 +65,15 @@ pub struct HttpEsiTransport {
     rate_limit: Arc<RateLimitGuard>,
     /// EVE SSO's signing keys, shared by clones of this transport.
     jwks: Arc<Mutex<Option<CachedJwks>>>,
-    /// Pauses requests around Tranquility's daily downtime. Only for the
-    /// real ESI host; a fake or proxy base URL has no downtime to wait out.
+    /// Pauses requests while Tranquility is down, daily or unscheduled.
+    /// Only for the real ESI host; a fake or proxy base URL has no downtime
+    /// to wait out.
     downtime: Option<Arc<DowntimeGuard>>,
     /// The clock `downtime` is checked against; tests pin it.
     now: fn() -> DateTime<Utc>,
 }
 
-/// The host whose daily downtime `DowntimeGuard` waits out.
+/// The host whose downtime `DowntimeGuard` waits out.
 pub(super) const TRANQUILITY_ESI_HOST: &str = "esi.evetech.net";
 
 pub(super) fn downtime_guard_for(esi_base_url: &str) -> Option<Arc<DowntimeGuard>> {
@@ -295,18 +296,22 @@ impl HttpEsiTransport {
         }
     }
 
-    /// Feeds every ESI response to the error-limit and rate-limit guards.
+    /// Feeds every ESI response to the error-limit, rate-limit and downtime
+    /// guards.
     fn observe_response(&self, url: &str, caller: Caller, response: &reqwest::Response) {
         self.error_limit
             .observe(response.status(), response.headers());
         self.rate_limit
             .observe(url, caller, response.status(), response.headers());
+        if let Some(downtime) = &self.downtime {
+            downtime.observe((self.now)(), response.status());
+        }
     }
 
-    /// Whether ESI is paused for Tranquility's daily downtime, for showing
-    /// users. Outside the downtime window this makes no request; inside it,
-    /// it shares the guard's single `/status/` probe, so asking often costs
-    /// ESI nothing extra.
+    /// Whether ESI is paused because Tranquility is down, for showing users.
+    /// While ESI isn't known to be down this makes no request; during a
+    /// pause it shares the guard's single `/status/` probe, so asking often
+    /// costs ESI nothing extra.
     pub async fn availability(&self) -> EsiAvailability {
         match self.downtime_gate().await {
             Err(EsiError::ServerDowntime {
@@ -336,7 +341,7 @@ impl HttpEsiTransport {
                     retry_after_seconds: Some(retry_after_seconds),
                 })
             }
-            DowntimeDecision::Probe => {
+            DowntimeDecision::Probe(pause) => {
                 let timer = RequestTimer::start(EsiRoute::Status);
                 let response = self
                     .client
@@ -350,7 +355,8 @@ impl HttpEsiTransport {
                             .observe(response.status(), response.headers());
                         response.status().is_success()
                             && response.json::<ServerStatus>().await.is_ok_and(|status| {
-                                restarted_since_downtime(
+                                server_is_back(
+                                    pause,
                                     (self.now)(),
                                     status.start_time,
                                     status.vip.unwrap_or(false),
@@ -359,7 +365,7 @@ impl HttpEsiTransport {
                     }
                     Err(_) => false,
                 };
-                downtime.probed((self.now)(), healthy);
+                downtime.probed(pause, healthy);
                 metrics::counter!(
                     "iskworks_esi_downtime_probes_total",
                     "result" => if healthy { "healthy" } else { "unhealthy" }
