@@ -482,21 +482,21 @@ pub(super) async fn list_orders(
     Query(query): Query<ListOrdersQuery>,
 ) -> Result<Json<Vec<OrderSummaryResponse>>, ApiError> {
     let (workspace_id, owner_id) = workspace_context(&state).await?;
-    let orders = state
-        .order_repository()?
+    let repository = state.order_repository()?;
+    let orders: Vec<Order> = repository
         .list_orders(workspace_id, owner_id)
-        .await?;
-    let mut summaries = Vec::with_capacity(orders.len());
-    for order in &orders {
-        let keep = match query.archived {
+        .await?
+        .into_iter()
+        .filter(|order| match query.archived {
             ArchivedFilter::Active => order.archived_at.is_none(),
             ArchivedFilter::Archived => order.archived_at.is_some(),
             ArchivedFilter::All => true,
-        };
-        if !keep {
-            continue;
-        }
-        let detail = fetch_order_detail(&state, workspace_id, order.id).await?;
+        })
+        .collect();
+    let mut data = load_order_detail_data(&*repository, workspace_id, &orders).await?;
+    let mut summaries = Vec::with_capacity(orders.len());
+    for order in &orders {
+        let detail = order_detail(order, &mut data)?;
         summaries.push(OrderSummaryResponse {
             order: detail.order,
             status: detail.status,
@@ -706,23 +706,143 @@ pub(super) async fn fetch_order_detail(
 ) -> Result<OrderDetailResponse, ApiError> {
     let repository = state.order_repository()?;
     let order = repository.get_order(workspace_id, order_id).await?;
-    let requirements = repository.list_order_requirements(order_id).await?;
-    let order_tickets = repository
-        .list_tickets_for_order(workspace_id, order_id)
-        .await?;
+    let orders = [order];
+    let mut data = load_order_detail_data(&*repository, workspace_id, &orders).await?;
+    order_detail(&orders[0], &mut data)
+}
+
+/// Everything `order_detail` derives Epics' detail views from, loaded in
+/// a fixed handful of reads however many Epics there are -- so the Board's
+/// Epic list costs the same few queries as one Epic's detail.
+pub(super) struct OrderDetailData {
+    requirements: HashMap<OrderId, Vec<OrderRequirement>>,
+    tickets: HashMap<OrderId, Vec<Ticket>>,
+    operations: HashMap<OrderId, Vec<PlanOperation>>,
+    fulfillments: HashMap<OrderRequirementId, Vec<OrderRequirementFulfillment>>,
+    /// The tickets those fulfillments link to, wherever they live.
+    linked_tickets: HashMap<TicketId, Ticket>,
+    /// Version-3 Epics' requirements only.
+    reservation_totals: HashMap<OrderRequirementId, RequirementReservationTotals>,
+}
+
+pub(super) async fn load_order_detail_data(
+    repository: &dyn OrderRepository,
+    workspace_id: iskworks_core::WorkspaceId,
+    orders: &[Order],
+) -> Result<OrderDetailData, ApiError> {
+    let order_ids: Vec<OrderId> = orders.iter().map(|order| order.id).collect();
+    let mut requirements: HashMap<OrderId, Vec<OrderRequirement>> = HashMap::new();
+    for requirement in repository
+        .list_order_requirements_for_orders(&order_ids)
+        .await?
+    {
+        requirements
+            .entry(requirement.order_id)
+            .or_default()
+            .push(requirement);
+    }
+    let mut tickets: HashMap<OrderId, Vec<Ticket>> = HashMap::new();
+    for ticket in repository
+        .list_tickets_for_orders(workspace_id, &order_ids)
+        .await?
+    {
+        if let Some(order_id) = ticket.order_id {
+            tickets.entry(order_id).or_default().push(ticket);
+        }
+    }
+    let mut operations: HashMap<OrderId, Vec<PlanOperation>> = HashMap::new();
+    for operation in repository
+        .list_order_plan_operations_for_orders(&order_ids)
+        .await?
+    {
+        operations
+            .entry(operation.order_id)
+            .or_default()
+            .push(operation);
+    }
+    let requirement_ids: Vec<OrderRequirementId> = requirements
+        .values()
+        .flatten()
+        .map(|requirement| requirement.id)
+        .collect();
+    let mut fulfillments: HashMap<OrderRequirementId, Vec<OrderRequirementFulfillment>> =
+        HashMap::new();
+    for link in repository
+        .list_order_requirement_fulfillments_for_requirements(&requirement_ids)
+        .await?
+    {
+        fulfillments
+            .entry(link.order_requirement_id)
+            .or_default()
+            .push(link);
+    }
+    let linked_ids: Vec<TicketId> = fulfillments
+        .values()
+        .flatten()
+        .map(|link| link.ticket_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let linked_tickets: HashMap<TicketId, Ticket> = if linked_ids.is_empty() {
+        HashMap::new()
+    } else {
+        repository
+            .get_tickets(workspace_id, &linked_ids)
+            .await?
+            .into_iter()
+            .map(|ticket| (ticket.id, ticket))
+            .collect()
+    };
+    let reserving: Vec<OrderId> = orders
+        .iter()
+        .filter(|order| order.planning_snapshot_version >= 3)
+        .map(|order| order.id)
+        .collect();
+    let reservation_totals = if reserving.is_empty() {
+        HashMap::new()
+    } else {
+        repository
+            .requirement_reservation_totals_for_orders(workspace_id, &reserving)
+            .await?
+            .into_iter()
+            .map(|totals| (totals.requirement_id, totals))
+            .collect()
+    };
+    Ok(OrderDetailData {
+        requirements,
+        tickets,
+        operations,
+        fulfillments,
+        linked_tickets,
+        reservation_totals,
+    })
+}
+
+/// One Epic's detail view from already-loaded `data`, taking that Epic's
+/// rows out of it.
+pub(super) fn order_detail(
+    order: &Order,
+    data: &mut OrderDetailData,
+) -> Result<OrderDetailResponse, ApiError> {
+    let requirements = data.requirements.remove(&order.id).unwrap_or_default();
+    let order_tickets = data.tickets.remove(&order.id).unwrap_or_default();
 
     let mut fulfillments_per_requirement = Vec::with_capacity(requirements.len());
     for requirement in &requirements {
-        let links = repository
-            .list_order_requirement_fulfillments(requirement.id)
-            .await?;
+        let links = data
+            .fulfillments
+            .remove(&requirement.id)
+            .unwrap_or_default();
         let mut linked = Vec::with_capacity(links.len());
         for link in links {
-            let ticket = repository.get_ticket(workspace_id, link.ticket_id).await?;
+            let ticket = data
+                .linked_tickets
+                .get(&link.ticket_id)
+                .ok_or(iskworks_core::order::OrderError::TicketNotFound)?;
             if ticket.status != TicketStatus::Canceled {
                 linked.push(LinkedTicketRef {
                     id: ticket.id,
-                    display_id: ticket.display_id,
+                    display_id: ticket.display_id.clone(),
                     status: ticket.status,
                     allocated_quantity: link.allocated_quantity,
                     producer: false,
@@ -754,7 +874,7 @@ pub(super) async fn fetch_order_detail(
         fulfillments_per_requirement.push(linked);
     }
 
-    let operations = repository.list_order_plan_operations(order_id).await?;
+    let operations = data.operations.remove(&order.id).unwrap_or_default();
     let production_plan = if operations.is_empty() {
         None
     } else {
@@ -766,10 +886,9 @@ pub(super) async fn fetch_order_detail(
             planned_reuse: requirements.iter().map(|r| r.reused_quantity).sum(),
             ..EpicInventorySummary::default()
         };
-        held = repository
-            .requirement_reservation_totals(workspace_id, order_id)
-            .await?
-            .into_iter()
+        held = requirements
+            .iter()
+            .filter_map(|requirement| data.reservation_totals.remove(&requirement.id))
             .map(|totals| {
                 summary.reserved += totals.reserved;
                 summary.used += totals.consumed;
@@ -789,7 +908,7 @@ pub(super) async fn fetch_order_detail(
         None
     };
     let mut response =
-        order_detail_response(&order, requirements, fulfillments_per_requirement, &held);
+        order_detail_response(order, requirements, fulfillments_per_requirement, &held);
     response.production_plan = production_plan;
     response.inventory = inventory;
     Ok(response)
