@@ -323,6 +323,122 @@ async fn region_and_category_reads_are_scoped_correctly_and_never_leak_across_re
     assert_eq!(tree[0].children[0].market_group_id, 1_361);
 }
 
+fn gate(stargate_id: i64, from: i64, to: i64) -> iskworks_sde::ImportStargate {
+    iskworks_sde::ImportStargate {
+        stargate_id,
+        solar_system_id: from,
+        destination_solar_system_id: to,
+    }
+}
+
+async fn import_active(repository: &PgSdeRepository, dataset: &iskworks_sde::NormalizedSde) {
+    let import_id = repository
+        .begin_import(NewImport {
+            source_version: dataset.source_version.clone(),
+            source_label: dataset.source_label.clone(),
+            source_checksum: dataset.source_checksum.clone(),
+            started_at: Utc::now(),
+        })
+        .await
+        .unwrap();
+    repository
+        .write_dataset(import_id, dataset, &NoopProgressReporter)
+        .await
+        .unwrap();
+    repository
+        .activate_import(import_id, dataset.counts(), Utc::now())
+        .await
+        .unwrap();
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn stargates_are_stored_and_an_import_without_them_is_redone(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool.clone());
+    let geography = geography_fixture();
+    let mut dataset = fixture_sde("checksum-stargates", "100002");
+    dataset.regions = geography.regions;
+    dataset.constellations = geography.constellations;
+    dataset.solar_systems = geography.solar_systems;
+    import_active(&repository, &dataset).await;
+    let requires_stargates = SdeDatasetRequirements {
+        stargates: true,
+        ..SdeDatasetRequirements::default()
+    };
+    // The same archive imported before stargates were read must be redone.
+    assert!(repository
+        .active_by_checksum("checksum-stargates", requires_stargates)
+        .await
+        .unwrap()
+        .is_none());
+
+    dataset.stargates = vec![
+        gate(50_000_001, 30_000_142, 30_000_772),
+        gate(50_000_002, 30_000_772, 30_000_142),
+    ];
+    import_active(&repository, &dataset).await;
+
+    let stored: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "SELECT g.stargate_id, g.solar_system_id, g.destination_solar_system_id
+         FROM sde_stargates g JOIN sde_imports i ON i.id = g.import_id AND i.active
+         ORDER BY g.stargate_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        stored,
+        vec![
+            (50_000_001, 30_000_142, 30_000_772),
+            (50_000_002, 30_000_772, 30_000_142)
+        ]
+    );
+    assert!(repository
+        .active_by_checksum("checksum-stargates", requires_stargates)
+        .await
+        .unwrap()
+        .is_some());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn region_stargate_edges_keep_only_gates_inside_the_region(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    let geography = geography_fixture();
+    let mut dataset = fixture_sde("checksum-jump-graph", "100003");
+    dataset.regions = geography.regions;
+    dataset.constellations = geography.constellations;
+    dataset.solar_systems = geography.solar_systems;
+    dataset.solar_systems.push(iskworks_sde::ImportSolarSystem {
+        solar_system_id: 30_000_144,
+        name: "Perimeter".to_string(),
+        constellation_id: None,
+        region_id: Some(10_000_002),
+        security_status: Some(rust_decimal::Decimal::ONE),
+        wormhole_class_id: None,
+    });
+    dataset.stargates = vec![
+        gate(50_000_001, 30_000_142, 30_000_144),
+        gate(50_000_002, 30_000_144, 30_000_142),
+        // Jita to a system in another region.
+        gate(50_000_003, 30_000_142, 30_000_772),
+        gate(50_000_004, 30_000_772, 30_000_142),
+    ];
+    import_active(&repository, &dataset).await;
+
+    let mut edges = repository.region_stargate_edges(10_000_002).await.unwrap();
+    edges.sort_unstable();
+    assert_eq!(
+        edges,
+        vec![(30_000_142, 30_000_144), (30_000_144, 30_000_142)]
+    );
+    assert!(repository
+        .region_stargate_edges(10_000_999)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]
 async fn planetary_sde_data_round_trips_through_the_active_import(pool: PgPool) {
@@ -623,6 +739,7 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
         planets: Vec::new(),
+        stargates: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -726,6 +843,7 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
         planets: Vec::new(),
+        stargates: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -830,6 +948,7 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
         planets: Vec::new(),
+        stargates: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

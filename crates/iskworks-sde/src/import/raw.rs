@@ -199,6 +199,21 @@ pub(crate) struct RawPlanet {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct RawStargate {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    #[serde(rename = "solarSystemID")]
+    pub(crate) solar_system_id: i64,
+    pub(crate) destination: RawStargateDestination,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawStargateDestination {
+    #[serde(rename = "solarSystemID")]
+    pub(crate) solar_system_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct RawMoon {
     #[serde(rename = "_key")]
     pub(crate) key: i64,

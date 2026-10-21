@@ -132,6 +132,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let raw_planet_schematics: Vec<RawPlanetSchematic> =
         parse_optional_jsonl(source, PLANET_SCHEMATICS_FILE)?;
     let raw_planets: Vec<RawPlanet> = parse_optional_jsonl(source, MAP_PLANETS_FILE)?;
+    let raw_stargates: Vec<RawStargate> = parse_optional_jsonl(source, STARGATES_FILE)?;
     let rig_filter_ids: HashMap<i64, RigFilterIds> = raw_industry_modifier_sources
         .into_iter()
         .map(|source| {
@@ -378,6 +379,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         .map(|system| (system.solar_system_id, system.name.clone()))
         .collect::<HashMap<_, _>>();
     let planets = normalize_planets(raw_planets, &system_names)?;
+    let stargates = normalize_stargates(raw_stargates, &system_names)?;
     let corporations = raw_corporations
         .into_iter()
         .filter_map(|record| record.name.en.map(|name| (record.key, name)))
@@ -462,6 +464,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         industry_target_filters,
         planet_schematics,
         planets,
+        stargates,
         skipped_blueprints,
         skipped_reaction_formulas,
     })
@@ -544,6 +547,37 @@ pub(super) fn normalize_planets(
         });
     }
     values.sort_by_key(|value| value.planet_id);
+    Ok(values)
+}
+
+/// Keeps gates whose two systems are both imported (the table references
+/// them), sorted by gate ID.
+pub(super) fn normalize_stargates(
+    records: Vec<RawStargate>,
+    system_names: &HashMap<i64, String>,
+) -> Result<Vec<ImportStargate>, SdeError> {
+    let mut ids = HashSet::new();
+    let mut values = Vec::new();
+    for record in records {
+        if !ids.insert(record.key) {
+            return Err(SdeError::Duplicate {
+                kind: "stargate",
+                id: record.key,
+            });
+        }
+        let destination = record.destination.solar_system_id;
+        if !system_names.contains_key(&record.solar_system_id)
+            || !system_names.contains_key(&destination)
+        {
+            continue;
+        }
+        values.push(ImportStargate {
+            stargate_id: record.key,
+            solar_system_id: record.solar_system_id,
+            destination_solar_system_id: destination,
+        });
+    }
+    values.sort_by_key(|value| value.stargate_id);
     Ok(values)
 }
 

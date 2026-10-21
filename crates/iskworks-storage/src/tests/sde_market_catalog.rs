@@ -174,6 +174,7 @@ fn market_items_fixture() -> iskworks_sde::NormalizedSde {
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
         planets: Vec::new(),
+        stargates: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -339,6 +340,7 @@ fn market_group_subtree_fixture() -> iskworks_sde::NormalizedSde {
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
         planets: Vec::new(),
+        stargates: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

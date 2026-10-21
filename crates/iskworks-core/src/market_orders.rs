@@ -1,6 +1,8 @@
 //! The workspace characters' own market orders, synced per connection by the
 //! `market_orders` character source.
 
+use std::collections::{HashMap, VecDeque};
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -62,6 +64,58 @@ impl OrderRange {
     }
 }
 
+/// Stargate connections between solar systems, for deciding whether a buy
+/// order's jump range reaches a location. Gates work both ways, so every
+/// edge is walked in both directions.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct JumpGraph {
+    neighbours: HashMap<i64, Vec<i64>>,
+}
+
+impl JumpGraph {
+    pub fn from_edges(edges: impl IntoIterator<Item = (i64, i64)>) -> Self {
+        let mut neighbours: HashMap<i64, Vec<i64>> = HashMap::new();
+        for (from, to) in edges {
+            neighbours.entry(from).or_default().push(to);
+            neighbours.entry(to).or_default().push(from);
+        }
+        for systems in neighbours.values_mut() {
+            systems.sort_unstable();
+            systems.dedup();
+        }
+        Self { neighbours }
+    }
+
+    /// No gates at all: the SDE was imported without stargates, so no jump
+    /// range can be decided.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.neighbours.is_empty()
+    }
+
+    /// Every system within `max_jumps` of `from`, with its shortest jump
+    /// count (`from` itself is 0). Systems farther away, or not connected,
+    /// are absent.
+    #[must_use]
+    pub fn jump_distances(&self, from: i64, max_jumps: u8) -> HashMap<i64, u8> {
+        let mut distances = HashMap::from([(from, 0_u8)]);
+        let mut queue = VecDeque::from([from]);
+        while let Some(system) = queue.pop_front() {
+            let jumps = distances[&system];
+            if jumps >= max_jumps {
+                continue;
+            }
+            for next in self.neighbours.get(&system).into_iter().flatten() {
+                if !distances.contains_key(next) {
+                    distances.insert(*next, jumps + 1);
+                    queue.push_back(*next);
+                }
+            }
+        }
+        distances
+    }
+}
+
 /// One active order as ESI reported it for one connection.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CharacterMarketOrder {
@@ -119,6 +173,51 @@ pub trait CharacterMarketOrderRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn graph(edges: &[(i64, i64)]) -> JumpGraph {
+        JumpGraph::from_edges(edges.iter().copied())
+    }
+
+    #[test]
+    fn jump_distances_follow_a_line_of_systems() {
+        let line = graph(&[(1, 2), (2, 3)]);
+        assert_eq!(
+            line.jump_distances(1, 40),
+            HashMap::from([(1, 0), (2, 1), (3, 2)])
+        );
+    }
+
+    #[test]
+    fn jump_distances_take_the_shortest_way_round_a_cycle() {
+        // 1-2-3-4-5-1: going backwards from 1 reaches 5 in one jump.
+        let cycle = graph(&[(1, 2), (2, 3), (3, 4), (4, 5), (5, 1)]);
+        let distances = cycle.jump_distances(1, 40);
+        assert_eq!(distances[&5], 1);
+        assert_eq!(distances[&4], 2);
+        assert_eq!(distances[&3], 2);
+    }
+
+    #[test]
+    fn jump_distances_stop_at_the_cap() {
+        let line = graph(&[(1, 2), (2, 3), (3, 4)]);
+        assert_eq!(
+            line.jump_distances(1, 2),
+            HashMap::from([(1, 0), (2, 1), (3, 2)])
+        );
+    }
+
+    #[test]
+    fn unreachable_and_unknown_systems_are_absent() {
+        let islands = graph(&[(1, 2), (3, 4)]);
+        assert!(!islands.jump_distances(1, 40).contains_key(&3));
+        assert_eq!(islands.jump_distances(99, 40), HashMap::from([(99, 0)]));
+    }
+
+    #[test]
+    fn a_graph_without_gates_is_empty() {
+        assert!(graph(&[]).is_empty());
+        assert!(!graph(&[(1, 2)]).is_empty());
+    }
 
     #[test]
     fn order_range_reads_every_esi_spelling() {

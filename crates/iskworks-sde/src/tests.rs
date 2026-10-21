@@ -641,6 +641,77 @@ fn planetary_data_is_empty_when_the_sde_lacks_it() {
     assert!(dataset.planets.is_empty());
 }
 
+#[test]
+fn parses_stargates_and_drops_gates_to_unknown_systems() {
+    let source = fixture_source_inner(
+        blueprints_fixture(),
+        Some(concat!(
+            r#"{"_key":30000142,"name":{"en":"Jita"},"securityStatus":0.9}"#,
+            "\n",
+            r#"{"_key":30000144,"name":{"en":"Perimeter"},"securityStatus":1.0}"#
+        )),
+        None,
+        &[(
+            "mapStargates.jsonl",
+            concat!(
+                r#"{"_key":50001249,"destination":{"solarSystemID":30000144,"stargateID":50001250},"position":{"x":1.0,"y":2.0,"z":3.0},"solarSystemID":30000142,"typeID":29635}"#,
+                "\n",
+                r#"{"_key":50001250,"destination":{"solarSystemID":30000142,"stargateID":50001249},"solarSystemID":30000144,"typeID":29635}"#,
+                "\n",
+                r#"{"_key":50009999,"destination":{"solarSystemID":31000001,"stargateID":50009998},"solarSystemID":30000142,"typeID":29635}"#
+            ),
+        )],
+    )
+    .unwrap();
+    assert!(source.has_stargates());
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.stargates,
+        vec![
+            ImportStargate {
+                stargate_id: 50_001_249,
+                solar_system_id: 30_000_142,
+                destination_solar_system_id: 30_000_144,
+            },
+            ImportStargate {
+                stargate_id: 50_001_250,
+                solar_system_id: 30_000_144,
+                destination_solar_system_id: 30_000_142,
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_duplicate_stargate_id_is_rejected() {
+    let gate =
+        r#"{"_key":50001249,"destination":{"solarSystemID":30000144},"solarSystemID":30000142}"#;
+    let source = fixture_source_inner(
+        blueprints_fixture(),
+        Some(r#"{"_key":30000142,"name":{"en":"Jita"}}"#),
+        None,
+        &[("mapStargates.jsonl", &format!("{gate}\n{gate}"))],
+    )
+    .unwrap();
+
+    assert!(matches!(
+        parse(&source),
+        Err(SdeError::Duplicate {
+            kind: "stargate",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn stargates_are_empty_when_the_sde_lacks_them() {
+    let source = fixture_source(blueprints_fixture()).unwrap();
+    assert!(!source.has_stargates());
+    assert!(parse(&source).unwrap().stargates.is_empty());
+}
+
 fn fixture_source(blueprints: &str) -> Result<SdeSource, SdeError> {
     fixture_source_inner(blueprints, None, None, &[])
 }

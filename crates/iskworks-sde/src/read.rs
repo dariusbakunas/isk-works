@@ -638,6 +638,13 @@ pub trait SdeReadRepository: Send + Sync {
         let _ = schematic_ids;
         Ok(BTreeMap::new())
     }
+    /// `(from, to)` system pairs for every stargate whose two ends are both
+    /// in the region, from the active import. Empty when the import has no
+    /// stargates.
+    async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError> {
+        let _ = region_id;
+        Ok(Vec::new())
+    }
     /// Planet names and systems by planet id; unknown ids yield no entry.
     async fn planet_references(
         &self,

@@ -1065,6 +1065,29 @@ impl SdeReadRepository for PgSdeRepository {
         Ok(schematics)
     }
 
+    async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError> {
+        sqlx::query_as::<_, (i64, i64)>(
+            r#"
+            SELECT gate.solar_system_id, gate.destination_solar_system_id
+            FROM sde_imports import
+            JOIN sde_stargates gate ON gate.import_id = import.id
+            JOIN sde_solar_systems origin
+              ON origin.import_id = gate.import_id
+             AND origin.solar_system_id = gate.solar_system_id
+            JOIN sde_solar_systems destination
+              ON destination.import_id = gate.import_id
+             AND destination.solar_system_id = gate.destination_solar_system_id
+            WHERE import.active = true
+              AND origin.region_id = $1
+              AND destination.region_id = $1
+            "#,
+        )
+        .bind(region_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)
+    }
+
     async fn planet_references(
         &self,
         planet_ids: &[i64],
