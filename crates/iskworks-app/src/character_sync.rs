@@ -7,14 +7,15 @@ use chrono::{DateTime, Duration, Utc};
 use iskworks_core::{
     calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
     is_running_job_status,
+    market_orders::{CharacterMarketOrder, CharacterMarketOrderRepository, OrderRange},
     training::{derive_training_state, SkillQueueEntry, TrainingState},
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
-    InventoryError, WorkspaceId,
+    InventoryError, MarketOrderSide, WorkspaceId,
 };
 use iskworks_esi::{
-    CharacterIndustryJobObservation, EsiError, EsiTransport, EveEntityName, ASSET_SCOPE,
-    CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE,
-    SKILL_QUEUE_SCOPE, WALLET_SCOPE,
+    CharacterIndustryJobObservation, CharacterOrderObservation, EsiError, EsiTransport,
+    EveEntityName, ASSET_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE,
+    MARKET_ORDERS_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, WALLET_SCOPE,
 };
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -122,6 +123,14 @@ pub trait CharacterSyncRepository: Send + Sync {
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
+    ) -> Result<(), InventoryError>;
+    /// Makes `orders` the connection's open market orders, closing the rest
+    /// (see `CharacterMarketOrderRepository`).
+    async fn store_market_orders(
+        &self,
+        connection_id: ConnectedCharacterId,
+        orders: &[CharacterMarketOrder],
+        observed_at: DateTime<Utc>,
     ) -> Result<(), InventoryError>;
 }
 
@@ -239,6 +248,21 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
     ) -> Result<(), InventoryError> {
         CalendarEventRepository::replace_calendar_events(self, connection_id, events).await
     }
+
+    async fn store_market_orders(
+        &self,
+        connection_id: ConnectedCharacterId,
+        orders: &[CharacterMarketOrder],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        CharacterMarketOrderRepository::replace_open_orders(
+            self,
+            connection_id,
+            orders,
+            observed_at,
+        )
+        .await
+    }
 }
 
 /// Gets a valid (refreshed-if-needed) ESI access token for a connection.
@@ -291,6 +315,40 @@ fn calendar_response(response: iskworks_esi::CalendarEventResponse) -> CalendarE
         iskworks_esi::CalendarEventResponse::Tentative => CalendarEventResponse::Tentative,
         iskworks_esi::CalendarEventResponse::NotResponded => CalendarEventResponse::NotResponded,
     }
+}
+
+fn market_order(order: CharacterOrderObservation) -> Result<CharacterMarketOrder, SourceFailure> {
+    let range = OrderRange::from_esi(&order.order_range).ok_or_else(|| {
+        SourceFailure::from(format!(
+            "order {} has an unknown range {:?}",
+            order.order_id, order.order_range
+        ))
+    })?;
+    let count = |value: u64| {
+        i64::try_from(value).map_err(|_| {
+            SourceFailure::from(format!("order {} volume is out of range", order.order_id))
+        })
+    };
+    Ok(CharacterMarketOrder {
+        order_id: order.order_id,
+        type_id: order.type_id,
+        region_id: order.region_id,
+        location_id: order.location_id,
+        side: if order.is_buy_order {
+            MarketOrderSide::Buy
+        } else {
+            MarketOrderSide::Sell
+        },
+        is_corporation: order.is_corporation,
+        price: order.price,
+        volume_total: count(order.volume_total)?,
+        volume_remain: count(order.volume_remain)?,
+        min_volume: count(order.min_volume)?,
+        range,
+        issued_at: order.issued_at,
+        duration_days: i32::try_from(order.duration_days).unwrap_or(i32::MAX),
+        escrow: order.escrow,
+    })
 }
 
 fn refresh_interval(kind: CharacterSourceKind) -> Duration {
@@ -791,6 +849,35 @@ impl CharacterSyncService {
         };
         outcomes.push((CharacterSourceKind::Calendar, outcome));
 
+        if cancel.is_cancelled() {
+            return pad_skipped(outcomes);
+        }
+        let outcome = match self
+            .claim_source(connection_id, CharacterSourceKind::MarketOrders, now)
+            .await
+        {
+            Some(claim) => {
+                let result = if granted(&connection, MARKET_ORDERS_SCOPE) {
+                    self.sync_market_orders(&access_token, &connection, now)
+                        .await
+                } else {
+                    Err(SourceFailure::from(format!(
+                        "missing scope: {MARKET_ORDERS_SCOPE}"
+                    )))
+                };
+                self.finish_source(
+                    connection_id,
+                    CharacterSourceKind::MarketOrders,
+                    claim,
+                    now,
+                    result,
+                )
+                .await
+            }
+            None => CharacterSyncOutcome::Skipped,
+        };
+        outcomes.push((CharacterSourceKind::MarketOrders, outcome));
+
         if !cancel.is_cancelled() {
             resolvable_ids.extend(self.previously_synced_resolvable_ids(connection_id).await);
             if !resolvable_ids.is_empty() {
@@ -1080,6 +1167,42 @@ impl CharacterSyncService {
             layouts.push(layout);
         }
         Ok(serde_json::json!({ "planets": layouts }))
+    }
+
+    /// Replaces the connection's open orders with ESI's active list; orders
+    /// it no longer lists are closed. A failed fetch or an unreadable order
+    /// fails the source before anything is stored, so open orders are never
+    /// closed by mistake. Corporation orders are stored but counted apart.
+    async fn sync_market_orders(
+        &self,
+        access_token: &str,
+        connection: &ConnectedCharacter,
+        now: DateTime<Utc>,
+    ) -> Result<Value, SourceFailure> {
+        let orders = self
+            .transport
+            .character_orders(access_token, connection.eve_character_id)
+            .await
+            .map_err(SourceFailure::from)?
+            .records
+            .into_iter()
+            .map(market_order)
+            .collect::<Result<Vec<_>, _>>()?;
+        self.repository
+            .store_market_orders(connection.id, &orders, now)
+            .await
+            .map_err(|error| SourceFailure::from(error.to_string()))?;
+        let personal = |side| {
+            orders
+                .iter()
+                .filter(|order| !order.is_corporation && order.side == side)
+                .count()
+        };
+        Ok(serde_json::json!({
+            "openSellOrders": personal(MarketOrderSide::Sell),
+            "openBuyOrders": personal(MarketOrderSide::Buy),
+            "corporationOrders": orders.iter().filter(|order| order.is_corporation).count(),
+        }))
     }
 
     /// Pages through the upcoming events (`from_event` = the last event

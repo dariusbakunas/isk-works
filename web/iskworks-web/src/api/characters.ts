@@ -49,6 +49,9 @@ export interface CharacterRosterEntry {
   // The connection has not granted esi-calendar.read_calendar_events.v1, so
   // none of its in-game calendar events reach the Calendar.
   calendarScopeMissing: boolean;
+  // The connection has not granted esi-markets.read_character_orders.v1, so
+  // none of its market orders are synced.
+  marketOrdersScopeMissing: boolean;
   manufacturingActiveJobs: number | null;
   manufacturingMaxJobs: number | null;
   reactionActiveJobs: number | null;
@@ -69,7 +72,8 @@ export type CharacterSourceKind =
   | "assets"
   | "walletTransactions"
   | "planets"
-  | "calendar";
+  | "calendar"
+  | "marketOrders";
 export type SourceRefreshState = "missing" | "current" | "refreshing" | "failed";
 
 export interface CharacterSourceDetail {

@@ -13,11 +13,11 @@ use iskworks_core::{
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
     CalendarEventDetailObservation, CalendarEventObservation, CharacterIndustryJobObservation,
-    CharacterLocationObservation, CharacterPlanetDetailObservation, CharacterPlanetObservation,
-    CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation,
-    EsiError, EsiResponse, EsiResponseMetadata, EveEntityName, IndustrySystemCostIndex,
-    PkceVerifier, PlanetPinContentObservation, PlanetPinObservation, RefreshedToken,
-    StructureInformation, WalletBalanceObservation, WalletTransactionObservation,
+    CharacterLocationObservation, CharacterOrderObservation, CharacterPlanetDetailObservation,
+    CharacterPlanetObservation, CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry,
+    CharacterSkillsObservation, EsiError, EsiResponse, EsiResponseMetadata, EveEntityName,
+    IndustrySystemCostIndex, PkceVerifier, PlanetPinContentObservation, PlanetPinObservation,
+    RefreshedToken, StructureInformation, WalletBalanceObservation, WalletTransactionObservation,
 };
 
 use super::*;
@@ -52,6 +52,7 @@ fn all_scopes() -> Vec<String> {
         ASSET_SCOPE.to_string(),
         PLANETS_SCOPE.to_string(),
         CALENDAR_SCOPE.to_string(),
+        MARKET_ORDERS_SCOPE.to_string(),
     ]
 }
 
@@ -71,6 +72,7 @@ struct RecordingRepository {
     calendar_copies: Mutex<Vec<CharacterCalendarEvent>>,
     stored_calendar: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterCalendarEvent>)>>,
     recorded_jobs: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterIndustryJobObservation>)>>,
+    stored_market_orders: Mutex<Vec<(ConnectedCharacterId, Vec<CharacterMarketOrder>)>>,
 }
 
 #[async_trait]
@@ -220,6 +222,19 @@ impl CharacterSyncRepository for RecordingRepository {
             .push((connection_id, events.to_vec()));
         Ok(())
     }
+
+    async fn store_market_orders(
+        &self,
+        connection_id: ConnectedCharacterId,
+        orders: &[CharacterMarketOrder],
+        _observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        self.stored_market_orders
+            .lock()
+            .unwrap()
+            .push((connection_id, orders.to_vec()));
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -232,6 +247,8 @@ struct FakeTransport {
     calendar_override: Mutex<Option<Vec<CalendarEventObservation>>>,
     calendar_calls: Mutex<Vec<Option<i64>>>,
     calendar_detail_calls: Mutex<Vec<i64>>,
+    /// `None` serves one personal sell order.
+    market_orders_override: Mutex<Option<Vec<CharacterOrderObservation>>>,
 }
 
 impl FakeTransport {
@@ -544,6 +561,24 @@ impl EsiTransport for FakeTransport {
         })
     }
 
+    async fn character_orders(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+    ) -> Result<EsiResponse<CharacterOrderObservation>, EsiError> {
+        self.check("character_orders")?;
+        Ok(EsiResponse {
+            records: self
+                .market_orders_override
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| vec![esi_order(7, false, "region")]),
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+
     async fn character_calendar(
         &self,
         _access_token: &str,
@@ -599,6 +634,25 @@ impl EsiTransport for FakeTransport {
 
 fn calendar_date() -> DateTime<Utc> {
     "2026-10-20T18:00:00Z".parse().unwrap()
+}
+
+fn esi_order(order_id: i64, is_buy_order: bool, range: &str) -> CharacterOrderObservation {
+    CharacterOrderObservation {
+        order_id,
+        type_id: 12_005,
+        region_id: 10_000_002,
+        location_id: 60_003_760,
+        is_buy_order,
+        is_corporation: false,
+        price: "312400000.00".parse().unwrap(),
+        volume_remain: 4,
+        volume_total: 5,
+        min_volume: 1,
+        order_range: range.to_string(),
+        issued_at: calendar_date(),
+        duration_days: 90,
+        escrow: is_buy_order.then(|| "1562000000.00".parse().unwrap()),
+    }
 }
 
 fn calendar_summary(event_id: i64, title: &str) -> CalendarEventObservation {
@@ -747,11 +801,11 @@ async fn successful_sync_persists_a_summary_for_every_granted_source() {
         .sync_connection(ConnectedCharacterId::new(), no_cancel())
         .await;
 
-    assert_eq!(outcomes.len(), 9);
+    assert_eq!(outcomes.len(), 10);
     assert!(outcomes
         .iter()
         .all(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded));
-    assert_eq!(repository.completed.lock().unwrap().len(), 9);
+    assert_eq!(repository.completed.lock().unwrap().len(), 10);
     assert!(repository.failed.lock().unwrap().is_empty());
     assert_eq!(repository.registered.lock().unwrap().len(), 1);
 }
@@ -846,7 +900,7 @@ async fn missing_asset_scope_fails_only_assets() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 8);
+    assert_eq!(succeeded, 9);
     let failed = repository.failed.lock().unwrap();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].1, CharacterSourceKind::Assets);
@@ -913,7 +967,7 @@ async fn missing_scope_fails_only_that_source_and_leaves_siblings_unaffected() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 8);
+    assert_eq!(succeeded, 9);
     let failed = repository.failed.lock().unwrap();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].1, CharacterSourceKind::IndustryJobs);
@@ -966,7 +1020,7 @@ async fn missing_planets_scope_fails_only_planets() {
             .iter()
             .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
             .count(),
-        8
+        9
     );
 }
 
@@ -1008,8 +1062,8 @@ async fn esi_failure_on_one_source_does_not_abort_the_others() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 8);
-    assert_eq!(repository.completed.lock().unwrap().len(), 8);
+    assert_eq!(succeeded, 9);
+    assert_eq!(repository.completed.lock().unwrap().len(), 9);
     assert_eq!(repository.failed.lock().unwrap().len(), 1);
 }
 
@@ -1047,7 +1101,7 @@ async fn esi_timeout_on_one_source_fails_it_and_reschedules_in_five_minutes() {
             .iter()
             .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
             .count(),
-        8
+        9
     );
     // Exactly one attempt was made for Location -- no in-pass retry.
     let location_failures = repository
@@ -1174,8 +1228,8 @@ async fn a_source_not_yet_due_is_skipped_but_others_still_sync() {
         .iter()
         .filter(|(_, outcome)| *outcome == CharacterSyncOutcome::Succeeded)
         .count();
-    assert_eq!(succeeded, 8);
-    assert_eq!(repository.completed.lock().unwrap().len(), 8);
+    assert_eq!(succeeded, 9);
+    assert_eq!(repository.completed.lock().unwrap().len(), 9);
     assert!(repository
         .failed
         .lock()
@@ -1581,10 +1635,10 @@ async fn every_source_refresh_is_recorded_by_kind_and_result() {
     assert_eq!(runs("location", "failed"), 1);
     assert_eq!(runs("skills", "success"), 1);
     assert_eq!(runs("assets", "success"), 1);
-    assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 9);
+    assert_eq!(recorded.counter("iskworks_esi_sync_runs_total", &[]), 10);
     assert_eq!(
         recorded.histogram_count("iskworks_esi_sync_duration_seconds", &[]),
-        9
+        10
     );
     let last_success = "iskworks_esi_sync_last_success_timestamp_seconds";
     assert!(recorded.has(last_success, &[("kind", "skills")]));
@@ -1787,4 +1841,115 @@ async fn a_failed_event_detail_fails_the_calendar_source_without_storing() {
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].1, CharacterSourceKind::Calendar);
     assert!(repository.stored_calendar.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn market_orders_sync_stores_every_order_and_counts_open_buys_and_sells() {
+    let transport = FakeTransport {
+        market_orders_override: Mutex::new(Some(vec![
+            esi_order(1, false, "region"),
+            esi_order(2, true, "5"),
+            CharacterOrderObservation {
+                is_corporation: true,
+                ..esi_order(3, true, "station")
+            },
+        ])),
+        ..FakeTransport::default()
+    };
+    let connection = connection(all_scopes());
+    let connection_id = connection.id;
+    let (repository, service) = service(RecordingRepository::default(), transport, connection);
+
+    service.sync_connection(connection_id, no_cancel()).await;
+
+    let stored = repository.stored_market_orders.lock().unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].0, connection_id);
+    let orders = &stored[0].1;
+    assert_eq!(orders.len(), 3);
+    assert_eq!(orders[0].side, MarketOrderSide::Sell);
+    assert_eq!(orders[0].range, OrderRange::Region);
+    assert_eq!(orders[0].volume_remain, 4);
+    assert_eq!(orders[0].escrow, None);
+    assert_eq!(orders[1].side, MarketOrderSide::Buy);
+    assert_eq!(orders[1].range, OrderRange::Jumps(5));
+    assert_eq!(
+        orders[1].escrow,
+        Some("1562000000.00".parse::<rust_decimal::Decimal>().unwrap())
+    );
+    assert!(orders[2].is_corporation);
+    let completed = repository.completed.lock().unwrap();
+    let (_, _, summary) = completed
+        .iter()
+        .find(|(_, kind, _)| *kind == CharacterSourceKind::MarketOrders)
+        .unwrap();
+    // Corporation orders are stored but not counted as the character's own.
+    assert_eq!(summary["openSellOrders"], 1);
+    assert_eq!(summary["openBuyOrders"], 1);
+    assert_eq!(summary["corporationOrders"], 1);
+}
+
+#[tokio::test]
+async fn missing_market_orders_scope_fails_only_market_orders_and_stores_nothing() {
+    let mut scopes = all_scopes();
+    scopes.retain(|scope| scope != MARKET_ORDERS_SCOPE);
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        connection(scopes),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let failed = repository.failed.lock().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1, CharacterSourceKind::MarketOrders);
+    assert_eq!(
+        failed[0].2,
+        "missing scope: esi-markets.read_character_orders.v1"
+    );
+    assert!(repository.stored_market_orders.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_orders_fetch_keeps_the_stored_orders() {
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::failing("character_orders", EsiError::TemporaryFailure),
+        connection(all_scopes()),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let failed = repository.failed.lock().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1, CharacterSourceKind::MarketOrders);
+    // Storing an empty set would close every open order.
+    assert!(repository.stored_market_orders.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_unknown_order_range_fails_the_source_without_storing() {
+    let transport = FakeTransport {
+        market_orders_override: Mutex::new(Some(vec![esi_order(1, true, "constellation")])),
+        ..FakeTransport::default()
+    };
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        transport,
+        connection(all_scopes()),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let failed = repository.failed.lock().unwrap();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1, CharacterSourceKind::MarketOrders);
+    assert!(repository.stored_market_orders.lock().unwrap().is_empty());
 }

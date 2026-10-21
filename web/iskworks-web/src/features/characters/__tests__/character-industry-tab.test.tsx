@@ -53,6 +53,7 @@ function detail(overrides: Partial<CharacterDetail> = {}): CharacterDetail {
     trainingObservedAt: null,
     trainingQueueScopeMissing: false,
     calendarScopeMissing: false,
+    marketOrdersScopeMissing: false,
     manufacturingActiveJobs: 1,
     manufacturingMaxJobs: 10,
     reactionActiveJobs: 1,

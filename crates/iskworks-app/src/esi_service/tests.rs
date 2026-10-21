@@ -86,6 +86,22 @@ fn calendar_scope_is_requested_but_not_required() {
 }
 
 #[tokio::test]
+async fn fixture_transport_serves_market_orders_on_both_sides() {
+    let orders = FixtureEsiTransport
+        .character_orders("fixture-token", 1)
+        .await
+        .unwrap()
+        .records;
+    assert_eq!(orders.len(), 3);
+    assert!(orders
+        .iter()
+        .any(|order| order.is_buy_order && order.escrow.is_some()));
+    assert!(orders
+        .iter()
+        .any(|order| !order.is_buy_order && order.escrow.is_none()));
+}
+
+#[tokio::test]
 async fn fixture_transport_serves_calendar_events_with_details() {
     let transport = FixtureEsiTransport;
     let events = transport

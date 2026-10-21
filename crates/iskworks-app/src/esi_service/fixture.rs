@@ -457,6 +457,53 @@ impl EsiTransport for FixtureEsiTransport {
         })
     }
 
+    async fn character_orders(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+    ) -> Result<EsiResponse<CharacterOrderObservation>, EsiError> {
+        let issued_at = fixture_calendar_date(-3);
+        let order = |order_id, type_id, location_id, is_buy, price: &str, range: &str| {
+            let (volume_total, volume_remain) = if is_buy { (50_000, 41_000) } else { (5, 3) };
+            CharacterOrderObservation {
+                order_id,
+                type_id,
+                region_id: 10_000_002,
+                location_id,
+                is_buy_order: is_buy,
+                is_corporation: false,
+                price: price.parse().expect("fixture price"),
+                volume_remain,
+                volume_total,
+                min_volume: 1,
+                order_range: range.to_string(),
+                issued_at,
+                duration_days: 90,
+                escrow: is_buy.then(|| {
+                    Decimal::from(volume_remain) * price.parse::<Decimal>().expect("fixture price")
+                }),
+            }
+        };
+        Ok(EsiResponse {
+            records: vec![
+                // Ishtar sell in Jita, Megacyte buy in Jita (region range),
+                // Tritanium buy in Perimeter (5 jumps).
+                order(
+                    6_900_000_001,
+                    12_005,
+                    60_003_760,
+                    false,
+                    "312400000.00",
+                    "region",
+                ),
+                order(6_900_000_002, 40, 60_003_760, true, "9210.00", "region"),
+                order(6_900_000_003, 34, 60_000_361, true, "4.21", "5"),
+            ],
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+
     async fn character_calendar(
         &self,
         _access_token: &str,
