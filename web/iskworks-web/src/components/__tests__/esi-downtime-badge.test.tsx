@@ -29,7 +29,7 @@ describe("EsiDowntimeBadge", () => {
 
     const badge = await screen.findByRole("status");
     expect(badge).toHaveTextContent(/eve downtime/i);
-    expect(badge).toHaveAttribute("title", expect.stringMatching(/daily downtime/i));
+    expect(badge).toHaveAttribute("title", expect.stringMatching(/servers are down/i));
   });
 
   test("renders nothing while ESI is up", async () => {

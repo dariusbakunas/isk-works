@@ -10,8 +10,9 @@ const DOWNTIME_POLL_MIN_MS = 15_000;
 const DOWNTIME_POLL_MAX_MS = 60_000;
 
 /**
- * Header badge shown while EVE's servers are in their daily downtime
- * (11:00 UTC, usually a few minutes). ESI requests are paused during it, so
+ * Header badge shown while EVE's servers are down: the daily downtime
+ * (11:00 UTC, usually a few minutes) or an unscheduled one. ESI requests are
+ * paused during it, so
  * this explains why EVE data isn't refreshing; it disappears on its own once
  * the API sees ESI healthy again.
  */
@@ -49,7 +50,7 @@ export function EsiDowntimeBadge() {
     <span
       className="inline-flex shrink-0 items-center gap-1 rounded border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-warning"
       role="status"
-      title="EVE's servers are in their daily downtime. ESI updates are paused and resume automatically when Tranquility is back, usually within a few minutes."
+      title="EVE's servers are down (daily downtime or maintenance). ESI updates are paused and resume automatically when Tranquility is back."
     >
       <ServerOff aria-hidden="true" className="h-3.5 w-3.5" />
       <span className="hidden sm:inline">EVE downtime</span>
