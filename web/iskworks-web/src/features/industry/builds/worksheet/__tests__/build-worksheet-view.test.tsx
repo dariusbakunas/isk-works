@@ -16,9 +16,19 @@ vi.mock("../../stages/use-plan-inspector", () => ({
   usePlanInspector: () => ({ command: {}, replan: vi.fn(), sourcing: {}, rootEditing: null }),
 }));
 vi.mock("../../components/production-setup-dialog", () => ({ ProductionSetupDialog: () => null }));
-vi.mock("../../stages/stages-inspector", () => ({
-  StagesInspector: ({ selection }: { selection: unknown }) => selection ? <aside aria-label="Inspector">{JSON.stringify(selection)}</aside> : null,
-}));
+vi.mock("../../stages/stages-inspector", async () => {
+  const { InspectorSection } = await import("../../../inspector/inspector-section");
+  return {
+    // Each selection gets a fresh inspector tree, as the real one does when
+    // it swaps between an input and a producer.
+    StagesInspector: ({ selection }: { selection: unknown }) => selection ? (
+      <aside aria-label="Inspector" key={JSON.stringify(selection)}>
+        {JSON.stringify(selection)}
+        <InspectorSection id="configuration" label="Production configuration">Blueprint</InspectorSection>
+      </aside>
+    ) : null,
+  };
+});
 beforeEach(() => {
   planHook.useBuildExecutionPlan.mockReturnValue({ plan: null, loading: false, refreshError: null, hardError: null, refetch: vi.fn() });
 });
@@ -210,4 +220,25 @@ test("a buy row fully covered by inventory says Inventory, a partly covered one 
   const partial = screen.getByRole("row", { name: /Zydrine/ });
   expect(within(partial).getByText("Buy")).toBeInTheDocument();
   expect(within(partial).queryByText("Inventory")).not.toBeInTheDocument();
+});
+
+test("inspector sections stay as the user left them from one row to the next", async () => {
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet, loading: false, refreshError: "", hardError: "" });
+  planHook.useBuildExecutionPlan.mockReturnValue({ plan, loading: false, refreshError: null, hardError: null, refetch: vi.fn() });
+  render(
+    <MemoryRouter initialEntries={["/builds/root?view=worksheet"]}>
+      <Routes><Route path="*" element={<BuildWorksheetView active editor={editor} />} /></Routes>
+    </MemoryRouter>,
+  );
+  const configuration = () => screen.getByRole("button", { name: "Production configuration" });
+
+  await userEvent.click(screen.getByRole("row", { name: /Reinforced Carbon Fiber/ }));
+  expect(configuration()).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(configuration());
+
+  await userEvent.click(screen.getByRole("switch", { name: "Include downstream" }));
+  expect(screen.queryByLabelText("Inspector")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("switch", { name: "Include downstream" }));
+  await userEvent.click(screen.getByRole("row", { name: /Reinforced Carbon Fiber/ }));
+  expect(configuration()).toHaveAttribute("aria-expanded", "true");
 });

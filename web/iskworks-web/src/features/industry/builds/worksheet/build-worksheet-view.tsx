@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import type { BuildWorksheetRow } from "../../../../api/industry";
 import { EmptyState, InlineAlert, Panel } from "../../../../components/primitives";
+import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
 import { focusExecutionPlan } from "../focused-producer-projection";
 import { StagesInspector } from "../stages/stages-inspector";
 import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";
@@ -74,7 +75,10 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
     return { ...plan, acquisitions: plan.acquisitions.map((line) => line.typeId === selection.typeId ? scopeAcquisitionToConsumer(line, scopeBuildId) : line) };
   }, [plan, includeDownstream, selection, focusedProducerId, buildId]);
   const materialsMissing = rows.some((row) => (row.shortageQuantity ?? 0) > 0);
-  return <section aria-labelledby="worksheet-heading" className="@container mt-1 min-w-0">
+  // One collapse store above every row's inspector (as on the Plan): a
+  // section the user expanded stays expanded from row to row, including the
+  // jump to a new producer after Buy -> Build.
+  return <InspectorCollapseProvider><section aria-labelledby="worksheet-heading" className="@container mt-1 min-w-0">
     <header className="flex min-h-8 items-center justify-between gap-2 border-b border-border px-2">
       <div className="flex min-w-0 items-baseline gap-2">
         <h2 className="shrink-0 text-sm font-semibold text-foreground" id="worksheet-heading">Production Worksheet</h2>
@@ -123,5 +127,5 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
           selection={selection}
           sourcing={sourcing}
         /> : null}</>}
-  </section>;
+  </section></InspectorCollapseProvider>;
 }

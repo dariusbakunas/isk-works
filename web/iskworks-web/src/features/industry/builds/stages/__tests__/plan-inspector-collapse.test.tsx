@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -237,5 +237,87 @@ describe("Plan inspector sections", () => {
     fireEvent.click(rowFor("999"));
     expect(sectionButton(/^Pricing/)).toHaveAttribute("aria-expanded", "true");
     expect(sectionButton(/^Sourcing/)).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("Plan inspector sections across a Buy -> Build switch", () => {
+  const ROOT_BUILD = "build-1";
+  const BLUEPRINT = { mode: "manufacturing" as const, blueprintTypeId: 1234 };
+  const usedByRoot = (quantity: number) => ({
+    nodeId: "root",
+    occurrenceId: "root",
+    quantity,
+    buildId: ROOT_BUILD,
+    dependencyId: "pd:root",
+    fulfillmentScope: "missing" as const,
+    requiredQuantity: quantity,
+    plannedInventoryQuantity: 0,
+  });
+  const producer = (id: string, typeId: number, name: string) => ({
+    node: node({
+      id,
+      occurrenceIds: [id],
+      outputTypeId: typeId,
+      outputTypeName: name,
+      consumers: [usedByRoot(10)],
+      productionMethods: [BLUEPRINT],
+    }),
+    occurrence: occurrence({ id, nodeId: id, buildId: `build-${id}`, outputTypeId: typeId, outputTypeName: name }),
+  });
+  const root = {
+    node: node({ id: "root", occurrenceIds: ["root"], outputTypeName: "Ferrogel", stage: 1 }),
+    occurrence: occurrence({ id: "root", nodeId: "root", buildId: ROOT_BUILD, isRoot: true, outputTypeName: "Ferrogel", stage: 1 }),
+  };
+
+  it("keep the next producer's sections as the user left them", async () => {
+    const existing = producer("p1", 500, "Fusion Thruster");
+    const created = producer("p2", 999, "Raw Material X");
+    const before = plan({
+      stages: [stage(0, ["p1"]), stage(1, ["root"])],
+      nodes: [existing.node, root.node],
+      occurrences: [existing.occurrence, root.occurrence],
+      acquisitions: [
+        acquisition({
+          typeId: 999,
+          typeName: "Raw Material X",
+          consumers: [edge("root", "root", 100, { buildId: ROOT_BUILD })],
+          productionMethods: [BLUEPRINT],
+        }),
+      ],
+    });
+    const after = plan({
+      stages: [stage(0, ["p1", "p2"]), stage(1, ["root"])],
+      nodes: [existing.node, created.node, root.node],
+      occurrences: [existing.occurrence, created.occurrence, root.occurrence],
+    });
+    postBuildExecutionPlan.mockReset();
+    postBuildExecutionPlan.mockResolvedValueOnce(before).mockResolvedValue(after);
+    const setComponentResolutions = vi.fn();
+    const view = renderView({ setComponentResolutions } as Partial<BuildWorksheetEditorModel>);
+    await flush();
+
+    fireEvent.click(rowFor("p1"));
+    fireEvent.click(sectionButton(/^Production configuration/));
+    fireEvent.click(rowFor("999"));
+    fireEvent.click(sectionButton(/^Sourcing/));
+    fireEvent.click(
+      within(screen.getByRole("radiogroup", { name: "Sourcing for Ferrogel" })).getByRole("radio", { name: "Build" }),
+    );
+    // The root's switch lands in the editor overlay, which re-plans under a
+    // new preview key.
+    expect(setComponentResolutions).toHaveBeenCalledTimes(1);
+    view.rerender(
+      <BuildStagesView
+        active
+        editor={editorStub({
+          setComponentResolutions,
+          previewKey: JSON.stringify({ ...OVERLAY, componentResolutions: [{ typeId: 999, recipe: BLUEPRINT }] }),
+        } as Partial<BuildWorksheetEditorModel>)}
+      />,
+    );
+    await flush();
+
+    expect(rowFor("p2")).toHaveAttribute("aria-selected", "true");
+    expect(sectionButton(/^Production configuration/)).toHaveAttribute("aria-expanded", "true");
   });
 });
