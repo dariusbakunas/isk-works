@@ -6,12 +6,13 @@
 //! requirements: one display node (and one occurrence) per operation,
 //! staged by the frozen operation DAG, each with its own frozen
 //! requirements; every `Buy` requirement still to source becomes an
-//! acquisition line. Nothing is re-planned. Fields the freeze did not keep
-//! stay empty rather than invented: no facility, no production methods, no
-//! unresolved placeholders, and typed cost warnings are omitted (the freeze
-//! kept them only as text). Logistics is projected separately
-//! ([`project_frozen_logistics`]), since it needs live facility names and
-//! SDE volumes the freeze did not keep.
+//! acquisition line. Nothing is re-planned. Each operation's facility is its
+//! frozen profile id, named by the live profile (a deleted profile stays
+//! unnamed). Fields the freeze did not keep stay empty rather than invented:
+//! no production methods, no unresolved placeholders, and typed cost
+//! warnings are omitted (the freeze kept them only as text). Logistics is
+//! projected separately ([`project_frozen_logistics`]), since it needs SDE
+//! volumes the freeze did not keep.
 
 use std::collections::BTreeMap;
 
@@ -80,6 +81,7 @@ pub fn project_frozen_execution_plan(
     operations: &[PlanOperation],
     requirements: &[OrderRequirement],
     blueprint_names: &BTreeMap<i64, String>,
+    facilities: &BTreeMap<Uuid, FrozenFacility>,
     inventory: &FrozenPlanInventory,
     generated_at: DateTime<Utc>,
 ) -> Result<ExecutionPlanProjection, OrderError> {
@@ -163,6 +165,10 @@ pub fn project_frozen_execution_plan(
         let unit_production_cost =
             per_unit(operation.total_production_cost, operation.produced_quantity);
         let build_id = build_or_nil(operation.build_id);
+        let facility_id = frozen_facility_id(operation);
+        let facility_name = facility_id
+            .and_then(|id| facilities.get(&id))
+            .map(|facility| facility.name.clone());
 
         nodes.push(ExecutionNode {
             id: key.clone(),
@@ -171,8 +177,8 @@ pub fn project_frozen_execution_plan(
             activity: operation.activity,
             stage,
             occurrence_ids: vec![key.clone()],
-            facility_id: None,
-            facility_name: None,
+            facility_id,
+            facility_name: facility_name.clone(),
             effective_me: operation.evidence.effective_me,
             effective_te: operation.evidence.effective_te,
             required_quantity: required,
@@ -210,8 +216,8 @@ pub fn project_frozen_execution_plan(
                 .get(&operation.blueprint_or_formula_type_id)
                 .cloned()
                 .unwrap_or_default(),
-            facility_id: None,
-            facility_name: None,
+            facility_id,
+            facility_name,
             effective_me: operation.evidence.effective_me,
             effective_te: operation.evidence.effective_te,
             blueprint_selection: None,

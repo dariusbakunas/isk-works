@@ -153,6 +153,7 @@ fn project(
         operations,
         requirements,
         &BTreeMap::from([(12_016, "Muninn Blueprint".to_string())]),
+        &facilities(),
         &FrozenPlanInventory {
             free_by_type: BTreeMap::from([(34, 25), (16_673, 7)]),
             reserved_elsewhere_by_type: BTreeMap::from([(34, 300)]),
@@ -309,6 +310,41 @@ fn volumes() -> BTreeMap<i64, Option<rust_decimal::Decimal>> {
         (16_673, Some(rust_decimal::Decimal::ONE)),
         (34, Some(rust_decimal::Decimal::new(1, 2))),
     ])
+}
+
+#[test]
+fn each_node_shows_its_frozen_facility_by_its_live_name() {
+    let (operations, requirements) = muninn();
+    let operations = vec![
+        at_facility(operations[0].clone(), MANUFACTURING_FACILITY),
+        at_facility(operations[1].clone(), 0xDEAD),
+    ];
+    let plan = project(&operations, &requirements);
+
+    let root = plan.nodes.iter().find(|node| node.id == "root").unwrap();
+    assert_eq!(
+        root.facility_id,
+        Some(Uuid::from_u128(MANUFACTURING_FACILITY))
+    );
+    assert_eq!(root.facility_name.as_deref(), Some("Jita Assembly"));
+    let root_occurrence = plan
+        .occurrences
+        .iter()
+        .find(|occurrence| occurrence.is_root)
+        .unwrap();
+    assert_eq!(
+        root_occurrence.facility_name.as_deref(),
+        Some("Jita Assembly")
+    );
+
+    // A since-deleted profile keeps its frozen id but has no live name.
+    let reaction = plan
+        .nodes
+        .iter()
+        .find(|node| node.id == "reaction")
+        .unwrap();
+    assert_eq!(reaction.facility_id, Some(Uuid::from_u128(0xDEAD)));
+    assert_eq!(reaction.facility_name, None);
 }
 
 #[test]

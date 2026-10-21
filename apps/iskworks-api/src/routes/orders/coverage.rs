@@ -74,30 +74,31 @@ pub(super) async fn get_order_execution_plan(
         .await
         .unwrap_or_default();
 
+    let facilities = frozen_facilities(&state, workspace_id, &operations).await?;
     let mut plan = project_frozen_execution_plan(
         &operations,
         &requirements,
         &blueprint_names,
+        &facilities,
         &FrozenPlanInventory {
             free_by_type,
             reserved_elsewhere_by_type,
         },
         Utc::now(),
     )?;
-    plan.logistics = frozen_logistics(&state, workspace_id, &operations, &requirements).await?;
+    plan.logistics = frozen_logistics(&state, &operations, &requirements, &facilities).await;
     let epic = epic_plan_overlay(&order, &operations, &requirements, &totals, &tickets);
     Ok(Json(EpicExecutionPlanResponse { plan, epic }))
 }
 
-/// The Epic's Logistics, over its frozen plan. Facility names and volumes
-/// are display-only: a deleted facility profile stays an unnamed
-/// destination, and a missing SDE leaves volumes unknown.
-async fn frozen_logistics(
+/// The live display identity of every facility profile the Epic's frozen
+/// operations were installed at. Display-only: a deleted profile is simply
+/// absent, so its operations stay unnamed.
+async fn frozen_facilities(
     state: &AppState,
     workspace_id: WorkspaceId,
     operations: &[PlanOperation],
-    requirements: &[OrderRequirement],
-) -> Result<iskworks_core::logistics::LogisticsPlan, ApiError> {
+) -> Result<BTreeMap<uuid::Uuid, FrozenFacility>, ApiError> {
     let industry = state.industry_repository()?;
     let facility_ids: BTreeSet<uuid::Uuid> =
         operations.iter().filter_map(frozen_facility_id).collect();
@@ -116,6 +117,17 @@ async fn frozen_logistics(
             );
         }
     }
+    Ok(facilities)
+}
+
+/// The Epic's Logistics, over its frozen plan. Volumes are display-only: a
+/// missing SDE leaves them unknown.
+async fn frozen_logistics(
+    state: &AppState,
+    operations: &[PlanOperation],
+    requirements: &[OrderRequirement],
+    facilities: &BTreeMap<uuid::Uuid, FrozenFacility>,
+) -> iskworks_core::logistics::LogisticsPlan {
     let type_ids: Vec<i64> = requirements
         .iter()
         .map(|requirement| requirement.type_id)
@@ -138,12 +150,7 @@ async fn frozen_logistics(
             )
         })
         .collect();
-    Ok(project_frozen_logistics(
-        operations,
-        requirements,
-        &facilities,
-        &unit_volumes,
-    ))
+    project_frozen_logistics(operations, requirements, facilities, &unit_volumes)
 }
 
 #[derive(Debug, Serialize)]
