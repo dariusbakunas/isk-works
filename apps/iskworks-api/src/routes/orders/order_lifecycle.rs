@@ -534,50 +534,125 @@ pub(super) struct OrderTicketSummary {
 /// Every standalone `order::Ticket` the caller owns. Fetches everything and
 /// lets the Board filter client-side, matching the same "small,
 /// personal-scale dataset" convention used elsewhere -- no `archived`
-/// query param here either.
+/// query param here either. A fixed handful of reads however many tickets
+/// there are: per-ticket lookups made the Board slow once it held ~100.
 pub(super) async fn list_order_tickets(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<OrderTicketSummary>>, ApiError> {
     let (workspace_id, owner_id) = workspace_context(&state).await?;
     let repository = state.order_repository()?;
     let tickets = repository.list_tickets(workspace_id, owner_id).await?;
+    let ticket_ids: Vec<TicketId> = tickets.iter().map(|ticket| ticket.id).collect();
+
+    let mut prerequisites_by_ticket: HashMap<TicketId, Vec<TicketPrerequisite>> = HashMap::new();
+    for prerequisite in repository
+        .list_ticket_prerequisites_for_tickets(&ticket_ids)
+        .await?
+    {
+        prerequisites_by_ticket
+            .entry(prerequisite.ticket_id)
+            .or_default()
+            .push(prerequisite);
+    }
+    let mut recordings_by_ticket: HashMap<TicketId, Vec<TicketInventoryRecording>> = HashMap::new();
+    for recording in repository
+        .list_ticket_inventory_recordings_for_tickets(&ticket_ids)
+        .await?
+    {
+        recordings_by_ticket
+            .entry(recording.ticket_id)
+            .or_default()
+            .push(recording);
+    }
+    let order_ids: Vec<OrderId> = tickets
+        .iter()
+        .filter_map(|ticket| ticket.order_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let held_by_order =
+        held_requirement_keys_by_order(&*repository, workspace_id, &order_ids).await?;
+
+    // What each open ticket still waits on. A finished ticket waits on
+    // nothing. Otherwise derived independently of the open lane (To Do /
+    // In Progress) it sits in.
+    let no_holdings = HashSet::new();
+    let unheld_by_ticket: HashMap<TicketId, Vec<TicketPrerequisite>> = tickets
+        .iter()
+        .filter(|ticket| {
+            !matches!(
+                ticket.status,
+                TicketStatus::Complete | TicketStatus::Canceled
+            )
+        })
+        .map(|ticket| {
+            let held = ticket
+                .order_id
+                .and_then(|order_id| held_by_order.get(&order_id))
+                .unwrap_or(&no_holdings);
+            let prerequisites = prerequisites_by_ticket
+                .get(&ticket.id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            (ticket.id, unheld_prerequisites(held, prerequisites))
+        })
+        .collect();
+    let unheld_ids: Vec<TicketPrerequisiteId> = unheld_by_ticket
+        .values()
+        .flatten()
+        .map(|prerequisite| prerequisite.id)
+        .collect();
+    let links = repository
+        .list_ticket_prerequisite_fulfillments_for_prerequisites(&unheld_ids)
+        .await?;
+    // Fulfilling tickets are almost always the caller's own, already
+    // loaded; anything else is looked up on its own.
+    let mut fulfilling: HashMap<TicketId, (String, TicketStatus)> = tickets
+        .iter()
+        .map(|ticket| (ticket.id, (ticket.display_id.clone(), ticket.status)))
+        .collect();
+    let mut fulfillments_by_prerequisite: HashMap<
+        TicketPrerequisiteId,
+        Vec<(TicketId, String, TicketStatus, u64)>,
+    > = HashMap::new();
+    for link in links {
+        if !fulfilling.contains_key(&link.fulfilling_ticket_id) {
+            let ticket = repository
+                .get_ticket(workspace_id, link.fulfilling_ticket_id)
+                .await?;
+            fulfilling.insert(ticket.id, (ticket.display_id, ticket.status));
+        }
+        let (display_id, status) = &fulfilling[&link.fulfilling_ticket_id];
+        let entry = fulfillments_by_prerequisite
+            .entry(link.ticket_prerequisite_id)
+            .or_default();
+        if *status != TicketStatus::Canceled {
+            entry.push((
+                link.fulfilling_ticket_id,
+                display_id.clone(),
+                *status,
+                link.allocated_quantity,
+            ));
+        }
+    }
 
     let mut summaries = Vec::with_capacity(tickets.len());
-    let mut held_by_order: HashMap<OrderId, HashSet<(String, i64)>> = HashMap::new();
-    let no_holdings = HashSet::new();
     for ticket in tickets {
-        let prerequisites = repository.list_ticket_prerequisites(ticket.id).await?;
-        if let Some(order_id) = ticket.order_id {
-            if let std::collections::hash_map::Entry::Vacant(entry) = held_by_order.entry(order_id)
-            {
-                entry.insert(held_requirement_keys(&*repository, workspace_id, order_id).await?);
-            }
-        }
-        let held = ticket
-            .order_id
-            .and_then(|order_id| held_by_order.get(&order_id))
-            .unwrap_or(&no_holdings);
-        // A finished ticket waits on nothing. Otherwise derived
-        // independently of the open lane (To Do / In Progress) it sits in.
-        let blocked_by = if matches!(
-            ticket.status,
-            TicketStatus::Complete | TicketStatus::Canceled
-        ) {
-            Vec::new()
-        } else {
-            ticket_blockers(&*repository, workspace_id, held, &prerequisites).await?
-        };
+        let prerequisites = prerequisites_by_ticket
+            .remove(&ticket.id)
+            .unwrap_or_default();
+        let blocked_by = unheld_by_ticket
+            .get(&ticket.id)
+            .map(|unheld| derive_ticket_blockers(unheld, &fulfillments_by_prerequisite))
+            .unwrap_or_default();
         // Derived recording summary. Acquisition: requested = ticket
         // quantity, recorded = Σ recorded_quantity. Manufacturing/Reaction:
         // requested = execution_snapshot.runs (frozen at creation for the
         // ticket's intended output), recorded = Σ runs_completed. A null
         // snapshot means a legacy ticket created before the plan was frozen
         // -- it falls back to the recorded amount, so its state can only be
-        // NotRecorded or Recorded, never Partial. N+1 over the small
-        // per-workspace set, same convention as `blocked_by`.
-        let recordings = repository
-            .list_ticket_inventory_recordings(ticket.id)
-            .await?;
+        // NotRecorded or Recorded, never Partial.
+        let recordings = recordings_by_ticket.remove(&ticket.id).unwrap_or_default();
         let recording = match ticket.kind {
             TicketKind::Acquisition => {
                 let recorded: u64 = recordings
