@@ -71,7 +71,7 @@ pub struct AppState {
     pub(crate) invite_cipher: Option<iskworks_esi::SecretCipher>,
     pub(crate) web_app_origin: String,
     readiness_check: Option<Arc<dyn ReadinessCheck>>,
-    /// Answers "is ESI in its daily downtime?" for the web app's badge.
+    /// Answers "is ESI down right now?" for the web app's badge.
     esi_status: Option<iskworks_esi::HttpEsiTransport>,
 }
 

@@ -185,7 +185,7 @@ ESI's error budget is per IP. If it runs dry, every request from the host is ref
 | `iskworks_esi_rate_limit_paused_total` | counter | `group`, `reason` (`retry_after`/`low_remaining`) | Times a group was paused. |
 | `iskworks_esi_rate_limit_blocked_total` | counter | `group` | Requests refused locally while their group was paused. |
 | `iskworks_esi_rate_limit_remaining_ratio` | gauge | `group` | Last remaining/limit ESI reported for the group (any caller). |
-| `iskworks_esi_downtime_paused` | gauge (0/1) | – | 1 while requests wait out Tranquility's daily downtime. |
+| `iskworks_esi_downtime_paused` | gauge (0/1) | – | 1 while requests wait out a Tranquility downtime (daily or unscheduled). |
 | `iskworks_esi_downtime_probes_total` | counter | `result` (`healthy`/`unhealthy`) | `/status/` checks made during downtime. |
 
 `group` is ESI's `X-Ratelimit-Group` name. Before ESI has named a route's group, the label is the route's URL path with IDs replaced by `{}`.

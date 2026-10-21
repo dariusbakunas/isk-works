@@ -13,7 +13,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::client_identity::{process_user_agent, COMPATIBILITY_DATE};
-use crate::downtime::{restarted_since_downtime, DowntimeDecision, DowntimeGuard};
+use crate::downtime::{server_is_back, DowntimeDecision, DowntimeGuard};
 use crate::error_limit::{ErrorLimitGuard, ERROR_LIMITED_STATUS};
 use crate::metrics::{EsiRoute, RequestTimer};
 use crate::rate_limit::{self, Caller, RateLimitGuard};
