@@ -8,8 +8,8 @@ mod margin;
 mod pricing;
 
 pub use competition::{
-    evaluate_order, BookOrder, BookVisibility, CompetitionInput, FreshSource, OrderStanding,
-    StandingStatus, MODIFY_COOLDOWN,
+    evaluate_order, trades_at_location, BookOrder, BookVisibility, CompetitionInput, FreshSource,
+    OrderStanding, StandingStatus, MODIFY_COOLDOWN,
 };
 pub use margin::{sell_margin, SellMargin};
 pub use pricing::{

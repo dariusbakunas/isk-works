@@ -20,6 +20,7 @@ mod esi_service;
 mod execution_plan;
 mod jobs;
 mod manual_sync_gate;
+mod market_orders;
 mod operation_metrics;
 mod order_plan;
 mod planetary;
@@ -49,6 +50,12 @@ pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
 pub use jobs::{
     ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,
     JobsCharacterSource, JobsService, JobsSyncState, SlotUsage,
+};
+pub use market_orders::{
+    BookUnavailable, DepthOrder, EsiStructureLocationResolver, MarketOrderLocation,
+    MarketOrderLocationKind, MarketOrderRow, MarketOrdersError, MarketOrdersOverview,
+    MarketOrdersService, MarketOrdersSummary, OrderDepth, StructureLocationResolver,
+    TraderCharacter, TraderCharacterSource,
 };
 pub use order_plan::{OrderPlanCoordinator, OrderPlanError};
 pub use planetary::{

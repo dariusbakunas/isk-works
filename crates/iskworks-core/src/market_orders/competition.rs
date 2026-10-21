@@ -152,6 +152,32 @@ fn buy_reach(input: &CompetitionInput<'_>, competitor: &BookOrder) -> Reach {
     }
 }
 
+fn reach(input: &CompetitionInput<'_>, other: &BookOrder) -> Reach {
+    match other.side {
+        // A sell order only sells to buyers standing at its own location.
+        MarketOrderSide::Sell => {
+            if other.location_id == input.order.location_id {
+                Reach::Yes
+            } else {
+                Reach::No
+            }
+        }
+        MarketOrderSide::Buy => buy_reach(input, other),
+    }
+}
+
+/// Whether a book order trades at the order's location: a sell order there,
+/// or a buy order whose range covers it. `None` when a jump range can't be
+/// checked (no stargates imported).
+#[must_use]
+pub fn trades_at_location(input: &CompetitionInput<'_>, other: &BookOrder) -> Option<bool> {
+    match reach(input, other) {
+        Reach::Yes => Some(true),
+        Reach::No => Some(false),
+        Reach::Unknown => None,
+    }
+}
+
 /// `Ordering::Greater` when `a` is the better price for this side.
 fn better(side: MarketOrderSide, a: Decimal, b: Decimal) -> std::cmp::Ordering {
     match side {
@@ -207,17 +233,7 @@ pub fn evaluate_order(input: &CompetitionInput<'_>) -> OrderStanding {
     for competitor in input.book.iter().filter(|competitor| {
         competitor.side == side && !input.own_order_ids.contains(&competitor.order_id)
     }) {
-        let reach = match side {
-            MarketOrderSide::Sell => {
-                if competitor.location_id == order.location_id {
-                    Reach::Yes
-                } else {
-                    Reach::No
-                }
-            }
-            MarketOrderSide::Buy => buy_reach(input, competitor),
-        };
-        match reach {
+        match reach(input, competitor) {
             Reach::Yes => certain.push(competitor),
             Reach::No => {}
             Reach::Unknown => {
