@@ -630,6 +630,13 @@ pub trait OrderRepository: Send + Sync {
         &self,
         order_id: OrderId,
     ) -> Result<Vec<OrderRequirement>, OrderError>;
+    /// `list_order_requirements` for several Orders in one read, so a
+    /// list view doesn't query once per Epic. Grouped by Order, each in
+    /// `list_order_requirements`' order.
+    async fn list_order_requirements_for_orders(
+        &self,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<OrderRequirement>, OrderError>;
 
     /// Every frozen [`PlanOperation`] for a whole-tree (version-2)
     /// Epic, at any depth -- empty for a version-1 Epic. Used by
@@ -711,9 +718,21 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
+    /// `requirement_reservation_totals` for several Orders in one read.
+    async fn requirement_reservation_totals_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
     async fn list_ticket_prerequisites(
         &self,
         ticket_id: TicketId,
+    ) -> Result<Vec<TicketPrerequisite>, OrderError>;
+    /// `list_ticket_prerequisites` for several tickets in one read.
+    /// Grouped by ticket, each in `list_ticket_prerequisites`' order.
+    async fn list_ticket_prerequisites_for_tickets(
+        &self,
+        ticket_ids: &[TicketId],
     ) -> Result<Vec<TicketPrerequisite>, OrderError>;
 
     /// Idempotent: if a non-canceled fulfillment already links this
@@ -781,6 +800,12 @@ pub trait OrderRepository: Send + Sync {
     async fn list_ticket_prerequisite_fulfillments(
         &self,
         ticket_prerequisite_id: TicketPrerequisiteId,
+    ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
+    /// `list_ticket_prerequisite_fulfillments` for several prerequisites
+    /// in one read. Grouped by prerequisite, each oldest link first.
+    async fn list_ticket_prerequisite_fulfillments_for_prerequisites(
+        &self,
+        ticket_prerequisite_ids: &[TicketPrerequisiteId],
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
 
     /// `available = physical_balance - active allocations`, read-only, no
@@ -987,6 +1012,12 @@ pub trait OrderRepository: Send + Sync {
     async fn list_ticket_inventory_recordings(
         &self,
         ticket_id: TicketId,
+    ) -> Result<Vec<TicketInventoryRecording>, OrderError>;
+    /// `list_ticket_inventory_recordings` for several tickets in one read
+    /// (plus one for their effects). Grouped by ticket, each oldest first.
+    async fn list_ticket_inventory_recordings_for_tickets(
+        &self,
+        ticket_ids: &[TicketId],
     ) -> Result<Vec<TicketInventoryRecording>, OrderError>;
 
     /// Organizational only: stamps `canceled_at`. Valid any time before

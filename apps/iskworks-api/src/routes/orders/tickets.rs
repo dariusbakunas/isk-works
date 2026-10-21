@@ -414,52 +414,63 @@ pub(super) async fn create_ticket_route(
     Ok((StatusCode::CREATED, Json(ticket)))
 }
 
-/// An Epic's requirements that hold their whole need in stock (reserved +
-/// used), keyed by `(operation_occurrence_key, type_id)` -- the identity a
-/// whole-tree ticket's prerequisite copies from its requirement. Empty for
-/// an Epic without reservations (versions 1 and 2).
-pub(super) async fn held_requirement_keys(
+/// Per Epic, its requirements that hold their whole need in stock
+/// (reserved + used), keyed by `(operation_occurrence_key, type_id)` -- the
+/// identity a whole-tree ticket's prerequisite copies from its requirement.
+/// An Epic without reservations (versions 1 and 2) maps to an empty set or
+/// is absent. Two reads for any number of Epics.
+pub(super) async fn held_requirement_keys_by_order(
     repository: &dyn OrderRepository,
     workspace_id: iskworks_core::WorkspaceId,
-    order_id: OrderId,
-) -> Result<HashSet<(String, i64)>, ApiError> {
+    order_ids: &[OrderId],
+) -> Result<HashMap<OrderId, HashSet<(String, i64)>>, ApiError> {
+    if order_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
     let held: HashMap<OrderRequirementId, u64> = repository
-        .requirement_reservation_totals(workspace_id, order_id)
+        .requirement_reservation_totals_for_orders(workspace_id, order_ids)
         .await?
         .into_iter()
         .map(|totals| (totals.requirement_id, totals.reserved + totals.consumed))
+        .filter(|(_, quantity)| *quantity > 0)
         .collect();
-    if held.values().all(|quantity| *quantity == 0) {
-        return Ok(HashSet::new());
+    if held.is_empty() {
+        return Ok(HashMap::new());
     }
-    Ok(repository
-        .list_order_requirements(order_id)
-        .await?
-        .into_iter()
-        .filter(|requirement| {
-            held.get(&requirement.id).copied().unwrap_or(0) >= requirement.required_quantity
-        })
-        .filter_map(|requirement| {
-            requirement
-                .operation_occurrence_key
-                .map(|key| (key, requirement.type_id))
-        })
-        .collect())
+    let requirements = repository
+        .list_order_requirements_for_orders(order_ids)
+        .await?;
+    // Only an Epic holding something has held requirements at all.
+    let holding: HashSet<OrderId> = requirements
+        .iter()
+        .filter(|requirement| held.contains_key(&requirement.id))
+        .map(|requirement| requirement.order_id)
+        .collect();
+    let mut keys: HashMap<OrderId, HashSet<(String, i64)>> = HashMap::new();
+    for requirement in requirements {
+        if !holding.contains(&requirement.order_id)
+            || held.get(&requirement.id).copied().unwrap_or(0) < requirement.required_quantity
+        {
+            continue;
+        }
+        if let Some(key) = requirement.operation_occurrence_key {
+            keys.entry(requirement.order_id)
+                .or_default()
+                .insert((key, requirement.type_id));
+        }
+    }
+    Ok(keys)
 }
 
-/// Builds `derive_ticket_blockers`' input from an already-fetched
-/// prerequisite list: for each, its non-canceled fulfillments' identity/
-/// status -- the same N+1-acceptable-at-this-scale shape `fetch_order_detail`
-/// already uses for `LinkedTicketRef`. A prerequisite whose Epic
-/// requirement holds its whole need (`held`, see `held_requirement_keys`)
-/// is met: that is how a step's recorded output unblocks its consumer.
-pub(super) async fn ticket_blockers(
-    repository: &dyn OrderRepository,
-    workspace_id: iskworks_core::WorkspaceId,
+/// The prerequisites a ticket still waits on before looking at
+/// fulfillments: those whose Epic requirement holds its whole need (`held`,
+/// see `held_requirement_keys_by_order`) are met -- that is how a step's
+/// recorded output unblocks its consumer.
+pub(super) fn unheld_prerequisites(
     held: &HashSet<(String, i64)>,
     prerequisites: &[TicketPrerequisite],
-) -> Result<Vec<TicketBlockerRef>, ApiError> {
-    let prerequisites: Vec<TicketPrerequisite> = prerequisites
+) -> Vec<TicketPrerequisite> {
+    prerequisites
         .iter()
         .filter(|prerequisite| {
             !prerequisite
@@ -468,33 +479,7 @@ pub(super) async fn ticket_blockers(
                 .is_some_and(|key| held.contains(&(key.clone(), prerequisite.type_id)))
         })
         .cloned()
-        .collect();
-    let prerequisites = prerequisites.as_slice();
-    let mut fulfillments_by_prerequisite = HashMap::with_capacity(prerequisites.len());
-    for prerequisite in prerequisites {
-        let links = repository
-            .list_ticket_prerequisite_fulfillments(prerequisite.id)
-            .await?;
-        let mut fulfillments = Vec::with_capacity(links.len());
-        for link in links {
-            let fulfilling_ticket = repository
-                .get_ticket(workspace_id, link.fulfilling_ticket_id)
-                .await?;
-            if fulfilling_ticket.status != TicketStatus::Canceled {
-                fulfillments.push((
-                    fulfilling_ticket.id,
-                    fulfilling_ticket.display_id,
-                    fulfilling_ticket.status,
-                    link.allocated_quantity,
-                ));
-            }
-        }
-        fulfillments_by_prerequisite.insert(prerequisite.id, fulfillments);
-    }
-    Ok(derive_ticket_blockers(
-        prerequisites,
-        &fulfillments_by_prerequisite,
-    ))
+        .collect()
 }
 
 /// Deserializes a field as `Some(value)` (`value` itself possibly `null`)

@@ -322,6 +322,7 @@ fn requirement_reusing(
 
 mod acquisition_costs;
 mod acquisition_runs;
+mod batched_reads;
 mod deletion;
 mod epic_membership;
 mod generic_tickets;

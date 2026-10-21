@@ -199,6 +199,13 @@ impl OrderRepository for PgOrderRepository {
         &self,
         order_id: OrderId,
     ) -> Result<Vec<OrderRequirement>, OrderError> {
+        self.list_order_requirements_for_orders(&[order_id]).await
+    }
+
+    async fn list_order_requirements_for_orders(
+        &self,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<OrderRequirement>, OrderError> {
         sqlx::query_as::<_, OrderRequirementRow>(
             "SELECT id, order_id, type_id, captured_name, kind, source_build_id, \
              required_quantity, fulfillment_scope, reused_quantity, fresh_quantity, \
@@ -206,9 +213,9 @@ impl OrderRepository for PgOrderRepository {
              operation_occurrence_key, child_occurrence_key, inventory_unit_basis, \
              child_produced_quantity, child_consumed_quantity, child_surplus_quantity, \
              child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id \
-             FROM order_requirements WHERE order_id = $1 ORDER BY type_id",
+             FROM order_requirements WHERE order_id = ANY($1) ORDER BY order_id, type_id",
         )
-        .bind(order_id.0)
+        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
@@ -616,6 +623,15 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
+        self.requirement_reservation_totals_for_orders(workspace_id, &[order_id])
+            .await
+    }
+
+    async fn requirement_reservation_totals_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
         let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
             "SELECT r.id, \
                COALESCE(SUM(a.quantity) FILTER \
@@ -625,10 +641,10 @@ impl OrderRepository for PgOrderRepository {
              FROM order_requirements r \
              JOIN orders o ON o.id = r.order_id \
              LEFT JOIN inventory_allocations a ON a.order_requirement_id = r.id \
-             WHERE r.order_id = $1 AND o.workspace_id = $2 \
+             WHERE r.order_id = ANY($1) AND o.workspace_id = $2 \
              GROUP BY r.id",
         )
-        .bind(order_id.0)
+        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .bind(workspace_id.0)
         .fetch_all(&self.pool)
         .await
@@ -648,6 +664,14 @@ impl OrderRepository for PgOrderRepository {
         &self,
         ticket_id: TicketId,
     ) -> Result<Vec<TicketPrerequisite>, OrderError> {
+        self.list_ticket_prerequisites_for_tickets(&[ticket_id])
+            .await
+    }
+
+    async fn list_ticket_prerequisites_for_tickets(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<Vec<TicketPrerequisite>, OrderError> {
         sqlx::query_as::<_, TicketPrerequisiteRow>(
             "SELECT id, ticket_id, type_id, captured_name, kind, source_build_id, \
              required_quantity, fulfillment_scope, reused_quantity, fresh_quantity, \
@@ -655,9 +679,9 @@ impl OrderRepository for PgOrderRepository {
              operation_occurrence_key, child_occurrence_key, inventory_unit_basis, \
              child_produced_quantity, child_consumed_quantity, child_surplus_quantity, \
              child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id \
-             FROM ticket_prerequisites WHERE ticket_id = $1 ORDER BY type_id",
+             FROM ticket_prerequisites WHERE ticket_id = ANY($1) ORDER BY ticket_id, type_id",
         )
-        .bind(ticket_id.0)
+        .bind(ticket_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
@@ -1014,11 +1038,25 @@ impl OrderRepository for PgOrderRepository {
         &self,
         ticket_prerequisite_id: TicketPrerequisiteId,
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError> {
+        self.list_ticket_prerequisite_fulfillments_for_prerequisites(&[ticket_prerequisite_id])
+            .await
+    }
+
+    async fn list_ticket_prerequisite_fulfillments_for_prerequisites(
+        &self,
+        ticket_prerequisite_ids: &[TicketPrerequisiteId],
+    ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError> {
         sqlx::query_as::<_, TicketPrerequisiteFulfillmentRow>(
             "SELECT id, ticket_prerequisite_id, fulfilling_ticket_id, allocated_quantity, linked_at \
-             FROM ticket_prerequisite_fulfillments WHERE ticket_prerequisite_id = $1 ORDER BY linked_at",
+             FROM ticket_prerequisite_fulfillments WHERE ticket_prerequisite_id = ANY($1) \
+             ORDER BY ticket_prerequisite_id, linked_at",
         )
-        .bind(ticket_prerequisite_id.0)
+        .bind(
+            ticket_prerequisite_ids
+                .iter()
+                .map(|id| id.0)
+                .collect::<Vec<_>>(),
+        )
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
@@ -1556,50 +1594,71 @@ impl OrderRepository for PgOrderRepository {
         &self,
         ticket_id: TicketId,
     ) -> Result<Vec<TicketInventoryRecording>, OrderError> {
+        self.list_ticket_inventory_recordings_for_tickets(&[ticket_id])
+            .await
+    }
+
+    async fn list_ticket_inventory_recordings_for_tickets(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<Vec<TicketInventoryRecording>, OrderError> {
         let mut recordings = sqlx::query_as::<_, TicketInventoryRecordingRow>(
             "SELECT id, ticket_id, kind, recorded_quantity, runs_completed, \
              installation_cost, output_type_id, output_quantity, location_note, note, recorded_at, reverted_at \
-             FROM ticket_inventory_recordings WHERE ticket_id = $1 \
-             ORDER BY recorded_at ASC, id ASC",
+             FROM ticket_inventory_recordings WHERE ticket_id = ANY($1) \
+             ORDER BY ticket_id, recorded_at ASC, id ASC",
         )
-        .bind(ticket_id.0)
+        .bind(ticket_ids.iter().map(|id| id.0).collect::<Vec<_>>())
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?
         .into_iter()
         .map(TicketInventoryRecordingRow::into_recording)
         .collect::<Result<Vec<_>, _>>()?;
+        if recordings.is_empty() {
+            return Ok(recordings);
+        }
+        let rows: Vec<(Uuid, Uuid, String, i64, String, i64, Decimal)> = sqlx::query_as(
+            "SELECT id, ticket_inventory_recording_id, event_kind, type_id, captured_name, \
+             quantity_delta, total_cost_delta \
+             FROM inventory_events WHERE ticket_inventory_recording_id = ANY($1) \
+             AND event_kind <> 'reversal' ORDER BY sequence, id",
+        )
+        .bind(
+            recordings
+                .iter()
+                .map(|recording| recording.id.0)
+                .collect::<Vec<_>>(),
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?;
+        let mut effects_by_recording: HashMap<Uuid, Vec<TicketInventoryEffect>> = HashMap::new();
+        for (id, recording_id, kind, type_id, captured_name, quantity_delta, total_cost_delta) in
+            rows
+        {
+            let kind = match kind.as_str() {
+                "purchase" => InventoryEventKind::Purchase,
+                "consumption" => InventoryEventKind::Consumption,
+                "production_output" => InventoryEventKind::ProductionOutput,
+                _ => return Err(OrderError::RecordingEvidenceInvalid),
+            };
+            effects_by_recording
+                .entry(recording_id)
+                .or_default()
+                .push(TicketInventoryEffect {
+                    event_id: InventoryEventId(id),
+                    kind,
+                    type_id,
+                    captured_name,
+                    quantity_delta,
+                    total_cost_delta: MoneyDelta(total_cost_delta),
+                });
+        }
         for recording in &mut recordings {
-            let rows: Vec<(Uuid, String, i64, String, i64, Decimal)> = sqlx::query_as(
-                "SELECT id, event_kind, type_id, captured_name, quantity_delta, total_cost_delta \
-                 FROM inventory_events WHERE ticket_inventory_recording_id = $1 \
-                 AND event_kind <> 'reversal' ORDER BY sequence, id",
-            )
-            .bind(recording.id.0)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(map_error)?;
-            recording.effects = rows
-                .into_iter()
-                .map(
-                    |(id, kind, type_id, captured_name, quantity_delta, total_cost_delta)| {
-                        let kind = match kind.as_str() {
-                            "purchase" => InventoryEventKind::Purchase,
-                            "consumption" => InventoryEventKind::Consumption,
-                            "production_output" => InventoryEventKind::ProductionOutput,
-                            _ => return Err(OrderError::RecordingEvidenceInvalid),
-                        };
-                        Ok(TicketInventoryEffect {
-                            event_id: InventoryEventId(id),
-                            kind,
-                            type_id,
-                            captured_name,
-                            quantity_delta,
-                            total_cost_delta: MoneyDelta(total_cost_delta),
-                        })
-                    },
-                )
-                .collect::<Result<Vec<_>, _>>()?;
+            recording.effects = effects_by_recording
+                .remove(&recording.id.0)
+                .unwrap_or_default();
         }
         Ok(recordings)
     }
