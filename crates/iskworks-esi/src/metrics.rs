@@ -60,6 +60,7 @@ pub(crate) enum EsiRoute {
     CharacterPlanetDetail,
     CharacterCalendar,
     CharacterCalendarEvent,
+    CharacterOrders,
     /// The downtime guard's `/status/` probe.
     Status,
     SsoToken,
@@ -69,7 +70,7 @@ pub(crate) enum EsiRoute {
 
 impl EsiRoute {
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 24] = [
+    pub(crate) const ALL: [Self; 25] = [
         Self::CharacterAssets,
         Self::CharacterBlueprints,
         Self::CharacterWalletTransactions,
@@ -90,6 +91,7 @@ impl EsiRoute {
         Self::CharacterPlanetDetail,
         Self::CharacterCalendar,
         Self::CharacterCalendarEvent,
+        Self::CharacterOrders,
         Self::Status,
         Self::SsoToken,
         Self::SsoRevoke,
@@ -119,6 +121,7 @@ impl EsiRoute {
             Self::CharacterPlanetDetail => "/characters/{character_id}/planets/{planet_id}/",
             Self::CharacterCalendar => "/characters/{character_id}/calendar/",
             Self::CharacterCalendarEvent => "/characters/{character_id}/calendar/{event_id}/",
+            Self::CharacterOrders => "/characters/{character_id}/orders/",
             Self::Status => "/status/",
             Self::SsoToken => "sso:token",
             Self::SsoRevoke => "sso:revoke",

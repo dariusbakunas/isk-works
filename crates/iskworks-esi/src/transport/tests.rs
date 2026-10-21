@@ -1965,3 +1965,94 @@ async fn character_calendar_pages_forward_with_from_event() {
         CalendarEventResponse::Accepted
     );
 }
+
+#[test]
+fn parse_character_order_reads_a_ranged_buy_order_with_escrow() {
+    let order = parse_character_order(serde_json::json!({
+        "duration": 90,
+        "escrow": 1_105_200_000.0,
+        "is_buy_order": true,
+        "is_corporation": false,
+        "issued": "2026-10-20T18:00:00Z",
+        "location_id": 60_003_760,
+        "min_volume": 1,
+        "order_id": 6_512_345_678_i64,
+        "price": 9210.0,
+        "range": "5",
+        "region_id": 10_000_002,
+        "type_id": 40,
+        "volume_remain": 120_000,
+        "volume_total": 120_000
+    }))
+    .unwrap();
+    assert!(order.is_buy_order);
+    assert_eq!(order.order_range, "5");
+    assert_eq!(order.region_id, 10_000_002);
+    assert_eq!(
+        order.escrow,
+        Some(Decimal::from_str("1105200000.0").unwrap())
+    );
+    assert_eq!(order.price, Decimal::from_str("9210.0").unwrap());
+    assert_eq!(order.duration_days, 90);
+}
+
+#[test]
+fn parse_character_order_defaults_missing_buy_flag_and_min_volume_for_sell_orders() {
+    // ESI omits `is_buy_order`, `escrow` and `min_volume` on sell orders.
+    let order = parse_character_order(serde_json::json!({
+        "duration": 90,
+        "is_corporation": false,
+        "issued": "2026-10-20T18:00:00Z",
+        "location_id": 1_035_466_617_946_i64,
+        "order_id": 6_512_345_679_i64,
+        "price": 2_149_000_000.0,
+        "range": "region",
+        "region_id": 10_000_060,
+        "type_id": 19_720,
+        "volume_remain": 1,
+        "volume_total": 2
+    }))
+    .unwrap();
+    assert!(!order.is_buy_order);
+    assert_eq!(order.escrow, None);
+    assert_eq!(order.min_volume, 1);
+    assert_eq!(order.volume_remain, 1);
+    assert_eq!(order.volume_total, 2);
+}
+
+#[test]
+fn parse_character_order_reads_the_price_lexically() {
+    let order = parse_character_order(serde_json::json!({
+        "duration": 30, "is_corporation": true, "issued": "2026-10-20T18:00:00Z",
+        "location_id": 60_003_760, "order_id": 1, "price": 0.1,
+        "range": "station", "region_id": 10_000_002, "type_id": 34,
+        "volume_remain": 3, "volume_total": 3
+    }))
+    .unwrap();
+    assert_eq!(order.price.to_string(), "0.1");
+    assert!(order.is_corporation);
+}
+
+#[tokio::test]
+async fn character_orders_reads_the_active_order_list() {
+    const PAGE: &str = concat!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 217\r\nconnection: close\r\n\r\n",
+        r#"[{"duration":90,"is_corporation":false,"issued":"2026-10-20T18:00:00Z","location_id":60003760,"order_id":7,"price":312400000.0,"range":"region","region_id":10000002,"type_id":12005,"volume_remain":5,"volume_total":5}]"#
+    );
+    let (base_url, server) = spawn_scripted_esi(vec![PAGE]).await;
+    let transport = HttpEsiTransport::public(base_url);
+
+    let response = transport
+        .character_orders("orders-token", 2_119_000_001)
+        .await
+        .unwrap();
+    let seen = server.await.unwrap();
+
+    assert_eq!(
+        seen,
+        vec!["GET /latest/characters/2119000001/orders/ HTTP/1.1"]
+    );
+    assert_eq!(response.records.len(), 1);
+    assert_eq!(response.records[0].order_id, 7);
+    assert_eq!(response.records[0].type_id, 12_005);
+}

@@ -28,6 +28,7 @@ mod invite;
 mod job_split;
 pub mod logistics;
 mod market;
+pub mod market_orders;
 mod material_category;
 mod opportunity;
 mod opportunity_quality;

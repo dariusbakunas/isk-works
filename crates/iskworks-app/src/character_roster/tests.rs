@@ -184,6 +184,7 @@ fn assemble_entry_extracts_every_field_from_its_source_summary() {
     // granted_scopes is empty on this fixture connection.
     assert!(entry.training_queue_scope_missing);
     assert!(entry.calendar_scope_missing);
+    assert!(entry.market_orders_scope_missing);
     assert_eq!(entry.training_queue.len(), 2);
     assert_eq!(entry.training_queue[0].skill_id, 3327);
     assert_eq!(

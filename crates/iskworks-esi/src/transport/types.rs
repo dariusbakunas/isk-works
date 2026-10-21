@@ -326,6 +326,28 @@ pub struct CharacterSkillQueueEntry {
     pub level_end_sp: Option<i64>,
 }
 
+/// One row of `GET /characters/{id}/orders/`: an active order the character
+/// placed. ESI omits `is_buy_order`, `escrow` and `min_volume` on sell
+/// orders; they read as `false`, `None` and `1`.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct CharacterOrderObservation {
+    pub order_id: i64,
+    pub type_id: i64,
+    pub region_id: i64,
+    pub location_id: i64,
+    pub is_buy_order: bool,
+    pub is_corporation: bool,
+    pub price: Decimal,
+    pub volume_remain: u64,
+    pub volume_total: u64,
+    pub min_volume: u64,
+    /// ESI's spelling: `station`, `solarsystem`, `region` or a jump count.
+    pub order_range: String,
+    pub issued_at: DateTime<Utc>,
+    pub duration_days: u32,
+    pub escrow: Option<Decimal>,
+}
+
 /// A character's answer to an in-game calendar event.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]

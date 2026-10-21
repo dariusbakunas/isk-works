@@ -40,6 +40,7 @@ function entryFixture(overrides: Partial<CharacterRosterEntry> = {}): CharacterR
     trainingObservedAt: new Date().toISOString(),
     trainingQueueScopeMissing: false,
     calendarScopeMissing: false,
+    marketOrdersScopeMissing: false,
     manufacturingActiveJobs: 8,
     manufacturingMaxJobs: 10,
     reactionActiveJobs: 0,

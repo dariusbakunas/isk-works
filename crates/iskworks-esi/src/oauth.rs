@@ -19,6 +19,8 @@ pub const MARKET_STRUCTURE_SCOPE: &str = "esi-markets.structure_markets.v1";
 pub const PLANETS_SCOPE: &str = "esi-planets.manage_planets.v1";
 /// Read access to the character's in-game calendar (no responding).
 pub const CALENDAR_SCOPE: &str = "esi-calendar.read_calendar_events.v1";
+/// Read access to the character's own active and historical market orders.
+pub const MARKET_ORDERS_SCOPE: &str = "esi-markets.read_character_orders.v1";
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct OAuthState(String);

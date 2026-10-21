@@ -11,6 +11,7 @@ mod blueprints;
 mod calendar_events;
 mod character_sources;
 mod industry_jobs;
+mod market_orders;
 mod planetary_preferences;
 mod public_refresh;
 mod wallet_names;

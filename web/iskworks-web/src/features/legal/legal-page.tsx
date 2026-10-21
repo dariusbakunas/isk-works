@@ -16,6 +16,7 @@ const ESI_SCOPE_PURPOSES: { scope: string; purpose: string }[] = [
   { scope: "Structure markets and structures", purpose: "market prices and facility names in player structures" },
   { scope: "Planets", purpose: "the Planetary Interaction page" },
   { scope: "Calendar", purpose: "showing your in-game calendar events on the Calendar (read only)" },
+  { scope: "Market orders", purpose: "checking whether your buy and sell orders are still the best price (read only)" },
   { scope: "Location", purpose: "showing where a character currently is" },
 ];
 
