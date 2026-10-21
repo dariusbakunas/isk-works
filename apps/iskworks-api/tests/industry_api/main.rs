@@ -655,6 +655,23 @@ impl IndustryRepository for FixtureIndustryRepository {
                 iskworks_core::BlueprintError::ObservationNotFound,
             ))
     }
+
+    async fn list_blueprint_observations(
+        &self,
+        _workspace_id: iskworks_core::WorkspaceId,
+        owner_id: OwnerId,
+        blueprint_type_id: i64,
+    ) -> Result<Vec<iskworks_core::BlueprintObservation>, IndustryError> {
+        Ok(self
+            .blueprint_observations
+            .values()
+            .filter(|observation| {
+                observation.owner_id == owner_id
+                    && observation.blueprint_type_id == blueprint_type_id
+            })
+            .cloned()
+            .collect())
+    }
 }
 
 /// Root blueprint 6_830 needs Tritanium (buy) and Rifter Hull Section
@@ -1464,6 +1481,7 @@ mod stages_descendant_production_configuration;
 // end to end through the HTTP routes (fake repository, no Postgres).
 // ===========================================================================
 mod canonical_producers;
+mod default_blueprint;
 mod facility_defaults;
 
 // ---------------------------------------------------------------------------
