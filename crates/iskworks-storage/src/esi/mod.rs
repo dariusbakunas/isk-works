@@ -22,6 +22,7 @@ mod character_sync;
 mod connections;
 mod error;
 mod industry_jobs;
+mod market_orders;
 mod planetary;
 mod retention;
 mod sync_runs;
