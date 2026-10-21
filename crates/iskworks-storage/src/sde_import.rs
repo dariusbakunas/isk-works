@@ -42,6 +42,7 @@ impl SdeImportStore for PgSdeRepository {
             packaged_volumes: requires_packaged_volumes,
             classification_metadata: requires_classification_metadata,
             planetary_data: requires_planetary_data,
+            stargates: requires_stargates,
         } = requires;
         let row = sqlx::query_as::<_, ImportIdentityRow>(
             r#"
@@ -118,6 +119,14 @@ impl SdeImportStore for PgSdeRepository {
                   WHERE schematics.import_id = sde_imports.id
                 )
               )
+              AND (
+                $9 = false
+                OR EXISTS (
+                  SELECT 1
+                  FROM sde_stargates gates
+                  WHERE gates.import_id = sde_imports.id
+                )
+              )
             "#,
         )
         .bind(checksum)
@@ -128,6 +137,7 @@ impl SdeImportStore for PgSdeRepository {
         .bind(requires_packaged_volumes)
         .bind(requires_classification_metadata)
         .bind(requires_planetary_data)
+        .bind(requires_stargates)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
@@ -670,6 +680,24 @@ impl SdeImportStore for PgSdeRepository {
                     .push_bind(planet.solar_system_id)
                     .push_bind(planet.celestial_index)
                     .push_bind(&planet.name);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in dataset.stargates.chunks(TYPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_stargates \
+                 (import_id, stargate_id, solar_system_id, destination_solar_system_id) ",
+            );
+            query.push_values(batch, |mut row, gate| {
+                row.push_bind(import_id)
+                    .push_bind(gate.stargate_id)
+                    .push_bind(gate.solar_system_id)
+                    .push_bind(gate.destination_solar_system_id);
             });
             query
                 .build()

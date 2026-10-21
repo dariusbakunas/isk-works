@@ -28,6 +28,9 @@ pub struct NormalizedSde {
     /// Planets with EVE-style derived names. Empty when the SDE lacks
     /// `mapPlanets` (or solar systems to name them from).
     pub planets: Vec<ImportPlanet>,
+    /// One row per stargate (both directions of a connection). Empty when
+    /// the SDE lacks `mapStargates`.
+    pub stargates: Vec<ImportStargate>,
     pub skipped_blueprints: u64,
     pub skipped_reaction_formulas: u64,
 }
@@ -187,6 +190,13 @@ pub struct ImportPlanet {
     pub celestial_index: i64,
     /// `"<system> <ROMAN(celestial_index)>"`, e.g. `Q-3HS5 IV`.
     pub name: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportStargate {
+    pub stargate_id: i64,
+    pub solar_system_id: i64,
+    pub destination_solar_system_id: i64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

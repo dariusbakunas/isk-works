@@ -86,6 +86,7 @@ pub struct SdeDatasetRequirements {
     pub packaged_volumes: bool,
     pub classification_metadata: bool,
     pub planetary_data: bool,
+    pub stargates: bool,
 }
 
 #[async_trait]
@@ -142,6 +143,7 @@ impl<'a> SdeImporter<'a> {
                         packaged_volumes: source.has_packaged_volumes(),
                         classification_metadata: source.has_classification_metadata(),
                         planetary_data: source.has_planetary_data(),
+                        stargates: source.has_stargates(),
                     },
                 )
                 .await?

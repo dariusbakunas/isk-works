@@ -17,6 +17,7 @@ pub(crate) const INDUSTRY_TARGET_FILTERS_FILE: &str = "industryTargetFilters.jso
 pub(crate) const INDUSTRY_MODIFIER_SOURCES_FILE: &str = "industryModifierSources.jsonl";
 pub(crate) const PLANET_SCHEMATICS_FILE: &str = "planetSchematics.jsonl";
 pub(crate) const MAP_PLANETS_FILE: &str = "mapPlanets.jsonl";
+pub(crate) const STARGATES_FILE: &str = "mapStargates.jsonl";
 
 #[derive(Debug, Error)]
 pub enum SdeError {
@@ -131,6 +132,7 @@ impl SdeSource {
             INDUSTRY_MODIFIER_SOURCES_FILE,
             PLANET_SCHEMATICS_FILE,
             MAP_PLANETS_FILE,
+            STARGATES_FILE,
         ] {
             match read_archive_file(&mut archive, name) {
                 Ok(contents) => {
@@ -223,6 +225,12 @@ impl SdeSource {
         [PLANET_SCHEMATICS_FILE, MAP_PLANETS_FILE]
             .iter()
             .all(|name| self.files.contains_key(name))
+    }
+
+    /// The jump graph (`mapStargates`), for buy order range checks.
+    #[must_use]
+    pub fn has_stargates(&self) -> bool {
+        self.files.contains_key(STARGATES_FILE)
     }
 
     pub(super) fn file(&self, name: &'static str) -> Result<&str, SdeError> {
