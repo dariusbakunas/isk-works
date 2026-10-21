@@ -234,7 +234,7 @@ impl IndustryService {
                 },
             };
             let recipe = self.capture_recipe(&selection).await?;
-            let resolution = draft
+            let mut resolution = draft
                 .and_then(|input| {
                     input
                         .component_resolutions
@@ -248,6 +248,19 @@ impl IndustryService {
                     facility_override: None,
                     blueprint_selection: None,
                 });
+            // Unless the row already chose one, start from the owner's best
+            // synced blueprint -- never ME 0 by omission.
+            if let (None, Some(blueprint_type_id)) =
+                (&resolution.blueprint_selection, recipe.blueprint_type_id())
+            {
+                resolution.blueprint_selection = self
+                    .default_observed_blueprint(
+                        consumer.workspace_id,
+                        consumer.owner_id,
+                        blueprint_type_id,
+                    )
+                    .await?;
+            }
             // The workspace default only matters when the consumer's row
             // carries no explicit facility of its own.
             let default_facility = match (&resolution.facility_override, &defaults) {
@@ -293,6 +306,50 @@ impl IndustryService {
             });
         }
         Ok(producers)
+    }
+
+    /// The owner's best synced blueprint of `blueprint_type_id`, captured:
+    /// an Original before any Copy (a Copy's runs are a per-job limit, not
+    /// a reason to skip it), then highest ME, then TE. Observations whose
+    /// kind ESI left unknown are skipped -- `Unknown` is the "not yet
+    /// captured" sentinel and must never be persisted as a choice.
+    async fn default_observed_blueprint(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: crate::OwnerId,
+        blueprint_type_id: i64,
+    ) -> Result<Option<crate::BlueprintSelection>, IndustryError> {
+        let observations = self
+            .build_repository()
+            .list_blueprint_observations(workspace_id, owner_id, blueprint_type_id)
+            .await?;
+        let rank = |kind: crate::BlueprintKind| match kind {
+            crate::BlueprintKind::Original => Some(1),
+            crate::BlueprintKind::Copy => Some(0),
+            crate::BlueprintKind::Unknown => None,
+        };
+        // `max_by_key` keeps the last of equals; reverse so the repository's
+        // own stable order breaks ties.
+        Ok(observations
+            .iter()
+            .rev()
+            .filter_map(|observation| Some((rank(observation.kind)?, observation)))
+            .max_by_key(|(rank, observation)| {
+                (
+                    *rank,
+                    observation.material_efficiency,
+                    observation.time_efficiency,
+                )
+            })
+            .map(
+                |(_, observation)| crate::BlueprintSelection::ObservedAsset {
+                    observation_id: observation.id,
+                    kind: observation.kind,
+                    material_efficiency: observation.material_efficiency,
+                    time_efficiency: observation.time_efficiency,
+                    licensed_runs: observation.licensed_runs,
+                },
+            ))
     }
 
     /// Canonical form of create-or-reuse: the producer the consumer's demand
