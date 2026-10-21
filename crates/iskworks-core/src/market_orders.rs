@@ -4,12 +4,14 @@
 use std::collections::{HashMap, VecDeque};
 
 mod competition;
+mod margin;
 mod pricing;
 
 pub use competition::{
     evaluate_order, BookOrder, BookVisibility, CompetitionInput, FreshSource, OrderStanding,
     StandingStatus, MODIFY_COOLDOWN,
 };
+pub use margin::{sell_margin, SellMargin};
 pub use pricing::{
     next_price_step, sales_tax_rate, PriceDirection, ACCOUNTING_REDUCTION_PER_LEVEL,
     ACCOUNTING_SKILL_ID, BASE_SALES_TAX,
