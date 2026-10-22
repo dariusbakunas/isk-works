@@ -594,6 +594,10 @@ describe("App routes", () => {
     await user.click(within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("link", { name: /^Market Orders$/ }));
     expect(await screen.findByRole("heading", { name: "Market Orders" })).toBeInTheDocument();
     expect(await screen.findByText("No active market orders")).toBeInTheDocument();
+    // "/market" is a prefix of "/market-orders"; only the page's own link is current.
+    const primaryNav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(primaryNav).getByRole("link", { name: /^Market Orders$/ })).toHaveAttribute("aria-current", "page");
+    expect(within(primaryNav).getByRole("link", { name: /^Market$/ })).not.toHaveAttribute("aria-current");
   });
 
   test("the header logo links to the Characters home", async () => {
