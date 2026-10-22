@@ -579,7 +579,7 @@ describe("App routes", () => {
               },
             ],
             stargatesMissing: false,
-            summary: { outbid: 0, tied: 0, best: 0, unknown: 0, activeSellValue: "0", buyEscrow: "0", oldestBookAt: null },
+            summary: { outbid: 0, tied: 0, best: 0, unknown: 0, likelyFilled: 0, activeSellValue: "0", buyEscrow: "0", oldestBookAt: null },
             locations: [],
           });
         }

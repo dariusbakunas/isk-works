@@ -897,3 +897,71 @@ async fn an_order_in_both_the_structure_and_public_book_counts_once() {
         .collect();
     assert_eq!(ids, vec![7, 1]);
 }
+
+fn fortizar_book_without_the_order() -> Arc<FakeMarket> {
+    Arc::new(FakeMarket {
+        classifications: classified(&[(
+            FORTIZAR,
+            MarketLocationClassification::Structure {
+                solar_system_id: JITA,
+            },
+        )]),
+        // Fetched 3 minutes ago; lists a competitor but not order 1.
+        structure_books: HashMap::from([(
+            (FORTIZAR, ISHTAR),
+            book(
+                ISHTAR,
+                FORTIZAR,
+                vec![view(2, ISHTAR, FORTIZAR, MarketOrderSide::Sell, "4901000")],
+            ),
+        )]),
+        ..FakeMarket::default()
+    })
+}
+
+#[tokio::test]
+async fn an_order_a_newer_book_no_longer_lists_is_likely_filled() {
+    // Last returned by the orders sync 10 minutes ago.
+    let service = service(
+        vec![stored(
+            1,
+            ISHTAR,
+            FORTIZAR,
+            MarketOrderSide::Sell,
+            "4903000",
+        )],
+        fortizar_book_without_the_order(),
+        FakeSde::default(),
+        FakeInventory(vec![]),
+        Some(5),
+    );
+
+    let overview = service.overview(workspace(), owner(), now()).await.unwrap();
+
+    let row = &overview.locations[0].orders[0];
+    assert_eq!(row.standing.status, StandingStatus::LikelyFilled);
+    assert_eq!(overview.summary.outbid, 0);
+    assert_eq!(overview.summary.likely_filled, 1);
+    assert_eq!(overview.summary.active_sell_value, Decimal::ZERO);
+}
+
+#[tokio::test]
+async fn a_book_within_its_cache_window_of_the_sync_proves_nothing() {
+    // Synced 6 minutes ago; ESI's copy behind a 3-minute-old book can be
+    // up to 5 minutes older, so it may predate the order.
+    let mut order = stored(1, ISHTAR, FORTIZAR, MarketOrderSide::Sell, "4903000");
+    order.last_seen_at = now() - Duration::minutes(6);
+    let service = service(
+        vec![order],
+        fortizar_book_without_the_order(),
+        FakeSde::default(),
+        FakeInventory(vec![]),
+        Some(5),
+    );
+
+    let overview = service.overview(workspace(), owner(), now()).await.unwrap();
+
+    let row = &overview.locations[0].orders[0];
+    assert_eq!(row.standing.status, StandingStatus::Outbid);
+    assert_eq!(overview.summary.likely_filled, 0);
+}

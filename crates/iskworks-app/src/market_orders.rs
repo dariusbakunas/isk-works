@@ -37,6 +37,10 @@ const OPPOSITE_DEPTH_LEVELS: usize = 5;
 /// Structure IDs are far above every NPC station ID; only those are worth
 /// resolving through ESI.
 const MIN_STRUCTURE_ID: i64 = 1_000_000_000_000;
+/// How long ESI caches a market book. A book only proves an order closed
+/// when it was fetched more than this long after the order was last seen
+/// open, so ESI's copy behind it can't predate the order.
+const BOOK_CACHE: Duration = Duration::minutes(5);
 
 #[derive(Debug, Error)]
 pub enum MarketOrdersError {
@@ -272,6 +276,9 @@ pub struct MarketOrdersSummary {
     pub tied: u32,
     pub best: u32,
     pub unknown: u32,
+    /// Missing from a newer book: probably filled, awaiting the next orders
+    /// sync. Not counted in the active sell value or buy escrow.
+    pub likely_filled: u32,
     pub active_sell_value: Decimal,
     pub buy_escrow: Decimal,
     pub oldest_book_at: Option<DateTime<Utc>>,
@@ -509,6 +516,21 @@ impl MarketOrdersService {
                 }
             }
             let book_orders: Vec<BookOrder> = merged.into_values().map(|(_, copy)| copy).collect();
+            // The book that lists this order while it is open.
+            let home_book = if needs_structure {
+                structure_book
+            } else if kind == MarketOrderLocationKind::Station {
+                public_book
+            } else {
+                None
+            };
+            let gone_from_book = home_book.is_some_and(|book| {
+                book.effective_observed_at() - BOOK_CACHE > row.last_seen_at
+                    && !book
+                        .orders
+                        .iter()
+                        .any(|view| view.order_id == order.order_id)
+            });
             let wanted = usize::from(needs_structure) + usize::from(needs_public);
             let read = usize::from(needs_structure && structure_book.is_some())
                 + usize::from(needs_public && public_book.is_some());
@@ -533,6 +555,7 @@ impl MarketOrdersService {
                 visibility,
                 own_order_ids: &own_order_ids,
                 jump_distances: distances.as_ref(),
+                gone_from_book,
             };
             let standing = evaluate_order(&input);
             let depth = depth(&input, &standing, &location_names);
@@ -561,8 +584,10 @@ impl MarketOrdersService {
                 StandingStatus::Tied => summary.tied += 1,
                 StandingStatus::Best => summary.best += 1,
                 StandingStatus::Unknown => summary.unknown += 1,
+                StandingStatus::LikelyFilled => summary.likely_filled += 1,
             }
             match order.side {
+                _ if standing.status == StandingStatus::LikelyFilled => {}
                 MarketOrderSide::Sell => {
                     summary.active_sell_value +=
                         standing.price * Decimal::from(standing.volume_remain);
@@ -881,6 +906,7 @@ fn status_rank(status: StandingStatus) -> u8 {
     match status {
         StandingStatus::Outbid => 0,
         StandingStatus::Unknown => 1,
+        StandingStatus::LikelyFilled => 4,
         StandingStatus::Tied => 2,
         StandingStatus::Best => 3,
     }

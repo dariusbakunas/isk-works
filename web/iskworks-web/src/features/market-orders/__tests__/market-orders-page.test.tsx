@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { MarketOrdersOverview } from "../../../api/market-orders";
 import { MarketOrdersPage } from "../market-orders-page";
-import { character, ILSA, location, megacyteBuy, NOW, overview } from "./fixtures";
+import { character, ILSA, location, megacyteBuy, NOW, outbidIshtar, overview } from "./fixtures";
 
 function stubFetch(body: MarketOrdersOverview = overview()) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -176,6 +176,21 @@ describe("Market Orders", () => {
       expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/market-orders"))).toHaveLength(2),
     );
     expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/refresh") && init?.method === "POST")).toBe(true);
+  });
+
+  test("marks an order missing from a newer book as likely filled", async () => {
+    const sold = outbidIshtar();
+    sold.standing = { ...sold.standing, status: "likelyFilled", bestCompetitor: null, gap: null, gapPercent: null, suggestedPrice: null, freshSource: "characterSync" };
+    stubFetch(overview({ locations: [location({ orders: [sold] })] }));
+    renderPage("/market-orders?order=1");
+
+    const table = await screen.findByRole("table", { name: "Market orders" });
+    const badge = within(rowFor(table, "Ishtar")).getByText("LIKELY FILLED");
+    expect(badge.parentElement).toHaveAttribute("title", expect.stringContaining("probably filled"));
+    expect(screen.getAllByText(/The next order sync confirms it/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Outbid only" }));
+    expect(within(table).queryByText("Ishtar")).not.toBeInTheDocument();
   });
 
   test("says so when there are no orders", async () => {

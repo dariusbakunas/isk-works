@@ -7,7 +7,7 @@ import { EveTypeImage } from "../../components/eve-type-image";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { Badge, ProgressBar } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
-import { countdown, expiresIn, formatPrice, isNegative, percentLabel, statusLabel, statusTone } from "./market-orders-format";
+import { countdown, expiresIn, formatPrice, isNegative, LIKELY_FILLED_HINT, percentLabel, statusLabel, statusTone } from "./market-orders-format";
 
 const muted = <span className="text-muted">—</span>;
 
@@ -18,8 +18,10 @@ export function SideChip({ side }: { side: MarketOrderSide }) {
 export function StatusCell({ standing }: { standing: OrderStanding }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <Badge square tone={statusTone(standing.status)}>{statusLabel(standing.status).toUpperCase()}</Badge>
-      {standing.visibility === "partial" ? (
+      <span title={standing.status === "likelyFilled" ? LIKELY_FILLED_HINT : undefined}>
+        <Badge square tone={statusTone(standing.status)}>{statusLabel(standing.status).toUpperCase()}</Badge>
+      </span>
+      {standing.visibility === "partial" && standing.status !== "likelyFilled" ? (
         <span
           aria-label="Partial view"
           className="h-1.5 w-1.5 cursor-help rounded-full bg-muted"

@@ -192,6 +192,7 @@ export function overview(overrides: Partial<MarketOrdersOverview> = {}): MarketO
       tied: 0,
       best: 2,
       unknown: 1,
+      likelyFilled: 0,
       activeSellValue: "7639600000",
       buyEscrow: "1359950000",
       oldestBookAt: minutes(-3),
