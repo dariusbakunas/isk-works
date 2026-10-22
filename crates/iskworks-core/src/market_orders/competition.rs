@@ -52,6 +52,10 @@ pub enum StandingStatus {
     /// No verdict: nothing to compare against, or a better-priced buy order
     /// whose jump range can't be checked (no stargates imported).
     Unknown,
+    /// Missing from a market book fetched after the last orders sync: the
+    /// order most likely filled (or was cancelled or expired). The next
+    /// orders sync confirms it and drops the order.
+    LikelyFilled,
 }
 
 /// Where the order's current price and volume came from.
@@ -79,6 +83,10 @@ pub struct CompetitionInput<'a> {
     /// Jumps from the order's system to every system within 40 jumps;
     /// `None` when no stargates are imported.
     pub jump_distances: Option<&'a HashMap<i64, u8>>,
+    /// The book that always lists this order while it is open (its own
+    /// structure's, or the region's for a station) was fetched well after
+    /// the last orders sync and doesn't list it.
+    pub gone_from_book: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -224,6 +232,10 @@ pub fn evaluate_order(input: &CompetitionInput<'_>) -> OrderStanding {
         modifiable_at: issued_at + MODIFY_COOLDOWN,
         outbid_since: None,
     };
+    if input.gone_from_book {
+        standing.status = StandingStatus::LikelyFilled;
+        return standing;
+    }
     if input.visibility == BookVisibility::None {
         return standing;
     }
@@ -368,6 +380,7 @@ mod tests {
             visibility: BookVisibility::Full,
             own_order_ids: &own_order_ids,
             jump_distances: distances,
+            gone_from_book: false,
         })
     }
 
@@ -576,9 +589,29 @@ mod tests {
             visibility: BookVisibility::None,
             own_order_ids: &own_order_ids,
             jump_distances: None,
+            gone_from_book: false,
         });
         assert_eq!(standing.status, StandingStatus::Unknown);
         assert!(standing.best_competitor.is_none());
+    }
+
+    #[test]
+    fn an_order_gone_from_a_newer_book_is_likely_filled_not_outbid() {
+        let order = own(Sell, "4903000");
+        let own_order_ids = HashSet::from([1]);
+        let standing = evaluate_order(&CompetitionInput {
+            order: &order,
+            location_system_id: Some(JITA),
+            book: &[book(2, Sell, "4901000", 30)],
+            visibility: BookVisibility::Full,
+            own_order_ids: &own_order_ids,
+            jump_distances: None,
+            gone_from_book: true,
+        });
+        assert_eq!(standing.status, StandingStatus::LikelyFilled);
+        assert!(standing.best_competitor.is_none());
+        assert!(standing.suggested_price.is_none());
+        assert_eq!(standing.competitors_ahead, 0);
     }
 
     #[test]
