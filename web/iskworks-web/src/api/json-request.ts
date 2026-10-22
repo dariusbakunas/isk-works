@@ -9,7 +9,7 @@ export interface RequestMessages {
 
 /** A JSON request against the ISK Works API: sends cookies and
  * `Accept: application/json`, and turns a network failure or a non-2xx
- * response into an `ApiError`. */
+ * response into an `ApiError`. A 202 or 204 response reads as `undefined`. */
 export function jsonRequest(messages: RequestMessages) {
   return async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -33,6 +33,8 @@ export function jsonRequest(messages: RequestMessages) {
         message: messages.failed,
       });
     }
+    // Accepted / No Content answers carry no body.
+    if (response.status === 202 || response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   };
 }
