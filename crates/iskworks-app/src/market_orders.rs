@@ -462,7 +462,10 @@ impl MarketOrdersService {
             }
         }
         let name_ids: Vec<i64> = name_ids.into_iter().collect();
-        let location_names = self.market.location_names(workspace_id, &name_ids).await?;
+        let location_names = self
+            .market
+            .resolve_order_location_names(workspace_id, &name_ids)
+            .await?;
 
         let mut groups: BTreeMap<i64, MarketOrderLocation> = BTreeMap::new();
         let mut summary = MarketOrdersSummary::default();

@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   BarChart2,
   Boxes,
   Building2,
@@ -49,6 +50,7 @@ import { FacilitiesPage } from "./features/industry/facilities/facilities-page";
 import { FacilityDefaultsPage } from "./features/industry/facilities/facility-defaults-page";
 import { FinanceWorkspace } from "./features/finance/finance-workspace";
 import { JobsPage } from "./features/jobs/jobs-page";
+import { MarketOrdersPage } from "./features/market-orders/market-orders-page";
 import { PriceSourceDetailPage } from "./features/industry/prices/price-source-detail-page";
 import {
   NewPriceSourcePage,
@@ -90,6 +92,7 @@ const navItems = [
   { label: "Inventory", path: "/inventory", icon: Boxes },
   { label: "Assets", path: "/assets", icon: Warehouse },
   { label: "Market", path: "/market", icon: Store },
+  { label: "Market Orders", path: "/market-orders", icon: ArrowLeftRight },
   { label: "Price Overrides", path: "/prices", icon: Tags },
   { label: "Facilities", path: "/facilities", icon: Building2 },
   { label: "Planetary", path: "/planetary", icon: Globe2 },
@@ -373,6 +376,7 @@ function ProtectedShell({
         <Route path="/orders/:orderId" element={<OrderDeepLinkRedirect />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/jobs/*" element={<JobsPage />} />
+        <Route path="/market-orders" element={<MarketOrdersPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/inventory/runway" element={<RunwayPage />} />
