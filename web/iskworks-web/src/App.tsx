@@ -458,7 +458,10 @@ function AppShell({
         <nav className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto" aria-label="Primary navigation">
           {(isAdmin ? [...navItems, adminNavItem] : navItems).map((item) => {
             const Icon = item.icon;
-            const active = item.path === "/" ? location.pathname === "/" : location.pathname.startsWith(item.path);
+            // Whole path segments only: "/market" must not light up on "/market-orders".
+            const active =
+              location.pathname === item.path ||
+              (item.path !== "/" && location.pathname.startsWith(`${item.path}/`));
             return (
               <Link
                 key={item.path}
