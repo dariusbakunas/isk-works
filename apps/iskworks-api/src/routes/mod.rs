@@ -14,6 +14,7 @@ pub(crate) mod finance_analytics;
 pub(crate) mod inventory;
 pub(crate) mod jobs;
 pub(crate) mod market;
+pub(crate) mod market_orders;
 pub(crate) mod opportunities;
 pub(crate) mod order_acquisition_runs;
 pub(crate) mod orders;
