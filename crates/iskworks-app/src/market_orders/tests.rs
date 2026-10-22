@@ -195,6 +195,13 @@ impl MarketRepository for FakeMarket {
     async fn location_names(
         &self,
         _: WorkspaceId,
+        _: &[i64],
+    ) -> Result<BTreeMap<i64, String>, MarketError> {
+        unimplemented!()
+    }
+    async fn resolve_order_location_names(
+        &self,
+        _: WorkspaceId,
         location_ids: &[i64],
     ) -> Result<BTreeMap<i64, String>, MarketError> {
         Ok(location_ids
