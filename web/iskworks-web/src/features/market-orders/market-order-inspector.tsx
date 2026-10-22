@@ -13,6 +13,7 @@ import {
   expiresIn,
   formatPrice,
   isNegative,
+  LIKELY_FILLED_HINT,
   percentLabel,
   rangeLabel,
   statusLabel,
@@ -90,6 +91,8 @@ export function MarketOrderInspector({
           {standing.outbidSince ? <span className="text-muted">Outbid since {ago(standing.outbidSince, nowMs)}</span> : null}
           <CharacterName className="text-muted" name={row.characterName} />
         </div>
+
+        {standing.status === "likelyFilled" ? <p className="rounded-md border border-border px-3 py-2 text-xs text-muted">{LIKELY_FILLED_HINT}</p> : null}
 
         <section>
           <SectionHead>Order book depth</SectionHead>

@@ -1,7 +1,7 @@
 import { jsonRequest } from "./json-request";
 
 export type MarketOrderSide = "buy" | "sell";
-export type StandingStatus = "best" | "tied" | "outbid" | "unknown";
+export type StandingStatus = "best" | "tied" | "outbid" | "unknown" | "likelyFilled";
 export type BookVisibility = "full" | "partial" | "none";
 export type FreshSource = "book" | "characterSync";
 export type MarketOrderLocationKind = "station" | "structure" | "unknown";
@@ -126,6 +126,8 @@ export interface MarketOrdersOverview {
     tied: number;
     best: number;
     unknown: number;
+    /** Missing from a newer book; not in the sell value or escrow. */
+    likelyFilled: number;
     activeSellValue: string;
     buyEscrow: string;
     oldestBookAt: string | null;

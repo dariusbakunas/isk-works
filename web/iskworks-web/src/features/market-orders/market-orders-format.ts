@@ -2,17 +2,20 @@ import type { OrderRange, StandingStatus } from "../../api/market-orders";
 import type { Tone } from "../../components/primitives";
 
 export function statusLabel(status: StandingStatus): string {
-  return { best: "Best", tied: "Tied", outbid: "Outbid", unknown: "Unknown" }[status];
+  return { best: "Best", tied: "Tied", outbid: "Outbid", unknown: "Unknown", likelyFilled: "Likely filled" }[status];
 }
 
 export function statusTone(status: StandingStatus): Tone {
-  return ({ best: "positive", tied: "warning", outbid: "danger", unknown: "muted" } as const)[status];
+  return ({ best: "positive", tied: "warning", outbid: "danger", unknown: "muted", likelyFilled: "muted" } as const)[status];
 }
 
-/** Outbid first, then undecided, tied and best. */
+/** Outbid first, then undecided, tied, best and likely filled. */
 export function statusRank(status: StandingStatus): number {
-  return { outbid: 0, unknown: 1, tied: 2, best: 3 }[status];
+  return { outbid: 0, unknown: 1, tied: 2, best: 3, likelyFilled: 4 }[status];
 }
+
+export const LIKELY_FILLED_HINT =
+  "No longer in a market book fetched after your last order sync: probably filled (or cancelled or expired). The next order sync confirms it.";
 
 export function rangeLabel(range: OrderRange): string {
   switch (range.kind) {
