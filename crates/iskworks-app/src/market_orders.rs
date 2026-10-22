@@ -473,7 +473,10 @@ impl MarketOrdersService {
             let order = &row.order;
             let facts = locations.get(&order.location_id);
             let kind = facts.map_or(MarketOrderLocationKind::Unknown, |facts| facts.kind);
-            let mut book_orders: Vec<BookOrder> = Vec::new();
+            // ESI's public region book also carries orders from public
+            // structures, so a structure buy order can see one order in both
+            // books: keep one copy per order, the most recently fetched.
+            let mut merged: HashMap<i64, (DateTime<Utc>, BookOrder)> = HashMap::new();
             let mut observed: Vec<DateTime<Utc>> = Vec::new();
             let structure_book = structure_books
                 .get(&order.location_id)
@@ -492,8 +495,20 @@ impl MarketOrdersService {
             .flatten()
             {
                 observed.push(book.effective_observed_at());
-                book_orders.extend(book.orders.iter().filter_map(book_order));
+                for view in &book.orders {
+                    let Some(copy) = book_order(view) else {
+                        continue;
+                    };
+                    let fetched = view.effective_observed_at();
+                    match merged.get(&copy.order_id) {
+                        Some((kept, _)) if *kept >= fetched => {}
+                        _ => {
+                            merged.insert(copy.order_id, (fetched, copy));
+                        }
+                    }
+                }
             }
+            let book_orders: Vec<BookOrder> = merged.into_values().map(|(_, copy)| copy).collect();
             let wanted = usize::from(needs_structure) + usize::from(needs_public);
             let read = usize::from(needs_structure && structure_book.is_some())
                 + usize::from(needs_public && public_book.is_some());

@@ -842,3 +842,58 @@ async fn prioritizing_moves_every_book_to_the_front() {
         vec![(source_id(FORGE, Some(FORTIZAR)), vec![MEGACYTE])]
     );
 }
+
+#[tokio::test]
+async fn an_order_in_both_the_structure_and_public_book_counts_once() {
+    use MarketOrderSide::Buy;
+    // ESI's public region book also carries orders from public structures,
+    // so a structure buy order sees the same competitor in both books.
+    let mut structure_competitor = view(7, MEGACYTE, FORTIZAR, Buy, "9215");
+    structure_competitor.observed_at = now() - Duration::minutes(2);
+    let mut public_copy = view(7, MEGACYTE, FORTIZAR, Buy, "9200");
+    public_copy.observed_at = now() - Duration::minutes(9);
+    let own_copy = view(1, MEGACYTE, FORTIZAR, Buy, "9210");
+    let market = Arc::new(FakeMarket {
+        classifications: classified(&[(
+            FORTIZAR,
+            MarketLocationClassification::Structure {
+                solar_system_id: JITA,
+            },
+        )]),
+        structure_books: HashMap::from([(
+            (FORTIZAR, MEGACYTE),
+            book(
+                MEGACYTE,
+                FORTIZAR,
+                vec![structure_competitor, own_copy.clone()],
+            ),
+        )]),
+        public_books: HashMap::from([(MEGACYTE, book(MEGACYTE, 0, vec![public_copy, own_copy]))]),
+        ..FakeMarket::default()
+    });
+    let service = service(
+        vec![stored(1, MEGACYTE, FORTIZAR, Buy, "9210")],
+        market,
+        FakeSde::default(),
+        FakeInventory(vec![]),
+        Some(5),
+    );
+
+    let overview = service.overview(workspace(), owner(), now()).await.unwrap();
+
+    let row = &overview.locations[0].orders[0];
+    assert_eq!(row.standing.competitors_ahead, 1);
+    assert_eq!(row.standing.volume_ahead, 3);
+    // The freshest copy wins: the structure book's 9,215.
+    assert_eq!(
+        row.standing.best_competitor.as_ref().unwrap().price,
+        d("9215")
+    );
+    let ids: Vec<i64> = row
+        .depth
+        .same_side
+        .iter()
+        .map(|order| order.order_id)
+        .collect();
+    assert_eq!(ids, vec![7, 1]);
+}
