@@ -555,6 +555,47 @@ describe("App routes", () => {
     expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
   });
 
+  test("the Market Orders nav link opens the page with the workspace's orders", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+        if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+        if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+        if (url.endsWith("/api/characters")) return mockResponse([]);
+        if (url.endsWith("/api/market-orders")) {
+          return mockResponse({
+            generatedAt: "2026-10-22T12:00:00Z",
+            characters: [
+              {
+                connectionId: "11111111-1111-1111-1111-111111111111",
+                eveCharacterId: 90000001,
+                characterName: "Kael Varon",
+                ordersScopeMissing: false,
+                ordersSyncedAt: null,
+                ordersSyncError: null,
+                accountingLevel: 5,
+              },
+            ],
+            stargatesMissing: false,
+            summary: { outbid: 0, tied: 0, best: 0, unknown: 0, activeSellValue: "0", buyEscrow: "0", oldestBookAt: null },
+            locations: [],
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    await user.click(within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("link", { name: /^Market Orders$/ }));
+    expect(await screen.findByRole("heading", { name: "Market Orders" })).toBeInTheDocument();
+    expect(await screen.findByText("No active market orders")).toBeInTheDocument();
+  });
+
   test("the header logo links to the Characters home", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
