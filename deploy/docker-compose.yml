@@ -135,7 +135,7 @@ services:
       - traefik.http.routers.iskworks-api.tls=true
       - traefik.http.routers.iskworks-api.tls.certresolver=le
       - traefik.http.routers.iskworks-api.priority=10
-      - traefik.http.routers.iskworks-api.middlewares=iskworks-security@docker,iskworks-api-ratelimit@docker
+      - traefik.http.routers.iskworks-api.middlewares=iskworks-security@docker,iskworks-compress@docker,iskworks-api-ratelimit@docker
       - traefik.http.services.iskworks-api.loadbalancer.server.port=8080
       # The anonymous sign-in endpoints get a much tighter per-IP limit: each
       # login start writes a pending-authorization row, and nothing else
@@ -147,7 +147,7 @@ services:
       - traefik.http.routers.iskworks-api-signin.tls.certresolver=le
       - traefik.http.routers.iskworks-api-signin.priority=20
       - traefik.http.routers.iskworks-api-signin.service=iskworks-api
-      - traefik.http.routers.iskworks-api-signin.middlewares=iskworks-security@docker,iskworks-signin-ratelimit@docker
+      - traefik.http.routers.iskworks-api-signin.middlewares=iskworks-security@docker,iskworks-compress@docker,iskworks-signin-ratelimit@docker
       # Per client IP. Generous: the SPA fires bursts of parallel requests.
       - traefik.http.middlewares.iskworks-api-ratelimit.ratelimit.average=30
       - traefik.http.middlewares.iskworks-api-ratelimit.ratelimit.period=1s
@@ -166,6 +166,12 @@ services:
       - traefik.http.middlewares.iskworks-security.headers.referrerPolicy=strict-origin-when-cross-origin
       - traefik.http.middlewares.iskworks-security.headers.permissionsPolicy=camera=(), microphone=(), geolocation=()
       - traefik.http.middlewares.iskworks-security.headers.contentSecurityPolicy=frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+      # Compresses every response (API and web) -- neither app compresses
+      # its own, and the Board's tickets list alone is ~1 MB of JSON.
+      # Bodies under 1 KB and already-encoded ones pass through. The order
+      # picks among what the client accepts: browsers list gzip first, and
+      # gzip came out about 2x larger than br on JSON.
+      - traefik.http.middlewares.iskworks-compress.compress.encodings=br,zstd,gzip
     networks:
       - iskworks_edge
     restart: unless-stopped
@@ -220,8 +226,8 @@ services:
       - traefik.http.routers.iskworks-web.tls=true
       - traefik.http.routers.iskworks-web.tls.certresolver=le
       - traefik.http.routers.iskworks-web.priority=1
-      # Defined on the iskworks-api container's labels.
-      - traefik.http.routers.iskworks-web.middlewares=iskworks-security@docker
+      # Both defined on the iskworks-api container's labels.
+      - traefik.http.routers.iskworks-web.middlewares=iskworks-security@docker,iskworks-compress@docker
       - traefik.http.services.iskworks-web.loadbalancer.server.port=80
     environment:
       # Optional LogRocket session replay with YOUR OWN LogRocket app ID.
