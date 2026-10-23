@@ -2,8 +2,9 @@ use chrono::{DateTime, Utc};
 use iskworks_core::{
     build_asset_hierarchy, AssetBlueprintSummary, AssetBrowserFacets, AssetBrowserFilters,
     AssetBrowserItem, AssetBrowserQuery, AssetBrowserSummary, AssetFilterOption, AssetLocationPage,
-    AssetLocationSummary, AssetReconciliationSummary, AssetSyncState, FlatAssetCursor,
-    FlatAssetPage, FlatAssetRow, InventoryError, ValidatedFlatAssetQuery, WorkspaceId,
+    AssetLocationSummary, AssetReconciliationSummary, AssetSortColumn, AssetSyncState,
+    FlatAssetCursor, FlatAssetPage, FlatAssetRow, InventoryError, ValidatedFlatAssetQuery,
+    WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -577,54 +578,170 @@ impl PgAssetBrowserRepository {
             .collect::<Vec<_>>();
         let sort = format!("{:?}", query.sort).to_lowercase();
         let order = format!("{:?}", query.order).to_lowercase();
-        sqlx::query_as::<_, FlatItemRow>(
-            r#"WITH current_assets AS MATERIALIZED (
-                 SELECT * FROM asset_browser_current WHERE workspace_id=$1
+        let sql = match limit {
+            Some(_) => flat_item_page_sql(FlatItemLookups::for_query(query)),
+            None => flat_item_export_sql(),
+        };
+        sqlx::query_as::<_, FlatItemRow>(&sql)
+            .bind(workspace_id.0)
+            .bind(&query.search)
+            .bind(search)
+            .bind(&query.connection_ids)
+            .bind(&query.location_ids)
+            .bind(&asset_kinds)
+            .bind(&query.group_ids)
+            .bind(&blueprint_kinds)
+            .bind(&reconciliation_states)
+            .bind(sort)
+            .bind(order)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_error)
+    }
+}
+
+/// The per-row lookups behind a flat asset row's derived columns. Each costs
+/// one or more index probes per asset, and a page query only needs them for
+/// every asset when the search, a filter or the sort reads their columns;
+/// otherwise they run for the page's rows alone.
+#[derive(Clone, Copy)]
+struct FlatItemLookups {
+    /// `location_name`.
+    location: bool,
+    /// `container_name`.
+    container: bool,
+    /// `is_container`, the blueprint columns and so `asset_kind`.
+    kind: bool,
+    /// The owner/type quantities and so `reconciliation_state`.
+    reconciliation: bool,
+}
+
+impl FlatItemLookups {
+    const ALL: Self = Self {
+        location: true,
+        container: true,
+        kind: true,
+        reconciliation: true,
+    };
+
+    fn for_query(query: &ValidatedFlatAssetQuery) -> Self {
+        let searching = !query.search.is_empty();
+        Self {
+            location: searching || query.sort == AssetSortColumn::Location,
+            container: searching || query.sort == AssetSortColumn::Container,
+            kind: !query.asset_kinds.is_empty() || !query.blueprint_kinds.is_empty(),
+            reconciliation: !query.reconciliation_states.is_empty()
+                || query.sort == AssetSortColumn::Status,
+        }
+    }
+}
+
+/// Filters and sorts the workspace's assets with only the lookups `keys`
+/// needs, then builds full rows for the requested page alone. Leaving a
+/// lookup out of the SQL text, rather than switching it off with a bound
+/// flag, keeps it out of generic plans too: each combination is its own
+/// prepared statement.
+fn flat_item_page_sql(keys: FlatItemLookups) -> String {
+    format!(
+        r#"{FLAT_ITEM_SOURCES},
+               filtered AS (
+                 SELECT * FROM ({keyed}) keyed
+                 WHERE {FLAT_ITEM_FILTER}
                ),
-               observed_totals AS (
-                 SELECT owner_id,type_id,SUM(quantity)::bigint AS quantity
-                 FROM current_assets GROUP BY owner_id,type_id
-               ),
-               enriched AS (
-                 SELECT asset.source_item_id AS eve_item_id,asset.type_id,
-                        COALESCE(type.name_en,'Unknown EVE type '||asset.type_id::text) AS type_name,
-                        asset.quantity,type.packaged_volume_m3::text AS packaged_volume,
-                        (type.packaged_volume_m3 * asset.quantity)::text AS total_packaged_volume,
-                        asset.owner_id,owner.display_name AS owner_name,asset.connection_id,
-                        asset.eve_character_id AS character_id,asset.character_name,
-                        asset.effective_location_id AS location_id,
-                        COALESCE(location.location_name,station.name_en,system.name_en) AS location_name,
-                        asset.location_flag,asset.parent_item_id AS container_item_id,
-                        parent_type.name_en AS container_name,type.group_id,
-                        type.group_name_en AS group_name,asset.observed_at,
-                        child.present IS NOT NULL AS is_container,
-                        blueprint.blueprint_kind,
-                        blueprint.material_efficiency::integer AS material_efficiency,
-                        blueprint.time_efficiency::integer AS time_efficiency,
-                        blueprint.licensed_runs::integer AS licensed_runs,
-                        blueprint.observed_at AS blueprint_observed_at,
-                        totals.quantity AS observed_owner_type_quantity,
-                        COALESCE(balance.quantity,0)::bigint AS accounted_owner_type_quantity
-                 FROM current_assets asset
-                 JOIN owners owner ON owner.id=asset.owner_id
-                 LEFT JOIN sde_imports import ON import.active
-                 LEFT JOIN sde_types type ON type.import_id=import.id AND type.type_id=asset.type_id
+               page AS (
+                 SELECT connection_id,eve_item_id FROM filtered
+                 ORDER BY {FLAT_ITEM_ORDER}
+                 LIMIT $12 OFFSET $13
+               )
+               SELECT *,(SELECT COUNT(*) FROM filtered)::bigint AS total
+               FROM ({page}) page_rows
+               ORDER BY {FLAT_ITEM_ORDER}"#,
+        keyed = flat_item_rows_sql("current_assets", keys),
+        page = flat_item_rows_sql(
+            "(SELECT current_assets.* FROM page
+                 JOIN current_assets ON current_assets.connection_id=page.connection_id
+                  AND current_assets.source_item_id=page.eve_item_id)",
+            FlatItemLookups::ALL,
+        ),
+    )
+}
+
+/// Every matching row is returned, so every row needs every lookup: one pass.
+fn flat_item_export_sql() -> String {
+    format!(
+        r#"{FLAT_ITEM_SOURCES},
+               filtered AS (
+                 SELECT * FROM ({rows}) enriched
+                 WHERE {FLAT_ITEM_FILTER}
+               )
+               SELECT *,COUNT(*) OVER()::bigint AS total
+               FROM filtered
+               ORDER BY {FLAT_ITEM_ORDER}
+               LIMIT $12 OFFSET $13"#,
+        rows = flat_item_rows_sql("current_assets", FlatItemLookups::ALL),
+    )
+}
+
+/// Flat asset rows for the assets in `source`, with the derived columns of
+/// lookups left out of `lookups` as typed placeholders.
+fn flat_item_rows_sql(source: &str, lookups: FlatItemLookups) -> String {
+    let FlatItemLookups {
+        location,
+        container,
+        kind,
+        reconciliation,
+    } = lookups;
+    let pick = |on: bool, column: &'static str, placeholder: &'static str| {
+        if on {
+            column
+        } else {
+            placeholder
+        }
+    };
+    let mut joins = String::new();
+    if container {
+        joins.push_str(
+            r#"
                  LEFT JOIN esi_asset_observations parent_obs
                    ON parent_obs.snapshot_id=asset.snapshot_id
                   AND parent_obs.source_item_id=asset.parent_item_id
                  LEFT JOIN sde_types parent_type
-                   ON parent_type.import_id=import.id AND parent_type.type_id=parent_obs.type_id
+                   ON parent_type.import_id=import.id AND parent_type.type_id=parent_obs.type_id"#,
+        );
+    }
+    if reconciliation {
+        joins.push_str(
+            r#"
                  LEFT JOIN observed_totals totals
                    ON totals.owner_id=asset.owner_id AND totals.type_id=asset.type_id
                  LEFT JOIN inventory_balances balance
                    ON balance.workspace_id=asset.workspace_id
-                  AND balance.owner_id=asset.owner_id AND balance.type_id=asset.type_id
+                  AND balance.owner_id=asset.owner_id AND balance.type_id=asset.type_id"#,
+        );
+    }
+    if kind {
+        // blueprint_observations_identity_key keeps one observation per
+        // (workspace, owner, item), so the blueprint join is a plain join.
+        joins.push_str(
+            r#"
                  LEFT JOIN LATERAL (
                    SELECT 1 AS present FROM esi_asset_observations possible_child
                    WHERE possible_child.snapshot_id=asset.snapshot_id
                      AND possible_child.location_type='item'
                      AND possible_child.location_id=asset.source_item_id LIMIT 1
                  ) child ON true
+                 LEFT JOIN blueprint_observations blueprint
+                   ON blueprint.workspace_id=asset.workspace_id
+                  AND blueprint.owner_id=asset.owner_id
+                  AND blueprint.eve_item_id=asset.source_item_id
+                  AND blueprint.blueprint_type_id=asset.type_id"#,
+        );
+    }
+    if location {
+        joins.push_str(
+            r#"
                  LEFT JOIN market_location_names location
                    ON location.workspace_id=asset.workspace_id
                   AND location.location_id=asset.effective_location_id
@@ -634,20 +751,11 @@ impl PgAssetBrowserRepository {
                    ON system.import_id=import.id
                   AND system.solar_system_id=COALESCE(location.solar_system_id,station.solar_system_id,
                     CASE WHEN asset.effective_location_type='solar_system'
-                         THEN asset.effective_location_id END)
-                 LEFT JOIN LATERAL (
-                   SELECT observation.blueprint_kind,observation.material_efficiency,
-                          observation.time_efficiency,observation.licensed_runs,observation.observed_at
-                   FROM blueprint_observations observation
-                   WHERE observation.workspace_id=asset.workspace_id
-                     AND observation.owner_id=asset.owner_id
-                     AND observation.eve_item_id=asset.source_item_id
-                     AND observation.blueprint_type_id=asset.type_id
-                   ORDER BY observation.observed_at DESC LIMIT 1
-                 ) blueprint ON true
-               ),
-               classified AS (
-                 SELECT *,
+                         THEN asset.effective_location_id END)"#,
+        );
+    }
+    format!(
+        r#"SELECT *,
                    CASE
                      WHEN blueprint_kind IS NOT NULL THEN 'blueprint'
                      WHEN is_container THEN 'container'
@@ -662,12 +770,67 @@ impl PgAssetBrowserRepository {
                      WHEN accounted_owner_type_quantity=0 THEN 'unaccounted'
                      ELSE 'difference'
                    END AS reconciliation_state
-                 FROM enriched
+               FROM (
+                 SELECT asset.source_item_id AS eve_item_id,asset.type_id,
+                        COALESCE(type.name_en,'Unknown EVE type '||asset.type_id::text) AS type_name,
+                        asset.quantity,type.packaged_volume_m3::text AS packaged_volume,
+                        (type.packaged_volume_m3 * asset.quantity)::text AS total_packaged_volume,
+                        asset.owner_id,owner.display_name AS owner_name,asset.connection_id,
+                        asset.eve_character_id AS character_id,asset.character_name,
+                        asset.effective_location_id AS location_id,
+                        {location_name} AS location_name,
+                        asset.location_flag,asset.parent_item_id AS container_item_id,
+                        {container_name} AS container_name,type.group_id,
+                        type.group_name_en AS group_name,asset.observed_at,
+                        {is_container} AS is_container,
+                        {blueprint_kind} AS blueprint_kind,
+                        {material_efficiency} AS material_efficiency,
+                        {time_efficiency} AS time_efficiency,
+                        {licensed_runs} AS licensed_runs,
+                        {blueprint_observed_at} AS blueprint_observed_at,
+                        {observed_quantity} AS observed_owner_type_quantity,
+                        {accounted_quantity} AS accounted_owner_type_quantity
+                 FROM {source} asset
+                 JOIN owners owner ON owner.id=asset.owner_id
+                 LEFT JOIN sde_imports import ON import.active
+                 LEFT JOIN sde_types type ON type.import_id=import.id AND type.type_id=asset.type_id{joins}
+               ) enriched"#,
+        location_name = pick(
+            location,
+            "COALESCE(location.location_name,station.name_en,system.name_en)",
+            "NULL::text",
+        ),
+        container_name = pick(container, "parent_type.name_en", "NULL::text"),
+        is_container = pick(kind, "child.present IS NOT NULL", "false"),
+        blueprint_kind = pick(kind, "blueprint.blueprint_kind", "NULL::text"),
+        material_efficiency = pick(
+            kind,
+            "blueprint.material_efficiency::integer",
+            "NULL::integer"
+        ),
+        time_efficiency = pick(kind, "blueprint.time_efficiency::integer", "NULL::integer"),
+        licensed_runs = pick(kind, "blueprint.licensed_runs::integer", "NULL::integer"),
+        blueprint_observed_at = pick(kind, "blueprint.observed_at", "NULL::timestamptz"),
+        observed_quantity = pick(reconciliation, "totals.quantity", "0::bigint"),
+        accounted_quantity = pick(
+            reconciliation,
+            "COALESCE(balance.quantity,0)::bigint",
+            "0::bigint"
+        ),
+    )
+}
+
+/// `observed_totals` is materialized: inlined into a single reference, the
+/// planner may re-aggregate it once per joined row.
+const FLAT_ITEM_SOURCES: &str = r#"WITH current_assets AS MATERIALIZED (
+                 SELECT * FROM asset_browser_current WHERE workspace_id=$1
                ),
-               filtered AS (
-                 SELECT *,COUNT(*) OVER()::bigint AS total
-                 FROM classified
-                 WHERE ($2='' OR COALESCE(type_name,'') ILIKE $3
+               observed_totals AS MATERIALIZED (
+                 SELECT owner_id,type_id,SUM(quantity)::bigint AS quantity
+                 FROM current_assets GROUP BY owner_id,type_id
+               )"#;
+
+const FLAT_ITEM_FILTER: &str = r#"($2='' OR COALESCE(type_name,'') ILIKE $3
                    OR character_name ILIKE $3 OR COALESCE(location_name,'') ILIKE $3
                    OR COALESCE(container_name,'') ILIKE $3 OR COALESCE(group_name,'') ILIKE $3)
                    AND (cardinality($4::uuid[])=0 OR connection_id=ANY($4))
@@ -675,10 +838,9 @@ impl PgAssetBrowserRepository {
                    AND (cardinality($6::text[])=0 OR asset_kind=ANY($6))
                    AND (cardinality($7::bigint[])=0 OR group_id=ANY($7))
                    AND (cardinality($8::text[])=0 OR COALESCE(blueprint_kind,'unknown')=ANY($8))
-                   AND (cardinality($9::text[])=0 OR reconciliation_state=ANY($9))
-               )
-               SELECT * FROM filtered
-               ORDER BY
+                   AND (cardinality($9::text[])=0 OR reconciliation_state=ANY($9))"#;
+
+const FLAT_ITEM_ORDER: &str = r#"
                  CASE WHEN $10='item' AND $11='asc' THEN lower(COALESCE(type_name,'')) END ASC,
                  CASE WHEN $10='item' AND $11='desc' THEN lower(COALESCE(type_name,'')) END DESC,
                  CASE WHEN $10='quantity' AND $11='asc' THEN quantity END ASC,
@@ -697,27 +859,7 @@ impl PgAssetBrowserRepository {
                  CASE WHEN $10='status' AND $11='desc' THEN reconciliation_state END DESC,
                  CASE WHEN $10='observed' AND $11='asc' THEN observed_at END ASC,
                  CASE WHEN $10='observed' AND $11='desc' THEN observed_at END DESC,
-                 connection_id,eve_item_id
-               LIMIT $12 OFFSET $13"#,
-        )
-        .bind(workspace_id.0)
-        .bind(&query.search)
-        .bind(search)
-        .bind(&query.connection_ids)
-        .bind(&query.location_ids)
-        .bind(&asset_kinds)
-        .bind(&query.group_ids)
-        .bind(&blueprint_kinds)
-        .bind(&reconciliation_states)
-        .bind(sort)
-        .bind(order)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_error)
-    }
-}
+                 connection_id,eve_item_id"#;
 
 #[derive(sqlx::FromRow)]
 struct SummaryRow {
@@ -1109,6 +1251,64 @@ mod tests {
         assert_eq!(
             page.summary.expect("summary").total_packaged_volume,
             "280.7500"
+        );
+    }
+
+    /// Without a search, filter or sort that reads them, the location,
+    /// container, kind and reconciliation lookups run for the page's rows
+    /// only; the rows must still carry them.
+    #[sqlx::test(migrations = "../../migrations")]
+    #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+    async fn flat_assets_page_rows_carry_lookups_the_query_did_not_need(pool: PgPool) {
+        let (workspace_id, _) = seed_flat_assets(&pool).await;
+        let repository = PgAssetBrowserRepository::new(pool);
+        let query: FlatAssetQuery = serde_json::from_value(serde_json::json!({})).expect("query");
+        let page = repository
+            .flat_assets(workspace_id, &query.validate().expect("valid query"))
+            .await
+            .expect("page");
+
+        assert_eq!(page.total, 3);
+        let tritanium = page
+            .rows
+            .iter()
+            .find(|row| row.type_id == 34)
+            .expect("tritanium row");
+        assert_eq!(
+            tritanium.container_name.as_deref(),
+            Some("Station Container")
+        );
+        assert_eq!(
+            tritanium.location_name.as_deref(),
+            Some("Jita IV - Moon 4 - Caldari Navy Assembly Plant")
+        );
+        assert_eq!(tritanium.reconciliation.state, "unaccounted");
+        assert_eq!(
+            tritanium.reconciliation.observed_owner_type_quantity,
+            27_075
+        );
+        let container = page
+            .rows
+            .iter()
+            .find(|row| row.type_id == 1001)
+            .expect("container row");
+        assert!(container.is_container);
+        assert_eq!(container.asset_kind, "container");
+
+        let query: FlatAssetQuery =
+            serde_json::from_value(serde_json::json!({ "assetKinds": ["container"] }))
+                .expect("query");
+        let page = repository
+            .flat_assets(workspace_id, &query.validate().expect("valid query"))
+            .await
+            .expect("container page");
+        assert_eq!(page.total, 1);
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| row.eve_item_id)
+                .collect::<Vec<_>>(),
+            vec![5001]
         );
     }
 
