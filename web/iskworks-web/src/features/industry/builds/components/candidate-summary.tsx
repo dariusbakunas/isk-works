@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import type { CreateBuildPlanPreview } from "../../../../api/industry";
 import { WarningBadge } from "../../../../components/warning-badge";
 import { CalculationEvidenceModal } from "../planner/calculation-evidence-modal";
+import { effectiveUnitCost } from "../../shared/decimal";
 import { formatMoney } from "../../shared/formatting";
 
 type CandidatePreview = CreateBuildPlanPreview;
@@ -26,6 +27,13 @@ export function CandidateSummary({
   // unknown -- the revision reports it as 0 plus a missing count, so show
   // "Incomplete" rather than a fabricated figure, as profit/margin already do.
   const materialsKnown = !candidate || (candidate.missingPriceCount ?? 0) === 0;
+  const totalCost = materialsKnown ? preview?.worksheet?.summary.totalCost ?? null : null;
+  // Only a multi-unit build gets a per-unit figure; for one unit it would
+  // just repeat the total.
+  const outputQuantity = preview?.worksheet?.output?.items[0]?.requiredQuantity ?? 0;
+  const unitCost = totalCost !== null && outputQuantity > 1
+    ? effectiveUnitCost(totalCost, outputQuantity)
+    : null;
   const closeEvidence = () => {
     setEvidenceOpen(false);
     requestAnimationFrame(() => evidenceTrigger.current?.focus());
@@ -44,7 +52,11 @@ export function CandidateSummary({
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-6">
         <CandidateMetric label="Material cost" value={formatMoney(materialsKnown ? candidate?.estimatedMaterialCost ?? null : null)} />
         <CandidateMetric label="Installation" value={formatMoney(installationCost)} />
-        <CandidateMetric label="Total cost" value={formatMoney(materialsKnown ? preview?.worksheet?.summary.totalCost ?? null : null)} />
+        <CandidateMetric
+          detail={unitCost ? `${formatMoney(unitCost)} / unit` : undefined}
+          label="Total cost"
+          value={formatMoney(totalCost)}
+        />
         <CandidateMetric
           action={candidate && createPreview?.calculationEvidence ? (
             <button
@@ -102,11 +114,14 @@ export function CandidateSummary({
 
 function CandidateMetric({
   action,
+  detail,
   label,
   tone = "neutral",
   value,
 }: {
   action?: ReactNode;
+  /** A secondary line under the value, e.g. the per-unit share of a total. */
+  detail?: string;
   label: string;
   tone?: "negative" | "neutral";
   value: string;
@@ -123,6 +138,11 @@ function CandidateMetric({
       >
         {value}
       </strong>
+      {detail ? (
+        <span className="mt-0.5 block truncate font-mono text-[10px] tabular-nums text-muted" title={detail}>
+          {detail}
+        </span>
+      ) : null}
     </div>
   );
 }
