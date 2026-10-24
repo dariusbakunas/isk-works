@@ -24,6 +24,9 @@ function preview(): CreateBuildPlanPreview {
         installationCost: "15492052.2400",
         totalCost: "156032742.9100",
       },
+      output: {
+        items: [{ role: "output", requiredQuantity: 1 }],
+      },
     },
   } as unknown as CreateBuildPlanPreview;
 }
@@ -47,6 +50,30 @@ describe("CandidateSummary", () => {
     expect(screen.getByText("156,032,742.91 ISK")).toBeInTheDocument();
     expect(screen.getAllByText("3 input types have shortages.")).toHaveLength(1);
     expect(screen.getByText("226 total units must be acquired before production.")).toBeInTheDocument();
+  });
+
+  test("shows the projected cost per unit under total cost for a multi-unit build", () => {
+    const multi = preview();
+    multi.worksheet.output.items[0].requiredQuantity = 4;
+    render(<CandidateSummary preview={multi} />);
+
+    expect(screen.getByText("156,032,742.91 ISK")).toBeInTheDocument();
+    expect(screen.getByText("39,008,185.73 ISK / unit")).toBeInTheDocument();
+  });
+
+  test("omits the per-unit cost when the build produces a single unit", () => {
+    render(<CandidateSummary preview={preview()} />);
+
+    expect(screen.queryByText(/\/ unit/)).toBeNull();
+  });
+
+  test("omits the per-unit cost when total cost is incomplete", () => {
+    const incomplete = preview();
+    incomplete.worksheet.output.items[0].requiredQuantity = 4;
+    Object.assign(incomplete.candidate, { missingPriceCount: 1 });
+    render(<CandidateSummary preview={incomplete} />);
+
+    expect(screen.queryByText(/\/ unit/)).toBeNull();
   });
 
   test("a missing material price shows material and total cost as Incomplete, never 0", () => {
