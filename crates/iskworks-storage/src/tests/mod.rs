@@ -12,6 +12,7 @@ mod auth_sessions;
 mod sde_geography;
 mod sde_market_catalog;
 mod sde_recipes;
+mod sde_skills;
 mod workspace;
 
 // ---------------------------------------------------------------------------

@@ -43,6 +43,7 @@ impl SdeImportStore for PgSdeRepository {
             classification_metadata: requires_classification_metadata,
             planetary_data: requires_planetary_data,
             stargates: requires_stargates,
+            skill_dogma: requires_skill_dogma,
         } = requires;
         let row = sqlx::query_as::<_, ImportIdentityRow>(
             r#"
@@ -127,6 +128,14 @@ impl SdeImportStore for PgSdeRepository {
                   WHERE gates.import_id = sde_imports.id
                 )
               )
+              AND (
+                $10 = false
+                OR EXISTS (
+                  SELECT 1
+                  FROM sde_skills skills
+                  WHERE skills.import_id = sde_imports.id
+                )
+              )
             "#,
         )
         .bind(checksum)
@@ -138,6 +147,7 @@ impl SdeImportStore for PgSdeRepository {
         .bind(requires_classification_metadata)
         .bind(requires_planetary_data)
         .bind(requires_stargates)
+        .bind(requires_skill_dogma)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
@@ -698,6 +708,45 @@ impl SdeImportStore for PgSdeRepository {
                     .push_bind(gate.stargate_id)
                     .push_bind(gate.solar_system_id)
                     .push_bind(gate.destination_solar_system_id);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in dataset.skills.chunks(TYPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_skills \
+                 (import_id, type_id, rank, primary_attribute, secondary_attribute, omega_only) ",
+            );
+            query.push_values(batch, |mut row, skill| {
+                row.push_bind(import_id)
+                    .push_bind(skill.type_id)
+                    .push_bind(skill.rank)
+                    .push_bind(skill.primary_attribute.as_str())
+                    .push_bind(skill.secondary_attribute.as_str())
+                    .push_bind(skill.omega_only);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in dataset.required_skills.chunks(TYPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_type_required_skills \
+                 (import_id, type_id, ordinal, skill_type_id, level) ",
+            );
+            query.push_values(batch, |mut row, required| {
+                row.push_bind(import_id)
+                    .push_bind(required.type_id)
+                    .push_bind(required.ordinal)
+                    .push_bind(required.skill_type_id)
+                    .push_bind(required.level);
             });
             query
                 .build()
