@@ -20,6 +20,7 @@ pub(crate) mod order_acquisition_runs;
 pub(crate) mod orders;
 pub(crate) mod planetary;
 pub(crate) mod sde;
+pub(crate) mod skills;
 pub(crate) mod workspace;
 
 /// Hard ceiling on any SDE / reference / search `limit`. These endpoints

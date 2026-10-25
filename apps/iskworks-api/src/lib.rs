@@ -187,6 +187,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::esi::router())
         .merge(routes::characters::router())
         .merge(routes::planetary::router())
+        .merge(routes::skills::router())
         .merge(admin_router(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
