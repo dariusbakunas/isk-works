@@ -1097,6 +1097,21 @@ impl CharacterSyncService {
             .next()
             .ok_or_else(|| "ESI returned no skills record".to_string())?;
         let mut summary = serde_json::to_value(&skills).map_err(SourceFailure::from)?;
+        // Same scope as the skills read. Training times degrade to estimates
+        // without it, so a failure here leaves the key out rather than
+        // failing the whole source.
+        if let Ok(attributes) = self
+            .transport
+            .character_attributes(access_token, connection.eve_character_id)
+            .await
+        {
+            if let (Value::Object(map), Some(Ok(attributes_value))) = (
+                &mut summary,
+                attributes.records.first().map(serde_json::to_value),
+            ) {
+                map.insert("attributes".to_string(), attributes_value);
+            }
+        }
         if granted(connection, SKILL_QUEUE_SCOPE) {
             if let Ok(queue) = self
                 .transport

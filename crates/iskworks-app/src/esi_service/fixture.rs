@@ -283,6 +283,30 @@ impl EsiTransport for FixtureEsiTransport {
         })
     }
 
+    async fn character_attributes(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+    ) -> Result<EsiResponse<CharacterAttributesObservation>, EsiError> {
+        Ok(EsiResponse {
+            records: vec![CharacterAttributesObservation {
+                charisma: 19,
+                intelligence: 20,
+                memory: 27,
+                perception: 27,
+                willpower: 17,
+                bonus_remaps: Some(1),
+                last_remap_date: None,
+                accrued_remap_cooldown_date: None,
+            }],
+            not_modified: false,
+            metadata: EsiResponseMetadata {
+                expires: Some((Utc::now() + Duration::hours(1)).to_rfc2822()),
+                ..Default::default()
+            },
+        })
+    }
+
     async fn character_skill_queue(
         &self,
         _access_token: &str,
