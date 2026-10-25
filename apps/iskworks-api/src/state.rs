@@ -49,6 +49,7 @@ pub struct AppState {
     calendar_service: Option<Arc<CalendarService>>,
     jobs_service: Option<Arc<iskworks_app::JobsService>>,
     planetary_characters: Option<Arc<dyn PlanetaryCharacterSource>>,
+    skills_characters: Option<Arc<dyn iskworks_app::SkillsCharacterSource>>,
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
     facility_repository: Option<Arc<iskworks_storage::PgFacilityRepository>>,
@@ -93,6 +94,7 @@ impl AppState {
             calendar_service: None,
             jobs_service: None,
             planetary_characters: None,
+            skills_characters: None,
             planetary_preferences: None,
             facility_repository: None,
             facility_defaults_repository: None,
@@ -209,6 +211,7 @@ impl AppState {
         )));
         self.character_roster_service = Some(character_roster_service);
         self.planetary_characters = Some(repository.clone());
+        self.skills_characters = Some(repository.clone());
         self.planetary_preferences = Some(repository.clone());
         let service = service.map(Arc::new);
         self.character_sync_service = service.as_ref().map(|service| {
@@ -233,6 +236,18 @@ impl AppState {
     ) -> Self {
         self.planetary_characters = Some(characters);
         self.planetary_preferences = Some(preferences);
+        self
+    }
+
+    /// The Skills page's character source, normally wired by
+    /// [`Self::with_esi`] from the Postgres ESI repository; tests substitute
+    /// fakes.
+    #[must_use]
+    pub fn with_skills_characters(
+        mut self,
+        characters: Arc<dyn iskworks_app::SkillsCharacterSource>,
+    ) -> Self {
+        self.skills_characters = Some(characters);
         self
     }
 
@@ -706,6 +721,17 @@ impl AppState {
                 .ok_or_else(esi_not_configured)?,
             self.sde_repository.clone(),
             self.market_repository()?,
+        ))
+    }
+
+    pub(crate) fn skill_catalogue_service(
+        &self,
+    ) -> Result<iskworks_app::SkillCatalogueService, ApiError> {
+        Ok(iskworks_app::SkillCatalogueService::new(
+            self.skills_characters
+                .clone()
+                .ok_or_else(esi_not_configured)?,
+            self.sde_repository.clone(),
         ))
     }
 

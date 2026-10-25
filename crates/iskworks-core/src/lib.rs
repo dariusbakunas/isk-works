@@ -39,6 +39,7 @@ pub mod planetary;
 mod production;
 pub mod production_dependency;
 mod production_stage;
+pub mod skills;
 pub mod training;
 mod worksheet;
 mod workspace;

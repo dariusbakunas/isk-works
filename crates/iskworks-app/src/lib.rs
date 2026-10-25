@@ -25,6 +25,7 @@ mod operation_metrics;
 mod order_plan;
 mod planetary;
 mod public_market;
+mod skills_catalogue;
 mod sync_metrics;
 mod ticket_jobs;
 
@@ -62,5 +63,9 @@ pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,
 };
 pub use public_market::PublicMarketService;
+pub use skills_catalogue::{
+    SkillCatalogueCharacter, SkillCatalogueResponse, SkillCatalogueService, SkillsCharacter,
+    SkillsCharacterSource,
+};
 pub use sync_metrics::init_metrics as init_sync_metrics;
 pub use ticket_jobs::{IndustryJobsSynced, TicketJobError, TicketJobService};
