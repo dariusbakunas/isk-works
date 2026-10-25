@@ -1,5 +1,8 @@
 use super::*;
-use iskworks_sde::{ImportRequiredSkill, ImportSkill, SkillAttribute};
+use iskworks_sde::{
+    ImportRequiredSkill, ImportSkill, RequiredSkill, SkillAttribute, SkillDefinition,
+};
+use std::collections::BTreeMap;
 
 fn skill_type(type_id: i64, name: &str) -> ImportType {
     ImportType {
@@ -152,4 +155,89 @@ async fn skill_dogma_is_stored_and_an_import_without_it_is_redone(pool: PgPool) 
         .await
         .unwrap()
         .is_some());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn skill_catalogue_lists_published_skills_with_prerequisites(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    let mut dataset = skills_fixture("checksum-catalogue");
+    // An unpublished skill (e.g. a retired one) is not in the catalogue.
+    dataset.types.push(ImportType {
+        published: false,
+        ..skill_type(9_001, "Retired Skill")
+    });
+    dataset.skills.push(skill(9_001, 1, false));
+    import_active(&repository, &dataset).await;
+
+    let catalogue = repository.skill_catalogue().await.unwrap();
+
+    let drones = |type_id: i64, name: &str, rank, omega_only, prerequisites| SkillDefinition {
+        type_id,
+        name: name.to_string(),
+        group_id: 273,
+        group_name: "Drones".to_string(),
+        rank,
+        primary_attribute: SkillAttribute::Memory,
+        secondary_attribute: SkillAttribute::Perception,
+        omega_only,
+        prerequisites,
+    };
+    let needs = |skill_type_id, level| RequiredSkill {
+        skill_type_id,
+        level,
+    };
+    assert_eq!(
+        catalogue,
+        vec![
+            drones(
+                12_487,
+                "Amarr Drone Specialization",
+                5,
+                true,
+                vec![needs(3_442, 5), needs(3_436, 5)],
+            ),
+            drones(3_442, "Drone Interfacing", 5, false, vec![needs(3_436, 5)]),
+            drones(3_436, "Drones", 1, false, Vec::new()),
+        ]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn required_skills_by_type_in_ordinal_order(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    import_active(&repository, &skills_fixture("checksum-required")).await;
+
+    let required = repository
+        .required_skills(&[5_876, 12_487, 34])
+        .await
+        .unwrap();
+
+    assert_eq!(
+        required,
+        BTreeMap::from([
+            (
+                5_876,
+                vec![RequiredSkill {
+                    skill_type_id: 3_436,
+                    level: 1
+                }]
+            ),
+            (
+                12_487,
+                vec![
+                    RequiredSkill {
+                        skill_type_id: 3_442,
+                        level: 5
+                    },
+                    RequiredSkill {
+                        skill_type_id: 3_436,
+                        level: 5
+                    },
+                ]
+            ),
+        ])
+    );
+    assert!(repository.required_skills(&[]).await.unwrap().is_empty());
 }

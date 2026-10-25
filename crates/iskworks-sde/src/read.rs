@@ -199,6 +199,30 @@ impl FromStr for SkillAttribute {
     }
 }
 
+/// One prerequisite: the skill and the level it must be trained to.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequiredSkill {
+    pub skill_type_id: i64,
+    pub level: i16,
+}
+
+/// A published skill with its training dogma; `prerequisites` are in the
+/// order the client lists them.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDefinition {
+    pub type_id: i64,
+    pub name: String,
+    pub group_id: i64,
+    pub group_name: String,
+    pub rank: i32,
+    pub primary_attribute: SkillAttribute,
+    pub secondary_attribute: SkillAttribute,
+    pub omega_only: bool,
+    pub prerequisites: Vec<RequiredSkill>,
+}
+
 /// What a rig's bonuses are allowed to affect, resolved for one activity.
 /// A `None` field is unrestricted (no `filterID`, or an SDE without the
 /// dataset).
@@ -685,6 +709,21 @@ pub trait SdeReadRepository: Send + Sync {
     async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError> {
         let _ = region_id;
         Ok(Vec::new())
+    }
+    /// Every published skill in a published group of the active import,
+    /// sorted by group name then skill name. Empty when the import predates
+    /// skill dogma.
+    async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError> {
+        Ok(Vec::new())
+    }
+    /// Required skills by type id (skills, ships, modules), in ordinal
+    /// order. Types without requirements, or unknown ones, yield no entry.
+    async fn required_skills(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<BTreeMap<i64, Vec<RequiredSkill>>, SdeError> {
+        let _ = type_ids;
+        Ok(BTreeMap::new())
     }
     /// Planet names and systems by planet id; unknown ids yield no entry.
     async fn planet_references(
