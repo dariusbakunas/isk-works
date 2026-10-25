@@ -300,3 +300,182 @@ fn a_summary_without_attributes_or_queue_still_parses() {
 fn a_summary_without_skills_is_unreadable() {
     assert!(parse_skills_summary(&json!({ "total_sp": 1 })).is_none());
 }
+
+// --- Catalogue overlay ------------------------------------------------------
+
+fn progress(catalogue: &SkillCatalogue, type_id: i64) -> &SkillProgress {
+    catalogue
+        .skills
+        .iter()
+        .find(|skill| skill.definition.type_id == type_id)
+        .and_then(|skill| skill.progress.as_ref())
+        .expect("character progress")
+}
+
+/// Drones V, Drone Interfacing IV training to V at its attribute rate
+/// (1,053,725 SP at 40.5 SP/min = 26,018 min, 20,000 left), and
+/// Leadership II with 500 SP into level III.
+fn trained_character() -> CharacterSkillsSnapshot {
+    let mut character = snapshot(vec![
+        skill(DRONES, 5, 256_000),
+        skill(DRONE_INTERFACING, 4, 300_000),
+        skill(LEADERSHIP, 2, 1_915),
+    ]);
+    character.queue = vec![queue_entry(
+        DRONE_INTERFACING,
+        5,
+        0,
+        Some((
+            now() - Duration::minutes(6_018),
+            now() + Duration::minutes(20_000),
+        )),
+        Some((226_275, 1_280_000)),
+    )];
+    character
+}
+
+#[test]
+fn catalogue_states_and_times_for_a_character() {
+    let catalogue = build_catalogue(&definitions(), Some(&trained_character()), now());
+
+    let drones = progress(&catalogue, DRONES);
+    assert_eq!(drones.state, SkillState::Max);
+    assert_eq!(drones.seconds_to_next_level, None);
+
+    // Training: the time is the queue's own finish, so it agrees with the
+    // queue rail.
+    let interfacing = progress(&catalogue, DRONE_INTERFACING);
+    assert_eq!(interfacing.state, SkillState::Training);
+    assert_eq!(
+        interfacing.seconds_to_next_level,
+        Some(Duration::minutes(20_000).num_seconds())
+    );
+    assert_eq!(interfacing.queued_to_level, Some(5));
+
+    // Injected below V: remaining SP of the next level over CHA/WIL
+    // (19 + 17/2 = 27.5 SP/min): (8,000 - 1,915) / 27.5 min, rounded up.
+    let leadership = progress(&catalogue, LEADERSHIP);
+    assert_eq!(leadership.state, SkillState::CanTrain);
+    assert_eq!(leadership.seconds_to_next_level, Some(13_277));
+    assert!(!leadership.estimated);
+
+    // Not injected, prerequisites met: no time.
+    let scout = progress(&catalogue, SCOUT_DRONES);
+    assert_eq!(scout.state, SkillState::CanInject);
+    assert_eq!(scout.trained_level, 0);
+    assert_eq!(scout.seconds_to_next_level, None);
+    // Omega-only is an ordinary skill for an Omega.
+    assert_eq!(progress(&catalogue, EW_DRONES).state, SkillState::CanInject);
+}
+
+#[test]
+fn a_queued_skill_reports_its_target_level() {
+    let mut character = trained_character();
+    character.queue.push(queue_entry(
+        LEADERSHIP,
+        4,
+        1,
+        Some((
+            now() + Duration::minutes(20_000),
+            now() + Duration::minutes(30_000),
+        )),
+        None,
+    ));
+
+    let catalogue = build_catalogue(&definitions(), Some(&character), now());
+
+    let leadership = progress(&catalogue, LEADERSHIP);
+    assert_eq!(leadership.state, SkillState::Queued);
+    assert_eq!(leadership.queued_to_level, Some(4));
+    assert_eq!(leadership.seconds_to_next_level, Some(13_277));
+}
+
+#[test]
+fn unmet_prerequisites_lock_a_skill() {
+    let catalogue = build_catalogue(&definitions(), Some(&snapshot(vec![])), now());
+
+    assert_eq!(progress(&catalogue, DRONES).state, SkillState::CanInject);
+    assert_eq!(
+        progress(&catalogue, DRONE_INTERFACING).state,
+        SkillState::Locked
+    );
+    assert_eq!(progress(&catalogue, SCOUT_DRONES).state, SkillState::Locked);
+}
+
+#[test]
+fn an_alpha_cannot_train_omega_only_skills() {
+    let mut capped = skill(LEADERSHIP, 5, 256_000);
+    capped.active_level = 4;
+    let character = snapshot(vec![skill(DRONES, 5, 256_000), capped]);
+
+    let catalogue = build_catalogue(&definitions(), Some(&character), now());
+
+    assert_eq!(
+        catalogue.rate.map(|rate| rate.clone),
+        Some(CloneState::Alpha)
+    );
+    let ew = progress(&catalogue, EW_DRONES);
+    assert_eq!(ew.state, SkillState::OmegaOnly);
+    assert_eq!(ew.seconds_to_next_level, None);
+    // Trained to V and only capped by the clone: nothing left to train.
+    let leadership = progress(&catalogue, LEADERSHIP);
+    assert_eq!(leadership.state, SkillState::Max);
+    assert_eq!(leadership.active_level, 4);
+}
+
+#[test]
+fn estimated_times_without_attributes() {
+    let mut character = trained_character();
+    character.attributes = None;
+
+    let catalogue = build_catalogue(&definitions(), Some(&character), now());
+
+    let leadership = progress(&catalogue, LEADERSHIP);
+    assert!(leadership.estimated);
+    assert!(leadership.seconds_to_next_level.is_some());
+}
+
+#[test]
+fn groups_count_skills_and_skill_points() {
+    let catalogue = build_catalogue(&definitions(), Some(&trained_character()), now());
+
+    assert_eq!(
+        catalogue.groups,
+        vec![
+            CatalogueGroup {
+                group_id: 273,
+                name: "Drones".to_string(),
+                skill_count: 4,
+                max_sp: 1_280_000 + 256_000 + 1_280_000 + 256_000,
+                injected_count: Some(2),
+                trained_sp: Some(256_000 + 300_000),
+            },
+            CatalogueGroup {
+                group_id: 258,
+                name: "Fleet Support".to_string(),
+                skill_count: 1,
+                max_sp: 256_000,
+                injected_count: Some(1),
+                trained_sp: Some(1_915),
+            },
+        ]
+    );
+}
+
+#[test]
+fn without_a_character_the_catalogue_is_definitions_only() {
+    let catalogue = build_catalogue(&definitions(), None, now());
+
+    assert!(catalogue.rate.is_none());
+    assert!(catalogue
+        .skills
+        .iter()
+        .all(|skill| skill.progress.is_none()));
+    assert_eq!(catalogue.groups[0].injected_count, None);
+    let drones = catalogue
+        .skills
+        .iter()
+        .find(|skill| skill.definition.type_id == DRONES)
+        .unwrap();
+    assert_eq!(drones.sp_per_level, [250, 1_415, 8_000, 45_255, 256_000]);
+}
