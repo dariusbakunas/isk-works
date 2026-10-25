@@ -73,6 +73,8 @@ const entryNames = () =>
     .getAllByRole("listitem")
     .map((item) => item.getAttribute("data-entry"));
 const puts = (calls: Call[]) => calls.filter((call) => call.method === "PUT");
+/** Trained entries are hidden by default; show them to act on one. */
+const showTrained = () => fireEvent.click(screen.getByLabelText("Hide trained"));
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -93,10 +95,8 @@ describe("Skills › Plan editor", () => {
     expect(screen.getByTestId("plan-completion")).toHaveTextContent("71%");
     expect(screen.getByTestId("plan-completion")).toHaveTextContent("30m 52s");
     expect(screen.getByText("Missing skillbooks (1)")).toBeInTheDocument();
-    expect(entryNames()).toEqual(["Drones I", "Drones II", "Drones III", "Drones IV", "Drones V", "Drone Interfacing I"]);
-    const drones = within(entries()).getAllByRole("listitem")[0];
-    expect(drones).toHaveAttribute("data-status", "done");
-    expect(within(entries()).getAllByRole("listitem")[5]).toHaveTextContent("30m 52s");
+    expect(entryNames()).toEqual(["Drone Interfacing I"]);
+    expect(within(entries()).getAllByRole("listitem")[0]).toHaveTextContent("30m 52s");
     expect(screen.getByTestId("plan-footer")).toHaveTextContent("6 skills");
 
     const progress = screen.getByRole("list", { name: "Character progress" });
@@ -107,14 +107,17 @@ describe("Skills › Plan editor", () => {
     expect(rows[1]).toHaveTextContent("No skills data");
   });
 
-  test("Hide trained leaves only what is left to train", async () => {
+  test("Hide trained is on by default and can show the trained entries", async () => {
     stubFetch();
     renderEditor();
     await screen.findByRole("heading", { name: "Drone basics" });
-
-    fireEvent.click(screen.getByLabelText("Hide trained"));
-
+    expect(screen.getByLabelText("Hide trained")).toBeChecked();
     expect(entryNames()).toEqual(["Drone Interfacing I"]);
+
+    showTrained();
+
+    expect(entryNames()).toEqual(["Drones I", "Drones II", "Drones III", "Drones IV", "Drones V", "Drone Interfacing I"]);
+    expect(within(entries()).getAllByRole("listitem")[0]).toHaveAttribute("data-status", "done");
   });
 
   test("moving an entry saves the new order, and a refused order is explained", async () => {
@@ -128,6 +131,7 @@ describe("Skills › Plan editor", () => {
     renderEditor();
     await screen.findByRole("heading", { name: "Drone basics" });
 
+    showTrained();
     fireEvent.click(screen.getByRole("button", { name: "Move Drones V up" }));
 
     await screen.findByText("Drones IV must come before Drones V");
@@ -146,6 +150,7 @@ describe("Skills › Plan editor", () => {
     renderEditor();
     await screen.findByRole("heading", { name: "Drone basics" });
 
+    showTrained();
     fireEvent.click(screen.getByRole("button", { name: "Remove Drones V" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Drone Interfacing I needs it");
