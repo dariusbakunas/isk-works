@@ -327,3 +327,87 @@ async fn unknown_plans_and_characters_are_not_found() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn previewing_pasted_text_saves_nothing() {
+    let app = app(Vec::new());
+
+    let (status, preview) = send(
+        &app,
+        "POST",
+        "/api/skill-plans/import/preview",
+        Some(json!({ "text": "Scout Drone Operation 1\nArmoured Comand 3" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["entries"][0]["name"], "Drones");
+    assert_eq!(
+        preview["inserted"],
+        json!([{ "skillTypeId": DRONES, "level": 1 }])
+    );
+    assert_eq!(
+        preview["unrecognized"],
+        json!([{ "line": 2, "text": "Armoured Comand 3", "reason": "unknownSkill" }])
+    );
+    assert_eq!(preview["error"], Value::Null);
+    let (_, list) = send(&app, "GET", "/api/skill-plans", None).await;
+    assert_eq!(list, json!([]));
+}
+
+#[tokio::test]
+async fn importing_text_creates_a_plan_that_exports_as_client_text() {
+    let app = app(Vec::new());
+
+    let (status, imported) = send(
+        &app,
+        "POST",
+        "/api/skill-plans/import",
+        Some(json!({ "name": "Scouts", "text": "Scout Drone Operation 1\nBogus 2" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "{imported}");
+    assert_eq!(imported["plan"]["name"], "Scouts");
+    assert_eq!(imported["unrecognized"][0]["line"], 2);
+    let id = imported["plan"]["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/skill-plans/{id}/export"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "text/plain; charset=utf-8"
+    );
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(&bytes[..], b"Drones 1\nScout Drone Operation 1");
+
+    let (status, _) = send(
+        &app,
+        "GET",
+        &format!("/api/skill-plans/{}/export", Uuid::new_v4()),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn importing_text_without_entries_is_rejected() {
+    let (status, body) = send(
+        &app(Vec::new()),
+        "POST",
+        "/api/skill-plans/import",
+        Some(json!({ "name": "Empty", "text": "nothing useful here" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}

@@ -1,0 +1,43 @@
+Mechanics 1
+Hull Upgrades 1
+Hull Upgrades 2
+Hull Upgrades 3
+Mechanics 2
+Mechanics 3
+Mechanics 4
+Mechanics 5
+Repair Systems 1
+Repair Systems 2
+Repair Systems 3
+Hull Upgrades 4
+EM Armor Compensation 1
+EM Armor Compensation 2
+Kinetic Armor Compensation 1
+Kinetic Armor Compensation 2
+Explosive Armor Compensation 1
+Explosive Armor Compensation 2
+Thermal Armor Compensation 1
+Thermal Armor Compensation 2
+Jury Rigging 1
+Jury Rigging 2
+Jury Rigging 3
+Armor Rigging 1
+Armor Rigging 2
+Armor Layering 1
+Armor Layering 2
+Armor Layering 3
+Resistance Phasing 1
+Resistance Phasing 2
+Resistance Phasing 3
+Repair Systems 4
+EM Armor Compensation 3
+EM Armor Compensation 4
+Kinetic Armor Compensation 3
+Kinetic Armor Compensation 4
+Explosive Armor Compensation 3
+Explosive Armor Compensation 4
+Thermal Armor Compensation 3
+Thermal Armor Compensation 4
+Armor Rigging 3
+Armor Layering 4
+Resistance Phasing 4

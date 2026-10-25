@@ -380,3 +380,99 @@ async fn updating_and_deleting_are_workspace_scoped() {
         .unwrap());
     assert!(service.delete(workspace, created.plan.id).await.unwrap());
 }
+
+// --- Text import / export ---------------------------------------------------
+
+#[tokio::test]
+async fn previewing_pasted_text_normalizes_and_reports_unusable_lines() {
+    let preview = service(Vec::new())
+        .preview_text("Scout Drone Operation 1\nBogus Skill 2")
+        .await
+        .unwrap();
+
+    let names = preview
+        .entries
+        .iter()
+        .map(|entry| (entry.name.as_str(), entry.level))
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec![("Drones", 1), ("Scout Drone Operation", 1)]);
+    assert_eq!(preview.inserted, vec![entry(DRONES, 1)]);
+    assert_eq!(preview.unrecognized.len(), 1);
+    assert_eq!(preview.unrecognized[0].line, 2);
+    assert_eq!(preview.error, None);
+}
+
+#[tokio::test]
+async fn previewing_out_of_order_text_explains_the_problem() {
+    let preview = service(Vec::new())
+        .preview_text("Scout Drone Operation 1\nDrones 1")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        preview.error.as_deref(),
+        Some("Drones I must come before Scout Drone Operation I")
+    );
+    assert_eq!(preview.entries.len(), 2);
+    assert!(preview.inserted.is_empty());
+}
+
+#[tokio::test]
+async fn importing_text_creates_the_plan_and_keeps_the_unusable_lines() {
+    let service = service(Vec::new());
+    let workspace = WorkspaceId::new();
+
+    let imported = service
+        .import_text(
+            workspace,
+            "Scouts".to_string(),
+            String::new(),
+            "Scout Drone Operation 1\nBogus Skill 2",
+            now(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(imported.detail.plan.name, "Scouts");
+    assert_eq!(imported.detail.entries.len(), 2);
+    assert_eq!(imported.unrecognized.len(), 1);
+
+    let nothing = service
+        .import_text(
+            workspace,
+            "Empty".to_string(),
+            String::new(),
+            "Bogus 1\n\n",
+            now(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(nothing, InventoryError::Validation(_)));
+}
+
+#[tokio::test]
+async fn exporting_writes_the_client_text() {
+    let service = service(Vec::new());
+    let workspace = WorkspaceId::new();
+    let created = service
+        .create(
+            workspace,
+            input("Scouts", vec![entry(SCOUT_DRONES, 1)]),
+            now(),
+        )
+        .await
+        .unwrap();
+
+    let text = service
+        .export_text(workspace, created.plan.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(text, "Drones 1\nScout Drone Operation 1");
+    assert!(service
+        .export_text(WorkspaceId::new(), created.plan.id)
+        .await
+        .unwrap()
+        .is_none());
+}
