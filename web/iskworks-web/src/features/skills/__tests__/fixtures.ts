@@ -73,6 +73,7 @@ export function catalogue(overrides: Partial<SkillCatalogue> = {}): SkillCatalog
         typeId: EW_DRONES,
         name: "EW Drone Interfacing",
         rank: 5,
+        spPerLevel: [1250, 7072, 40000, 226275, 1280000],
         omegaOnly: true,
         prerequisites: [{ skillTypeId: DRONE_INTERFACING, level: 5 }],
         progress: progress({ state: "locked" }),
@@ -95,4 +96,54 @@ export function catalogue(overrides: Partial<SkillCatalogue> = {}): SkillCatalog
     ],
     ...overrides,
   };
+}
+
+import type { CharacterDetail } from "../../../api/characters";
+
+export const MIRA = "22222222-2222-2222-2222-222222222222";
+
+export function characterDetail(overrides: Partial<CharacterDetail> = {}): CharacterDetail {
+  return {
+    connectionId: AURA,
+    eveCharacterId: 2_119_000_001,
+    characterName: "Aura Valex",
+    corporationId: null,
+    corporationName: null,
+    securityStatus: null,
+    solarSystemId: null,
+    solarSystemName: null,
+    walletBalance: null,
+    totalSp: 112_822_873,
+    unallocatedSp: 25_000,
+    trainingQueue: [],
+    trainingObservedAt: "2026-10-25T11:55:00Z",
+    trainingQueueScopeMissing: false,
+    calendarScopeMissing: false,
+    marketOrdersScopeMissing: false,
+    manufacturingActiveJobs: null,
+    manufacturingMaxJobs: null,
+    reactionActiveJobs: null,
+    reactionMaxJobs: null,
+    researchActiveJobs: null,
+    researchMaxJobs: null,
+    connectionStatus: "connected",
+    health: "healthy",
+    lastSyncedAt: "2026-10-25T11:55:00Z",
+    industryJobs: [],
+    sources: [
+      {
+        sourceKind: "skills",
+        refreshState: "current",
+        observedAt: "2026-10-25T11:55:00Z",
+        nextRefreshAt: null,
+        lastError: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function roster() {
+  const { sources: _sources, industryJobs: _jobs, ...aura } = characterDetail();
+  return [aura, { ...aura, connectionId: MIRA, eveCharacterId: 2_119_000_002, characterName: "Mira Caldari", totalSp: 6_200_000 }];
 }
