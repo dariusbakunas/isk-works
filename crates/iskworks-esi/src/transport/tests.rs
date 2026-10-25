@@ -2056,3 +2056,60 @@ async fn character_orders_reads_the_active_order_list() {
     assert_eq!(response.records[0].order_id, 7);
     assert_eq!(response.records[0].type_id, 12_005);
 }
+
+#[test]
+fn parse_character_attributes_reads_every_field() {
+    let raw = serde_json::json!({
+        "charisma": 19,
+        "intelligence": 20,
+        "memory": 27,
+        "perception": 27,
+        "willpower": 17,
+        "bonus_remaps": 1,
+        "last_remap_date": "2026-03-01T12:00:00Z",
+        "accrued_remap_cooldown_date": "2027-03-01T12:00:00Z",
+    });
+    let attributes = parse_character_attributes(raw).unwrap();
+    assert_eq!(
+        attributes,
+        CharacterAttributesObservation {
+            charisma: 19,
+            intelligence: 20,
+            memory: 27,
+            perception: 27,
+            willpower: 17,
+            bonus_remaps: Some(1),
+            last_remap_date: Some("2026-03-01T12:00:00Z".parse().unwrap()),
+            accrued_remap_cooldown_date: Some("2027-03-01T12:00:00Z".parse().unwrap()),
+        }
+    );
+}
+
+#[test]
+fn parse_character_attributes_allows_missing_remap_fields() {
+    let raw = serde_json::json!({
+        "charisma": 20,
+        "intelligence": 20,
+        "memory": 20,
+        "perception": 20,
+        "willpower": 20,
+    });
+    let attributes = parse_character_attributes(raw).unwrap();
+    assert_eq!(attributes.bonus_remaps, None);
+    assert_eq!(attributes.last_remap_date, None);
+    assert_eq!(attributes.accrued_remap_cooldown_date, None);
+}
+
+#[test]
+fn parse_character_attributes_rejects_a_missing_attribute() {
+    let raw = serde_json::json!({
+        "charisma": 20,
+        "intelligence": 20,
+        "memory": 20,
+        "perception": 20,
+    });
+    assert!(matches!(
+        parse_character_attributes(raw),
+        Err(EsiError::InvalidResponse)
+    ));
+}

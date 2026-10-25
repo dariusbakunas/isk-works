@@ -307,6 +307,21 @@ pub struct CharacterSkillsObservation {
     pub skills: Vec<CharacterSkillEntry>,
 }
 
+/// `GET /characters/{id}/attributes/`: the five training attributes
+/// (including any active implant bonuses, as ESI reports them) and remap
+/// state.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct CharacterAttributesObservation {
+    pub charisma: i64,
+    pub intelligence: i64,
+    pub memory: i64,
+    pub perception: i64,
+    pub willpower: i64,
+    pub bonus_remaps: Option<i64>,
+    pub last_remap_date: Option<DateTime<Utc>>,
+    pub accrued_remap_cooldown_date: Option<DateTime<Utc>>,
+}
+
 /// One entry from `/characters/{id}/skillqueue/`.
 ///
 /// `start_date`/`finish_date` are `None` for every entry at once when ESI
