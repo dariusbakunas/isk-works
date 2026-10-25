@@ -11,7 +11,9 @@ use iskworks_core::skills::{
     build_catalogue, parse_skills_summary, CharacterAttributes, CloneState, SkillCatalogue,
     TrainingRate,
 };
-use iskworks_core::{CharacterSourceKind, ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{
+    CharacterSourceKind, ConnectedCharacter, ConnectedCharacterId, InventoryError, WorkspaceId,
+};
 use iskworks_esi::SKILLS_SCOPE;
 use iskworks_sde::SdeReadRepository;
 use iskworks_storage::PgEsiRepository;
@@ -36,6 +38,12 @@ pub trait SkillsCharacterSource: Send + Sync {
         workspace_id: WorkspaceId,
         connection_id: ConnectedCharacterId,
     ) -> Result<Option<SkillsCharacter>, InventoryError>;
+
+    /// Every connected (not disconnected) character in the workspace.
+    async fn skills_characters(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillsCharacter>, InventoryError>;
 }
 
 #[async_trait]
@@ -55,22 +63,45 @@ impl SkillsCharacterSource for PgEsiRepository {
         else {
             return Ok(None);
         };
-        let skills = self
-            .character_source_state(connection.id)
+        Ok(Some(skills_character(self, connection).await?))
+    }
+
+    async fn skills_characters(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+        let mut characters = Vec::new();
+        for connection in self
+            .list_connections(workspace_id)
             .await?
             .into_iter()
-            .find(|source| source.source_kind == CharacterSourceKind::Skills);
-        Ok(Some(SkillsCharacter {
-            connection_id: connection.id,
-            name: connection.character_name,
-            skills_scope_granted: connection
-                .granted_scopes
-                .iter()
-                .any(|scope| scope == SKILLS_SCOPE),
-            observed_at: skills.as_ref().and_then(|source| source.observed_at),
-            skills_summary: skills.and_then(|source| source.summary),
-        }))
+            .filter(|connection| connection.disconnected_at.is_none())
+        {
+            characters.push(skills_character(self, connection).await?);
+        }
+        Ok(characters)
     }
+}
+
+async fn skills_character(
+    repository: &PgEsiRepository,
+    connection: ConnectedCharacter,
+) -> Result<SkillsCharacter, InventoryError> {
+    let skills = repository
+        .character_source_state(connection.id)
+        .await?
+        .into_iter()
+        .find(|source| source.source_kind == CharacterSourceKind::Skills);
+    Ok(SkillsCharacter {
+        connection_id: connection.id,
+        name: connection.character_name,
+        skills_scope_granted: connection
+            .granted_scopes
+            .iter()
+            .any(|scope| scope == SKILLS_SCOPE),
+        observed_at: skills.as_ref().and_then(|source| source.observed_at),
+        skills_summary: skills.and_then(|source| source.summary),
+    })
 }
 
 /// The selected character, for the page header.
