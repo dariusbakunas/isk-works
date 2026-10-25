@@ -55,6 +55,7 @@ pub(crate) enum EsiRoute {
     CharacterLocation,
     CharacterSkills,
     CharacterSkillQueue,
+    CharacterAttributes,
     CharacterIndustryJobs,
     CharacterPlanets,
     CharacterPlanetDetail,
@@ -70,7 +71,7 @@ pub(crate) enum EsiRoute {
 
 impl EsiRoute {
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 25] = [
+    pub(crate) const ALL: [Self; 26] = [
         Self::CharacterAssets,
         Self::CharacterBlueprints,
         Self::CharacterWalletTransactions,
@@ -86,6 +87,7 @@ impl EsiRoute {
         Self::CharacterLocation,
         Self::CharacterSkills,
         Self::CharacterSkillQueue,
+        Self::CharacterAttributes,
         Self::CharacterIndustryJobs,
         Self::CharacterPlanets,
         Self::CharacterPlanetDetail,
@@ -116,6 +118,7 @@ impl EsiRoute {
             Self::CharacterLocation => "/characters/{character_id}/location/",
             Self::CharacterSkills => "/characters/{character_id}/skills/",
             Self::CharacterSkillQueue => "/characters/{character_id}/skillqueue/",
+            Self::CharacterAttributes => "/characters/{character_id}/attributes/",
             Self::CharacterIndustryJobs => "/characters/{character_id}/industry/jobs/",
             Self::CharacterPlanets => "/characters/{character_id}/planets/",
             Self::CharacterPlanetDetail => "/characters/{character_id}/planets/{planet_id}/",

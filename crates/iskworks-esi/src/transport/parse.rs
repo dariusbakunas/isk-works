@@ -333,6 +333,21 @@ pub(super) fn parse_character_skills(raw: Value) -> Result<CharacterSkillsObserv
     })
 }
 
+pub(super) fn parse_character_attributes(
+    raw: Value,
+) -> Result<CharacterAttributesObservation, EsiError> {
+    Ok(CharacterAttributesObservation {
+        charisma: required_i64(&raw, "charisma")?,
+        intelligence: required_i64(&raw, "intelligence")?,
+        memory: required_i64(&raw, "memory")?,
+        perception: required_i64(&raw, "perception")?,
+        willpower: required_i64(&raw, "willpower")?,
+        bonus_remaps: optional_i64(&raw, "bonus_remaps"),
+        last_remap_date: optional_date(&raw, "last_remap_date"),
+        accrued_remap_cooldown_date: optional_date(&raw, "accrued_remap_cooldown_date"),
+    })
+}
+
 pub(super) fn parse_character_skill_queue_entry(
     raw: Value,
 ) -> Result<CharacterSkillQueueEntry, EsiError> {

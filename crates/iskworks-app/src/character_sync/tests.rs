@@ -12,12 +12,13 @@ use iskworks_core::{
 };
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
-    CalendarEventDetailObservation, CalendarEventObservation, CharacterIndustryJobObservation,
-    CharacterLocationObservation, CharacterOrderObservation, CharacterPlanetDetailObservation,
-    CharacterPlanetObservation, CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry,
-    CharacterSkillsObservation, EsiError, EsiResponse, EsiResponseMetadata, EveEntityName,
-    IndustrySystemCostIndex, PkceVerifier, PlanetPinContentObservation, PlanetPinObservation,
-    RefreshedToken, StructureInformation, WalletBalanceObservation, WalletTransactionObservation,
+    CalendarEventDetailObservation, CalendarEventObservation, CharacterAttributesObservation,
+    CharacterIndustryJobObservation, CharacterLocationObservation, CharacterOrderObservation,
+    CharacterPlanetDetailObservation, CharacterPlanetObservation, CharacterPublicInfo,
+    CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation, EsiError,
+    EsiResponse, EsiResponseMetadata, EveEntityName, IndustrySystemCostIndex, PkceVerifier,
+    PlanetPinContentObservation, PlanetPinObservation, RefreshedToken, StructureInformation,
+    WalletBalanceObservation, WalletTransactionObservation,
 };
 
 use super::*;
@@ -424,6 +425,28 @@ impl EsiTransport for FakeTransport {
                     trained_skill_level: 5,
                     skillpoints_in_skill: 1_280_000,
                 }],
+            }],
+            not_modified: false,
+            metadata: EsiResponseMetadata::default(),
+        })
+    }
+
+    async fn character_attributes(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+    ) -> Result<EsiResponse<CharacterAttributesObservation>, EsiError> {
+        self.check("character_attributes")?;
+        Ok(EsiResponse {
+            records: vec![CharacterAttributesObservation {
+                charisma: 19,
+                intelligence: 20,
+                memory: 27,
+                perception: 27,
+                willpower: 17,
+                bonus_remaps: Some(1),
+                last_remap_date: None,
+                accrued_remap_cooldown_date: None,
             }],
             not_modified: false,
             metadata: EsiResponseMetadata::default(),
@@ -1278,6 +1301,51 @@ async fn skills_summary_omits_the_training_queue_without_the_scope() {
         .find(|(_, kind, _)| *kind == CharacterSourceKind::Skills)
         .expect("skills should have completed even without the skill-queue scope");
     assert!(summary.get("skillQueue").is_none());
+}
+
+#[tokio::test]
+async fn skills_summary_includes_the_character_attributes() {
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::default(),
+        connection(all_scopes()),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let completed = repository.completed.lock().unwrap();
+    let (_, _, summary) = completed
+        .iter()
+        .find(|(_, kind, _)| *kind == CharacterSourceKind::Skills)
+        .expect("skills should have completed");
+    let attributes = summary.get("attributes").expect("attributes stored");
+    assert_eq!(attributes["memory"], 27);
+    assert_eq!(attributes["perception"], 27);
+    assert_eq!(attributes["willpower"], 17);
+    assert_eq!(attributes["bonus_remaps"], 1);
+}
+
+#[tokio::test]
+async fn skills_still_complete_without_attributes_when_that_call_fails() {
+    let (repository, service) = service(
+        RecordingRepository::default(),
+        FakeTransport::failing("character_attributes", EsiError::TemporaryFailure),
+        connection(all_scopes()),
+    );
+
+    service
+        .sync_connection(ConnectedCharacterId::new(), no_cancel())
+        .await;
+
+    let completed = repository.completed.lock().unwrap();
+    let (_, _, summary) = completed
+        .iter()
+        .find(|(_, kind, _)| *kind == CharacterSourceKind::Skills)
+        .expect("skills should complete even when attributes fail");
+    assert!(summary.get("attributes").is_none());
+    assert!(summary.get("skillQueue").is_some());
 }
 
 fn next_refresh_at_for(

@@ -42,6 +42,13 @@ reads attendee lists and never responds to events. Market orders are read from
 `/characters/{id}/orders/` (one request per character, every 20 minutes to match
 ESI's cache); ISK Works never places, changes or cancels orders.
 
+Each skills refresh reads `/characters/{id}/skills/`, plus
+`/characters/{id}/attributes/` (same scope, used for training times) and, when
+the character granted the skill queue scope, `/characters/{id}/skillqueue/`.
+It runs hourly, or a minute after the skill in training finishes if that comes
+sooner.
+ISK Works never changes the training queue; ESI has no way to.
+
 Industry jobs are read from `/characters/{id}/industry/jobs/` with
 `include_completed=true`, so one request per character returns both running jobs
 and the last 90 days of finished ones. ISK Works stores every job it sees, which

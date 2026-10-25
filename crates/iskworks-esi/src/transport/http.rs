@@ -1028,6 +1028,34 @@ impl EsiTransport for HttpEsiTransport {
         })
     }
 
+    async fn character_attributes(
+        &self,
+        access_token: &str,
+        character_id: i64,
+    ) -> Result<EsiResponse<CharacterAttributesObservation>, EsiError> {
+        let response = self
+            .get_json(
+                EsiRoute::CharacterAttributes,
+                format!(
+                    "{}/latest/characters/{character_id}/attributes/",
+                    self.esi_base_url
+                ),
+                access_token,
+                None,
+            )
+            .await?;
+        let metadata = metadata(&response);
+        let raw: Value = response
+            .json()
+            .await
+            .map_err(|error| decode_body_error(&error))?;
+        Ok(EsiResponse {
+            records: vec![parse_character_attributes(raw)?],
+            not_modified: false,
+            metadata,
+        })
+    }
+
     async fn character_skill_queue(
         &self,
         access_token: &str,

@@ -158,6 +158,14 @@ pub trait EsiTransport: Send + Sync {
         let _ = (access_token, character_id);
         Err(EsiError::PermanentFailure)
     }
+    async fn character_attributes(
+        &self,
+        access_token: &str,
+        character_id: i64,
+    ) -> Result<EsiResponse<CharacterAttributesObservation>, EsiError> {
+        let _ = (access_token, character_id);
+        Err(EsiError::PermanentFailure)
+    }
     async fn character_industry_jobs(
         &self,
         access_token: &str,
