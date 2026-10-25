@@ -19,8 +19,10 @@ function stubFetch(handlers: Record<string, Handler> = {}, plans: SkillPlanSumma
       ? custom(url, init)
       : url.includes("/api/skills/catalogue")
         ? catalogue()
-        : url.includes("/api/skill-plans")
-          ? plans
+        : url.includes(`/api/skill-plans/${PLAN_ID}`)
+          ? planDetail()
+          : url.includes("/api/skill-plans")
+            ? plans
           : url.endsWith("/api/characters")
             ? roster()
             : characterDetail({ connectionId: url.split("/").pop()! });

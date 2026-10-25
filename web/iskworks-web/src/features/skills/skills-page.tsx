@@ -1,4 +1,4 @@
-import { Link, NavLink, Route, Routes, useSearchParams } from "react-router";
+import { Link, NavLink, Route, Routes, useMatch, useSearchParams } from "react-router";
 
 import type { SkillCatalogueCharacter } from "../../api/skills";
 import { EmptyState, InlineAlert, PageHeader, Panel } from "../../components/primitives";
@@ -6,6 +6,7 @@ import { PRIVATE_ATTR } from "../../observability/private";
 import { CharacterSkillQueueTab } from "../characters/skill-queue-tab";
 import { useNow } from "../jobs/use-jobs";
 import { CatalogueTab } from "./catalogue-tab";
+import { PlanEditor } from "./plan-editor";
 import { PlansTab } from "./plans-tab";
 import { useCharacterDetail, useCharacters, useSkillCatalogue } from "./use-skills";
 
@@ -84,6 +85,9 @@ export function SkillsPage() {
     ? (roster.find((entry) => entry.connectionId === requested) ?? roster[0])?.connectionId ?? null
     : undefined;
   const catalogue = useSkillCatalogue(characterId);
+  // The plan editor has its own character column, so it takes the width
+  // the training queue would.
+  const editing = useMatch("/skills/plans/:planId") !== null;
   const tabSearch = characterId ? `?${new URLSearchParams({ character: characterId })}` : "";
 
   function selectCharacter(connectionId: string) {
@@ -111,7 +115,7 @@ export function SkillsPage() {
           ))}
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className={`grid gap-3 ${editing ? "" : "lg:grid-cols-[minmax(0,1fr)_20rem]"}`}>
           <div className="min-w-0 space-y-3">
             {characterId ? (
               <CharacterHeader
@@ -134,9 +138,13 @@ export function SkillsPage() {
             <Routes>
               <Route element={<CatalogueTab catalogue={catalogue.data} />} index />
               <Route element={<PlansTab characterId={characterId ?? null} />} path="plans" />
+              <Route
+                element={<PlanEditor catalogue={catalogue.data} characterId={characterId ?? null} />}
+                path="plans/:planId"
+              />
             </Routes>
           </div>
-          {characterId ? <QueueRail characterId={characterId} /> : null}
+          {characterId && !editing ? <QueueRail characterId={characterId} /> : null}
         </div>
       )}
     </>
