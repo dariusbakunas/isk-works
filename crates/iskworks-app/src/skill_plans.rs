@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use iskworks_core::skill_plans::{
-    evaluate_plan, normalize_plan, PlanEntry, PlanEvaluation, SkillGraph, SkillPlan,
-    SkillPlanError, SkillPlanId, SkillPlanInput, SkillPlanRepository,
+    evaluate_plan, format_plan_text, normalize_plan, parse_plan_text, PlanEntry, PlanEvaluation,
+    SkillGraph, SkillPlan, SkillPlanError, SkillPlanId, SkillPlanInput, SkillPlanRepository,
+    UnrecognizedLine,
 };
 use iskworks_core::skills::{parse_skills_summary, sp_for_level};
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
@@ -89,6 +90,27 @@ pub struct SkillPlanDetail {
     pub inserted: Vec<PlanEntry>,
 }
 
+/// What pasting text would make, for the import dialog.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanTextPreview {
+    /// Normalized, or as pasted when `error` is set.
+    pub entries: Vec<SkillPlanEntryView>,
+    pub inserted: Vec<PlanEntry>,
+    pub unrecognized: Vec<UnrecognizedLine>,
+    /// Why the text can't be imported as it is (e.g. a prerequisite listed
+    /// after the skill that needs it).
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedSkillPlan {
+    #[serde(flatten)]
+    pub detail: SkillPlanDetail,
+    pub unrecognized: Vec<UnrecognizedLine>,
+}
+
 #[derive(Clone)]
 pub struct SkillPlanService {
     plans: Arc<dyn SkillPlanRepository>,
@@ -135,6 +157,28 @@ fn plan_error(graph: &SkillGraph<'_>, error: SkillPlanError) -> InventoryError {
 
 fn level_sp(skill: &SkillDefinition, level: i16) -> i64 {
     sp_for_level(skill.rank, level) - sp_for_level(skill.rank, level - 1)
+}
+
+/// Entries with the skill facts the editor shows; skills the SDE no longer
+/// has are left out.
+fn entry_views(graph: &SkillGraph<'_>, entries: &[PlanEntry]) -> Vec<SkillPlanEntryView> {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let skill = graph.skill(entry.skill_type_id)?;
+            Some(SkillPlanEntryView {
+                skill_type_id: entry.skill_type_id,
+                level: entry.level,
+                name: skill.name.clone(),
+                group_name: skill.group_name.clone(),
+                rank: skill.rank,
+                primary_attribute: skill.primary_attribute,
+                secondary_attribute: skill.secondary_attribute,
+                omega_only: skill.omega_only,
+                sp: level_sp(skill, entry.level),
+            })
+        })
+        .collect()
 }
 
 fn evaluate(
@@ -248,25 +292,7 @@ impl SkillPlanService {
         inserted: Vec<PlanEntry>,
         now: DateTime<Utc>,
     ) -> Result<SkillPlanDetail, InventoryError> {
-        let graph = SkillGraph::new(definitions);
-        let entries = plan
-            .entries
-            .iter()
-            .filter_map(|entry| {
-                let skill = graph.skill(entry.skill_type_id)?;
-                Some(SkillPlanEntryView {
-                    skill_type_id: entry.skill_type_id,
-                    level: entry.level,
-                    name: skill.name.clone(),
-                    group_name: skill.group_name.clone(),
-                    rank: skill.rank,
-                    primary_attribute: skill.primary_attribute,
-                    secondary_attribute: skill.secondary_attribute,
-                    omega_only: skill.omega_only,
-                    sp: level_sp(skill, entry.level),
-                })
-            })
-            .collect();
+        let entries = entry_views(&SkillGraph::new(definitions), &plan.entries);
         let mut characters = self
             .characters
             .skills_characters(workspace_id)
@@ -372,6 +398,82 @@ impl SkillPlanService {
         id: SkillPlanId,
     ) -> Result<bool, InventoryError> {
         self.plans.delete_skill_plan(workspace_id, id).await
+    }
+
+    /// A dry run of [`Self::import_text`]: nothing is saved.
+    pub async fn preview_text(&self, text: &str) -> Result<PlanTextPreview, InventoryError> {
+        let definitions = self.definitions().await?;
+        let graph = SkillGraph::new(&definitions);
+        let parsed = parse_plan_text(text, &definitions);
+        Ok(match normalize_plan(&parsed.entries, &graph) {
+            Ok(normalized) => PlanTextPreview {
+                entries: entry_views(&graph, &normalized.entries),
+                inserted: normalized.inserted,
+                unrecognized: parsed.unrecognized,
+                error: None,
+            },
+            Err(error) => PlanTextPreview {
+                entries: entry_views(&graph, &parsed.entries),
+                inserted: Vec::new(),
+                unrecognized: parsed.unrecognized,
+                error: match plan_error(&graph, error) {
+                    InventoryError::Validation(message) => Some(message),
+                    other => Some(other.to_string()),
+                },
+            },
+        })
+    }
+
+    /// Creates a plan from text pasted from the client. Lines that aren't
+    /// entries come back with the plan; text with no entries at all is a
+    /// `Validation` error.
+    pub async fn import_text(
+        &self,
+        workspace_id: WorkspaceId,
+        name: String,
+        description: String,
+        text: &str,
+        now: DateTime<Utc>,
+    ) -> Result<ImportedSkillPlan, InventoryError> {
+        let definitions = self.definitions().await?;
+        let parsed = parse_plan_text(text, &definitions);
+        if parsed.entries.is_empty() {
+            return Err(InventoryError::Validation(
+                "the pasted text has no skill plan entries".to_string(),
+            ));
+        }
+        let detail = self
+            .create(
+                workspace_id,
+                SkillPlanInput {
+                    name,
+                    description,
+                    entries: parsed.entries,
+                },
+                now,
+            )
+            .await?;
+        Ok(ImportedSkillPlan {
+            detail,
+            unrecognized: parsed.unrecognized,
+        })
+    }
+
+    /// The plan as the client's plan text. `Ok(None)` when it isn't in the
+    /// workspace.
+    pub async fn export_text(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SkillPlanId,
+    ) -> Result<Option<String>, InventoryError> {
+        let Some(plan) = self.plans.skill_plan(workspace_id, id).await? else {
+            return Ok(None);
+        };
+        let definitions = self.definitions().await?;
+        Ok(Some(format_plan_text(
+            &plan.entries,
+            &SkillGraph::new(&definitions),
+        )))
     }
 }
 

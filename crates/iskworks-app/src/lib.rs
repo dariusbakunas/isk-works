@@ -65,8 +65,8 @@ pub use planetary::{
 };
 pub use public_market::PublicMarketService;
 pub use skill_plans::{
-    CharacterPlanProgress, SkillPlanDetail, SkillPlanEntryView, SkillPlanHeader, SkillPlanProgress,
-    SkillPlanService, SkillPlanSummary,
+    CharacterPlanProgress, ImportedSkillPlan, PlanTextPreview, SkillPlanDetail, SkillPlanEntryView,
+    SkillPlanHeader, SkillPlanProgress, SkillPlanService, SkillPlanSummary,
 };
 pub use skills_catalogue::{
     SkillCatalogueCharacter, SkillCatalogueResponse, SkillCatalogueService, SkillsCharacter,
