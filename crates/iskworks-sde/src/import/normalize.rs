@@ -308,7 +308,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     )?;
 
     let (structure_modifiers, rig_modifiers, reaction_rig_modifiers) =
-        normalize_facility_dogma(raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
+        normalize_facility_dogma(&raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
 
     let mut types = raw_types_by_id
         .into_values()
@@ -340,6 +340,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         .collect::<Vec<_>>();
 
     types.sort_by_key(|item| item.type_id);
+    let (skills, required_skills) = normalize_skill_dogma(&raw_type_dogma, &types, &groups);
     if source.has_classification_metadata() {
         let meta_ids = meta_groups
             .iter()
@@ -465,6 +466,8 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         planet_schematics,
         planets,
         stargates,
+        skills,
+        required_skills,
         skipped_blueprints,
         skipped_reaction_formulas,
     })
@@ -658,7 +661,7 @@ pub(crate) fn parse_activity_recipe(
 /// no `ImportStructureModifiers` counterpart; the whole discount comes from
 /// rigs (`RefRigTimeBonus`/`RefRigMatBonus` below).
 pub(crate) fn normalize_facility_dogma(
-    records: Vec<RawTypeDogma>,
+    records: &[RawTypeDogma],
     types: &HashMap<i64, RawType>,
     rig_filter_ids: &HashMap<i64, RigFilterIds>,
 ) -> (
@@ -673,7 +676,7 @@ pub(crate) fn normalize_facility_dogma(
     for record in records {
         let attributes = record
             .dogma_attributes
-            .into_iter()
+            .iter()
             .map(|value| (value.attribute_id, value.value))
             .collect::<HashMap<_, _>>();
         if types
@@ -742,6 +745,118 @@ pub(crate) fn normalize_facility_dogma(
     rigs.sort_by_key(|item| item.type_id);
     reaction_rigs.sort_by_key(|item| item.type_id);
     (structures, rigs, reaction_rigs)
+}
+
+/// EVE's skill category; its groups (Armor, Drones, ...) are the catalogue's.
+const SKILL_CATEGORY_ID: i64 = 16;
+const SKILL_RANK_ATTRIBUTE: i64 = 275;
+const PRIMARY_ATTRIBUTE: i64 = 180;
+const SECONDARY_ATTRIBUTE: i64 = 181;
+const OMEGA_ONLY_ATTRIBUTE: i64 = 1047;
+/// `(requiredSkillN, requiredSkillNLevel)` attribute ids, `N` = index + 1.
+/// The level ids are not in skill order past the third pair.
+const REQUIRED_SKILL_ATTRIBUTES: [(i64, i64); 6] = [
+    (182, 277),
+    (183, 278),
+    (184, 279),
+    (1285, 1286),
+    (1289, 1287),
+    (1290, 1288),
+];
+
+fn skill_attribute(dogma_attribute_id: Decimal) -> Option<SkillAttribute> {
+    match dogma_attribute_id.to_i64()? {
+        164 => Some(SkillAttribute::Charisma),
+        165 => Some(SkillAttribute::Intelligence),
+        166 => Some(SkillAttribute::Memory),
+        167 => Some(SkillAttribute::Perception),
+        168 => Some(SkillAttribute::Willpower),
+        _ => None,
+    }
+}
+
+/// Training dogma for the imported skills, and the required skills of every
+/// imported type. A skill without a whole rank or two known attributes is
+/// left out; a requirement on a type that wasn't imported, or with a level
+/// outside 1..=5, is dropped. Both lists are sorted by type, then ordinal.
+pub(crate) fn normalize_skill_dogma(
+    records: &[RawTypeDogma],
+    types: &[ImportType],
+    groups: &[ImportGroup],
+) -> (Vec<ImportSkill>, Vec<ImportRequiredSkill>) {
+    let skill_group_ids = groups
+        .iter()
+        .filter(|group| group.category_id == Some(SKILL_CATEGORY_ID))
+        .map(|group| group.group_id)
+        .collect::<HashSet<_>>();
+    let type_groups = types
+        .iter()
+        .map(|item| (item.type_id, item.group_id))
+        .collect::<HashMap<_, _>>();
+    let mut skills = Vec::new();
+    let mut required_skills = Vec::new();
+    for record in records {
+        let Some(group_id) = type_groups.get(&record.key) else {
+            continue;
+        };
+        let attributes = record
+            .dogma_attributes
+            .iter()
+            .map(|value| (value.attribute_id, value.value))
+            .collect::<HashMap<_, _>>();
+        let is_skill = group_id.is_some_and(|id| skill_group_ids.contains(&id));
+        if is_skill {
+            let rank = attributes
+                .get(&SKILL_RANK_ATTRIBUTE)
+                .filter(|rank| rank.fract().is_zero())
+                .and_then(ToPrimitive::to_i32)
+                .filter(|rank| *rank >= 1);
+            let primary = attributes
+                .get(&PRIMARY_ATTRIBUTE)
+                .copied()
+                .and_then(skill_attribute);
+            let secondary = attributes
+                .get(&SECONDARY_ATTRIBUTE)
+                .copied()
+                .and_then(skill_attribute);
+            if let (Some(rank), Some(primary_attribute), Some(secondary_attribute)) =
+                (rank, primary, secondary)
+            {
+                skills.push(ImportSkill {
+                    type_id: record.key,
+                    rank,
+                    primary_attribute,
+                    secondary_attribute,
+                    omega_only: attributes
+                        .get(&OMEGA_ONLY_ATTRIBUTE)
+                        .is_some_and(|value| !value.is_zero()),
+                });
+            }
+        }
+        for (index, (skill_attribute_id, level_attribute_id)) in
+            REQUIRED_SKILL_ATTRIBUTES.iter().enumerate()
+        {
+            let skill_type_id = attributes
+                .get(skill_attribute_id)
+                .and_then(ToPrimitive::to_i64)
+                .filter(|id| type_groups.contains_key(id));
+            let level = attributes
+                .get(level_attribute_id)
+                .and_then(ToPrimitive::to_i16)
+                .filter(|level| (1..=5).contains(level));
+            if let (Some(skill_type_id), Some(level)) = (skill_type_id, level) {
+                required_skills.push(ImportRequiredSkill {
+                    type_id: record.key,
+                    ordinal: index as i16 + 1,
+                    skill_type_id,
+                    level,
+                });
+            }
+        }
+    }
+    skills.sort_by_key(|skill| skill.type_id);
+    required_skills.sort_by_key(|row| (row.type_id, row.ordinal));
+    (skills, required_skills)
 }
 
 pub(crate) fn normalize_quantities(

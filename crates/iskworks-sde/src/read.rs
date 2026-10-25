@@ -158,6 +158,47 @@ pub enum RigActivity {
     Reaction,
 }
 
+/// One of the five character attributes a skill trains from. Stored as its
+/// lowercase name; the SDE's dogma attribute ids (164-168) are mapped only
+/// by the importer.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SkillAttribute {
+    Charisma,
+    Intelligence,
+    Memory,
+    Perception,
+    Willpower,
+}
+
+impl SkillAttribute {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Charisma => "charisma",
+            Self::Intelligence => "intelligence",
+            Self::Memory => "memory",
+            Self::Perception => "perception",
+            Self::Willpower => "willpower",
+        }
+    }
+}
+
+impl FromStr for SkillAttribute {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "charisma" => Ok(Self::Charisma),
+            "intelligence" => Ok(Self::Intelligence),
+            "memory" => Ok(Self::Memory),
+            "perception" => Ok(Self::Perception),
+            "willpower" => Ok(Self::Willpower),
+            other => Err(format!("unknown skill attribute: {other}")),
+        }
+    }
+}
+
 /// What a rig's bonuses are allowed to affect, resolved for one activity.
 /// A `None` field is unrestricted (no `filterID`, or an SDE without the
 /// dataset).

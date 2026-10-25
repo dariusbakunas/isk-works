@@ -284,6 +284,8 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        skills: Vec::new(),
+        required_skills: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
