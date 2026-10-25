@@ -427,5 +427,107 @@ pub trait SkillPlanRepository: Send + Sync {
     ) -> Result<bool, InventoryError>;
 }
 
+// --- Text import / export ---------------------------------------------------
+//
+// The client copies a plan as one `<Skill Name> <level>` line per entry,
+// Arabic levels 1-5, no header (checked against a real copy 2026-10-25).
+
+const ROMAN_LEVELS: [&str; 5] = ["I", "II", "III", "IV", "V"];
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UnrecognizedReason {
+    UnknownSkill,
+    InvalidLevel,
+    MissingLevel,
+}
+
+/// A pasted line that didn't become an entry, numbered from 1.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnrecognizedLine {
+    pub line: usize,
+    pub text: String,
+    pub reason: UnrecognizedReason,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ParsedPlanText {
+    /// In the pasted order, not yet normalized.
+    pub entries: Vec<PlanEntry>,
+    pub unrecognized: Vec<UnrecognizedLine>,
+}
+
+/// Reads a plan pasted from the client. Blank lines are skipped. The level
+/// is the last word: Arabic as the client writes it, or Roman, since people
+/// hand-edit these. Skill names match case-insensitively.
+#[must_use]
+pub fn parse_plan_text(text: &str, definitions: &[SkillDefinition]) -> ParsedPlanText {
+    let by_name = definitions
+        .iter()
+        .map(|definition| (definition.name.to_lowercase(), definition.type_id))
+        .collect::<HashMap<_, _>>();
+    let mut entries = Vec::new();
+    let mut unrecognized = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let reject = |reason| UnrecognizedLine {
+            line: index + 1,
+            text: line.to_string(),
+            reason,
+        };
+        let Some((name, level)) = line.rsplit_once(char::is_whitespace) else {
+            unrecognized.push(reject(UnrecognizedReason::MissingLevel));
+            continue;
+        };
+        let level = if let Ok(level) = level.parse::<i16>() {
+            if !(1..=MAX_SKILL_LEVEL).contains(&level) {
+                unrecognized.push(reject(UnrecognizedReason::InvalidLevel));
+                continue;
+            }
+            level
+        } else if let Some(index) = ROMAN_LEVELS
+            .iter()
+            .position(|roman| roman.eq_ignore_ascii_case(level))
+        {
+            index as i16 + 1
+        } else {
+            unrecognized.push(reject(UnrecognizedReason::MissingLevel));
+            continue;
+        };
+        let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+        match by_name.get(&name.to_lowercase()) {
+            Some(skill_type_id) => entries.push(PlanEntry {
+                skill_type_id: *skill_type_id,
+                level,
+            }),
+            None => unrecognized.push(reject(UnrecognizedReason::UnknownSkill)),
+        }
+    }
+    ParsedPlanText {
+        entries,
+        unrecognized,
+    }
+}
+
+/// Writes a plan the way the client copies one, so it pastes straight into
+/// the in-game plan editor. Entries for skills the SDE no longer has are
+/// left out.
+#[must_use]
+pub fn format_plan_text(entries: &[PlanEntry], graph: &SkillGraph<'_>) -> String {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            graph
+                .skill(entry.skill_type_id)
+                .map(|skill| format!("{} {}", skill.name, entry.level))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests;

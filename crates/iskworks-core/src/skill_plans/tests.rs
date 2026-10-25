@@ -323,3 +323,99 @@ mod evaluation {
         assert_eq!(evaluation.entries[0].seconds, None);
     }
 }
+
+// --- Text import / export ---------------------------------------------------
+
+mod text {
+    use super::*;
+
+    /// A real plan copied from the client (2026-10-25).
+    const ARMOR_PLAN: &str = include_str!("fixtures/armor_plan.txt");
+
+    /// The armor plan's skills, with ranks and prerequisites from SDE build
+    /// 3482594.
+    fn armor_skills() -> Vec<SkillDefinition> {
+        [
+            (3_392, "Mechanics", 1, vec![]),
+            (3_393, "Repair Systems", 1, vec![(3_392, 1)]),
+            (3_394, "Hull Upgrades", 2, vec![(3_392, 1)]),
+            (22_806, "EM Armor Compensation", 2, vec![(3_394, 4)]),
+            (22_807, "Explosive Armor Compensation", 2, vec![(3_394, 4)]),
+            (22_808, "Kinetic Armor Compensation", 2, vec![(3_394, 4)]),
+            (22_809, "Thermal Armor Compensation", 2, vec![(3_394, 4)]),
+            (26_252, "Jury Rigging", 2, vec![(3_392, 3)]),
+            (26_253, "Armor Rigging", 3, vec![(26_252, 3)]),
+            (32_797, "Resistance Phasing", 3, vec![(3_394, 4)]),
+            (33_078, "Armor Layering", 3, vec![(3_392, 3)]),
+        ]
+        .into_iter()
+        .map(|(type_id, name, rank, prerequisites)| definition(type_id, name, rank, prerequisites))
+        .collect()
+    }
+
+    #[test]
+    fn a_real_client_plan_parses_in_order_and_needs_nothing_inserted() {
+        let skills = armor_skills();
+
+        let parsed = parse_plan_text(ARMOR_PLAN, &skills);
+
+        assert!(parsed.unrecognized.is_empty(), "{:?}", parsed.unrecognized);
+        assert_eq!(parsed.entries.len(), 43);
+        assert_eq!(parsed.entries[0], entry(3_392, 1));
+        assert_eq!(parsed.entries[1], entry(3_394, 1));
+        assert_eq!(parsed.entries[42], entry(32_797, 4));
+        let normalized = normalize_plan(&parsed.entries, &SkillGraph::new(&skills)).unwrap();
+        assert!(normalized.inserted.is_empty());
+        assert_eq!(normalized.entries, parsed.entries);
+    }
+
+    #[test]
+    fn formatting_round_trips_the_client_text() {
+        let skills = armor_skills();
+        let parsed = parse_plan_text(ARMOR_PLAN, &skills);
+
+        let text = format_plan_text(&parsed.entries, &SkillGraph::new(&skills));
+
+        assert_eq!(text, ARMOR_PLAN.trim_end());
+    }
+
+    #[test]
+    fn roman_levels_case_and_whitespace_are_tolerated() {
+        let skills = armor_skills();
+
+        let parsed = parse_plan_text("  mechanics   II \r\n\nHULL UPGRADES 1\n", &skills);
+
+        assert!(parsed.unrecognized.is_empty());
+        assert_eq!(parsed.entries, vec![entry(3_392, 2), entry(3_394, 1)]);
+    }
+
+    #[test]
+    fn unreadable_lines_are_reported_with_their_line_numbers() {
+        let skills = armor_skills();
+        let text = "Mechanics 1\nArmoured Comand 3\nMechanics 6\nMechanics\n\nRepair Systems 1";
+
+        let parsed = parse_plan_text(text, &skills);
+
+        assert_eq!(parsed.entries, vec![entry(3_392, 1), entry(3_393, 1)]);
+        assert_eq!(
+            parsed.unrecognized,
+            vec![
+                UnrecognizedLine {
+                    line: 2,
+                    text: "Armoured Comand 3".to_string(),
+                    reason: UnrecognizedReason::UnknownSkill,
+                },
+                UnrecognizedLine {
+                    line: 3,
+                    text: "Mechanics 6".to_string(),
+                    reason: UnrecognizedReason::InvalidLevel,
+                },
+                UnrecognizedLine {
+                    line: 4,
+                    text: "Mechanics".to_string(),
+                    reason: UnrecognizedReason::MissingLevel,
+                },
+            ]
+        );
+    }
+}
