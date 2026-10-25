@@ -146,7 +146,8 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [hideTrained, setHideTrained] = useState(false);
+  // On by default: what's left to train is what a plan is opened for.
+  const [hideTrained, setHideTrained] = useState(true);
   const [pendingRemoval, setPendingRemoval] = useState<{ index: number; dependents: number[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
