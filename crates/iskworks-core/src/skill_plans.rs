@@ -6,10 +6,14 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
 use iskworks_sde::SkillDefinition;
 use serde::{Deserialize, Serialize};
 
-use crate::skills::MAX_SKILL_LEVEL;
+use crate::skills::{
+    sp_for_level, training_rate, CharacterSkillsSnapshot, CloneState, MAX_SKILL_LEVEL,
+};
+use crate::training::{derive_training_state, TrainingState};
 
 /// One level of one skill.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -206,6 +210,153 @@ pub fn normalize_plan(
         entries: out,
         inserted,
     })
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanEntryStatus {
+    /// Trained.
+    Done,
+    /// The next level to train, with some SP already in it (or training).
+    Partial,
+    Remaining,
+    /// An Omega-only skill on an Alpha clone.
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanEntryProgress {
+    pub skill_type_id: i64,
+    pub level: i16,
+    pub status: PlanEntryStatus,
+    /// SP this level takes from the previous one.
+    pub sp_total: i64,
+    pub sp_remaining: i64,
+    /// `None` when blocked or the training rate is unknown.
+    pub seconds: Option<i64>,
+    pub estimated: bool,
+}
+
+/// One character's progress through a plan.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanEvaluation {
+    pub entries: Vec<PlanEntryProgress>,
+    pub total_sp: i64,
+    pub remaining_sp: i64,
+    /// By SP, 0–100.
+    pub percent_complete: f64,
+    /// To finish every entry that isn't blocked; `None` when the training
+    /// rate is unknown.
+    pub remaining_seconds: Option<i64>,
+    /// Skills in the plan the character hasn't injected, in plan order.
+    pub missing_skillbooks: Vec<i64>,
+    /// Some entry is blocked (Alpha, Omega-only skill).
+    pub blocked: bool,
+    pub estimated: bool,
+}
+
+/// Where `character` stands on each entry of `entries`. Entries for skills
+/// the SDE no longer has are left out. The entry training right now takes
+/// the queue's own finish time, as the catalogue does.
+#[must_use]
+pub fn evaluate_plan(
+    entries: &[PlanEntry],
+    definitions: &[SkillDefinition],
+    character: &CharacterSkillsSnapshot,
+    now: DateTime<Utc>,
+) -> PlanEvaluation {
+    let graph = SkillGraph::new(definitions);
+    let rate = training_rate(character, definitions, now);
+    let training = match derive_training_state(&character.queue, now) {
+        TrainingState::Active { entry } => Some(entry),
+        _ => None,
+    };
+    let mut progress = Vec::with_capacity(entries.len());
+    let mut missing_skillbooks = Vec::new();
+    for entry in entries {
+        let Some(skill) = graph.skill(entry.skill_type_id) else {
+            continue;
+        };
+        let owned = character.skill(entry.skill_type_id);
+        let trained_level = owned.map_or(0, |owned| owned.trained_level);
+        let skillpoints = owned.map_or(0, |owned| owned.skillpoints);
+        let level_start = sp_for_level(skill.rank, entry.level - 1);
+        let level_end = sp_for_level(skill.rank, entry.level);
+        let sp_total = level_end - level_start;
+        if trained_level >= entry.level {
+            progress.push(PlanEntryProgress {
+                skill_type_id: entry.skill_type_id,
+                level: entry.level,
+                status: PlanEntryStatus::Done,
+                sp_total,
+                sp_remaining: 0,
+                seconds: Some(0),
+                estimated: false,
+            });
+            continue;
+        }
+        if owned.is_none() && !missing_skillbooks.contains(&entry.skill_type_id) {
+            missing_skillbooks.push(entry.skill_type_id);
+        }
+        let sp_remaining = level_end - skillpoints.clamp(level_start, level_end);
+        let in_training = training.as_ref().filter(|queued| {
+            queued.skill_id == entry.skill_type_id
+                && queued.finished_level == i64::from(entry.level)
+        });
+        let blocked = skill.omega_only && rate.clone == CloneState::Alpha;
+        let status = if blocked {
+            PlanEntryStatus::Blocked
+        } else if in_training.is_some() || sp_remaining < sp_total {
+            PlanEntryStatus::Partial
+        } else {
+            PlanEntryStatus::Remaining
+        };
+        let (seconds, estimated) = if blocked {
+            (None, false)
+        } else if let Some(finish) = in_training.and_then(|queued| queued.finish_date) {
+            (Some((finish - now).num_seconds().max(0)), false)
+        } else {
+            let seconds = rate
+                .sp_per_minute(character.attributes.as_ref(), skill)
+                .filter(|per_minute| *per_minute > 0.0)
+                .map(|per_minute| (sp_remaining as f64 / per_minute * 60.0).ceil() as i64);
+            (seconds, seconds.is_some() && rate.estimated())
+        };
+        progress.push(PlanEntryProgress {
+            skill_type_id: entry.skill_type_id,
+            level: entry.level,
+            status,
+            sp_total,
+            sp_remaining,
+            seconds,
+            estimated,
+        });
+    }
+    let total_sp = progress.iter().map(|entry| entry.sp_total).sum::<i64>();
+    let remaining_sp = progress.iter().map(|entry| entry.sp_remaining).sum::<i64>();
+    let open = || {
+        progress
+            .iter()
+            .filter(|entry| entry.status != PlanEntryStatus::Blocked)
+    };
+    PlanEvaluation {
+        total_sp,
+        remaining_sp,
+        percent_complete: if total_sp == 0 {
+            100.0
+        } else {
+            (total_sp - remaining_sp) as f64 / total_sp as f64 * 100.0
+        },
+        remaining_seconds: open().map(|entry| entry.seconds).sum(),
+        missing_skillbooks,
+        blocked: progress
+            .iter()
+            .any(|entry| entry.status == PlanEntryStatus::Blocked),
+        estimated: open().any(|entry| entry.estimated),
+        entries: progress,
+    }
 }
 
 #[cfg(test)]
