@@ -7,6 +7,7 @@ import {
   CircleHelp,
   Factory,
   Globe2,
+  GraduationCap,
   Hammer,
   Kanban,
   Landmark,
@@ -70,6 +71,7 @@ import { OpportunitiesPage } from "./features/industry/opportunities/opportuniti
 import { PlanetaryPage } from "./features/industry/planetary/planetary-page";
 import { AssetsWorkspacePage } from "./features/assets/assets-workspace-page";
 import { CharactersPage } from "./features/characters/characters-page";
+import { SkillsPage } from "./features/skills/skills-page";
 import { EveCallbackPage } from "./features/esi/eve-callback-page";
 import { HelpPage } from "./features/help/help-page";
 import { LegalPage } from "./features/legal/legal-page";
@@ -85,6 +87,7 @@ type LoadState =
 // deliberately absent for the alpha.
 const navItems = [
   { label: "Characters", path: "/characters", icon: Users },
+  { label: "Skills", path: "/skills", icon: GraduationCap },
   { label: "Builds", path: "/builds", icon: Factory },
   { label: "Board", path: "/board", icon: Kanban },
   { label: "Jobs", path: "/jobs", icon: Hammer },
@@ -363,6 +366,7 @@ function ProtectedShell({
         {/* Characters is the alpha home; there is no Overview route. */}
         <Route path="/" element={<Navigate replace to="/characters" />} />
         <Route path="/characters" element={<CharactersPage />} />
+        <Route path="/skills/*" element={<SkillsPage />} />
         <Route path="/opportunities" element={<OpportunitiesPage />} />
         <Route path="/builds" element={<BuildsPage />} />
         <Route path="/builds/new" element={<CreateBuildPage />} />
