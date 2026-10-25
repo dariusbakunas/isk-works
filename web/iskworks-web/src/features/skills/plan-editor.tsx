@@ -18,7 +18,7 @@ import { CharacterName } from "../../observability/private";
 import { formatRemainingMs, skillLevelNumeral } from "../characters/characters-formatters";
 import { SkillLevelBlocks } from "../characters/skill-level-blocks";
 import { skillLevelCells } from "../characters/skill-queue-summary";
-import { dependentsOf, planProgressLabel } from "./skill-plans";
+import { dependentsOf, errorMessage, planProgressLabel } from "./skill-plans";
 
 const entryKey = (entry: PlanEntry) => `${entry.skillTypeId}:${entry.level}`;
 const label = (name: string, level: number) => `${name} ${skillLevelNumeral(level)}`;
@@ -150,6 +150,9 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
   const [pendingRemoval, setPendingRemoval] = useState<{ index: number; dependents: number[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
+  // The plan text, shown to copy by hand when the browser blocks the
+  // clipboard (permissions, embedded frames).
+  const [copyFallback, setCopyFallback] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const listSearch = characterId ? `?${new URLSearchParams({ character: characterId })}` : "";
 
@@ -161,7 +164,7 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
         if (!controller.signal.aborted) setDetail(result);
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setLoadError(reason instanceof Error ? reason.message : "Could not load the plan.");
+        if (!controller.signal.aborted) setLoadError(errorMessage(reason, "Could not load the plan."));
       });
     return () => controller.abort();
   }, [planId]);
@@ -203,7 +206,7 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
         setNotice(count > 0 ? `Added ${added} and ${count} prerequisite${count === 1 ? "" : "s"}` : `Added ${added}`);
       }
     } catch (reason) {
-      setSaveError(reason instanceof Error ? reason.message : "Could not save the plan.");
+      setSaveError(errorMessage(reason, "Could not save the plan."));
     } finally {
       setSaving(false);
     }
@@ -227,10 +230,21 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
   }
 
   async function copy() {
-    const text = await exportPlanText(plan.id);
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2_000);
+    let text: string;
+    try {
+      text = await exportPlanText(plan.id);
+    } catch (reason) {
+      setSaveError(errorMessage(reason, "Could not export the plan."));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFallback(null);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      setCopyFallback(text);
+    }
   }
 
   async function removePlan() {
@@ -275,6 +289,18 @@ export function PlanEditor({ catalogue, characterId }: { catalogue: SkillCatalog
           {copied ? <Check aria-hidden="true" className="h-3.5 w-3.5" /> : <Copy aria-hidden="true" className="h-3.5 w-3.5" />}
           {copied ? "Copied" : "Copy for in-game import"}
         </button>
+        {copyFallback !== null ? (
+          <div className="space-y-1">
+            <p className="text-xs text-warning">Couldn't copy automatically. Select the text and copy it.</p>
+            <textarea
+              aria-label="Plan text to copy"
+              className="iw-input h-32 w-full font-mono text-[0.625rem]"
+              onFocus={(event) => event.currentTarget.select()}
+              readOnly
+              value={copyFallback}
+            />
+          </div>
+        ) : null}
         <button className="iw-button-danger flex w-full items-center justify-center gap-1" onClick={() => setConfirmDelete(true)} type="button">
           <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
           Delete plan

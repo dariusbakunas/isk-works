@@ -10,6 +10,7 @@ import {
 } from "../../api/skills";
 import { InlineAlert } from "../../components/primitives";
 import { skillLevelNumeral } from "../characters/characters-formatters";
+import { errorMessage } from "./skill-plans";
 
 const REASONS = {
   unknownSkill: "no matching skill",
@@ -66,7 +67,7 @@ export function NewPlanDialog({ onClose, onCreated }: { onClose: () => void; onC
     try {
       onCreated(await createSkillPlan({ name: name.trim(), description: description.trim(), entries: [] }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create the plan.");
+      setError(errorMessage(reason, "Could not create the plan."));
       setSaving(false);
     }
   }
@@ -130,7 +131,7 @@ export function ImportPlanDialog({ onClose, onCreated }: { onClose: () => void; 
     try {
       onCreated(await importPlanText({ name: name.trim(), description: "", text }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not import the plan.");
+      setError(errorMessage(reason, "Could not import the plan."));
       setSaving(false);
     }
   }

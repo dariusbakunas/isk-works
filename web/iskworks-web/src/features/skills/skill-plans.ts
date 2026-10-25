@@ -40,3 +40,10 @@ export function planProgressLabel(progress: {
   const text = formatRemainingMs(progress.remainingSeconds * 1000);
   return progress.estimated ? `≈ ${text}` : text;
 }
+
+/** What a failed plan request says, for showing inline. Validation errors
+ * come back as "validation failed: <reason>"; the reason reads on its own. */
+export function errorMessage(reason: unknown, fallback: string): string {
+  if (!(reason instanceof Error) || reason.message === "") return fallback;
+  return reason.message.replace(/^validation failed:\s*/i, "");
+}

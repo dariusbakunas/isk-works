@@ -44,3 +44,14 @@ describe("planProgressLabel", () => {
     expect(planProgressLabel({ percentComplete: 10, remainingSeconds: null, estimated: false })).toBe("—");
   });
 });
+
+describe("errorMessage", () => {
+  it("drops the API's validation prefix so the reason reads on its own", async () => {
+    const { errorMessage } = await import("../skill-plans");
+    expect(errorMessage(new Error("validation failed: Mechanics I must come before Hull Upgrades I"), "x")).toBe(
+      "Mechanics I must come before Hull Upgrades I",
+    );
+    expect(errorMessage(new Error("ISK Works API is unavailable."), "x")).toBe("ISK Works API is unavailable.");
+    expect(errorMessage("nope", "Could not save the plan.")).toBe("Could not save the plan.");
+  });
+});

@@ -121,7 +121,7 @@ describe("Skills › Plan editor", () => {
     const calls = stubFetch({
       onPut: () =>
         new Response(
-          JSON.stringify({ error: { code: "validation_failed", message: "Drones IV must come before Drones V" } }),
+          JSON.stringify({ error: { code: "validation_failed", message: "validation failed: Drones IV must come before Drones V" } }),
           { status: 400, headers: { "content-type": "application/json" } },
         ),
     });
@@ -180,6 +180,19 @@ describe("Skills › Plan editor", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("Drones 1\nDrones 2"));
     expect(await screen.findByText("Copied")).toBeInTheDocument();
+  });
+
+  test("when the clipboard is blocked the text is shown to copy by hand", async () => {
+    stubFetch();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("Write permission denied.")) } });
+    renderEditor();
+    await screen.findByRole("heading", { name: "Drone basics" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy for in-game import" }));
+
+    const text = await screen.findByRole("textbox", { name: "Plan text to copy" });
+    expect(text).toHaveValue("Drones 1\nDrones 2");
+    expect(screen.getByText("Couldn't copy automatically. Select the text and copy it.")).toBeInTheDocument();
   });
 
   test("deleting asks first, then returns to the list", async () => {

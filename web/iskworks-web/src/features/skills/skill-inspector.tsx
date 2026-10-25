@@ -12,6 +12,7 @@ import {
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { skillLevelNumeral } from "../characters/characters-formatters";
 import { AttributeTags, CatalogueLevelBlocks, SkillStateChip } from "./skill-cells";
+import { errorMessage } from "./skill-plans";
 import { prerequisiteTree, type PrerequisiteNode, type RequiredForEntry } from "./skills-catalogue";
 
 function TreeNodes({ nodes, onSelect }: { nodes: PrerequisiteNode[]; onSelect: (typeId: number) => void }) {
@@ -97,7 +98,7 @@ function AddToPlan({ skill }: { skill: CatalogueSkill }) {
           : `Added ${what} to ${plan.name}`,
       });
     } catch (reason) {
-      setMessage({ tone: "danger", text: reason instanceof Error ? reason.message : "Could not add to the plan." });
+      setMessage({ tone: "danger", text: errorMessage(reason, "Could not add to the plan.") });
     } finally {
       setSaving(false);
     }
