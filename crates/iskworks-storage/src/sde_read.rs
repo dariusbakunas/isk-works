@@ -1088,6 +1088,82 @@ impl SdeReadRepository for PgSdeRepository {
         .map_err(map_sde_sqlx_error)
     }
 
+    async fn skill_catalogue(&self) -> Result<Vec<iskworks_sde::SkillDefinition>, SdeError> {
+        let rows = sqlx::query_as::<_, SkillDefinitionRow>(
+            r#"
+            SELECT skill.type_id, t.name_en, g.group_id, g.name_en AS group_name_en,
+                   skill.rank, skill.primary_attribute, skill.secondary_attribute,
+                   skill.omega_only
+            FROM sde_imports import
+            JOIN sde_skills skill ON skill.import_id = import.id
+            JOIN sde_types t
+              ON t.import_id = skill.import_id AND t.type_id = skill.type_id
+            JOIN sde_groups g
+              ON g.import_id = t.import_id AND g.group_id = t.group_id
+            WHERE import.active = true AND t.published AND g.published
+            ORDER BY lower(g.name_en), lower(t.name_en), skill.type_id
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        let type_ids = rows.iter().map(|row| row.type_id).collect::<Vec<_>>();
+        let mut prerequisites = self.required_skills(&type_ids).await?;
+        rows.into_iter()
+            .map(|row| {
+                let attribute = |value: &str| {
+                    value
+                        .parse::<iskworks_sde::SkillAttribute>()
+                        .map_err(SdeError::Storage)
+                };
+                Ok(iskworks_sde::SkillDefinition {
+                    prerequisites: prerequisites.remove(&row.type_id).unwrap_or_default(),
+                    type_id: row.type_id,
+                    name: row.name_en,
+                    group_id: row.group_id,
+                    group_name: row.group_name_en,
+                    rank: row.rank,
+                    primary_attribute: attribute(&row.primary_attribute)?,
+                    secondary_attribute: attribute(&row.secondary_attribute)?,
+                    omega_only: row.omega_only,
+                })
+            })
+            .collect()
+    }
+
+    async fn required_skills(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, Vec<iskworks_sde::RequiredSkill>>, SdeError> {
+        let mut required = std::collections::BTreeMap::<i64, Vec<_>>::new();
+        if type_ids.is_empty() {
+            return Ok(required);
+        }
+        let rows = sqlx::query_as::<_, (i64, i64, i16)>(
+            r#"
+            SELECT r.type_id, r.skill_type_id, r.level
+            FROM sde_imports import
+            JOIN sde_type_required_skills r ON r.import_id = import.id
+            WHERE import.active = true AND r.type_id = ANY($1)
+            ORDER BY r.type_id, r.ordinal
+            "#,
+        )
+        .bind(type_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        for (type_id, skill_type_id, level) in rows {
+            required
+                .entry(type_id)
+                .or_default()
+                .push(iskworks_sde::RequiredSkill {
+                    skill_type_id,
+                    level,
+                });
+        }
+        Ok(required)
+    }
+
     async fn planet_references(
         &self,
         planet_ids: &[i64],
@@ -2050,6 +2126,18 @@ struct TypeSearchRow {
 struct TypeGroupNameRow {
     type_id: i64,
     group_name_en: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct SkillDefinitionRow {
+    type_id: i64,
+    name_en: String,
+    group_id: i64,
+    group_name_en: String,
+    rank: i32,
+    primary_attribute: String,
+    secondary_attribute: String,
+    omega_only: bool,
 }
 
 #[derive(sqlx::FromRow)]

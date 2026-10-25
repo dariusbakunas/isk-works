@@ -12,6 +12,7 @@ mod auth_sessions;
 mod sde_geography;
 mod sde_market_catalog;
 mod sde_recipes;
+mod sde_skills;
 mod workspace;
 
 // ---------------------------------------------------------------------------
@@ -284,6 +285,8 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        skills: Vec::new(),
+        required_skills: Vec::new(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

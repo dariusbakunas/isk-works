@@ -170,7 +170,7 @@ fn normalizes_structure_and_security_adjusted_rig_inputs() {
         ),
     ]);
     let (structures, rigs, reaction_rigs) = normalize_facility_dogma(
-        vec![
+        &[
             RawTypeDogma {
                 key: 35_827,
                 dogma_attributes: vec![
@@ -287,7 +287,7 @@ fn normalizes_reaction_rig_inputs_and_skips_structure_level_reaction_bonus() {
         ),
     ]);
     let (structures, rigs, reaction_rigs) = normalize_facility_dogma(
-        vec![
+        &[
             RawTypeDogma {
                 key: 35_835,
                 dogma_attributes: vec![],
@@ -712,6 +712,136 @@ fn stargates_are_empty_when_the_sde_lacks_them() {
     assert!(parse(&source).unwrap().stargates.is_empty());
 }
 
+fn skill_dogma_source(type_dogma: Option<&str>) -> SdeSource {
+    let skill_types = concat!(
+        r#"{"_key":3436,"groupID":273,"name":{"en":"Drones"},"published":true}"#,
+        "\n",
+        r#"{"_key":3442,"groupID":273,"name":{"en":"Drone Interfacing"},"published":true}"#,
+        "\n",
+        r#"{"_key":12487,"groupID":273,"name":{"en":"Amarr Drone Specialization"},"published":true}"#,
+        "\n",
+        r#"{"_key":9001,"groupID":273,"name":{"en":"Broken Skill"},"published":true}"#
+    );
+    let mut extra_files = vec![
+        (
+            "categories.jsonl",
+            r#"{"_key":16,"name":{"en":"Skill"},"published":true}"#,
+        ),
+        (
+            "groups.jsonl",
+            r#"{"_key":273,"categoryID":16,"name":{"en":"Drones"},"published":true}"#,
+        ),
+    ];
+    if let Some(type_dogma) = type_dogma {
+        extra_files.push(("typeDogma.jsonl", type_dogma));
+    }
+    fixture_source_inner(blueprints_fixture(), None, Some(skill_types), &extra_files).unwrap()
+}
+
+#[test]
+fn parses_skill_dogma_and_required_skills() {
+    let source = skill_dogma_source(Some(concat!(
+        // Drones: rank 1, memory / perception.
+        r#"{"_key":3436,"dogmaAttributes":[{"attributeID":180,"value":166.0},{"attributeID":181,"value":167.0},{"attributeID":275,"value":1.0}]}"#,
+        "\n",
+        // Drone Interfacing: rank 5, requires Drones V.
+        r#"{"_key":3442,"dogmaAttributes":[{"attributeID":180,"value":166.0},{"attributeID":181,"value":167.0},{"attributeID":182,"value":3436.0},{"attributeID":275,"value":5.0},{"attributeID":277,"value":5.0}]}"#,
+        "\n",
+        // Omega-only, two prerequisites (pairs 182/277 and 183/278).
+        r#"{"_key":12487,"dogmaAttributes":[{"attributeID":180,"value":166.0},{"attributeID":181,"value":167.0},{"attributeID":182,"value":3442.0},{"attributeID":183,"value":3436.0},{"attributeID":275,"value":5.0},{"attributeID":277,"value":5.0},{"attributeID":278,"value":5.0},{"attributeID":1047,"value":1.0}]}"#,
+        "\n",
+        // Unknown primary attribute id: not a usable skill.
+        r#"{"_key":9001,"dogmaAttributes":[{"attributeID":180,"value":999.0},{"attributeID":181,"value":167.0},{"attributeID":275,"value":1.0}]}"#,
+        "\n",
+        // A ship: Drones I kept; an unknown skill and a level 0 are dropped.
+        r#"{"_key":5876,"dogmaAttributes":[{"attributeID":182,"value":3436.0},{"attributeID":183,"value":77777.0},{"attributeID":184,"value":3442.0},{"attributeID":277,"value":1.0},{"attributeID":278,"value":1.0},{"attributeID":279,"value":0.0}]}"#
+    )));
+    assert!(source.has_skill_dogma());
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.skills,
+        vec![
+            ImportSkill {
+                type_id: 3436,
+                rank: 1,
+                primary_attribute: SkillAttribute::Memory,
+                secondary_attribute: SkillAttribute::Perception,
+                omega_only: false,
+            },
+            ImportSkill {
+                type_id: 3442,
+                rank: 5,
+                primary_attribute: SkillAttribute::Memory,
+                secondary_attribute: SkillAttribute::Perception,
+                omega_only: false,
+            },
+            ImportSkill {
+                type_id: 12487,
+                rank: 5,
+                primary_attribute: SkillAttribute::Memory,
+                secondary_attribute: SkillAttribute::Perception,
+                omega_only: true,
+            },
+        ]
+    );
+    assert_eq!(
+        dataset.required_skills,
+        vec![
+            ImportRequiredSkill {
+                type_id: 3442,
+                ordinal: 1,
+                skill_type_id: 3436,
+                level: 5,
+            },
+            ImportRequiredSkill {
+                type_id: 5876,
+                ordinal: 1,
+                skill_type_id: 3436,
+                level: 1,
+            },
+            ImportRequiredSkill {
+                type_id: 12487,
+                ordinal: 1,
+                skill_type_id: 3442,
+                level: 5,
+            },
+            ImportRequiredSkill {
+                type_id: 12487,
+                ordinal: 2,
+                skill_type_id: 3436,
+                level: 5,
+            },
+        ]
+    );
+}
+
+#[test]
+fn skill_dogma_is_empty_when_the_sde_lacks_type_dogma() {
+    let source = skill_dogma_source(None);
+    assert!(!source.has_skill_dogma());
+
+    let dataset = parse(&source).unwrap();
+
+    assert!(dataset.skills.is_empty());
+    assert!(dataset.required_skills.is_empty());
+}
+
+#[test]
+fn skill_attribute_round_trips_through_its_name() {
+    for attribute in [
+        SkillAttribute::Charisma,
+        SkillAttribute::Intelligence,
+        SkillAttribute::Memory,
+        SkillAttribute::Perception,
+        SkillAttribute::Willpower,
+    ] {
+        assert_eq!(attribute.as_str().parse::<SkillAttribute>(), Ok(attribute));
+    }
+    assert!("luck".parse::<SkillAttribute>().is_err());
+}
+
 fn fixture_source(blueprints: &str) -> Result<SdeSource, SdeError> {
     fixture_source_inner(blueprints, None, None, &[])
 }
@@ -793,6 +923,12 @@ fn fixture_source_inner(
             ),
             ("_sde.jsonl", r#"{"buildNumber":123456}"#),
         ] {
+            // An extra file named like a base file extends it rather than
+            // writing a second zip entry.
+            let mut contents = contents.to_string();
+            for (_, extra) in extra_files.iter().filter(|(extra, _)| *extra == name) {
+                contents = format!("{contents}\n{extra}");
+            }
             archive.start_file(name, options).unwrap();
             archive.write_all(contents.as_bytes()).unwrap();
         }
@@ -800,7 +936,18 @@ fn fixture_source_inner(
             archive.start_file(SOLAR_SYSTEMS_FILE, options).unwrap();
             archive.write_all(solar_systems.as_bytes()).unwrap();
         }
-        for (name, contents) in extra_files {
+        const BASE_FILES: [&str; 6] = [
+            "types.jsonl",
+            "groups.jsonl",
+            "blueprints.jsonl",
+            "categories.jsonl",
+            "metaGroups.jsonl",
+            "marketGroups.jsonl",
+        ];
+        for (name, contents) in extra_files
+            .iter()
+            .filter(|(name, _)| !BASE_FILES.contains(name))
+        {
             archive.start_file(*name, options).unwrap();
             archive.write_all(contents.as_bytes()).unwrap();
         }

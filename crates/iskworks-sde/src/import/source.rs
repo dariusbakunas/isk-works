@@ -186,6 +186,13 @@ impl SdeSource {
         self.files.contains_key(TYPE_DOGMA_FILE)
     }
 
+    /// Skill ranks, attributes and prerequisites come from the same
+    /// `typeDogma` file as the facility modifiers.
+    #[must_use]
+    pub fn has_skill_dogma(&self) -> bool {
+        self.files.contains_key(TYPE_DOGMA_FILE)
+    }
+
     #[must_use]
     pub fn has_npc_stations(&self) -> bool {
         self.files.contains_key(NPC_STATIONS_FILE)

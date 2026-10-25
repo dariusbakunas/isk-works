@@ -31,6 +31,11 @@ pub struct NormalizedSde {
     /// One row per stargate (both directions of a connection). Empty when
     /// the SDE lacks `mapStargates`.
     pub stargates: Vec<ImportStargate>,
+    /// Training dogma for every imported skill (category 16). Empty when
+    /// the SDE lacks `typeDogma`.
+    pub skills: Vec<ImportSkill>,
+    /// `requiredSkill1..6` of any imported type (skills, ships, modules).
+    pub required_skills: Vec<ImportRequiredSkill>,
     pub skipped_blueprints: u64,
     pub skipped_reaction_formulas: u64,
 }
@@ -190,6 +195,25 @@ pub struct ImportPlanet {
     pub celestial_index: i64,
     /// `"<system> <ROMAN(celestial_index)>"`, e.g. `Q-3HS5 IV`.
     pub name: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportSkill {
+    pub type_id: i64,
+    pub rank: i32,
+    pub primary_attribute: SkillAttribute,
+    pub secondary_attribute: SkillAttribute,
+    /// `canNotBeTrainedOnTrial`: Alpha clones can't train it.
+    pub omega_only: bool,
+}
+
+/// One `requiredSkillN` / `requiredSkillNLevel` pair; `ordinal` is `N`.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportRequiredSkill {
+    pub type_id: i64,
+    pub ordinal: i16,
+    pub skill_type_id: i64,
+    pub level: i16,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
