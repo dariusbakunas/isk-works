@@ -74,6 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let blueprint_library_repository = Arc::new(
         iskworks_storage::PgBlueprintLibraryRepository::new(repository.pool().clone()),
     ) as Arc<dyn iskworks_core::BlueprintLibraryRepository>;
+    let skill_plan_repository = Arc::new(iskworks_storage::PgSkillPlanRepository::new(
+        repository.pool().clone(),
+    )) as Arc<dyn iskworks_core::skill_plans::SkillPlanRepository>;
     let inventory_repository = Arc::new(PgInventoryRepository::new(repository.pool().clone()));
     let inventory_trait = inventory_repository.clone() as Arc<dyn InventoryRepository>;
     let production_repository = Arc::new(PgProductionRepository::new(repository.pool().clone()))
@@ -154,6 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_finance_repository(finance_repository)
         .with_asset_browser_repository(asset_browser_repository)
         .with_blueprint_library_repository(blueprint_library_repository)
+        .with_skill_plan_repository(skill_plan_repository)
         .with_market_repository(market_repository)
         .with_public_market_service(public_market_service)
         .with_esi_status(public_esi_transport)
