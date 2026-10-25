@@ -6,14 +6,17 @@
 
 use std::collections::{HashMap, HashSet};
 
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_sde::SkillDefinition;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::skills::{
     sp_for_level, training_rate, CharacterSkillsSnapshot, CloneState, MAX_SKILL_LEVEL,
 };
 use crate::training::{derive_training_state, TrainingState};
+use crate::{InventoryError, WorkspaceId};
 
 /// One level of one skill.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -357,6 +360,71 @@ pub fn evaluate_plan(
         estimated: open().any(|entry| entry.estimated),
         entries: progress,
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SkillPlanId(pub Uuid);
+
+/// A stored plan. Plans belong to the workspace and are evaluated against
+/// any of its characters.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillPlan {
+    pub id: SkillPlanId,
+    pub name: String,
+    pub description: String,
+    /// In training order.
+    pub entries: Vec<PlanEntry>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// What a create or update writes: the whole plan, entries replaced.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct SkillPlanInput {
+    pub name: String,
+    pub description: String,
+    pub entries: Vec<PlanEntry>,
+}
+
+#[async_trait]
+pub trait SkillPlanRepository: Send + Sync {
+    /// Every plan of the workspace, by name.
+    async fn list_skill_plans(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillPlan>, InventoryError>;
+
+    async fn skill_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SkillPlanId,
+    ) -> Result<Option<SkillPlan>, InventoryError>;
+
+    async fn create_skill_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        input: &SkillPlanInput,
+        now: DateTime<Utc>,
+    ) -> Result<SkillPlan, InventoryError>;
+
+    /// Replaces the name, description and every entry in one transaction.
+    /// `None` when the plan isn't in the workspace.
+    async fn update_skill_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SkillPlanId,
+        input: &SkillPlanInput,
+        now: DateTime<Utc>,
+    ) -> Result<Option<SkillPlan>, InventoryError>;
+
+    /// `false` when the plan isn't in the workspace.
+    async fn delete_skill_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SkillPlanId,
+    ) -> Result<bool, InventoryError>;
 }
 
 #[cfg(test)]
