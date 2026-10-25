@@ -25,14 +25,27 @@ const COLUMNS: OperationalColumn[] = [
   { key: "state", label: "State", width: "7.5rem" },
 ];
 
+// Collapsed, the grid shows four rows: 12 tiles from the small breakpoint
+// up, 6 on a phone (two columns), so the skill list stays in view.
 const COLLAPSED_GROUPS = 12;
+const COLLAPSED_GROUPS_PHONE = 6;
 
 async function reauthorize() {
   const started = await beginAuthorization();
   if (!started.fixtureMode) window.location.assign(started.authorizationUrl);
 }
 
-function GroupTile({ group, onSelect, selected }: { group: CatalogueGroup; onSelect: () => void; selected: boolean }) {
+function GroupTile({
+  className = "",
+  group,
+  onSelect,
+  selected,
+}: {
+  className?: string;
+  group: CatalogueGroup;
+  onSelect: () => void;
+  selected: boolean;
+}) {
   const trainedSp = group.trainedSp ?? 0;
   const percent = group.maxSp > 0 ? (trainedSp / group.maxSp) * 100 : 0;
   return (
@@ -40,7 +53,7 @@ function GroupTile({ group, onSelect, selected }: { group: CatalogueGroup; onSel
       aria-pressed={selected}
       className={`flex w-full items-center gap-2 rounded-[2px] border px-2 py-1.5 text-left ${
         selected ? "border-primary bg-primary/10" : "border-border bg-panel-strong hover:border-primary/50"
-      }`}
+      } ${className}`}
       onClick={onSelect}
       title={`${trainedSp.toLocaleString("en-US")} of ${group.maxSp.toLocaleString("en-US")} SP`}
       type="button"
@@ -94,15 +107,23 @@ function GroupGrid({
             All groups
           </button>
         ) : null}
-        {groups.length > COLLAPSED_GROUPS ? (
-          <button className="text-xs text-muted hover:text-foreground" onClick={() => setExpanded((open) => !open)} type="button">
-            {expanded ? "Show less" : `+${groups.length - COLLAPSED_GROUPS} more`}
+        {groups.length > COLLAPSED_GROUPS_PHONE ? (
+          <button
+            aria-expanded={expanded}
+            className="text-xs text-muted hover:text-foreground"
+            onClick={() => setExpanded((open) => !open)}
+            type="button"
+          >
+            {expanded ? "Show less" : `Show all ${groups.length}`}
           </button>
         ) : null}
       </div>
-      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-3">
-        {visible.map((group) => (
+      <div className="grid grid-cols-2 gap-1 xl:grid-cols-3">
+        {visible.map((group, index) => (
           <GroupTile
+            className={
+              !expanded && index >= COLLAPSED_GROUPS_PHONE && group.groupId !== selectedId ? "max-sm:hidden" : ""
+            }
             group={group}
             key={group.groupId}
             onSelect={() => onSelect(selectedId === group.groupId ? null : group.groupId)}
