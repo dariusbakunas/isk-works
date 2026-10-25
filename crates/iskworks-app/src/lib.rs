@@ -25,6 +25,7 @@ mod operation_metrics;
 mod order_plan;
 mod planetary;
 mod public_market;
+mod skill_plans;
 mod skills_catalogue;
 mod sync_metrics;
 mod ticket_jobs;
@@ -63,6 +64,10 @@ pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,
 };
 pub use public_market::PublicMarketService;
+pub use skill_plans::{
+    CharacterPlanProgress, SkillPlanDetail, SkillPlanEntryView, SkillPlanHeader, SkillPlanProgress,
+    SkillPlanService, SkillPlanSummary,
+};
 pub use skills_catalogue::{
     SkillCatalogueCharacter, SkillCatalogueResponse, SkillCatalogueService, SkillsCharacter,
     SkillsCharacterSource,

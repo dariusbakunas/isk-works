@@ -60,6 +60,13 @@ impl SkillsCharacterSource for FakeCharacters {
             })
             .map(|(_, character)| character.clone()))
     }
+
+    async fn skills_characters(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+        unimplemented!("the catalogue reads one character")
+    }
 }
 
 fn definitions() -> Vec<SkillDefinition> {

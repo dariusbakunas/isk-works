@@ -65,6 +65,13 @@ impl SkillsCharacterSource for FakeCharacters {
             .find(|character| character.connection_id == connection_id)
             .cloned())
     }
+
+    async fn skills_characters(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+        unimplemented!("the catalogue reads one character")
+    }
 }
 
 fn definitions() -> Vec<SkillDefinition> {

@@ -50,6 +50,7 @@ pub struct AppState {
     jobs_service: Option<Arc<iskworks_app::JobsService>>,
     planetary_characters: Option<Arc<dyn PlanetaryCharacterSource>>,
     skills_characters: Option<Arc<dyn iskworks_app::SkillsCharacterSource>>,
+    skill_plan_repository: Option<Arc<dyn iskworks_core::skill_plans::SkillPlanRepository>>,
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
     facility_repository: Option<Arc<iskworks_storage::PgFacilityRepository>>,
@@ -95,6 +96,7 @@ impl AppState {
             jobs_service: None,
             planetary_characters: None,
             skills_characters: None,
+            skill_plan_repository: None,
             planetary_preferences: None,
             facility_repository: None,
             facility_defaults_repository: None,
@@ -248,6 +250,15 @@ impl AppState {
         characters: Arc<dyn iskworks_app::SkillsCharacterSource>,
     ) -> Self {
         self.skills_characters = Some(characters);
+        self
+    }
+
+    #[must_use]
+    pub fn with_skill_plan_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::skill_plans::SkillPlanRepository>,
+    ) -> Self {
+        self.skill_plan_repository = Some(repository);
         self
     }
 
@@ -728,6 +739,20 @@ impl AppState {
         &self,
     ) -> Result<iskworks_app::SkillCatalogueService, ApiError> {
         Ok(iskworks_app::SkillCatalogueService::new(
+            self.skills_characters
+                .clone()
+                .ok_or_else(esi_not_configured)?,
+            self.sde_repository.clone(),
+        ))
+    }
+
+    pub(crate) fn skill_plan_service(&self) -> Result<iskworks_app::SkillPlanService, ApiError> {
+        Ok(iskworks_app::SkillPlanService::new(
+            self.skill_plan_repository.clone().ok_or_else(|| {
+                ApiError::Inventory(InventoryError::Persistence(
+                    "Skill plan persistence is unavailable.".to_string(),
+                ))
+            })?,
             self.skills_characters
                 .clone()
                 .ok_or_else(esi_not_configured)?,
