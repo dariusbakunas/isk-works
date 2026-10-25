@@ -1,9 +1,11 @@
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
-use axum::routing::get;
+use axum::http::{header, StatusCode};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
-use iskworks_app::{SkillCatalogueResponse, SkillPlanDetail, SkillPlanSummary};
+use iskworks_app::{
+    ImportedSkillPlan, PlanTextPreview, SkillCatalogueResponse, SkillPlanDetail, SkillPlanSummary,
+};
 use iskworks_core::skill_plans::{PlanEntry, SkillPlanId, SkillPlanInput};
 use iskworks_core::ConnectedCharacterId;
 use serde::Deserialize;
@@ -14,6 +16,9 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/skills/catalogue", get(catalogue))
         .route("/api/skill-plans", get(list_plans).post(create_plan))
+        .route("/api/skill-plans/import", post(import_plan))
+        .route("/api/skill-plans/import/preview", post(preview_import))
+        .route("/api/skill-plans/:plan_id/export", get(export_plan))
         .route(
             "/api/skill-plans/:plan_id",
             get(get_plan).put(update_plan).delete(delete_plan),
@@ -141,4 +146,61 @@ async fn delete_plan(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct PreviewBody {
+    text: String,
+}
+
+/// What importing `text` would make; nothing is saved.
+async fn preview_import(
+    State(state): State<AppState>,
+    Json(body): Json<PreviewBody>,
+) -> Result<Json<PlanTextPreview>, ApiError> {
+    workspace_context(&state).await?;
+    Ok(Json(
+        state.skill_plan_service()?.preview_text(&body.text).await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct ImportBody {
+    name: String,
+    #[serde(default)]
+    description: String,
+    text: String,
+}
+
+/// Creates a plan from text pasted from the client.
+async fn import_plan(
+    State(state): State<AppState>,
+    Json(body): Json<ImportBody>,
+) -> Result<(StatusCode, Json<ImportedSkillPlan>), ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let imported = state
+        .skill_plan_service()?
+        .import_text(
+            workspace_id,
+            body.name,
+            body.description,
+            &body.text,
+            Utc::now(),
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(imported)))
+}
+
+/// The plan as the client's plan text, for pasting into the game.
+async fn export_plan(
+    State(state): State<AppState>,
+    Path(plan_id): Path<uuid::Uuid>,
+) -> Result<([(header::HeaderName, &'static str); 1], String), ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let text = state
+        .skill_plan_service()?
+        .export_text(workspace_id, SkillPlanId(plan_id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], text))
 }
