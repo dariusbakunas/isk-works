@@ -147,3 +147,75 @@ export function roster() {
   const { sources: _sources, industryJobs: _jobs, ...aura } = characterDetail();
   return [aura, { ...aura, connectionId: MIRA, eveCharacterId: 2_119_000_002, characterName: "Mira Caldari", totalSp: 6_200_000 }];
 }
+
+import type { SkillPlanDetail, SkillPlanSummary } from "../../../api/skills";
+
+export const PLAN_ID = "33333333-3333-3333-3333-333333333333";
+
+export function planSummary(overrides: Partial<SkillPlanSummary> = {}): SkillPlanSummary {
+  return {
+    id: PLAN_ID,
+    name: "F2 | Boosh + Boosting",
+    description: "Command burst prerequisites for fleet support.",
+    entryCount: 11,
+    totalSp: 2_816_000,
+    updatedAt: "2026-10-25T11:00:00Z",
+    progress: { percentComplete: 45, remainingSeconds: 76 * 86_400, missingSkillbooks: 11, blocked: false, estimated: false },
+    ...overrides,
+  };
+}
+
+/** Drones I-V then Drone Interfacing I; Aura has Drones V and nothing else. */
+export function planDetail(overrides: Partial<SkillPlanDetail> = {}): SkillPlanDetail {
+  const view = (skillTypeId: number, name: string, level: number, rank = 1) => ({
+    skillTypeId,
+    level,
+    name,
+    groupName: "Drones",
+    rank,
+    primaryAttribute: "memory" as const,
+    secondaryAttribute: "perception" as const,
+    omegaOnly: false,
+    sp: 1_000 * level,
+  });
+  const entries = [
+    view(DRONES, "Drones", 1),
+    view(DRONES, "Drones", 2),
+    view(DRONES, "Drones", 3),
+    view(DRONES, "Drones", 4),
+    view(DRONES, "Drones", 5),
+    view(DRONE_INTERFACING, "Drone Interfacing", 1, 5),
+  ];
+  const status = (index: number) => (index < 5 ? ("done" as const) : ("remaining" as const));
+  return {
+    plan: { id: PLAN_ID, name: "Drone basics", description: "", createdAt: "2026-10-25T10:00:00Z", updatedAt: "2026-10-25T11:00:00Z" },
+    entries,
+    characters: [
+      {
+        connectionId: AURA,
+        name: "Aura Valex",
+        evaluation: {
+          entries: entries.map((entry, index) => ({
+            skillTypeId: entry.skillTypeId,
+            level: entry.level,
+            status: status(index),
+            spTotal: entry.sp,
+            spRemaining: index < 5 ? 0 : entry.sp,
+            seconds: index < 5 ? 0 : 1_852,
+            estimated: false,
+          })),
+          totalSp: 21_000,
+          remainingSp: 6_000,
+          percentComplete: 71.4,
+          remainingSeconds: 1_852,
+          missingSkillbooks: [DRONE_INTERFACING],
+          blocked: false,
+          estimated: false,
+        },
+      },
+      { connectionId: MIRA, name: "Mira Caldari", evaluation: null },
+    ],
+    inserted: [],
+    ...overrides,
+  };
+}

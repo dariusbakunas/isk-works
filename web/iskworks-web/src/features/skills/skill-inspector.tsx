@@ -1,10 +1,18 @@
-import { Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useState } from "react";
+import { Check, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 
-import type { CatalogueSkill } from "../../api/skills";
+import {
+  getSkillPlan,
+  listSkillPlans,
+  updateSkillPlan,
+  type CatalogueSkill,
+  type SkillPlanSummary,
+} from "../../api/skills";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { skillLevelNumeral } from "../characters/characters-formatters";
 import { AttributeTags, CatalogueLevelBlocks, SkillStateChip } from "./skill-cells";
+import { errorMessage } from "./skill-plans";
 import { prerequisiteTree, type PrerequisiteNode, type RequiredForEntry } from "./skills-catalogue";
 
 function TreeNodes({ nodes, onSelect }: { nodes: PrerequisiteNode[]; onSelect: (typeId: number) => void }) {
@@ -42,6 +50,97 @@ function TreeNodes({ nodes, onSelect }: { nodes: PrerequisiteNode[]; onSelect: (
   );
 }
 
+/** Appends one level of the skill to a chosen plan; the server inserts the
+ * prerequisites it needs and the result says how many. */
+function AddToPlan({ skill }: { skill: CatalogueSkill }) {
+  const [params] = useSearchParams();
+  const character = params.get("character");
+  const [plans, setPlans] = useState<SkillPlanSummary[] | null>(null);
+  const [planId, setPlanId] = useState("");
+  const firstLevel = Math.min(5, (skill.progress?.trainedLevel ?? 0) + 1);
+  const [level, setLevel] = useState(firstLevel);
+  const [message, setMessage] = useState<{ tone: "positive" | "danger"; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listSkillPlans(null, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setPlans(result);
+        setPlanId(result[0]?.id ?? "");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setPlans([]);
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function add() {
+    const plan = plans?.find((candidate) => candidate.id === planId);
+    if (!plan) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const detail = await getSkillPlan(plan.id);
+      const entries = detail.entries.map(({ skillTypeId, level: entryLevel }) => ({ skillTypeId, level: entryLevel }));
+      const result = await updateSkillPlan(plan.id, {
+        name: detail.plan.name,
+        description: detail.plan.description,
+        entries: [...entries, { skillTypeId: skill.typeId, level }],
+      });
+      const count = result.inserted.length;
+      const what = `${skill.name} ${skillLevelNumeral(level)}`;
+      setMessage({
+        tone: "positive",
+        text: count > 0
+          ? `Added ${what} and ${count} prerequisite${count === 1 ? "" : "s"} to ${plan.name}`
+          : `Added ${what} to ${plan.name}`,
+      });
+    } catch (reason) {
+      setMessage({ tone: "danger", text: errorMessage(reason, "Could not add to the plan.") });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (plans === null) return <p className="text-xs text-muted">Loading plans…</p>;
+  if (plans.length === 0) {
+    return (
+      <p className="text-xs text-muted">
+        No skill plans yet.{" "}
+        <Link className="text-primary underline" to={{ pathname: "/skills/plans", search: character ? `?${new URLSearchParams({ character })}` : "" }}>
+          Create a plan
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Plan</span>
+          <select className="iw-input w-full" onChange={(event) => setPlanId(event.target.value)} value={planId}>
+            {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="sr-only">Level</span>
+          <select className="iw-input" onChange={(event) => setLevel(Number(event.target.value))} value={level}>
+            {[1, 2, 3, 4, 5].filter((value) => value >= firstLevel).map((value) => (
+              <option key={value} value={value}>{skillLevelNumeral(value)}</option>
+            ))}
+          </select>
+        </label>
+        <button className="iw-button-primary" disabled={saving || planId === ""} onClick={() => void add()} type="button">Add</button>
+      </div>
+      {message ? (
+        <p className={`text-xs ${message.tone === "positive" ? "text-positive" : "text-danger"}`} role="status">{message.text}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function SkillInspector({
   onClose,
   onSelect,
@@ -56,6 +155,7 @@ export function SkillInspector({
   skills: CatalogueSkill[];
 }) {
   const [showRequiredFor, setShowRequiredFor] = useState(false);
+  const [adding, setAdding] = useState(false);
   const tree = prerequisiteTree(skill, skills);
   const trained = skill.progress?.trainedLevel ?? 0;
 
@@ -142,6 +242,19 @@ export function SkillInspector({
                 ))}
               </ul>
             ) : null}
+          </section>
+        ) : null}
+
+        {(skill.progress?.trainedLevel ?? 0) < 5 ? (
+          <section className="border-t border-border pt-3">
+            {adding ? (
+              <AddToPlan skill={skill} />
+            ) : (
+              <button className="iw-button-primary flex w-full items-center justify-center gap-1" onClick={() => setAdding(true)} type="button">
+                <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                Add to plan…
+              </button>
+            )}
           </section>
         ) : null}
       </div>

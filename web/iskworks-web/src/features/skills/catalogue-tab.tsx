@@ -280,6 +280,8 @@ export function CatalogueTab({ catalogue }: { catalogue: SkillCatalogue }) {
 
       {selected ? (
         <SkillInspector
+          // A fresh inspector per skill, so Add to plan's level resets.
+          key={selected.typeId}
           onClose={() => update((next) => next.delete("skill"))}
           onSelect={(typeId) => update((next) => next.set("skill", String(typeId)))}
           requiredFor={requiredFor.get(selected.typeId) ?? []}

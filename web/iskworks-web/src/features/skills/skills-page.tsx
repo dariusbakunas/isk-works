@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router";
+import { Link, NavLink, Route, Routes, useMatch, useSearchParams } from "react-router";
 
 import type { SkillCatalogueCharacter } from "../../api/skills";
 import { EmptyState, InlineAlert, PageHeader, Panel } from "../../components/primitives";
@@ -6,6 +6,8 @@ import { PRIVATE_ATTR } from "../../observability/private";
 import { CharacterSkillQueueTab } from "../characters/skill-queue-tab";
 import { useNow } from "../jobs/use-jobs";
 import { CatalogueTab } from "./catalogue-tab";
+import { PlanEditor } from "./plan-editor";
+import { PlansTab } from "./plans-tab";
 import { useCharacterDetail, useCharacters, useSkillCatalogue } from "./use-skills";
 
 function CharacterHeader({
@@ -66,8 +68,14 @@ function QueueRail({ characterId }: { characterId: string }) {
   );
 }
 
-// Skills: the full skill catalogue for one character, the way the client's
-// Skill Catalogue shows it, with the training queue alongside.
+const tabClass = ({ isActive }: { isActive: boolean }) =>
+  `inline-flex h-9 items-center border-b-2 px-3 text-xs font-semibold transition ${
+    isActive ? "border-primary text-foreground" : "border-transparent text-muted hover:text-foreground"
+  }`;
+
+// Skills: for one character (the header picker), the full skill catalogue
+// the way the client's Skill Catalogue shows it, and the workspace's skill
+// plans; the training queue alongside.
 export function SkillsPage() {
   const [params, setParams] = useSearchParams();
   const characters = useCharacters();
@@ -77,6 +85,10 @@ export function SkillsPage() {
     ? (roster.find((entry) => entry.connectionId === requested) ?? roster[0])?.connectionId ?? null
     : undefined;
   const catalogue = useSkillCatalogue(characterId);
+  // The plan editor has its own character column, so it takes the width
+  // the training queue would.
+  const editing = useMatch("/skills/plans/:planId") !== null;
+  const tabSearch = characterId ? `?${new URLSearchParams({ character: characterId })}` : "";
 
   function selectCharacter(connectionId: string) {
     const next = new URLSearchParams(params);
@@ -103,7 +115,7 @@ export function SkillsPage() {
           ))}
         </div>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className={`grid gap-3 ${editing ? "" : "lg:grid-cols-[minmax(0,1fr)_20rem]"}`}>
           <div className="min-w-0 space-y-3">
             {characterId ? (
               <CharacterHeader
@@ -119,9 +131,20 @@ export function SkillsPage() {
                 </EmptyState>
               </Panel>
             )}
-            <CatalogueTab catalogue={catalogue.data} />
+            <nav aria-label="Skills views" className="flex items-stretch border-b border-border">
+              <NavLink className={tabClass} end to={{ pathname: "/skills", search: tabSearch }}>Catalogue</NavLink>
+              <NavLink className={tabClass} to={{ pathname: "/skills/plans", search: tabSearch }}>Plans</NavLink>
+            </nav>
+            <Routes>
+              <Route element={<CatalogueTab catalogue={catalogue.data} />} index />
+              <Route element={<PlansTab characterId={characterId ?? null} />} path="plans" />
+              <Route
+                element={<PlanEditor catalogue={catalogue.data} characterId={characterId ?? null} />}
+                path="plans/:planId"
+              />
+            </Routes>
           </div>
-          {characterId ? <QueueRail characterId={characterId} /> : null}
+          {characterId && !editing ? <QueueRail characterId={characterId} /> : null}
         </div>
       )}
     </>
