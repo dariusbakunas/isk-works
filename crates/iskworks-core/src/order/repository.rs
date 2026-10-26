@@ -203,6 +203,9 @@ pub struct NewTicketPrerequisite {
     /// version-1/2 rows.
     pub dependency_id: Option<String>,
     pub price_evidence: Option<PlanRequirementEvidence>,
+    /// See `TicketPrerequisite::order_id`. `None` everywhere except a
+    /// combined ticket's copies.
+    pub order_id: Option<OrderId>,
 }
 
 /// Excludes `status`/`display_id`/timestamps -- the repository assigns

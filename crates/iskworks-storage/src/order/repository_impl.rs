@@ -522,6 +522,7 @@ impl OrderRepository for PgOrderRepository {
                 own_installation_cost: new_ticket.own_installation_cost,
                 total_production_cost: new_ticket.total_production_cost,
                 plan_evidence: new_ticket.plan_evidence,
+                merged_into_ticket_id: None,
             });
         }
 
@@ -548,7 +549,7 @@ impl OrderRepository for PgOrderRepository {
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND id = $2",
         )
         .bind(workspace_id.0)
@@ -572,7 +573,7 @@ impl OrderRepository for PgOrderRepository {
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND owner_id = $2 ORDER BY display_id",
         )
         .bind(workspace_id.0)
@@ -597,7 +598,7 @@ impl OrderRepository for PgOrderRepository {
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND id = ANY($2) ORDER BY display_id",
         )
         .bind(workspace_id.0)
@@ -631,7 +632,7 @@ impl OrderRepository for PgOrderRepository {
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND order_id = ANY($2) \
              ORDER BY order_id, display_id",
         )
@@ -722,7 +723,8 @@ impl OrderRepository for PgOrderRepository {
              estimated_unit_cost, estimated_line_total, reused_line_total, \
              operation_occurrence_key, child_occurrence_key, inventory_unit_basis, \
              child_produced_quantity, child_consumed_quantity, child_surplus_quantity, \
-             child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id \
+             child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id, \
+             order_id \
              FROM ticket_prerequisites WHERE ticket_id = ANY($1) ORDER BY ticket_id, type_id",
         )
         .bind(ticket_ids.iter().map(|id| id.0).collect::<Vec<_>>())

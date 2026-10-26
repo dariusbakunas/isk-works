@@ -198,6 +198,11 @@ pub struct Ticket {
     pub own_installation_cost: Option<Money>,
     pub total_production_cost: Option<Money>,
     pub plan_evidence: Option<PlanOperationEvidence>,
+    /// The combined ticket this one was merged into -- `Some` only on a
+    /// canceled member of a combined ticket. Such a member can't be
+    /// restored on its own; splitting the combined ticket restores it.
+    #[serde(default)]
+    pub merged_into_ticket_id: Option<TicketId>,
 }
 
 /// A Manufacturing/Reaction ticket's own frozen, single-level material
@@ -273,6 +278,21 @@ pub struct TicketPrerequisite {
     /// version-1/2 rows.
     pub dependency_id: Option<String>,
     pub price_evidence: Option<PlanRequirementEvidence>,
+    /// The Epic this prerequisite serves when it differs from its ticket's
+    /// own `order_id` -- set on a combined ticket's copies of its members'
+    /// prerequisites. `None` means the ticket's Epic; see
+    /// [`TicketPrerequisite::epic`].
+    #[serde(default)]
+    pub order_id: Option<OrderId>,
+}
+
+impl TicketPrerequisite {
+    /// The Epic this prerequisite serves: its own `order_id`, else its
+    /// ticket's.
+    #[must_use]
+    pub fn epic(&self, ticket_order_id: Option<OrderId>) -> Option<OrderId> {
+        self.order_id.or(ticket_order_id)
+    }
 }
 
 /// Links a `TicketPrerequisite` to another `Ticket` that supplies it --
@@ -441,6 +461,7 @@ mod tests {
             child_consumed_cost: None,
             dependency_id: None,
             price_evidence: None,
+            order_id: None,
         }
     }
 

@@ -165,6 +165,7 @@ pub(super) async fn linked_build_plan_for_ticket(
             child_consumed_cost: None,
             dependency_id: None,
             price_evidence: None,
+            order_id: None,
         });
     }
     Ok((prerequisites, snapshot.to_task_execution_snapshot()))

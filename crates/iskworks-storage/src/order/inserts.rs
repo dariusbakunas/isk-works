@@ -133,8 +133,8 @@ pub(super) async fn insert_ticket_prerequisite(
           estimated_unit_cost, estimated_line_total, reused_line_total,
           operation_occurrence_key, child_occurrence_key, inventory_unit_basis,
           child_produced_quantity, child_consumed_quantity, child_surplus_quantity,
-          child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+          child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id, order_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         "#,
     )
     .bind(prerequisite.id.0)
@@ -175,6 +175,7 @@ pub(super) async fn insert_ticket_prerequisite(
     .bind(&price_evidence)
     .bind(prerequisite.child_consumed_cost.map(|money| money.0))
     .bind(&prerequisite.dependency_id)
+    .bind(prerequisite.order_id.map(|id| id.0))
     .execute(&mut **tx)
     .await
     .map_err(map_error)?;
@@ -203,6 +204,7 @@ pub(super) async fn insert_ticket_prerequisite(
         child_consumed_cost: prerequisite.child_consumed_cost,
         dependency_id: prerequisite.dependency_id,
         price_evidence: prerequisite.price_evidence,
+        order_id: prerequisite.order_id,
     })
 }
 
@@ -429,6 +431,7 @@ pub(super) async fn insert_ticket_with_prerequisites(
         own_installation_cost: new_ticket.own_installation_cost,
         total_production_cost: new_ticket.total_production_cost,
         plan_evidence: new_ticket.plan_evidence,
+        merged_into_ticket_id: None,
     };
     Ok((ticket, prerequisites))
 }
