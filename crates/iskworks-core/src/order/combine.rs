@@ -18,6 +18,8 @@ pub enum CombineRefusalReason {
     NotProduction,
     /// A different kind or item than the first selected ticket.
     DifferentItem,
+    /// Belongs to a different inventory owner than the first ticket.
+    DifferentOwner,
     /// Not To Do (already started, complete or canceled).
     NotTodo,
     Archived,
@@ -44,6 +46,7 @@ impl CombineRefusalReason {
             Self::Duplicate => "it was selected more than once",
             Self::NotProduction => "only manufacturing and reaction tickets can be combined",
             Self::DifferentItem => "combined tickets must make the same item by the same activity",
+            Self::DifferentOwner => "combined tickets must belong to the same inventory owner",
             Self::NotTodo => "only To Do tickets can be combined",
             Self::Archived => "it is archived",
             Self::AlreadyMerged => "it was already merged into another ticket",
@@ -94,6 +97,8 @@ pub fn check_combinable(candidates: &[CombineCandidate<'_>]) -> Result<(), Order
             Some(CombineRefusalReason::NotProduction)
         } else if ticket.kind != first.kind || ticket.type_id != first.type_id {
             Some(CombineRefusalReason::DifferentItem)
+        } else if ticket.owner_id != first.owner_id {
+            Some(CombineRefusalReason::DifferentOwner)
         } else if ticket.merged_into_ticket_id.is_some() {
             Some(CombineRefusalReason::AlreadyMerged)
         } else if ticket.status != TicketStatus::Todo {

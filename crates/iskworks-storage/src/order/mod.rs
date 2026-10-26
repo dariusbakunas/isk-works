@@ -32,6 +32,7 @@ use uuid::Uuid;
 use crate::inventory::PgInventoryRepository;
 
 mod acquisition;
+mod combine;
 mod error;
 mod inserts;
 mod inventory_posting;

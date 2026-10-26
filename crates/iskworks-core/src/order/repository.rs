@@ -863,6 +863,17 @@ pub trait OrderRepository: Send + Sync {
         ticket_ids: &[TicketId],
     ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError>;
 
+    /// Combines `ticket_ids` (in selection order; see `check_combinable`)
+    /// into one new ticket executing all of their operations, atomically:
+    /// it takes over their claims and fulfillment links, adopts their child
+    /// tickets, and the members are canceled with `merged_into_ticket_id`
+    /// pointing at it. Returns the combined ticket.
+    async fn combine_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_ids: &[TicketId],
+    ) -> Result<Ticket, OrderError>;
+
     /// `available = physical_balance - active allocations`, read-only, no
     /// lock. Neither `create_order` nor `create_ticket` allocates anything,
     /// so for any newly created row this equals the physical balance; a

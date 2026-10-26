@@ -1,4 +1,5 @@
 use super::*;
+use iskworks_core::order::CombineRefusalReason;
 
 // ─── Combining tickets: persistence groundwork ────────────────────────────
 // A combined ticket's members point at it through `merged_into_ticket_id`;
@@ -487,4 +488,418 @@ async fn a_ticket_is_listed_under_every_epic_it_executes(pool: PgPool) {
     step.occurrence_key = Some("hexite".to_string());
     let (step, _) = repository.create_ticket(step).await.unwrap();
     assert!(step.executes(orders[2], "hexite"));
+}
+
+// ─── Combine ──────────────────────────────────────────────────────────────
+
+const HEXITE: i64 = 16_658;
+const INPUT: i64 = 16_640;
+
+async fn insert_operations(pool: &PgPool, order_id: OrderId, operations: &[(&str, Option<&str>)]) {
+    for (key, parent) in operations {
+        sqlx::query(
+            "INSERT INTO order_plan_operations \
+             (id, order_id, occurrence_key, parent_occurrence_key, activity, runs, \
+              persisted_runs, product_type_id, product_name, output_per_run, \
+              produced_quantity, blueprint_or_formula_type_id, complete, evidence, created_at) \
+             VALUES ($1, $2, $3, $4, 'reaction', 2, 2, $5, 'Hexite', 200, 400, 1, true, \
+                     '{\"effectiveMe\":null,\"effectiveTe\":null,\"recipeCurrency\":\"current\", \
+                       \"installation\":null,\"warnings\":[]}'::jsonb, now())",
+        )
+        .bind(Uuid::new_v4())
+        .bind(order_id.0)
+        .bind(key)
+        .bind(parent)
+        .bind(HEXITE)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+/// A version-3 Epic whose root consumes Hexite from step `hexite` (which,
+/// when `second_step`, consumes Hexite from step `hexite-2`), each step
+/// needing 200 of `INPUT`.
+async fn hexite_epic(
+    pool: &PgPool,
+    repository: &PgOrderRepository,
+    workspace_id: WorkspaceId,
+    owner_id: OwnerId,
+    build_id: BuildId,
+    second_step: bool,
+) -> OrderId {
+    let steps: &[(&str, &str)] = if second_step {
+        &[("hexite", "root"), ("hexite-2", "hexite")]
+    } else {
+        &[("hexite", "root")]
+    };
+    let mut requirements = Vec::new();
+    for (step, parent) in steps {
+        let mut consumer = requirement(HEXITE, RequirementKind::React, 400);
+        consumer.operation_occurrence_key = Some((*parent).to_string());
+        consumer.child_occurrence_key = Some((*step).to_string());
+        requirements.push(consumer);
+        let mut input = requirement(INPUT, RequirementKind::Buy, 200);
+        input.operation_occurrence_key = Some((*step).to_string());
+        requirements.push(input);
+    }
+    let snapshot = empty_price_snapshot();
+    let mut order = draft_order(workspace_id, owner_id, build_id, snapshot.id);
+    order.planning_snapshot_version = 3;
+    let (order, _) = repository
+        .create_order(NewOrder {
+            order,
+            price_snapshot: snapshot,
+            requirements,
+        })
+        .await
+        .unwrap();
+    let mut operations = vec![("root", None)];
+    operations.extend(steps.iter().map(|(step, parent)| (*step, Some(*parent))));
+    insert_operations(pool, order.id, &operations).await;
+    order.id
+}
+
+async fn step_ticket(
+    repository: &PgOrderRepository,
+    workspace_id: WorkspaceId,
+    order_id: OrderId,
+    key: &str,
+) -> Ticket {
+    match repository
+        .create_operation_ticket(workspace_id, order_id, key)
+        .await
+        .unwrap()
+    {
+        OperationTicketCreation::Created(ticket) => *ticket,
+        OperationTicketCreation::AlreadyExists(id) => {
+            repository.get_ticket(workspace_id, id).await.unwrap()
+        }
+    }
+}
+
+struct CombineFixture {
+    pool: PgPool,
+    repository: PgOrderRepository,
+    workspace_id: WorkspaceId,
+    owner_id: OwnerId,
+    build_id: BuildId,
+}
+
+impl CombineFixture {
+    async fn new(pool: PgPool) -> Self {
+        let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+        let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+        Self {
+            repository: PgOrderRepository::new(pool.clone()),
+            pool,
+            workspace_id,
+            owner_id,
+            build_id,
+        }
+    }
+
+    async fn epic(&self, second_step: bool) -> OrderId {
+        hexite_epic(
+            &self.pool,
+            &self.repository,
+            self.workspace_id,
+            self.owner_id,
+            self.build_id,
+            second_step,
+        )
+        .await
+    }
+
+    async fn step(&self, order_id: OrderId, key: &str) -> Ticket {
+        step_ticket(&self.repository, self.workspace_id, order_id, key).await
+    }
+
+    async fn combine(&self, tickets: &[&Ticket]) -> Result<Ticket, OrderError> {
+        let ids: Vec<TicketId> = tickets.iter().map(|ticket| ticket.id).collect();
+        self.repository
+            .combine_tickets(self.workspace_id, &ids)
+            .await
+    }
+
+    async fn ticket(&self, id: TicketId) -> Ticket {
+        self.repository
+            .get_ticket(self.workspace_id, id)
+            .await
+            .unwrap()
+    }
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn combining_two_epics_steps_moves_their_work_onto_one_ticket(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let root = fx.step(first_epic, "root").await;
+    // The root ticket was created after its step: it adopted `a` as child.
+    assert_eq!(fx.ticket(a.id).await.parent_ticket_id, Some(root.id));
+    // A consumer's prerequisite fulfilled by `a`.
+    let consumer_prerequisite = fx
+        .repository
+        .list_ticket_prerequisites(root.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|prerequisite| prerequisite.type_id == HEXITE)
+        .unwrap();
+    fx.repository
+        .link_ticket_prerequisite_to_ticket(consumer_prerequisite.id, a.id, 400)
+        .await
+        .unwrap();
+
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    assert_eq!(combined.order_id, None);
+    assert_eq!(combined.status, TicketStatus::Todo);
+    assert_eq!(combined.quantity, Some(800));
+    assert_eq!(combined.execution_snapshot.as_ref().unwrap().runs, 4);
+    assert_eq!(
+        combined.epics(),
+        [first_epic, second_epic].into_iter().collect()
+    );
+    assert!(combined.executes(first_epic, "hexite"));
+    assert!(combined.executes(second_epic, "hexite"));
+    for member in [&a, &b] {
+        let member = fx.ticket(member.id).await;
+        assert_eq!(member.status, TicketStatus::Canceled);
+        assert_eq!(member.merged_into_ticket_id, Some(combined.id));
+    }
+    // The combined ticket is now each Epic's step ticket.
+    for epic in [first_epic, second_epic] {
+        let listed = fx
+            .repository
+            .list_tickets_for_order(fx.workspace_id, epic)
+            .await
+            .unwrap();
+        assert!(listed.iter().any(|ticket| ticket.id == combined.id));
+        match fx
+            .repository
+            .create_operation_ticket(fx.workspace_id, epic, "hexite")
+            .await
+            .unwrap()
+        {
+            OperationTicketCreation::AlreadyExists(id) => assert_eq!(id, combined.id),
+            OperationTicketCreation::Created(_) => panic!("the step already has a ticket"),
+        }
+    }
+    // Prerequisites: one copy per member, each tagged with its Epic.
+    let copies = fx
+        .repository
+        .list_ticket_prerequisites(combined.id)
+        .await
+        .unwrap();
+    let mut tagged: Vec<_> = copies
+        .iter()
+        .map(|copy| (copy.type_id, copy.required_quantity, copy.order_id))
+        .collect();
+    tagged.sort();
+    let mut expected = vec![
+        (INPUT, 200, Some(first_epic)),
+        (INPUT, 200, Some(second_epic)),
+    ];
+    expected.sort();
+    assert_eq!(tagged, expected);
+    // The consumer's link now names the combined ticket too, and children
+    // follow it.
+    let links = fx
+        .repository
+        .list_ticket_prerequisite_fulfillments(consumer_prerequisite.id)
+        .await
+        .unwrap();
+    assert!(links
+        .iter()
+        .any(|link| link.fulfilling_ticket_id == combined.id && link.allocated_quantity == 400));
+    assert_eq!(
+        fx.ticket(root.id).await.parent_ticket_id,
+        None,
+        "the root is the step's parent, not its child"
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn combining_adopts_the_members_children(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let (child, _) = fx
+        .repository
+        .create_ticket(mfg_ticket(
+            fx.workspace_id,
+            fx.owner_id,
+            TicketKind::Reaction,
+            INPUT,
+            "Input",
+            fx.build_id,
+            Vec::new(),
+            Some(1),
+        ))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE tickets SET parent_ticket_id = $1 WHERE id = $2")
+        .bind(a.id.0)
+        .bind(child.id.0)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    assert_eq!(
+        fx.ticket(child.id).await.parent_ticket_id,
+        Some(combined.id)
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn two_steps_of_one_epic_and_a_third_combine(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(true).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let a2 = fx.step(first_epic, "hexite-2").await;
+    let b = fx.step(second_epic, "hexite").await;
+
+    let combined = fx.combine(&[&a, &a2, &b]).await.unwrap();
+
+    assert_eq!(combined.operations.len(), 3);
+    assert_eq!(combined.quantity, Some(1_200));
+    assert_eq!(combined.epics().len(), 2);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_refused_combine_changes_nothing(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let root = fx.step(second_epic, "root").await;
+    let ticket_count = || async {
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM tickets")
+            .fetch_one(&fx.pool)
+            .await
+            .unwrap()
+    };
+    let before = ticket_count().await;
+
+    // The root step stays alone (the fixture's root makes Hexite too).
+    match fx.combine(&[&a, &root]).await {
+        Err(OrderError::TicketNotCombinable { display_id, reason }) => {
+            assert_eq!(display_id, root.display_id);
+            assert_eq!(reason, CombineRefusalReason::RootOperation);
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    // A started ticket.
+    fx.repository
+        .set_ticket_status(fx.workspace_id, b.id, TicketStatus::InProgress)
+        .await
+        .unwrap();
+    assert!(matches!(
+        fx.combine(&[&a, &b]).await,
+        Err(OrderError::TicketNotCombinable {
+            reason: CombineRefusalReason::NotTodo,
+            ..
+        })
+    ));
+    // An unknown ticket.
+    let ghost = Ticket {
+        id: TicketId::new(),
+        ..a.clone()
+    };
+    assert!(matches!(
+        fx.combine(&[&a, &ghost]).await,
+        Err(OrderError::TicketNotFound)
+    ));
+
+    assert_eq!(ticket_count().await, before);
+    let a = fx.ticket(a.id).await;
+    assert_eq!(a.status, TicketStatus::Todo);
+    assert_eq!(a.merged_into_ticket_id, None);
+    assert!(a.executes(first_epic, "hexite"));
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_legacy_epics_step_is_refused(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let current = fx.epic(false).await;
+    let a = fx.step(current, "hexite").await;
+    let legacy = fx.epic(false).await;
+    let b = fx.step(legacy, "hexite").await;
+    sqlx::query("UPDATE orders SET planning_snapshot_version = 2 WHERE id = $1")
+        .bind(legacy.0)
+        .execute(&fx.pool)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        fx.combine(&[&a, &b]).await,
+        Err(OrderError::TicketNotCombinable {
+            reason: CombineRefusalReason::LegacyEpic,
+            ..
+        })
+    ));
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_combined_ticket_records_into_both_epics(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let import_id: Uuid = sqlx::query_scalar("SELECT id FROM sde_imports WHERE active")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    seed_sde_type(&pool, import_id, HEXITE, "Hexite").await;
+    // The requirement fixture names every input "Tritanium".
+    seed_sde_type(&pool, import_id, INPUT, "Tritanium").await;
+    seed_inventory_balance_with_cost(
+        &pool,
+        fx.workspace_id,
+        fx.owner_id,
+        INPUT,
+        "Tritanium",
+        400,
+        "400",
+    )
+    .await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    fx.repository
+        .record_ticket_production(
+            fx.workspace_id,
+            combined.id,
+            production_input(4, HEXITE, 800, &[(INPUT, 400)], "0"),
+        )
+        .await
+        .unwrap();
+
+    let reserved: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT r.order_id, SUM(a.quantity)::bigint FROM inventory_allocations a \
+         JOIN order_requirements r ON r.id = a.order_requirement_id \
+         WHERE a.reason = 'recorded_output' GROUP BY r.order_id ORDER BY r.order_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let mut expected = vec![(first_epic.0, 400), (second_epic.0, 400)];
+    expected.sort();
+    assert_eq!(reserved, expected);
 }

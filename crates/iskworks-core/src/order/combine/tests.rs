@@ -4,8 +4,8 @@ fn ticket(kind: TicketKind, type_id: i64, order_id: OrderId, key: &str) -> Ticke
     let now = Utc::now();
     Ticket {
         id: TicketId::new(),
-        workspace_id: WorkspaceId(Uuid::new_v4()),
-        owner_id: OwnerId(Uuid::new_v4()),
+        workspace_id: WorkspaceId(Uuid::nil()),
+        owner_id: OwnerId(Uuid::nil()),
         display_id: format!("ISK-{}", rand_suffix()),
         order_id: Some(order_id),
         kind,
@@ -193,6 +193,14 @@ fn each_rule_names_the_offending_ticket() {
             },
             |_| {},
             CombineRefusalReason::NoOperation,
+        ),
+        (
+            Ticket {
+                owner_id: OwnerId(Uuid::new_v4()),
+                ..base()
+            },
+            |_| {},
+            CombineRefusalReason::DifferentOwner,
         ),
         (
             base(),

@@ -1144,6 +1144,16 @@ impl OrderRepository for PgOrderRepository {
         super::reservations::ticket_operations(&self.pool, &ids).await
     }
 
+    async fn combine_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_ids: &[TicketId],
+    ) -> Result<Ticket, OrderError> {
+        let combined =
+            super::combine::combine_tickets(&self.pool, workspace_id, ticket_ids).await?;
+        self.get_ticket(workspace_id, combined).await
+    }
+
     async fn available_quantity(
         &self,
         workspace_id: WorkspaceId,
