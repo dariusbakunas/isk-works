@@ -751,8 +751,9 @@ pub(super) async fn load_order_detail_data(
         .list_tickets_for_orders(workspace_id, &order_ids)
         .await?
     {
-        if let Some(order_id) = ticket.order_id {
-            tickets.entry(order_id).or_default().push(ticket);
+        // A combined ticket belongs to every Epic it executes operations of.
+        for order_id in ticket.epics() {
+            tickets.entry(order_id).or_default().push(ticket.clone());
         }
     }
     let mut operations: HashMap<OrderId, Vec<PlanOperation>> = HashMap::new();
@@ -861,7 +862,7 @@ pub(super) fn order_detail(
         if requirement.kind != RequirementKind::Buy {
             if let Some(producer) = requirement.child_occurrence_key.as_deref().and_then(|key| {
                 order_tickets.iter().find(|ticket| {
-                    ticket.occurrence_key.as_deref() == Some(key)
+                    ticket.executes(requirement.order_id, key)
                         && ticket.status != TicketStatus::Canceled
                 })
             }) {

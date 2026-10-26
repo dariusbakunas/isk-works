@@ -224,7 +224,7 @@ pub(super) async fn create_ticket_for_requirement(
             .await?
             .into_iter()
             .find(|ticket| {
-                ticket.occurrence_key.as_deref() == Some(child_occurrence_key.as_str())
+                ticket.executes(requirement.order_id, child_occurrence_key)
                     && ticket.status != TicketStatus::Canceled
             });
         if let Some(ticket) = existing {

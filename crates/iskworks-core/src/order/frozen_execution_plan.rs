@@ -507,8 +507,7 @@ pub fn epic_plan_overlay(
         .map(|operation| {
             let key = operation.occurrence_key.as_str();
             let ticket = tickets.iter().find(|ticket| {
-                ticket.occurrence_key.as_deref() == Some(key)
-                    && ticket.status != TicketStatus::Canceled
+                ticket.executes(order.id, key) && ticket.status != TicketStatus::Canceled
             });
             let mut output = EpicStockProgress::default();
             for requirement in requirements

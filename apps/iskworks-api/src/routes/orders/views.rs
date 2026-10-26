@@ -126,8 +126,7 @@ pub(super) fn production_plan_view(
         .filter_map(|key| {
             let operation = by_key.remove(key)?;
             let ticket = tickets.iter().find(|ticket| {
-                ticket.occurrence_key.as_deref() == Some(key.as_str())
-                    && ticket.status != TicketStatus::Canceled
+                ticket.executes(operation.order_id, key) && ticket.status != TicketStatus::Canceled
             });
             Some(PlanOperationView {
                 stage: dag.stages.get(key).copied().unwrap_or_default(),

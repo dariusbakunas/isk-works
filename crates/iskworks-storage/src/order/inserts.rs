@@ -396,6 +396,10 @@ pub(super) async fn insert_ticket_with_prerequisites(
         prerequisites.push(insert_ticket_prerequisite(tx, new_ticket.id, prerequisite).await?);
     }
 
+    let operations = super::reservations::own_operation(
+        new_ticket.order_id,
+        new_ticket.occurrence_key.as_deref(),
+    );
     let ticket = Ticket {
         id: new_ticket.id,
         workspace_id: new_ticket.workspace_id,
@@ -432,6 +436,7 @@ pub(super) async fn insert_ticket_with_prerequisites(
         total_production_cost: new_ticket.total_production_cost,
         plan_evidence: new_ticket.plan_evidence,
         merged_into_ticket_id: None,
+        operations,
     };
     Ok((ticket, prerequisites))
 }

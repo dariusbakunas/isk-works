@@ -312,6 +312,7 @@ impl TicketRow {
             total_production_cost: self.total_production_cost.map(Money),
             plan_evidence,
             merged_into_ticket_id: self.merged_into_ticket_id.map(TicketId),
+            operations: Vec::new(),
         })
     }
 }

@@ -703,10 +703,11 @@ pub trait OrderRepository: Send + Sync {
         owner_id: OwnerId,
     ) -> Result<Vec<Ticket>, OrderError>;
 
-    /// Every ticket whose explicit `order_id` is this Order -- the
-    /// authoritative answer to "which tickets does this Epic contain?"
-    /// since it reads `tickets.order_id` directly, never resolving
-    /// membership by joining through `order_requirement_fulfillments` (a
+    /// Every ticket whose explicit `order_id` is this Order, plus every
+    /// ticket executing one of its operations through a claim (a combined
+    /// ticket, which has no `order_id`) -- the authoritative answer to
+    /// "which tickets does this Epic contain?" (see `Ticket::epics`), never
+    /// resolved by joining through `order_requirement_fulfillments` (a
     /// requirement fulfillment answers a different question -- see
     /// `OrderRequirementFulfillment`'s own doc). Scoped by `workspace_id`
     /// for the same defense-in-depth every other lookup here has, even
@@ -716,8 +717,9 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<Ticket>, OrderError>;
-    /// `list_tickets_for_order` for several Orders in one read. Grouped
-    /// by Order, each in `list_tickets_for_order`' order.
+    /// `list_tickets_for_order` for several Orders in one read, each
+    /// ticket once. Grouped by `order_id`, each in `list_tickets_for_order`'
+    /// order; tickets with no `order_id` (combined tickets) come last.
     async fn list_tickets_for_orders(
         &self,
         workspace_id: WorkspaceId,

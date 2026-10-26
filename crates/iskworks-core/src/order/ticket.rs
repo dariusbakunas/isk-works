@@ -105,7 +105,8 @@ pub struct Ticket {
     /// (which frozen requirement(s) this ticket contributes to/fulfills,
     /// possibly across *other* Orders via `link_ticket_to_requirement`),
     /// this field is never used to infer anything beyond organizational
-    /// membership, and nothing else should be used to infer it.
+    /// membership. A combined ticket has none: its Epics are those of the
+    /// operations it executes (`Ticket::epics`).
     pub order_id: Option<OrderId>,
     pub kind: TicketKind,
     /// `None` only for `Generic` -- every other kind requires an item.
@@ -203,6 +204,34 @@ pub struct Ticket {
     /// restored on its own; splitting the combined ticket restores it.
     #[serde(default)]
     pub merged_into_ticket_id: Option<TicketId>,
+    /// The frozen Epic operations this ticket executes (see
+    /// [`TicketOperation`]), sorted -- derived on read, never written
+    /// directly. Empty for acquisition, generic and standalone tickets;
+    /// several for a combined ticket.
+    #[serde(default)]
+    pub operations: Vec<TicketOperation>,
+}
+
+impl Ticket {
+    /// Whether this ticket executes operation `occurrence_key` of Epic
+    /// `order_id` -- the one way to find an operation's ticket.
+    #[must_use]
+    pub fn executes(&self, order_id: OrderId, occurrence_key: &str) -> bool {
+        self.operations.iter().any(|operation| {
+            operation.order_id == order_id && operation.occurrence_key == occurrence_key
+        })
+    }
+
+    /// The Epics this ticket belongs to: its own `order_id`, plus every
+    /// Epic whose operations it executes (a combined ticket has no
+    /// `order_id` of its own).
+    #[must_use]
+    pub fn epics(&self) -> std::collections::BTreeSet<OrderId> {
+        self.order_id
+            .into_iter()
+            .chain(self.operations.iter().map(|operation| operation.order_id))
+            .collect()
+    }
 }
 
 /// One frozen Epic operation a production ticket executes -- a row of

@@ -399,3 +399,92 @@ async fn recorded_output_is_reserved_to_every_epic_the_ticket_executes(pool: PgP
     expected.sort();
     assert_eq!(reserved, expected, "50 overshoot stays free");
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_ticket_is_listed_under_every_epic_it_executes(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let mut orders = Vec::new();
+    for _ in 0..3 {
+        let snapshot = empty_price_snapshot();
+        let (order, _) = repository
+            .create_order(NewOrder {
+                order: draft_order(workspace_id, owner_id, build_id, snapshot.id),
+                price_snapshot: snapshot,
+                requirements: vec![requirement(34, RequirementKind::Buy, 100)],
+            })
+            .await
+            .unwrap();
+        orders.push(order.id);
+    }
+    let (combined, _) = repository
+        .create_ticket(mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Reaction,
+            16_658,
+            "Hexite",
+            build_id,
+            Vec::new(),
+            Some(2),
+        ))
+        .await
+        .unwrap();
+    assert!(combined.operations.is_empty());
+    claim(&pool, orders[0], "hexite", combined.id).await;
+    claim(&pool, orders[1], "hexite", combined.id).await;
+
+    for order_id in &orders[..2] {
+        let listed = repository
+            .list_tickets_for_order(workspace_id, *order_id)
+            .await
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].executes(*order_id, "hexite"));
+    }
+    assert!(repository
+        .list_tickets_for_order(workspace_id, orders[2])
+        .await
+        .unwrap()
+        .is_empty());
+    // One row per ticket, even when it serves several of the asked Epics.
+    assert_eq!(
+        repository
+            .list_tickets_for_orders(workspace_id, &orders)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let reloaded = repository
+        .get_ticket(workspace_id, combined.id)
+        .await
+        .unwrap();
+    assert_eq!(reloaded.order_id, None);
+    assert_eq!(
+        reloaded.epics(),
+        orders[..2]
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+
+    // A ticket created for one step carries that step from the start.
+    let mut step = mfg_ticket(
+        workspace_id,
+        owner_id,
+        TicketKind::Reaction,
+        16_658,
+        "Hexite",
+        build_id,
+        Vec::new(),
+        Some(1),
+    );
+    step.order_id = Some(orders[2]);
+    step.occurrence_key = Some("hexite".to_string());
+    let (step, _) = repository.create_ticket(step).await.unwrap();
+    assert!(step.executes(orders[2], "hexite"));
+}

@@ -693,6 +693,35 @@ pub(super) async fn ticket_operations<'e>(
     Ok(operations)
 }
 
+/// `tickets` with their `operations` filled in (see `ticket_operations`).
+pub(super) async fn with_operations<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    mut tickets: Vec<Ticket>,
+) -> Result<Vec<Ticket>, OrderError> {
+    let ids: Vec<Uuid> = tickets.iter().map(|ticket| ticket.id.0).collect();
+    let mut operations = ticket_operations(executor, &ids).await?;
+    for ticket in &mut tickets {
+        ticket.operations = operations.remove(&ticket.id).unwrap_or_default();
+    }
+    Ok(tickets)
+}
+
+/// A newly inserted ticket's operations: its own `(order_id,
+/// occurrence_key)`, which is also the claim it holds, if any.
+pub(super) fn own_operation(
+    order_id: Option<OrderId>,
+    occurrence_key: Option<&str>,
+) -> Vec<TicketOperation> {
+    order_id
+        .zip(occurrence_key)
+        .map(|(order_id, occurrence_key)| TicketOperation {
+            order_id,
+            occurrence_key: occurrence_key.to_string(),
+        })
+        .into_iter()
+        .collect()
+}
+
 /// Claims `(order_id, occurrence_key)` for `ticket_id`
 /// (`order_operation_ticket_claims`). Returns `None` when the claim is now
 /// held for `ticket_id` -- newly taken, or re-pointed from a canceled

@@ -487,6 +487,10 @@ impl OrderRepository for PgOrderRepository {
                 insert_ticket_prerequisite(&mut tx, new_ticket.id, prerequisite).await?;
             }
 
+            let operations = super::reservations::own_operation(
+                new_ticket.order_id,
+                new_ticket.occurrence_key.as_deref(),
+            );
             tickets.push(Ticket {
                 id: new_ticket.id,
                 workspace_id: new_ticket.workspace_id,
@@ -523,6 +527,7 @@ impl OrderRepository for PgOrderRepository {
                 total_production_cost: new_ticket.total_production_cost,
                 plan_evidence: new_ticket.plan_evidence,
                 merged_into_ticket_id: None,
+                operations,
             });
         }
 
@@ -542,7 +547,7 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let ticket = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
@@ -558,7 +563,9 @@ impl OrderRepository for PgOrderRepository {
         .await
         .map_err(map_error)?
         .ok_or(OrderError::TicketNotFound)?
-        .into_ticket()
+        .into_ticket()?;
+        let mut tickets = super::reservations::with_operations(&self.pool, vec![ticket]).await?;
+        Ok(tickets.remove(0))
     }
 
     async fn list_tickets(
@@ -566,7 +573,7 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         owner_id: OwnerId,
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
@@ -583,7 +590,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn get_tickets(
@@ -591,7 +599,7 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         ticket_ids: &[TicketId],
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
@@ -608,7 +616,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn list_tickets_for_order(
@@ -625,7 +634,7 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_ids: &[OrderId],
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
@@ -633,8 +642,9 @@ impl OrderRepository for PgOrderRepository {
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
              own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
-             FROM tickets WHERE workspace_id = $1 AND order_id = ANY($2) \
-             ORDER BY order_id, display_id",
+             FROM tickets WHERE workspace_id = $1 AND (order_id = ANY($2) OR id IN ( \
+               SELECT ticket_id FROM order_operation_ticket_claims WHERE order_id = ANY($2))) \
+             ORDER BY order_id NULLS LAST, display_id",
         )
         .bind(workspace_id.0)
         .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
@@ -643,7 +653,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn reserve_order_inventory(
