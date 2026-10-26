@@ -2,13 +2,15 @@
 
 mod attributes;
 mod calculate;
+mod eft;
 
 use std::fmt;
 use std::path::Path;
 
 use esf_data::{eve, InfoSde, Sde};
 use iskworks_core::fitting::{
-    DamageProfile, FitCalculation, FitInput, FittingEngine, FittingEngineInfo, FittingError, Pilot,
+    DamageProfile, EftError, FitCalculation, FitInput, FittingEngine, FittingEngineInfo,
+    FittingError, ParsedFit, Pilot,
 };
 
 use crate::DataLock;
@@ -120,6 +122,14 @@ impl EsfFittingEngine {
 impl FittingEngine for EsfFittingEngine {
     fn info(&self) -> FittingEngineInfo {
         self.engine_info()
+    }
+
+    fn parse_eft(&self, text: &str) -> Result<ParsedFit, EftError> {
+        self.read_eft(text)
+    }
+
+    fn write_eft(&self, name: &str, fit: &FitInput) -> Result<String, FittingError> {
+        self.save_eft(name, fit)
     }
 
     fn calculate(

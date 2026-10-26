@@ -6,7 +6,8 @@ use axum::http::{Request, StatusCode};
 use chrono::Utc;
 use iskworks_api::{build_router, AppState};
 use iskworks_core::fitting::{
-    DamageProfile, FitCalculation, FitInput, FittingEngine, FittingEngineInfo, FittingError, Pilot,
+    DamageProfile, EftError, FitCalculation, FitInput, FittingEngine, FittingEngineInfo,
+    FittingError, ParsedFit, Pilot,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError,
@@ -57,6 +58,14 @@ impl FittingEngine for FakeEngine {
             major: 13,
             build_number: 3_650_286,
         }
+    }
+
+    fn parse_eft(&self, _: &str) -> Result<ParsedFit, EftError> {
+        unimplemented!()
+    }
+
+    fn write_eft(&self, _: &str, _: &FitInput) -> Result<String, FittingError> {
+        unimplemented!()
     }
 
     fn calculate(

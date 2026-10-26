@@ -139,6 +139,8 @@ impl fmt::Display for UnknownName {
 pub enum FittingError {
     /// The engine data has no ship of this type.
     UnknownShip(i64),
+    /// The engine could not write the fit out (e.g. as EFT).
+    Export,
     InvalidDamageProfile,
     InvalidSkillLevel {
         skill_type_id: i64,
@@ -649,9 +651,45 @@ pub struct FittingEngineInfo {
     pub build_number: i32,
 }
 
-/// Calculates fit stats. Implemented by `iskworks-fitting`; tests fake it.
+/// A fit read from text, before it is saved.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedFit {
+    /// The name the text gives; `None` when it gives none (the client
+    /// writes `.` for an unnamed fit).
+    pub name: Option<String>,
+    pub fit: FitInput,
+}
+
+/// A line of pasted text, numbered from 1 as the text is.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EftLine {
+    pub line: usize,
+    pub text: String,
+}
+
+/// Why EFT text could not be read.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum EftError {
+    /// Names that match no type, every one of them.
+    UnknownLines(Vec<EftLine>),
+    /// Not EFT, or EFT the engine can't place (a module with no rack, a bad
+    /// mutation); the message says what.
+    Invalid(String),
+}
+
+/// Calculates fit stats and reads and writes fits as text. Implemented by
+/// `iskworks-fitting`; tests fake it.
 pub trait FittingEngine: Send + Sync {
     fn info(&self) -> FittingEngineInfo;
+
+    /// Reads EFT (the client's copy/paste format, which pyfa also writes),
+    /// with modules in the states EVE gives an imported fit.
+    fn parse_eft(&self, text: &str) -> Result<ParsedFit, EftError>;
+
+    /// Writes EFT. Items the engine data doesn't know are left out.
+    fn write_eft(&self, name: &str, fit: &FitInput) -> Result<String, FittingError>;
 
     fn calculate(
         &self,
