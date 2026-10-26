@@ -18,6 +18,7 @@ mod facility;
 mod finance;
 mod finance_analytics;
 mod finance_categories;
+pub mod fitting;
 pub mod industry;
 mod industry_jobs;
 mod integration;
