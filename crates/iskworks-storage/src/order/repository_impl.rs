@@ -2577,13 +2577,12 @@ impl PgOrderRepository {
         // Decide where each input type draws from, under those locks: the
         // ticket's own Epic reservations first, then free stock, then only
         // Epics the caller allowed. Refuse (rolling back the recording) if
-        // that would use stock another Epic is counting on.
-        let (consumer_order_id, consumer_occurrence_key): (Option<Uuid>, Option<String>) =
-            sqlx::query_as("SELECT order_id, occurrence_key FROM tickets WHERE id = $1")
-                .bind(ticket_id.0)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(map_error)?;
+        // that would use stock another Epic is counting on. A combined
+        // ticket's own reservations span every Epic it serves.
+        let consumers = super::reservations::ticket_operations(&mut *tx, &[ticket_id.0])
+            .await?
+            .remove(&ticket_id)
+            .unwrap_or_default();
         let mut input_quantities: BTreeMap<i64, u64> = BTreeMap::new();
         for line in &input.inputs {
             *input_quantities.entry(line.type_id).or_insert(0) += line.quantity;
@@ -2592,9 +2591,7 @@ impl PgOrderRepository {
             &mut tx,
             workspace_id,
             owner_id,
-            consumer_order_id
-                .zip(consumer_occurrence_key.as_deref())
-                .map(|(order_id, key)| (OrderId(order_id), key)),
+            &consumers,
             &input_quantities,
             &input.take_from,
         )
@@ -2666,8 +2663,10 @@ impl PgOrderRepository {
 
             // The output is reserved to the steps this ticket's operation
             // feeds, up to what they still need; overshoot stays free.
-            if let (Some(order_id), Some(occurrence_key)) =
-                (consumer_order_id, consumer_occurrence_key.as_deref())
+            if let [TicketOperation {
+                order_id,
+                occurrence_key,
+            }] = consumers.as_slice()
             {
                 super::reservations::reserve_recorded_output(
                     &mut tx,
@@ -2675,7 +2674,7 @@ impl PgOrderRepository {
                         workspace_id,
                         owner_id,
                         feeds: super::reservations::OutputFeeds::Production {
-                            order_id: OrderId(order_id),
+                            order_id: *order_id,
                             occurrence_key,
                         },
                         type_id: input.output_type_id,

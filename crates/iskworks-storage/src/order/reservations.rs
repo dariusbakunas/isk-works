@@ -250,8 +250,10 @@ struct HeldRow {
 /// `order::plan_input_consumption`). Call with every touched balance
 /// already locked: free stock is measured here, before anything is
 /// consumed, and every allocation of the input types is locked (`FOR
-/// UPDATE`, by id). `order_id` / `occurrence_key` identify the consuming
-/// ticket's own requirements; a ticket outside an Epic has none.
+/// UPDATE`, by id). `consumers` are the frozen operations the consuming
+/// ticket executes (see `ticket_operations`): their requirements' active
+/// reservations are its own -- across every Epic it serves. A ticket
+/// outside an Epic has none.
 ///
 /// # Errors
 ///
@@ -262,10 +264,15 @@ pub(super) async fn plan_recording_draws(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: WorkspaceId,
     owner_id: OwnerId,
-    consumer: Option<(OrderId, &str)>,
+    consumers: &[TicketOperation],
     quantities: &BTreeMap<i64, u64>,
     take_from: &[TakeFrom],
 ) -> Result<BTreeMap<i64, ConsumptionPlan>, OrderError> {
+    let consumer_orders: Vec<Uuid> = consumers.iter().map(|op| op.order_id.0).collect();
+    let consumer_keys: Vec<&str> = consumers
+        .iter()
+        .map(|op| op.occurrence_key.as_str())
+        .collect();
     let mut plans = BTreeMap::new();
     let mut shortages = Vec::new();
     for (&type_id, &quantity) in quantities {
@@ -293,22 +300,24 @@ pub(super) async fn plan_recording_draws(
         .fetch_all(&mut **tx)
         .await
         .map_err(map_error)?;
-        let own_ids: BTreeSet<Uuid> = match consumer {
-            Some((order_id, occurrence_key)) => sqlx::query_scalar(
+        let own_ids: BTreeSet<Uuid> = if consumers.is_empty() {
+            BTreeSet::new()
+        } else {
+            sqlx::query_scalar(
                 "SELECT a.id FROM inventory_allocations a \
                  JOIN order_requirements r ON r.id = a.order_requirement_id \
-                 WHERE r.order_id = $1 AND r.operation_occurrence_key = $2 AND a.type_id = $3 \
-                 AND a.released_at IS NULL AND a.consumed_at IS NULL",
+                 WHERE (r.order_id, r.operation_occurrence_key) IN \
+                       (SELECT * FROM UNNEST($1::uuid[], $2::text[])) \
+                 AND a.type_id = $3 AND a.released_at IS NULL AND a.consumed_at IS NULL",
             )
-            .bind(order_id.0)
-            .bind(occurrence_key)
+            .bind(&consumer_orders)
+            .bind(&consumer_keys)
             .bind(type_id)
             .fetch_all(&mut **tx)
             .await
             .map_err(map_error)?
             .into_iter()
-            .collect(),
-            None => BTreeSet::new(),
+            .collect()
         };
 
         let active: u64 = held
