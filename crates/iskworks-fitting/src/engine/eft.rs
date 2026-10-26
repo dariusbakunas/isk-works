@@ -68,8 +68,36 @@ impl EsfFittingEngine {
             environment: Default::default(),
             incoming: Default::default(),
         };
-        esf_format::eft::save_eft(&self.info, &fit).map_err(|_| FittingError::Export)
+        esf_format::eft::save_eft(&self.info, &fit)
+            .map(|text| client_state_suffixes(&text))
+            .map_err(|_| FittingError::Export)
     }
+}
+
+/// `esf-format` pins every state with a suffix; the client only knows
+/// ` /OFFLINE`, and reads the rest as part of the module's name. Keep
+/// offline as the client writes it and drop the others: the client gives an
+/// imported module its state itself.
+fn client_state_suffixes(text: &str) -> String {
+    let mut out: String = text
+        .lines()
+        .map(|line| match state_suffix(line) {
+            Some(position) => {
+                let name = line[..position].trim_end();
+                if line[position..].trim_end().eq_ignore_ascii_case("/offline") {
+                    format!("{name} /OFFLINE")
+                } else {
+                    name.to_string()
+                }
+            }
+            None => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
 }
 
 fn fit_item(item: &esf_dogma_engine::FitItem) -> FitItem {

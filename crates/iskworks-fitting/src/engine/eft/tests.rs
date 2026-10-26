@@ -89,3 +89,15 @@ fn state_suffixes_are_lowercased_for_the_loader_in_any_case() {
     );
     assert_eq!(lowercase_state_suffixes("AC/DC Module"), "AC/DC Module");
 }
+
+#[test]
+fn exports_keep_only_the_offline_suffix_in_the_clients_case() {
+    assert_eq!(
+        client_state_suffixes(
+            "[Rifter, X]\nDamage Control II /offline\n1MN Afterburner II /online\n\
+             Warp Disruptor II /active\nGyrostabilizer II\n"
+        ),
+        "[Rifter, X]\nDamage Control II /OFFLINE\n1MN Afterburner II\nWarp Disruptor II\n\
+         Gyrostabilizer II\n"
+    );
+}

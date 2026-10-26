@@ -229,3 +229,23 @@ fn empty_slots_keep_the_positions_after_them() {
     let fit = engine().parse_eft(text).unwrap().fit;
     assert_eq!(find(&fit, "Damage Control II").slot_index, Some(1));
 }
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn an_export_writes_only_the_state_suffix_the_client_knows() {
+    for text in [BUSTARD, TRISTAN] {
+        let fit = engine().parse_eft(text).unwrap().fit;
+        let exported = engine().write_eft("Client", &fit).unwrap();
+        for suffix in ["/online", "/active", "/overload", "/offline"] {
+            assert!(!exported.contains(suffix), "{suffix} in:\n{exported}");
+        }
+    }
+    let tristan = engine().parse_eft(TRISTAN).unwrap().fit;
+    let exported = engine().write_eft("Client", &tristan).unwrap();
+    assert!(
+        exported
+            .lines()
+            .any(|line| line == "Damage Control II /OFFLINE"),
+        "{exported}"
+    );
+}
