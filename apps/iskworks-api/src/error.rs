@@ -68,6 +68,9 @@ pub enum ApiError {
     Forbidden,
     /// A generic 404 for admin-addressed records that do not exist.
     NotFound,
+    /// The fitting engine's data did not load (missing or stale `sde.dat`),
+    /// so fit text and stats are unavailable; saved fits still work.
+    FittingEngineUnavailable,
     /// The request is well-formed but not allowed in the current state;
     /// the message is curated and safe to show.
     Conflict(&'static str),
@@ -757,6 +760,18 @@ impl IntoResponse for ApiError {
                 ErrorBody {
                     code: "conflict",
                     message: message.to_string(),
+                    fields: None,
+                    retryable: false,
+                    correlation_id: None,
+                },
+            ),
+            Self::FittingEngineUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorBody {
+                    code: "fitting_engine_unavailable",
+                    message: "Fit stats and fit import/export are unavailable: the server has no \
+                              fitting engine data."
+                        .to_string(),
                     fields: None,
                     retryable: false,
                     correlation_id: None,

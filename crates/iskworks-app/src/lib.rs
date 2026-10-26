@@ -18,6 +18,7 @@ mod character_sync;
 mod descendant_production_configuration;
 mod esi_service;
 mod execution_plan;
+mod fittings;
 mod jobs;
 mod manual_sync_gate;
 mod market_orders;
@@ -49,6 +50,9 @@ pub use esi_service::{
     EsiSyncDispatcher, MarketAccessResolution, MarketAccessResolver, SystemCostIndex,
 };
 pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
+pub use fittings::{
+    FitDetail, FitItemView, FitPreview, FitSummary, FitTextPreview, FitType, FittingService,
+};
 pub use jobs::{
     ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,
     JobsCharacterSource, JobsService, JobsSyncState, SlotUsage,
