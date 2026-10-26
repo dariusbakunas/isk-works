@@ -12,10 +12,25 @@
 # runners hit Docker Hub's rate limit and ECR Public's data limit. Override
 # with --build-arg BASE_REGISTRY=docker.io/library (or another mirror).
 ARG BASE_REGISTRY=mirror.gcr.io/library
+
+# The fitting engine's data (sde.dat), at the version fitting-data.lock pins
+# and checked against its npm integrity. Only the API image carries it; the
+# engine version compiled into the binary and this data ship together.
+FROM ${BASE_REGISTRY}/debian:bookworm-slim AS fitting-data
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl openssl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY fitting-data.lock ./
+COPY scripts/fitting-data.sh ./scripts/
+RUN bash scripts/fitting-data.sh /fitting
+
 FROM ${BASE_REGISTRY}/rust:1-bookworm AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
+# iskworks-fitting compiles the lock in, to refuse stale data at startup.
+COPY fitting-data.lock ./
 COPY crates ./crates
 COPY apps ./apps
 COPY migrations ./migrations
@@ -50,9 +65,11 @@ RUN apt-get update \
 
 COPY --from=builder /out/iskworks-api /usr/local/bin/iskworks-api
 COPY --from=builder /out/iskworks-admin /usr/local/bin/iskworks-admin
+COPY --from=fitting-data /fitting/sde.dat /usr/share/iskworks/fitting/sde.dat
 
 USER iskworks
 ENV APP_VERSION=$APP_VERSION
+ENV FITTING_SDE_PATH=/usr/share/iskworks/fitting/sde.dat
 ENV ISKWORKS_API_ADDR=0.0.0.0:8080
 EXPOSE 8080
 

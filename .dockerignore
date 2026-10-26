@@ -6,3 +6,5 @@ web/**/dist
 .superpowers
 .claude
 *.log
+# Local fitting engine data; the image downloads its own.
+data
