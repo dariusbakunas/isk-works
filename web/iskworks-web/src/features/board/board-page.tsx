@@ -38,6 +38,7 @@ import { OrderAcqGroupCard } from "./order-acq-group-card";
 import { OrderAcquisitionRunCard } from "./order-acquisition-run-card";
 import { OrderAcquisitionRunDrawer } from "./order-acquisition-run-drawer";
 import { OrderCard } from "./order-card";
+import { CombineTicketsDialog } from "./combine-tickets-dialog";
 import { OrderSelectionBar } from "./order-selection-bar";
 import { isSelectable, selectionKind } from "./ticket-selection";
 import { OrderTicketCard } from "./order-ticket-card";
@@ -129,6 +130,7 @@ export function BoardPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [combineDialogOpen, setCombineDialogOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(() => params.get("epic"));
   const [openTicketId, setOpenTicketId] = useState<string | null>(() => params.get("ticket"));
@@ -424,6 +426,7 @@ export function BoardPage() {
     const characterNameById = new Map(characters.map((character) => [character.connectionId, character.characterName]));
     const filterContext = { orderNameById, characterNameById };
 
+
     const runById = new Map(runs.map((run) => [run.id, run]));
     const ticketsByRun = new Map<string, Ticket[]>();
     for (const ticket of tickets) {
@@ -501,6 +504,8 @@ export function BoardPage() {
       runCards,
       priceSourceNameById,
       characterById,
+      orderNameById,
+      characterNameById,
       laneCounts,
       epicFilterOptions,
       assigneeFilterOptions,
@@ -810,6 +815,7 @@ export function BoardPage() {
       {selectionMode && selectedTickets.length > 0 ? (
         <OrderSelectionBar
           onClear={() => setSelectedTicketIds(new Set())}
+          onCombine={() => setCombineDialogOpen(true)}
           onCreateRun={() => setCreateDialogOpen(true)}
           selectedTickets={selectedTickets}
         />
@@ -824,6 +830,19 @@ export function BoardPage() {
         }}
         open={createDialogOpen}
         priceSourceNameById={view.priceSourceNameById}
+        tickets={selectedTickets}
+      />
+
+      <CombineTicketsDialog
+        characterNameById={view.characterNameById}
+        epicNameById={view.orderNameById}
+        onCancel={() => setCombineDialogOpen(false)}
+        onCombined={(combined) => {
+          setCombineDialogOpen(false);
+          exitSelectionMode();
+          void load().then(() => openTicketFromCard(combined.id));
+        }}
+        open={combineDialogOpen}
         tickets={selectedTickets}
       />
 
