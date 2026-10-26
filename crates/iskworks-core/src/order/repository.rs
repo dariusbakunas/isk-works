@@ -462,6 +462,22 @@ pub enum OrderError {
     TicketNotArchivable,
     #[error("ticket is not archived")]
     TicketNotRestorable,
+    #[error("select at least two tickets to combine")]
+    CombineNeedsTwoTickets,
+    #[error("{display_id} can't be combined: {}", reason.message())]
+    TicketNotCombinable {
+        display_id: String,
+        reason: CombineRefusalReason,
+    },
+    /// Moving a merged member out of Canceled on its own would give its
+    /// operation two active tickets.
+    #[error("this ticket was merged into {into_display_id} -- split that ticket to restore it")]
+    TicketMerged { into_display_id: String },
+    #[error("only a combined ticket can be split")]
+    TicketNotCombined,
+    /// Work has started on the combined ticket.
+    #[error("a combined ticket can only be split before anything is recorded or linked to it")]
+    TicketNotSplittable,
     #[error("quantity arithmetic exceeds the supported range")]
     ArithmeticOverflow,
     /// Reserving a new Epic's frozen reuse needs more of these types than
@@ -846,6 +862,28 @@ pub trait OrderRepository: Send + Sync {
         &self,
         ticket_ids: &[TicketId],
     ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError>;
+
+    /// Combines `ticket_ids` (in selection order; see `check_combinable`)
+    /// into one new ticket executing all of their operations, atomically:
+    /// it takes over their claims and fulfillment links, adopts their child
+    /// tickets, and the members are canceled with `merged_into_ticket_id`
+    /// pointing at it. Returns the combined ticket.
+    async fn combine_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_ids: &[TicketId],
+    ) -> Result<Ticket, OrderError>;
+
+    /// Undoes `combine_tickets` while nothing has been done on the combined
+    /// ticket (To Do or Canceled, no unreverted recording, no linked job):
+    /// each claim goes back to its member, the members return to To Do,
+    /// children go back under the member holding their parent step, and
+    /// the combined ticket is deleted. Returns the restored members.
+    async fn split_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Vec<Ticket>, OrderError>;
 
     /// `available = physical_balance - active allocations`, read-only, no
     /// lock. Neither `create_order` nor `create_ticket` allocates anything,

@@ -219,6 +219,23 @@ impl OrderRequirementRow {
     }
 }
 
+/// Every `TicketRow` column, for `SELECT {TICKET_COLUMNS} FROM tickets`.
+pub(super) const TICKET_COLUMNS: &str = "id, workspace_id, owner_id, display_id, kind, type_id, \
+     captured_name, quantity, order_id, source_build_id, notes, assignee_character_id, status, \
+     estimated_unit_cost, estimated_line_total, actual_unit_cost, actual_line_total, \
+     market_region_id, market_location_id, price_source_id, acquisition_run_id, \
+     acquired_quantity, execution_snapshot, created_at, updated_at, completed_at, archived_at, \
+     occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
+     own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id";
+
+/// Every `TicketPrerequisiteRow` column.
+pub(super) const TICKET_PREREQUISITE_COLUMNS: &str = "id, ticket_id, type_id, captured_name, \
+     kind, source_build_id, required_quantity, fulfillment_scope, reused_quantity, \
+     fresh_quantity, estimated_unit_cost, estimated_line_total, reused_line_total, \
+     operation_occurrence_key, child_occurrence_key, inventory_unit_basis, \
+     child_produced_quantity, child_consumed_quantity, child_surplus_quantity, \
+     child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id, order_id";
+
 #[derive(sqlx::FromRow)]
 pub(super) struct TicketRow {
     pub(super) id: Uuid,

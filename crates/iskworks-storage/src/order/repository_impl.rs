@@ -1144,6 +1144,25 @@ impl OrderRepository for PgOrderRepository {
         super::reservations::ticket_operations(&self.pool, &ids).await
     }
 
+    async fn combine_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_ids: &[TicketId],
+    ) -> Result<Ticket, OrderError> {
+        let combined =
+            super::combine::combine_tickets(&self.pool, workspace_id, ticket_ids).await?;
+        self.get_ticket(workspace_id, combined).await
+    }
+
+    async fn split_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Vec<Ticket>, OrderError> {
+        let members = super::combine::split_ticket(&self.pool, workspace_id, ticket_id).await?;
+        self.get_tickets(workspace_id, &members).await
+    }
+
     async fn available_quantity(
         &self,
         workspace_id: WorkspaceId,
@@ -1984,6 +2003,7 @@ impl OrderRepository for PgOrderRepository {
         ticket_id: TicketId,
         status: TicketStatus,
     ) -> Result<Ticket, OrderError> {
+        super::combine::guard_merged_status(&self.pool, workspace_id, ticket_id, status).await?;
         let now = crate::db_now();
         let result = sqlx::query(
             // The right-hand `status` is the pre-update value.

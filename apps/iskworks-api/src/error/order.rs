@@ -42,6 +42,15 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::TicketNotCancelable => (StatusCode::CONFLICT, "ticket_not_cancelable", false),
         OrderError::TicketNotArchivable => (StatusCode::CONFLICT, "ticket_not_archivable", false),
         OrderError::TicketNotRestorable => (StatusCode::CONFLICT, "ticket_not_restorable", false),
+        OrderError::CombineNeedsTwoTickets => {
+            (StatusCode::BAD_REQUEST, "combine_needs_two_tickets", false)
+        }
+        OrderError::TicketNotCombinable { .. } => {
+            (StatusCode::CONFLICT, "ticket_not_combinable", false)
+        }
+        OrderError::TicketMerged { .. } => (StatusCode::CONFLICT, "ticket_merged", false),
+        OrderError::TicketNotCombined => (StatusCode::CONFLICT, "ticket_not_combined", false),
+        OrderError::TicketNotSplittable => (StatusCode::CONFLICT, "ticket_not_splittable", false),
         OrderError::ArithmeticOverflow => (StatusCode::BAD_REQUEST, "arithmetic_overflow", false),
         // Create Epic answers a shortfall with its own drift body (fresh
         // preview included); this is the generic fallback.
