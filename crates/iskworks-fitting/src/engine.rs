@@ -14,7 +14,7 @@ use iskworks_core::fitting::{
 };
 
 use crate::DataLock;
-use attributes::StatAttributes;
+use attributes::{ItemAttributes, StatAttributes};
 
 /// The SDE category of skills.
 const SKILL_CATEGORY_ID: i32 = 16;
@@ -59,6 +59,7 @@ pub struct EsfFittingEngine {
     info: InfoSde<'static>,
     sde: &'static Sde<'static>,
     attributes: StatAttributes,
+    item_attributes: ItemAttributes,
     /// Every published skill, for an All V pilot.
     skills: Vec<i32>,
     engine_info: FittingEngineInfo,
@@ -80,6 +81,7 @@ impl EsfFittingEngine {
         check_version(&lock, major, sde.build_number())?;
 
         let attributes = StatAttributes::resolve(&sde)?;
+        let item_attributes = ItemAttributes::resolve(&sde)?;
         let skills = sde
             .types()
             .filter(|ty| ty.published() && ty.category_id() == SKILL_CATEGORY_ID)
@@ -95,6 +97,7 @@ impl EsfFittingEngine {
             info: InfoSde::new(sde),
             sde,
             attributes,
+            item_attributes,
             skills,
             engine_info,
         })

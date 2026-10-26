@@ -637,10 +637,36 @@ pub struct FitViolation {
     pub detail: serde_json::Value,
 }
 
+/// What the module table shows for one item.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemStats {
+    /// The state it actually reached (can be below the requested one).
+    pub reached_state: ModuleState,
+    /// The highest state it can reach at all.
+    pub max_state: ModuleState,
+    /// teraflops
+    pub cpu: f64,
+    /// MW
+    pub powergrid: f64,
+    pub calibration: f64,
+    /// GJ/s while it runs; 0 unless it reached active.
+    pub capacitor_per_second: f64,
+    /// metres
+    pub optimal: f64,
+    /// metres
+    pub falloff: f64,
+    /// Its damage per second, without reloads (drones included).
+    pub dps: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FitCalculation {
     pub stats: FitStats,
+    /// Index-parallel to the fit's items; `None` for an item the engine
+    /// data doesn't know.
+    pub items: Vec<Option<ItemStats>>,
     pub violations: Vec<FitViolation>,
     /// Indexes of items (or their charges) the engine data does not know;
     /// they are left out of the calculation.

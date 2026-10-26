@@ -345,3 +345,79 @@ fn calculation_timing() {
     let per_run = start.elapsed() / runs;
     println!("one Bustard calculation (All V): {per_run:?}");
 }
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn per_item_fitting_costs_add_up_to_the_ships() {
+    let calculation = calculate(&bustard(), &Pilot::AllV);
+    assert_eq!(calculation.items.len(), bustard().items.len());
+    let items: Vec<_> = calculation.items.iter().map(|item| item.unwrap()).collect();
+    let cpu: f64 = items.iter().map(|item| item.cpu).sum();
+    let powergrid: f64 = items.iter().map(|item| item.powergrid).sum();
+    let calibration: f64 = items.iter().map(|item| item.calibration).sum();
+    let resources = calculation.stats.resources;
+    assert_close(cpu, resources.cpu.used, "cpu");
+    assert_close(powergrid, resources.powergrid.used, "powergrid");
+    assert_close(calibration, resources.calibration.used, "calibration");
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn active_modules_use_capacitor_and_passive_ones_do_not() {
+    let fit = bustard();
+    let calculation = calculate(&fit, &Pilot::AllV);
+    let stats_of = |name: &str| {
+        let index = fit
+            .items
+            .iter()
+            .position(|item| item.type_id == type_id(name))
+            .unwrap();
+        calculation.items[index].unwrap()
+    };
+    let mwd = stats_of("50MN Y-T8 Compact Microwarpdrive");
+    assert_eq!(mwd.reached_state, ModuleState::Active);
+    assert!(mwd.capacitor_per_second > 0.0, "{mwd:?}");
+    let nanofiber = stats_of("Nanofiber Internal Structure II");
+    assert_eq!(nanofiber.reached_state, ModuleState::Online);
+    assert_eq!(nanofiber.max_state, ModuleState::Online);
+    assert_eq!(nanofiber.capacitor_per_second, 0.0);
+    // Requested active, but only one propulsion module may run.
+    let afterburner = stats_of("10MN Afterburner II");
+    assert_eq!(afterburner.reached_state, ModuleState::Online);
+    assert_eq!(afterburner.capacitor_per_second, 0.0);
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn guns_report_range_and_their_share_of_the_damage() {
+    let calculation = calculate(&gun_rifter(), &Pilot::AllV);
+    let guns: Vec<_> = calculation.items.iter().map(|item| item.unwrap()).collect();
+    for gun in &guns {
+        assert!(gun.optimal > 0.0 && gun.falloff > 0.0, "{gun:?}");
+        assert!(gun.dps > 0.0, "{gun:?}");
+    }
+    assert_close(
+        guns.iter().map(|gun| gun.dps).sum(),
+        calculation.stats.offense.weapon_dps,
+        "gun dps",
+    );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn unknown_items_have_no_item_stats() {
+    let mut fit = gun_rifter();
+    fit.items.push(FitItem {
+        type_id: 999_999_999,
+        slot_kind: SlotKind::Low,
+        slot_index: Some(0),
+        quantity: 1,
+        state: ModuleState::Online,
+        charge_type_id: None,
+        mutation: None,
+    });
+    let calculation = calculate(&fit, &Pilot::AllV);
+    assert_eq!(calculation.items.len(), 4);
+    assert!(calculation.items[3].is_none());
+    assert!(calculation.items[0].is_some());
+}
