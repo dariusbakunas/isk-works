@@ -11,6 +11,9 @@ coverage/
 .superpowers/
 .worktrees/
 
+# Downloaded fitting engine data (make fitting-data).
+/data/
+
 # Maintainers' design notes and local agent settings: not part of the repo.
 # No trailing slashes: in a maintainer checkout these can be symlinks, and a
 # "dir/" pattern does not match a symlink.

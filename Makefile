@@ -1,4 +1,4 @@
-.PHONY: db-up db-down api api-dev worker worker-dev sde-import invite invite-create web fmt clippy rust-test web-check web-test web-build verify
+.PHONY: db-up db-down api api-dev worker worker-dev sde-import fitting-data invite invite-create web fmt clippy rust-test web-check web-test web-build verify
 
 -include .env
 
@@ -52,6 +52,10 @@ worker-dev: worker
 sde-import:
 	@test -n "$(SDE_PATH)" || (echo "SDE_PATH is required: make sde-import SDE_PATH=/path/to/eve-online-static-data-jsonl.zip" && exit 2)
 	cargo run -p iskworks-sde-import -- --path "$(SDE_PATH)"
+
+# The fitting engine's data file, at the version pinned in fitting-data.lock.
+fitting-data:
+	bash scripts/fitting-data.sh
 
 # Invite-only alpha operator tooling. Examples:
 #   make invite-create ARGS="--max-uses 1 --note 'friend'"
