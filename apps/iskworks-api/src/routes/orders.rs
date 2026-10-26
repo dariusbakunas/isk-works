@@ -107,6 +107,8 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/tickets/:ticket_id/cancel", post(cancel_ticket))
         .route("/api/tickets/:ticket_id/archive", post(archive_ticket))
         .route("/api/tickets/:ticket_id/restore", post(restore_ticket))
+        .route("/api/tickets/combine", post(combine_tickets))
+        .route("/api/tickets/:ticket_id/split", post(split_ticket))
         .route(
             "/api/orders/:order_id/requirements/:requirement_id/tickets",
             post(create_ticket_for_requirement_route),

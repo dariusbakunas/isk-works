@@ -725,6 +725,44 @@ pub(super) async fn cancel_ticket(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CombineTicketsBody {
+    ticket_ids: Vec<uuid::Uuid>,
+}
+
+/// Combines unstarted production steps of the same item -- from one or
+/// more Epics -- into one ticket doing all of their work. The first id
+/// sets the assignee and market scope. A refused ticket answers 409 naming
+/// it.
+pub(super) async fn combine_tickets(
+    State(state): State<AppState>,
+    Json(body): Json<CombineTicketsBody>,
+) -> Result<(StatusCode, Json<Ticket>), ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    let ticket_ids: Vec<TicketId> = body.ticket_ids.into_iter().map(TicketId).collect();
+    let combined = state
+        .order_repository()?
+        .combine_tickets(workspace_id, &ticket_ids)
+        .await?;
+    Ok((StatusCode::CREATED, Json(combined)))
+}
+
+/// Undoes a combine while nothing was recorded or linked on the combined
+/// ticket. Answers the restored members.
+pub(super) async fn split_ticket(
+    State(state): State<AppState>,
+    Path(ticket_id): Path<uuid::Uuid>,
+) -> Result<Json<Vec<Ticket>>, ApiError> {
+    let (workspace_id, _owner_id) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .order_repository()?
+            .split_ticket(workspace_id, TicketId(ticket_id))
+            .await?,
+    ))
+}
+
 pub(super) async fn archive_ticket(
     State(state): State<AppState>,
     Path(ticket_id): Path<uuid::Uuid>,
