@@ -323,6 +323,7 @@ fn requirement_reusing(
 mod acquisition_costs;
 mod acquisition_runs;
 mod batched_reads;
+mod combine_tickets;
 mod deletion;
 mod epic_membership;
 mod generic_tickets;
@@ -415,6 +416,7 @@ fn ticket_prerequisite_reusing(
         child_consumed_cost: None,
         dependency_id: None,
         price_evidence: None,
+        order_id: None,
     }
 }
 
@@ -615,6 +617,7 @@ fn prod_prereq(type_id: i64, captured_name: &str) -> iskworks_core::order::NewTi
         child_consumed_cost: None,
         dependency_id: None,
         price_evidence: None,
+        order_id: None,
     }
 }
 

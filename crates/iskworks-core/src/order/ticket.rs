@@ -105,7 +105,8 @@ pub struct Ticket {
     /// (which frozen requirement(s) this ticket contributes to/fulfills,
     /// possibly across *other* Orders via `link_ticket_to_requirement`),
     /// this field is never used to infer anything beyond organizational
-    /// membership, and nothing else should be used to infer it.
+    /// membership. A combined ticket has none: its Epics are those of the
+    /// operations it executes (`Ticket::epics`).
     pub order_id: Option<OrderId>,
     pub kind: TicketKind,
     /// `None` only for `Generic` -- every other kind requires an item.
@@ -198,6 +199,51 @@ pub struct Ticket {
     pub own_installation_cost: Option<Money>,
     pub total_production_cost: Option<Money>,
     pub plan_evidence: Option<PlanOperationEvidence>,
+    /// The combined ticket this one was merged into -- `Some` only on a
+    /// canceled member of a combined ticket. Such a member can't be
+    /// restored on its own; splitting the combined ticket restores it.
+    #[serde(default)]
+    pub merged_into_ticket_id: Option<TicketId>,
+    /// The frozen Epic operations this ticket executes (see
+    /// [`TicketOperation`]), sorted -- derived on read, never written
+    /// directly. Empty for acquisition, generic and standalone tickets;
+    /// several for a combined ticket.
+    #[serde(default)]
+    pub operations: Vec<TicketOperation>,
+}
+
+impl Ticket {
+    /// Whether this ticket executes operation `occurrence_key` of Epic
+    /// `order_id` -- the one way to find an operation's ticket.
+    #[must_use]
+    pub fn executes(&self, order_id: OrderId, occurrence_key: &str) -> bool {
+        self.operations.iter().any(|operation| {
+            operation.order_id == order_id && operation.occurrence_key == occurrence_key
+        })
+    }
+
+    /// The Epics this ticket belongs to: its own `order_id`, plus every
+    /// Epic whose operations it executes (a combined ticket has no
+    /// `order_id` of its own).
+    #[must_use]
+    pub fn epics(&self) -> std::collections::BTreeSet<OrderId> {
+        self.order_id
+            .into_iter()
+            .chain(self.operations.iter().map(|operation| operation.order_id))
+            .collect()
+    }
+}
+
+/// One frozen Epic operation a production ticket executes -- a row of
+/// `order_operation_ticket_claims`, or, for a ticket holding no claim (a
+/// version-1/2 or pre-claims ticket), its own `(order_id, occurrence_key)`.
+/// Every ticket executes at most one today; a combined ticket executes
+/// several.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TicketOperation {
+    pub order_id: OrderId,
+    pub occurrence_key: String,
 }
 
 /// A Manufacturing/Reaction ticket's own frozen, single-level material
@@ -273,6 +319,21 @@ pub struct TicketPrerequisite {
     /// version-1/2 rows.
     pub dependency_id: Option<String>,
     pub price_evidence: Option<PlanRequirementEvidence>,
+    /// The Epic this prerequisite serves when it differs from its ticket's
+    /// own `order_id` -- set on a combined ticket's copies of its members'
+    /// prerequisites. `None` means the ticket's Epic; see
+    /// [`TicketPrerequisite::epic`].
+    #[serde(default)]
+    pub order_id: Option<OrderId>,
+}
+
+impl TicketPrerequisite {
+    /// The Epic this prerequisite serves: its own `order_id`, else its
+    /// ticket's.
+    #[must_use]
+    pub fn epic(&self, ticket_order_id: Option<OrderId>) -> Option<OrderId> {
+        self.order_id.or(ticket_order_id)
+    }
 }
 
 /// Links a `TicketPrerequisite` to another `Ticket` that supplies it --
@@ -441,6 +502,7 @@ mod tests {
             child_consumed_cost: None,
             dependency_id: None,
             price_evidence: None,
+            order_id: None,
         }
     }
 

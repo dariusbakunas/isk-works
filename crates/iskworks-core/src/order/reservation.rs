@@ -246,6 +246,40 @@ pub fn plan_recorded_output(
     .reservations
 }
 
+/// One Epic's part of a recording's output: the requirements of that Epic
+/// the output feeds, and that Epic's own operation stages. Stages are per
+/// Epic -- two Epics planned from the same Build share occurrence keys.
+#[derive(Debug, Clone)]
+pub struct OutputEpic<'a> {
+    pub needs: Vec<ReservationNeed<'a>>,
+    pub stages: &'a BTreeMap<String, u32>,
+}
+
+/// [`plan_recorded_output`] across several Epics: each Epic in the given
+/// order (callers pass oldest first) takes what it still needs, served by
+/// its own stages, from what earlier Epics left. Overshoot stays free.
+#[must_use]
+pub fn plan_recorded_output_for_epics(
+    output_type_id: i64,
+    output_quantity: u64,
+    epics: &[OutputEpic<'_>],
+) -> Vec<PlannedReservation> {
+    let mut left = output_quantity;
+    let mut reservations = Vec::new();
+    for epic in epics {
+        if left == 0 {
+            break;
+        }
+        let planned = plan_recorded_output(output_type_id, left, &epic.needs, epic.stages);
+        left -= planned
+            .iter()
+            .map(|reservation| reservation.quantity)
+            .sum::<u64>();
+        reservations.extend(planned);
+    }
+    reservations
+}
+
 /// Σ allocations owned by one requirement, by lifecycle (released rows
 /// don't count).
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -698,6 +732,44 @@ mod tests {
         assert_eq!(planned[0].quantity, 200);
         assert_eq!(planned[1].requirement_id, late);
         assert_eq!(planned[1].quantity, 50);
+    }
+
+    /// A combined ticket feeds two Epics planned from the same Build: their
+    /// occurrence keys collide, but each Epic is served with its own stages,
+    /// the earlier Epic first.
+    #[test]
+    fn recorded_output_serves_epics_in_order_each_by_its_own_stages() {
+        let first_late = OrderRequirementId::new();
+        let first_early = OrderRequirementId::new();
+        let second_early = OrderRequirementId::new();
+        let first_stages = stages(&[("root", 2), ("component", 1)]);
+        // In the second Epic "root" is the earlier consumer.
+        let second_stages = stages(&[("root", 1), ("component", 2)]);
+        let planned = plan_recorded_output_for_epics(
+            16_673,
+            450,
+            &[
+                OutputEpic {
+                    needs: vec![
+                        need(first_late, "root", 200),
+                        need(first_early, "component", 100),
+                    ],
+                    stages: &first_stages,
+                },
+                OutputEpic {
+                    needs: vec![need(second_early, "root", 300)],
+                    stages: &second_stages,
+                },
+            ],
+        );
+        let served: Vec<_> = planned
+            .iter()
+            .map(|reservation| (reservation.requirement_id, reservation.quantity))
+            .collect();
+        assert_eq!(
+            served,
+            vec![(first_early, 100), (first_late, 200), (second_early, 150)]
+        );
     }
 
     #[test]

@@ -255,6 +255,7 @@ pub(super) struct TicketRow {
     pub(super) own_installation_cost: Option<Decimal>,
     pub(super) total_production_cost: Option<Decimal>,
     pub(super) plan_evidence: Option<serde_json::Value>,
+    pub(super) merged_into_ticket_id: Option<Uuid>,
 }
 
 impl TicketRow {
@@ -310,6 +311,8 @@ impl TicketRow {
             own_installation_cost: self.own_installation_cost.map(Money),
             total_production_cost: self.total_production_cost.map(Money),
             plan_evidence,
+            merged_into_ticket_id: self.merged_into_ticket_id.map(TicketId),
+            operations: Vec::new(),
         })
     }
 }
@@ -339,6 +342,7 @@ pub(super) struct TicketPrerequisiteRow {
     pub(super) price_evidence: Option<serde_json::Value>,
     pub(super) child_consumed_cost: Option<Decimal>,
     pub(super) dependency_id: Option<String>,
+    pub(super) order_id: Option<Uuid>,
 }
 
 impl TicketPrerequisiteRow {
@@ -374,6 +378,7 @@ impl TicketPrerequisiteRow {
                     })
                 })
                 .transpose()?,
+            order_id: self.order_id.map(OrderId),
         })
     }
 }

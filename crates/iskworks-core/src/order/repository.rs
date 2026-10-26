@@ -203,6 +203,9 @@ pub struct NewTicketPrerequisite {
     /// version-1/2 rows.
     pub dependency_id: Option<String>,
     pub price_evidence: Option<PlanRequirementEvidence>,
+    /// See `TicketPrerequisite::order_id`. `None` everywhere except a
+    /// combined ticket's copies.
+    pub order_id: Option<OrderId>,
 }
 
 /// Excludes `status`/`display_id`/timestamps -- the repository assigns
@@ -700,10 +703,11 @@ pub trait OrderRepository: Send + Sync {
         owner_id: OwnerId,
     ) -> Result<Vec<Ticket>, OrderError>;
 
-    /// Every ticket whose explicit `order_id` is this Order -- the
-    /// authoritative answer to "which tickets does this Epic contain?"
-    /// since it reads `tickets.order_id` directly, never resolving
-    /// membership by joining through `order_requirement_fulfillments` (a
+    /// Every ticket whose explicit `order_id` is this Order, plus every
+    /// ticket executing one of its operations through a claim (a combined
+    /// ticket, which has no `order_id`) -- the authoritative answer to
+    /// "which tickets does this Epic contain?" (see `Ticket::epics`), never
+    /// resolved by joining through `order_requirement_fulfillments` (a
     /// requirement fulfillment answers a different question -- see
     /// `OrderRequirementFulfillment`'s own doc). Scoped by `workspace_id`
     /// for the same defense-in-depth every other lookup here has, even
@@ -713,8 +717,9 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<Ticket>, OrderError>;
-    /// `list_tickets_for_order` for several Orders in one read. Grouped
-    /// by Order, each in `list_tickets_for_order`' order.
+    /// `list_tickets_for_order` for several Orders in one read, each
+    /// ticket once. Grouped by `order_id`, each in `list_tickets_for_order`'
+    /// order; tickets with no `order_id` (combined tickets) come last.
     async fn list_tickets_for_orders(
         &self,
         workspace_id: WorkspaceId,
@@ -834,6 +839,13 @@ pub trait OrderRepository: Send + Sync {
         &self,
         ticket_prerequisite_ids: &[TicketPrerequisiteId],
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
+    /// The frozen operations each ticket executes (see [`TicketOperation`]),
+    /// each ticket's sorted by `(order_id, occurrence_key)`. Tickets that
+    /// execute none (acquisition, generic, standalone) are absent.
+    async fn list_ticket_operations(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError>;
 
     /// `available = physical_balance - active allocations`, read-only, no
     /// lock. Neither `create_order` nor `create_ticket` allocates anything,

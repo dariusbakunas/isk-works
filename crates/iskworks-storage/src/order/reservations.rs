@@ -250,8 +250,10 @@ struct HeldRow {
 /// `order::plan_input_consumption`). Call with every touched balance
 /// already locked: free stock is measured here, before anything is
 /// consumed, and every allocation of the input types is locked (`FOR
-/// UPDATE`, by id). `order_id` / `occurrence_key` identify the consuming
-/// ticket's own requirements; a ticket outside an Epic has none.
+/// UPDATE`, by id). `consumers` are the frozen operations the consuming
+/// ticket executes (see `ticket_operations`): their requirements' active
+/// reservations are its own -- across every Epic it serves. A ticket
+/// outside an Epic has none.
 ///
 /// # Errors
 ///
@@ -262,10 +264,15 @@ pub(super) async fn plan_recording_draws(
     tx: &mut Transaction<'_, Postgres>,
     workspace_id: WorkspaceId,
     owner_id: OwnerId,
-    consumer: Option<(OrderId, &str)>,
+    consumers: &[TicketOperation],
     quantities: &BTreeMap<i64, u64>,
     take_from: &[TakeFrom],
 ) -> Result<BTreeMap<i64, ConsumptionPlan>, OrderError> {
+    let consumer_orders: Vec<Uuid> = consumers.iter().map(|op| op.order_id.0).collect();
+    let consumer_keys: Vec<&str> = consumers
+        .iter()
+        .map(|op| op.occurrence_key.as_str())
+        .collect();
     let mut plans = BTreeMap::new();
     let mut shortages = Vec::new();
     for (&type_id, &quantity) in quantities {
@@ -293,22 +300,24 @@ pub(super) async fn plan_recording_draws(
         .fetch_all(&mut **tx)
         .await
         .map_err(map_error)?;
-        let own_ids: BTreeSet<Uuid> = match consumer {
-            Some((order_id, occurrence_key)) => sqlx::query_scalar(
+        let own_ids: BTreeSet<Uuid> = if consumers.is_empty() {
+            BTreeSet::new()
+        } else {
+            sqlx::query_scalar(
                 "SELECT a.id FROM inventory_allocations a \
                  JOIN order_requirements r ON r.id = a.order_requirement_id \
-                 WHERE r.order_id = $1 AND r.operation_occurrence_key = $2 AND a.type_id = $3 \
-                 AND a.released_at IS NULL AND a.consumed_at IS NULL",
+                 WHERE (r.order_id, r.operation_occurrence_key) IN \
+                       (SELECT * FROM UNNEST($1::uuid[], $2::text[])) \
+                 AND a.type_id = $3 AND a.released_at IS NULL AND a.consumed_at IS NULL",
             )
-            .bind(order_id.0)
-            .bind(occurrence_key)
+            .bind(&consumer_orders)
+            .bind(&consumer_keys)
             .bind(type_id)
             .fetch_all(&mut **tx)
             .await
             .map_err(map_error)?
             .into_iter()
-            .collect(),
-            None => BTreeSet::new(),
+            .collect()
         };
 
         let active: u64 = held
@@ -474,12 +483,9 @@ pub(super) async fn undo_recording_allocations(
 /// Which requirements a recording's output feeds.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum OutputFeeds<'a> {
-    /// A production ticket: its Epic's requirements produced by its
-    /// operation (`child_occurrence_key`).
-    Production {
-        order_id: OrderId,
-        occurrence_key: &'a str,
-    },
+    /// A production ticket: the requirements its operations produce
+    /// (`child_occurrence_key`) -- in every Epic it serves.
+    Production { operations: &'a [TicketOperation] },
     /// An acquisition ticket: the requirements it was created for or
     /// linked to.
     Acquisition { ticket_id: TicketId },
@@ -489,6 +495,7 @@ pub(super) enum OutputFeeds<'a> {
 struct FedRequirementRow {
     id: Uuid,
     order_id: Uuid,
+    order_created_at: DateTime<Utc>,
     required_quantity: i64,
     operation_occurrence_key: Option<String>,
     held: i64,
@@ -496,7 +503,8 @@ struct FedRequirementRow {
 
 /// Reserves a recording's output to the live (version-3, not completed,
 /// canceled or archived) Epic requirements it feeds, each up to its remaining need
-/// (`required - held`), earliest consumer first. Overshoot stays free.
+/// (`required - held`): oldest Epic first, and within an Epic earliest
+/// consumer first. Overshoot stays free.
 /// Call with the output type's balance locked (both recording paths post
 /// the output under it).
 /// One recording's output, as `reserve_recorded_output` needs it.
@@ -531,22 +539,33 @@ pub(super) async fn reserve_recorded_output(
     let held = "COALESCE((SELECT SUM(a.quantity) FROM inventory_allocations a \
          WHERE a.order_requirement_id = r.id AND a.released_at IS NULL), 0)::bigint AS held";
     let rows: Vec<FedRequirementRow> = match feeds {
-        OutputFeeds::Production {
-            order_id,
-            occurrence_key,
-        } => sqlx::query_as(&format!(
-            "SELECT r.id, r.order_id, r.required_quantity, r.operation_occurrence_key, {held} \
+        OutputFeeds::Production { operations } => sqlx::query_as(&format!(
+            "SELECT r.id, r.order_id, o.created_at AS order_created_at, r.required_quantity, \
+                    r.operation_occurrence_key, {held} \
              FROM order_requirements r JOIN orders o ON o.id = r.order_id \
-             WHERE r.order_id = $1 AND r.child_occurrence_key = $2 AND r.type_id = $3 AND {LIVE}"
+             WHERE (r.order_id, r.child_occurrence_key) IN \
+                   (SELECT * FROM UNNEST($1::uuid[], $2::text[])) \
+               AND r.type_id = $3 AND {LIVE}"
         ))
-        .bind(order_id.0)
-        .bind(occurrence_key)
+        .bind(
+            operations
+                .iter()
+                .map(|operation| operation.order_id.0)
+                .collect::<Vec<_>>(),
+        )
+        .bind(
+            operations
+                .iter()
+                .map(|operation| operation.occurrence_key.as_str())
+                .collect::<Vec<_>>(),
+        )
         .bind(output_type_id)
         .fetch_all(&mut **tx)
         .await
         .map_err(map_error)?,
         OutputFeeds::Acquisition { ticket_id } => sqlx::query_as(&format!(
-            "SELECT r.id, r.order_id, r.required_quantity, r.operation_occurrence_key, {held} \
+            "SELECT r.id, r.order_id, o.created_at AS order_created_at, r.required_quantity, \
+                    r.operation_occurrence_key, {held} \
              FROM order_requirements r JOIN orders o ON o.id = r.order_id \
              WHERE r.type_id = $2 AND {LIVE} AND r.id IN ( \
                SELECT f.order_requirement_id FROM order_requirement_fulfillments f \
@@ -562,10 +581,16 @@ pub(super) async fn reserve_recorded_output(
         return Ok(());
     }
 
-    // Serving order needs each fed Epic's operation stages.
-    let mut stages: BTreeMap<String, u32> = BTreeMap::new();
-    let order_ids: BTreeSet<Uuid> = rows.iter().map(|row| row.order_id).collect();
-    for order_id in order_ids {
+    // Each fed Epic is served by its own operation stages, oldest Epic
+    // first: Epics planned from the same Build share occurrence keys.
+    let mut epics: Vec<(DateTime<Utc>, Uuid)> = rows
+        .iter()
+        .map(|row| (row.order_created_at, row.order_id))
+        .collect();
+    epics.sort_unstable();
+    epics.dedup();
+    let mut stages_by_epic: Vec<BTreeMap<String, u32>> = Vec::with_capacity(epics.len());
+    for &(_, order_id) in &epics {
         let keys: Vec<String> = sqlx::query_scalar(
             "SELECT occurrence_key FROM order_plan_operations WHERE order_id = $1",
         )
@@ -591,19 +616,25 @@ pub(super) async fn reserve_recorded_output(
                 })
             }),
         )?;
-        stages.extend(dag.stages);
+        stages_by_epic.push(dag.stages);
     }
 
-    let mut needs = Vec::with_capacity(rows.len());
-    for row in &rows {
-        needs.push(ReservationNeed {
-            requirement_id: OrderRequirementId(row.id),
-            type_id: output_type_id,
-            operation_occurrence_key: row.operation_occurrence_key.as_deref(),
-            quantity: u64_from_i64(row.required_quantity)?.saturating_sub(u64_from_i64(row.held)?),
-        });
+    let mut output_epics = Vec::with_capacity(epics.len());
+    for (&(_, order_id), stages) in epics.iter().zip(&stages_by_epic) {
+        let mut needs = Vec::new();
+        for row in rows.iter().filter(|row| row.order_id == order_id) {
+            needs.push(ReservationNeed {
+                requirement_id: OrderRequirementId(row.id),
+                type_id: output_type_id,
+                operation_occurrence_key: row.operation_occurrence_key.as_deref(),
+                quantity: u64_from_i64(row.required_quantity)?
+                    .saturating_sub(u64_from_i64(row.held)?),
+            });
+        }
+        output_epics.push(OutputEpic { needs, stages });
     }
-    let reservations = plan_recorded_output(output_type_id, output_quantity, &needs, &stages);
+    let reservations =
+        plan_recorded_output_for_epics(output_type_id, output_quantity, &output_epics);
     for reservation in &reservations {
         sqlx::query(
             "INSERT INTO inventory_allocations \
@@ -625,6 +656,70 @@ pub(super) async fn reserve_recorded_output(
         .map_err(map_error)?;
     }
     Ok(())
+}
+
+/// The frozen operations each of `ticket_ids` executes: its claims, or --
+/// for a ticket holding none (version-1/2, pre-claims, or one whose claim
+/// moved to a recreated ticket) -- its own `(order_id, occurrence_key)` when
+/// both are set. Sorted per ticket; tickets executing nothing are absent.
+pub(super) async fn ticket_operations<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    ticket_ids: &[Uuid],
+) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError> {
+    let rows: Vec<(Uuid, Uuid, String)> = sqlx::query_as(
+        "SELECT c.ticket_id, c.order_id, c.occurrence_key \
+         FROM order_operation_ticket_claims c WHERE c.ticket_id = ANY($1) \
+         UNION ALL \
+         SELECT t.id, t.order_id, t.occurrence_key FROM tickets t \
+         WHERE t.id = ANY($1) AND t.order_id IS NOT NULL AND t.occurrence_key IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM order_operation_ticket_claims c \
+                           WHERE c.ticket_id = t.id) \
+         ORDER BY 1, 2, 3",
+    )
+    .bind(ticket_ids)
+    .fetch_all(executor)
+    .await
+    .map_err(map_error)?;
+    let mut operations: HashMap<TicketId, Vec<TicketOperation>> = HashMap::new();
+    for (ticket_id, order_id, occurrence_key) in rows {
+        operations
+            .entry(TicketId(ticket_id))
+            .or_default()
+            .push(TicketOperation {
+                order_id: OrderId(order_id),
+                occurrence_key,
+            });
+    }
+    Ok(operations)
+}
+
+/// `tickets` with their `operations` filled in (see `ticket_operations`).
+pub(super) async fn with_operations<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    mut tickets: Vec<Ticket>,
+) -> Result<Vec<Ticket>, OrderError> {
+    let ids: Vec<Uuid> = tickets.iter().map(|ticket| ticket.id.0).collect();
+    let mut operations = ticket_operations(executor, &ids).await?;
+    for ticket in &mut tickets {
+        ticket.operations = operations.remove(&ticket.id).unwrap_or_default();
+    }
+    Ok(tickets)
+}
+
+/// A newly inserted ticket's operations: its own `(order_id,
+/// occurrence_key)`, which is also the claim it holds, if any.
+pub(super) fn own_operation(
+    order_id: Option<OrderId>,
+    occurrence_key: Option<&str>,
+) -> Vec<TicketOperation> {
+    order_id
+        .zip(occurrence_key)
+        .map(|(order_id, occurrence_key)| TicketOperation {
+            order_id,
+            occurrence_key: occurrence_key.to_string(),
+        })
+        .into_iter()
+        .collect()
 }
 
 /// Claims `(order_id, occurrence_key)` for `ticket_id`

@@ -265,7 +265,7 @@ pub(super) async fn list_order_acquisition_run_tickets(
          price_source_id, acquisition_run_id, \
          acquired_quantity, execution_snapshot, created_at, updated_at, completed_at, archived_at, \
          occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-         own_installation_cost, total_production_cost, plan_evidence \
+         own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
          FROM tickets WHERE acquisition_run_id = $1 AND workspace_id = $2 ORDER BY display_id",
     )
     .bind(run_id.0)

@@ -3,19 +3,19 @@ use chrono::{DateTime, Utc};
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
     derive_operation_dag, derive_recording_summary, operation_ticket, plan_capped_reservations,
-    plan_epic_reservations, plan_recorded_output, reuse_by_type, AllocationReason,
+    plan_epic_reservations, plan_recorded_output_for_epics, reuse_by_type, AllocationReason,
     CappedReservationPlan, FrozenDemandEdge, NewOrder, NewOrderPlan, NewOrderRequirement,
     NewPlanOperation, NewTicket, NewTicketPrerequisite, OperationTicketCreation, Order, OrderError,
     OrderId, OrderPlanResult, OrderRepository, OrderRequirement, OrderRequirementFulfillment,
-    OrderRequirementFulfillmentId, OrderRequirementId, PlanOperation, PlanOperationEvidence,
-    PlanOperationId, PlanRequirementEvidence, RecordAcquisitionInput, RecordAcquisitionOutcome,
-    RecordProductionInput, RecordProductionOutcome, RecordingPreview, RecordingPreviewEffect,
-    RecordingPreviewLine, RequirementKind, RequirementReservationTotals, RequirementTicketCreation,
-    ReservationNeed, RevertTicketInventoryRecordingOutcome, Ticket, TicketId,
-    TicketInventoryEffect, TicketInventoryRecording, TicketInventoryRecordingId,
+    OrderRequirementFulfillmentId, OrderRequirementId, OutputEpic, PlanOperation,
+    PlanOperationEvidence, PlanOperationId, PlanRequirementEvidence, RecordAcquisitionInput,
+    RecordAcquisitionOutcome, RecordProductionInput, RecordProductionOutcome, RecordingPreview,
+    RecordingPreviewEffect, RecordingPreviewLine, RequirementKind, RequirementReservationTotals,
+    RequirementTicketCreation, ReservationNeed, RevertTicketInventoryRecordingOutcome, Ticket,
+    TicketId, TicketInventoryEffect, TicketInventoryRecording, TicketInventoryRecordingId,
     TicketInventoryRecordingKind, TicketInventoryRecordingStatus, TicketKind, TicketMetadataUpdate,
-    TicketPrerequisite, TicketPrerequisiteFulfillment, TicketPrerequisiteFulfillmentId,
-    TicketPrerequisiteId, TicketStatus,
+    TicketOperation, TicketPrerequisite, TicketPrerequisiteFulfillment,
+    TicketPrerequisiteFulfillmentId, TicketPrerequisiteId, TicketStatus,
 };
 use iskworks_core::{
     allocate_acquisition_delivery, weighted_unit_cost, AcquisitionProgressUpdate, AcquisitionRun,

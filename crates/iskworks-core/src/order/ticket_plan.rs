@@ -53,6 +53,7 @@ pub fn requirement_to_prerequisite(requirement: &NewOrderRequirement) -> NewTick
         child_consumed_cost: requirement.child_consumed_cost,
         dependency_id: requirement.dependency_id.clone(),
         price_evidence: requirement.price_evidence.clone(),
+        order_id: None,
     }
 }
 
@@ -101,6 +102,7 @@ pub fn persisted_requirement_to_prerequisite(
         child_consumed_cost: requirement.child_consumed_cost,
         dependency_id: requirement.dependency_id.clone(),
         price_evidence: requirement.price_evidence.clone(),
+        order_id: None,
     }
 }
 

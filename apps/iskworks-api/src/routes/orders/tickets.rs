@@ -465,18 +465,25 @@ pub(super) async fn held_requirement_keys_by_order(
 /// The prerequisites a ticket still waits on before looking at
 /// fulfillments: those whose Epic requirement holds its whole need (`held`,
 /// see `held_requirement_keys_by_order`) are met -- that is how a step's
-/// recorded output unblocks its consumer.
+/// recorded output unblocks its consumer. Each prerequisite is checked
+/// against its own Epic (`TicketPrerequisite::epic`): a combined ticket's
+/// copies serve different Epics.
 pub(super) fn unheld_prerequisites(
-    held: &HashSet<(String, i64)>,
+    held_by_order: &HashMap<OrderId, HashSet<(String, i64)>>,
+    ticket_order_id: Option<OrderId>,
     prerequisites: &[TicketPrerequisite],
 ) -> Vec<TicketPrerequisite> {
     prerequisites
         .iter()
         .filter(|prerequisite| {
+            let held = prerequisite
+                .epic(ticket_order_id)
+                .and_then(|order_id| held_by_order.get(&order_id));
             !prerequisite
                 .operation_occurrence_key
                 .as_ref()
-                .is_some_and(|key| held.contains(&(key.clone(), prerequisite.type_id)))
+                .zip(held)
+                .is_some_and(|(key, held)| held.contains(&(key.clone(), prerequisite.type_id)))
         })
         .cloned()
         .collect()

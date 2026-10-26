@@ -487,6 +487,10 @@ impl OrderRepository for PgOrderRepository {
                 insert_ticket_prerequisite(&mut tx, new_ticket.id, prerequisite).await?;
             }
 
+            let operations = super::reservations::own_operation(
+                new_ticket.order_id,
+                new_ticket.occurrence_key.as_deref(),
+            );
             tickets.push(Ticket {
                 id: new_ticket.id,
                 workspace_id: new_ticket.workspace_id,
@@ -522,6 +526,8 @@ impl OrderRepository for PgOrderRepository {
                 own_installation_cost: new_ticket.own_installation_cost,
                 total_production_cost: new_ticket.total_production_cost,
                 plan_evidence: new_ticket.plan_evidence,
+                merged_into_ticket_id: None,
+                operations,
             });
         }
 
@@ -541,14 +547,14 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let ticket = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND id = $2",
         )
         .bind(workspace_id.0)
@@ -557,7 +563,9 @@ impl OrderRepository for PgOrderRepository {
         .await
         .map_err(map_error)?
         .ok_or(OrderError::TicketNotFound)?
-        .into_ticket()
+        .into_ticket()?;
+        let mut tickets = super::reservations::with_operations(&self.pool, vec![ticket]).await?;
+        Ok(tickets.remove(0))
     }
 
     async fn list_tickets(
@@ -565,14 +573,14 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         owner_id: OwnerId,
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND owner_id = $2 ORDER BY display_id",
         )
         .bind(workspace_id.0)
@@ -582,7 +590,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn get_tickets(
@@ -590,14 +599,14 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         ticket_ids: &[TicketId],
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
              FROM tickets WHERE workspace_id = $1 AND id = ANY($2) ORDER BY display_id",
         )
         .bind(workspace_id.0)
@@ -607,7 +616,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn list_tickets_for_order(
@@ -624,16 +634,17 @@ impl OrderRepository for PgOrderRepository {
         workspace_id: WorkspaceId,
         order_ids: &[OrderId],
     ) -> Result<Vec<Ticket>, OrderError> {
-        sqlx::query_as::<_, TicketRow>(
+        let tickets = sqlx::query_as::<_, TicketRow>(
             "SELECT id, workspace_id, owner_id, display_id, kind, type_id, captured_name, \
              quantity, order_id, source_build_id, notes, assignee_character_id, status, estimated_unit_cost, estimated_line_total, \
              actual_unit_cost, actual_line_total, market_region_id, market_location_id, \
              price_source_id, acquisition_run_id, acquired_quantity, \
              execution_snapshot, created_at, updated_at, completed_at, archived_at, \
              occurrence_key, parent_ticket_id, produced_quantity, material_component_cost, \
-             own_installation_cost, total_production_cost, plan_evidence \
-             FROM tickets WHERE workspace_id = $1 AND order_id = ANY($2) \
-             ORDER BY order_id, display_id",
+             own_installation_cost, total_production_cost, plan_evidence, merged_into_ticket_id \
+             FROM tickets WHERE workspace_id = $1 AND (order_id = ANY($2) OR id IN ( \
+               SELECT ticket_id FROM order_operation_ticket_claims WHERE order_id = ANY($2))) \
+             ORDER BY order_id NULLS LAST, display_id",
         )
         .bind(workspace_id.0)
         .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
@@ -642,7 +653,8 @@ impl OrderRepository for PgOrderRepository {
         .map_err(map_error)?
         .into_iter()
         .map(TicketRow::into_ticket)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+        super::reservations::with_operations(&self.pool, tickets).await
     }
 
     async fn reserve_order_inventory(
@@ -722,7 +734,8 @@ impl OrderRepository for PgOrderRepository {
              estimated_unit_cost, estimated_line_total, reused_line_total, \
              operation_occurrence_key, child_occurrence_key, inventory_unit_basis, \
              child_produced_quantity, child_consumed_quantity, child_surplus_quantity, \
-             child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id \
+             child_surplus_retained_basis, price_evidence, child_consumed_cost, dependency_id, \
+             order_id \
              FROM ticket_prerequisites WHERE ticket_id = ANY($1) ORDER BY ticket_id, type_id",
         )
         .bind(ticket_ids.iter().map(|id| id.0).collect::<Vec<_>>())
@@ -1121,6 +1134,14 @@ impl OrderRepository for PgOrderRepository {
         .into_iter()
         .map(TicketPrerequisiteFulfillmentRow::into_fulfillment)
         .collect()
+    }
+
+    async fn list_ticket_operations(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError> {
+        let ids: Vec<Uuid> = ticket_ids.iter().map(|id| id.0).collect();
+        super::reservations::ticket_operations(&self.pool, &ids).await
     }
 
     async fn available_quantity(
@@ -2567,13 +2588,12 @@ impl PgOrderRepository {
         // Decide where each input type draws from, under those locks: the
         // ticket's own Epic reservations first, then free stock, then only
         // Epics the caller allowed. Refuse (rolling back the recording) if
-        // that would use stock another Epic is counting on.
-        let (consumer_order_id, consumer_occurrence_key): (Option<Uuid>, Option<String>) =
-            sqlx::query_as("SELECT order_id, occurrence_key FROM tickets WHERE id = $1")
-                .bind(ticket_id.0)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(map_error)?;
+        // that would use stock another Epic is counting on. A combined
+        // ticket's own reservations span every Epic it serves.
+        let consumers = super::reservations::ticket_operations(&mut *tx, &[ticket_id.0])
+            .await?
+            .remove(&ticket_id)
+            .unwrap_or_default();
         let mut input_quantities: BTreeMap<i64, u64> = BTreeMap::new();
         for line in &input.inputs {
             *input_quantities.entry(line.type_id).or_insert(0) += line.quantity;
@@ -2582,9 +2602,7 @@ impl PgOrderRepository {
             &mut tx,
             workspace_id,
             owner_id,
-            consumer_order_id
-                .zip(consumer_occurrence_key.as_deref())
-                .map(|(order_id, key)| (OrderId(order_id), key)),
+            &consumers,
             &input_quantities,
             &input.take_from,
         )
@@ -2654,19 +2672,16 @@ impl PgOrderRepository {
             .await?;
             event_ids.push(output_event.0);
 
-            // The output is reserved to the steps this ticket's operation
-            // feeds, up to what they still need; overshoot stays free.
-            if let (Some(order_id), Some(occurrence_key)) =
-                (consumer_order_id, consumer_occurrence_key.as_deref())
-            {
+            // The output is reserved to the steps this ticket's operations
+            // feed, up to what they still need; overshoot stays free.
+            if !consumers.is_empty() {
                 super::reservations::reserve_recorded_output(
                     &mut tx,
                     super::reservations::RecordedOutput {
                         workspace_id,
                         owner_id,
                         feeds: super::reservations::OutputFeeds::Production {
-                            order_id: OrderId(order_id),
-                            occurrence_key,
+                            operations: &consumers,
                         },
                         type_id: input.output_type_id,
                         quantity: input.output_quantity,
