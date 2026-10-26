@@ -71,6 +71,11 @@ export function OrderCard({
       {!isComplete ? (
         <div className="mt-2 space-y-1">
           <ProgressBar percent={percentSatisfied} tone={order.rollup.needsAction > 0 ? "danger" : "positive"} />
+          {/* The inspector's "can start now", so newly unblocked work shows
+              without opening the Epic. */}
+          {(order.rollup.readyToStart ?? 0) > 0 ? (
+            <p className="text-[10px] font-medium text-positive">{order.rollup.readyToStart} ready to start</p>
+          ) : null}
         </div>
       ) : (
         <p className="mt-2 text-[10px] text-positive">All {order.rollup.total} dependencies satisfied</p>
