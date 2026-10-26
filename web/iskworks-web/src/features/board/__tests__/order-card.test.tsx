@@ -65,6 +65,22 @@ describe("OrderCard", () => {
     expect(screen.queryByText(/need action/)).not.toBeInTheDocument();
   });
 
+  it("says how many items can be started now", () => {
+    renderCard(
+      orderFixture({ rollup: { satisfied: 54, needsAction: 23, inProgress: 0, total: 91, readyToStart: 2 } }),
+    );
+
+    expect(screen.getByText("2 ready to start")).toBeInTheDocument();
+  });
+
+  it("says nothing when no item can be started yet", () => {
+    renderCard(
+      orderFixture({ rollup: { satisfied: 54, needsAction: 23, inProgress: 0, total: 91, readyToStart: 0 } }),
+    );
+
+    expect(screen.queryByText(/ready to start/)).not.toBeInTheDocument();
+  });
+
   it("shows a completion summary instead of a progress bar once complete", () => {
     renderCard(
       orderFixture({

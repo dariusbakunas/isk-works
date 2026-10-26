@@ -351,3 +351,38 @@ async fn post_json_get(fx: &Fixture, path: &str) -> (StatusCode, Value) {
     let status = response.status();
     (status, body_json(response).await)
 }
+
+/// The Board's Epic list says how many needs-action items can start now,
+/// the Epic inspector's "can start now", so its cards can show it.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_epic_list_counts_items_ready_to_start(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order = assembly_epic(&fx).await;
+
+    let response = fx
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/orders")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let orders = body_json(response).await;
+    let summary = orders
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|summary| summary["id"] == order["id"])
+        .unwrap();
+
+    // Nothing is held or ticketed yet: every bought material can start; the
+    // Fabricated Component step waits on its own inputs.
+    let needs_action = summary["rollup"]["needsAction"].as_u64().unwrap();
+    let ready = summary["rollup"]["readyToStart"].as_u64().unwrap();
+    assert!(ready >= 1, "rollup: {}", summary["rollup"]);
+    assert!(ready < needs_action, "rollup: {}", summary["rollup"]);
+}
