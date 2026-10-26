@@ -1,4 +1,4 @@
-import type { OrderSummary, TicketKind, TicketSummary } from "../../api/industry";
+import type { OrderSummary, Ticket, TicketKind, TicketSummary } from "../../api/industry";
 
 // Board filters only ever change what the Board *shows* -- they never
 // read/write status, Epic membership, assignee, Build links, recording
@@ -109,10 +109,18 @@ export interface BoardFilterContext {
   characterNameById: Map<string, string>;
 }
 
+// The Epics a ticket belongs to: its own `orderId`, else -- a combined
+// ticket -- every Epic whose step it does.
+export function ticketEpicIds(ticket: Ticket): string[] {
+  if (ticket.orderId) return [ticket.orderId];
+  return [...new Set((ticket.operations ?? []).map((operation) => operation.orderId))];
+}
+
 function matchesEpic(ticket: TicketSummary, epicFilter: string): boolean {
   if (epicFilter === "") return true;
-  if (epicFilter === "none") return ticket.orderId === null;
-  return ticket.orderId === epicFilter;
+  const epics = ticketEpicIds(ticket);
+  if (epicFilter === "none") return epics.length === 0;
+  return epics.includes(epicFilter);
 }
 
 function matchesAssignee(ticket: TicketSummary, assigneeFilter: string): boolean {
@@ -138,7 +146,7 @@ function matchesSearch(ticket: TicketSummary, needle: string, context: BoardFilt
     ticket.notes,
     ticket.displayId,
     ticket.assigneeCharacterId ? (context.characterNameById.get(ticket.assigneeCharacterId) ?? "") : "",
-    ticket.orderId ? (context.orderNameById.get(ticket.orderId) ?? "") : "",
+    ...ticketEpicIds(ticket).map((orderId) => context.orderNameById.get(orderId) ?? ""),
   ];
   return haystacks.some((haystack) => haystack.toLowerCase().includes(needle));
 }
@@ -198,7 +206,8 @@ export function boardEpicCardIsVisible(
   if (filters.epicFilter !== "" && filters.epicFilter !== order.id) return false;
   const filtersIgnoringEpic: BoardFilterState = { ...filters, epicFilter: "" };
   return allTickets.some(
-    (ticket) => ticket.orderId === order.id && ticketMatchesBoardFilters(ticket, filtersIgnoringEpic, context),
+    (ticket) =>
+      ticketEpicIds(ticket).includes(order.id) && ticketMatchesBoardFilters(ticket, filtersIgnoringEpic, context),
   );
 }
 

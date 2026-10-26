@@ -9,6 +9,7 @@ import {
   parseBoardFiltersFromParams,
   withBoardFilterParam,
   withoutBoardFilters,
+  ticketEpicIds,
   type BoardFilterState,
 } from "../board-filters";
 
@@ -310,5 +311,42 @@ describe("boardEpicCardIsVisible", () => {
   it("an Epic explicitly selected but with zero Tickets matching the other filters is hidden -- no unrelated/empty Epic cards floating", () => {
     const filters: BoardFilterState = { ...EMPTY_BOARD_FILTERS, epicFilter: "epic-b", assigneeFilter: "char-freya" };
     expect(boardEpicCardIsVisible(epicB, tickets, filters, context)).toBe(false);
+  });
+});
+
+describe("combined tickets and Epics", () => {
+  const combined = ticketFixture({
+    id: "t-combined",
+    kind: "reaction",
+    orderId: null,
+    capturedName: "Hexite",
+    operations: [
+      { orderId: "epic-a", occurrenceKey: "build:hexite" },
+      { orderId: "epic-b", occurrenceKey: "build:hexite" },
+    ],
+  });
+
+  it("matches the Epic filter for every Epic it serves, and not 'No Epic'", () => {
+    for (const epicFilter of ["epic-a", "epic-b"]) {
+      expect(filterBoardTickets([combined], { ...EMPTY_BOARD_FILTERS, epicFilter }, context)).toEqual([combined]);
+    }
+    expect(filterBoardTickets([combined], { ...EMPTY_BOARD_FILTERS, epicFilter: "none" }, context)).toEqual([]);
+  });
+
+  it("is found by any of its Epics' names", () => {
+    expect(filterBoardTickets([combined], { ...EMPTY_BOARD_FILTERS, search: "ion batch" }, context)).toEqual([
+      combined,
+    ]);
+  });
+
+  it("keeps each Epic's card visible under filters", () => {
+    const filters = { ...EMPTY_BOARD_FILTERS, search: "hexite" };
+    expect(boardEpicCardIsVisible(orderFixture({ id: "epic-b" }), [combined], filters, context)).toBe(true);
+  });
+
+  it("names the Epics a ticket belongs to", () => {
+    expect(ticketEpicIds(combined)).toEqual(["epic-a", "epic-b"]);
+    expect(ticketEpicIds(ticketFixture({ orderId: "epic-a" }))).toEqual(["epic-a"]);
+    expect(ticketEpicIds(ticketFixture())).toEqual([]);
   });
 });

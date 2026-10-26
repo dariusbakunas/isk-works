@@ -412,6 +412,18 @@ export interface Ticket {
   // The owning plan operation's frozen evidence -- `null` wherever
   // `occurrenceKey` is.
   planEvidence?: TicketPlanEvidence | null;
+  // The frozen Epic steps this ticket executes: its own step for an Epic
+  // step ticket, several for a combined ticket (which has no `orderId`),
+  // none for acquisition/generic/standalone tickets. Optional so test
+  // fixtures may omit it.
+  operations?: TicketOperation[];
+  // On a canceled member of a combined ticket: the combined ticket.
+  mergedIntoTicketId?: string | null;
+}
+
+export interface TicketOperation {
+  orderId: string;
+  occurrenceKey: string;
 }
 
 // The subset of a frozen plan operation's evidence the web reads. The
@@ -572,6 +584,20 @@ export function deleteTicket(ticketId: string): Promise<void> {
   return request(`/api/tickets/${ticketId}`, { method: "DELETE" });
 }
 
+// Combines unstarted production steps of the same item -- from one or more
+// Epics -- into one ticket doing all of their work; the members are
+// canceled and point at it (`mergedIntoTicketId`). The first id sets the
+// assignee. A refused ticket answers 409 naming it.
+export function combineTickets(ticketIds: string[]): Promise<Ticket> {
+  return request("/api/tickets/combine", json("POST", { ticketIds }));
+}
+
+// Undoes a combine while nothing is recorded or linked on the combined
+// ticket; answers the restored members.
+export function splitTicket(ticketId: string): Promise<Ticket[]> {
+  return request(`/api/tickets/${ticketId}/split`, { method: "POST" });
+}
+
 // A Manufacturing/Reaction ticket's own frozen, single-level material need
 // -- same shape as OrderRequirement, one level down. Empty for Acquisition
 // tickets (never have prerequisite rows).
@@ -606,6 +632,9 @@ export interface TicketPrerequisite {
   // requirements). null for version-1/2 rows.
   childConsumedCost?: Money | null;
   dependencyId?: string | null;
+  // On a combined ticket's prerequisite: the Epic it serves (each member's
+  // prerequisites are copied over, tagged). `null` means the ticket's own.
+  orderId?: string | null;
 }
 
 // One unsatisfied prerequisite behind a Blocked ticket. `representative*`

@@ -15,6 +15,7 @@ const industryApi = vi.hoisted(() => ({
   listMarketRegions: vi.fn(),
   listMarketRegionLocations: vi.fn(),
   createAcquisitionRun: vi.fn(),
+  combineTickets: vi.fn(),
   getAcquisitionRun: vi.fn(),
   updateTicketStatus: vi.fn(),
   startTicket: vi.fn(),
@@ -938,6 +939,90 @@ describe("BoardPage", () => {
     expect(await screen.findByText("selected tickets must share the same acquisition location")).toBeInTheDocument();
     // The dialog stays open with the selection intact so the user can adjust it.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});
+
+describe("BoardPage combining tickets", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    industryApi.listAcquisitionRuns.mockResolvedValue([]);
+    industryApi.listPriceSources.mockResolvedValue([]);
+    industryApi.listTicketJobProgress.mockResolvedValue([]);
+    industryApi.listBuilds.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
+    charactersApi.listCharacters.mockResolvedValue([]);
+    industryApi.listOrders.mockResolvedValue([
+      orderFixture({ id: "order-1", displayName: "Prowler ×2" }),
+      orderFixture({ id: "order-2", displayName: "Wreathe ×2" }),
+    ]);
+  });
+
+  function step(id: string, displayId: string, orderId: string, typeId = 16658) {
+    return ticketFixture({
+      id,
+      displayId,
+      kind: "reaction",
+      typeId,
+      capturedName: typeId === 16658 ? "Hexite" : "Crystallite Alloy",
+      quantity: 400,
+      orderId,
+      priceSourceId: null,
+      occurrenceKey: `build:${typeId}`,
+      operations: [{ orderId, occurrenceKey: `build:${typeId}` }],
+      executionSnapshot: {
+        runs: 2,
+        blueprint: null,
+        facility: null,
+        durationSeconds: null,
+        installationCost: null,
+        materialValue: null,
+      },
+    });
+  }
+
+  it("selects same-item steps across Epics and combines them into one ticket", async () => {
+    const tickets = [
+      step("t-1205", "ISK-1205", "order-1"),
+      step("t-1214", "ISK-1214", "order-2"),
+      step("t-1202", "ISK-1202", "order-1", 16662),
+      ticketFixture({ id: "t-buy", displayId: "ISK-1100", priceSourceId: null }),
+    ];
+    const combined = step("t-1300", "ISK-1300", "order-1");
+    industryApi.listTickets.mockResolvedValueOnce(tickets).mockResolvedValue([
+      { ...combined, orderId: null, quantity: 800, operations: [
+        { orderId: "order-1", occurrenceKey: "build:16658" },
+        { orderId: "order-2", occurrenceKey: "build:16658" },
+      ] },
+      { ...tickets[0], status: "canceled", mergedIntoTicketId: "t-1300" },
+      { ...tickets[1], status: "canceled", mergedIntoTicketId: "t-1300" },
+    ]);
+    industryApi.combineTickets.mockResolvedValue(combined);
+
+    renderPage();
+    await screen.findByText("ISK-1205");
+    await userEvent.click(screen.getByRole("button", { name: "Select" }));
+    await userEvent.click(screen.getByLabelText("Select ISK-1205"));
+
+    // Locked to Hexite steps now.
+    expect(screen.getByLabelText("Select ISK-1214")).toBeEnabled();
+    expect(screen.getByLabelText("Select ISK-1202")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Combine (1)" })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText("Select ISK-1214"));
+    await userEvent.click(screen.getByRole("button", { name: "Combine (2)" }));
+    const dialog = screen.getByRole("dialog", { name: "Combine 2 tickets" });
+    expect(within(dialog).getByText("Prowler ×2")).toBeInTheDocument();
+    expect(within(dialog).getByText("Wreathe ×2")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Combine" }));
+
+    expect(industryApi.combineTickets).toHaveBeenCalledWith(["t-1205", "t-1214"]);
+    // The Board reloads: the combined ticket replaces its canceled members,
+    // and its drawer opens.
+    expect(await screen.findAllByText("ISK-1300")).toHaveLength(2);
+    // Its members are gone from the lanes, listed only in its drawer.
+    const combinedFrom = screen.getByRole("list", { name: "Combined from" });
+    expect(screen.getAllByText("ISK-1205")).toEqual([within(combinedFrom).getByText("ISK-1205")]);
+    expect(screen.getByText("⧉ 2 epics")).toBeInTheDocument();
   });
 });
 

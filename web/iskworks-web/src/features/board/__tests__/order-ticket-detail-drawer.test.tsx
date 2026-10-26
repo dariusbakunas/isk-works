@@ -17,6 +17,7 @@ const industryApi = vi.hoisted(() => ({
   listTicketJobChoices: vi.fn(),
   linkTicketJob: vi.fn(),
   unlinkTicketJob: vi.fn(),
+  splitTicket: vi.fn(),
 }));
 
 vi.mock("../../../api/industry", async () => {
@@ -831,5 +832,120 @@ describe("OrderTicketDetailDrawer industry job links", () => {
 
     expect(screen.queryByText("Industry jobs")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Link job" })).not.toBeInTheDocument();
+  });
+});
+
+describe("OrderTicketDetailDrawer combined tickets", () => {
+  const combined = ticketFixture({
+    id: "combined-1",
+    displayId: "ISK-1300",
+    kind: "reaction",
+    capturedName: "Hexite",
+    quantity: 800,
+    orderId: null,
+    operations: [
+      { orderId: "epic-1", occurrenceKey: "build:hexite" },
+      { orderId: "epic-2", occurrenceKey: "build:hexite" },
+    ],
+    recording: {
+      state: "notRecorded",
+      requestedQuantity: 4,
+      recordedQuantity: 0,
+      remainingQuantity: 4,
+      surplusQuantity: 0,
+    },
+  });
+  const epics = [
+    { id: "epic-1", name: "Prowler ×2" },
+    { id: "epic-2", name: "Wreathe ×2" },
+  ];
+  const members = [
+    { id: "m-1", displayId: "ISK-1205", epicName: "Prowler ×2", quantity: 400 },
+    { id: "m-2", displayId: "ISK-1214", epicName: "Wreathe ×2", quantity: 400 },
+  ];
+
+  beforeEach(() => {
+    industryApi.splitTicket.mockReset();
+  });
+
+  it("lists every Epic it serves and the tickets it was combined from", async () => {
+    const onOpenEpicById = vi.fn();
+    const onOpenTicket = vi.fn();
+    render(
+      <OrderTicketDetailDrawer
+        combinedFrom={members}
+        epics={epics}
+        onClose={vi.fn()}
+        onOpenEpicById={onOpenEpicById}
+        onOpenTicket={onOpenTicket}
+        ticket={combined}
+      />,
+    );
+
+    expect(screen.getByText("Epics")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Prowler ×2" })).toBeInTheDocument();
+    const combinedFrom = screen.getByRole("list", { name: "Combined from" });
+    expect(within(combinedFrom).getByText("ISK-1205")).toBeInTheDocument();
+    expect(within(combinedFrom).getByText("Wreathe ×2")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open Wreathe ×2" }));
+    expect(onOpenEpicById).toHaveBeenCalledWith("epic-2");
+    await userEvent.click(within(combinedFrom).getByRole("button", { name: "ISK-1214" }));
+    expect(onOpenTicket).toHaveBeenCalledWith("m-2");
+  });
+
+  it("splits back into its members after confirming", async () => {
+    industryApi.splitTicket.mockResolvedValue([]);
+    const onChanged = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <OrderTicketDetailDrawer
+        combinedFrom={members}
+        epics={epics}
+        onChanged={onChanged}
+        onClose={onClose}
+        ticket={combined}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Split" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Split ticket" }));
+
+    expect(industryApi.splitTicket).toHaveBeenCalledWith("combined-1");
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("offers no Split once work is recorded", () => {
+    render(
+      <OrderTicketDetailDrawer
+        combinedFrom={members}
+        epics={epics}
+        onClose={vi.fn()}
+        ticket={{
+          ...combined,
+          recording: { ...combined.recording!, state: "partiallyRecorded", recordedQuantity: 1 },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Split" })).toBeDisabled();
+  });
+
+  it("shows a merged member as merged, with no status control", async () => {
+    const onOpenTicket = vi.fn();
+    render(
+      <OrderTicketDetailDrawer
+        mergedInto={{ id: "combined-1", displayId: "ISK-1300" }}
+        onClose={vi.fn()}
+        onOpenTicket={onOpenTicket}
+        ticket={ticketFixture({ status: "canceled", mergedIntoTicketId: "combined-1" })}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
+    expect(screen.getByText(/split it to restore this ticket/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "ISK-1300" }));
+    expect(onOpenTicket).toHaveBeenCalledWith("combined-1");
   });
 });

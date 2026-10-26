@@ -506,3 +506,36 @@ describe("ProductionRecordingForm when other Epics reserved the stock", () => {
     expect(api.recordTicketProduction).not.toHaveBeenCalled();
   });
 });
+
+describe("ProductionRecordingForm — combined ticket", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // A combined ticket carries one copy of each member's prerequisites,
+  // tagged with its Epic: the same material appears once per Epic.
+  function combinedTicket(): TicketSummary {
+    const base = ticket();
+    const tritanium = base.prerequisites[0];
+    return ticket({
+      orderId: null,
+      prerequisites: [
+        { ...tritanium, id: "copy-a", requiredQuantity: 400, freshQuantity: 400, orderId: "epic-a" },
+        { ...tritanium, id: "copy-b", requiredQuantity: 600, freshQuantity: 600, orderId: "epic-b" },
+      ],
+    });
+  }
+
+  it("shows one input per material, summed across Epics, and records one line", async () => {
+    api.recordTicketProduction.mockResolvedValue({});
+    api.previewTicketProduction.mockResolvedValue(PREVIEW);
+    const onRecorded = vi.fn();
+    render(<ProductionRecordingForm onCancel={() => {}} onRecorded={onRecorded} ticket={combinedTicket()} />);
+
+    expect(screen.getAllByRole("spinbutton", { name: "Consumed quantity for Tritanium" })).toHaveLength(1);
+    expect(materialInput()).toHaveValue(1000);
+
+    await previewThenRecord();
+
+    await waitFor(() => expect(onRecorded).toHaveBeenCalled());
+    expect(api.recordTicketProduction.mock.calls[0][1].inputs).toEqual([{ typeId: 34, quantity: 1000 }]);
+  });
+});

@@ -193,9 +193,19 @@ describe("OrderTicketCard selection", () => {
     expect(screen.getByLabelText("Select ISK-2000")).toBeChecked();
   });
 
-  it("disables the checkbox for a Manufacturing/Reaction ticket -- never batchable", () => {
+  it("disables the checkbox for a Manufacturing/Reaction ticket by default -- never batchable", () => {
     render(<OrderTicketCard selectable ticket={ticketFixture({ kind: "manufacturing" })} />);
 
+    expect(screen.getByLabelText("Select ISK-2000")).toBeDisabled();
+  });
+
+  it("follows the Board's eligibility when given -- a production step can be picked to combine", () => {
+    const { rerender } = render(
+      <OrderTicketCard selectable selectionEnabled ticket={ticketFixture({ kind: "reaction" })} />,
+    );
+    expect(screen.getByLabelText("Select ISK-2000")).toBeEnabled();
+
+    rerender(<OrderTicketCard selectable selectionEnabled={false} ticket={ticketFixture()} />);
     expect(screen.getByLabelText("Select ISK-2000")).toBeDisabled();
   });
 
@@ -407,5 +417,41 @@ describe("OrderTicketCard recording indicator", () => {
 
     rerender(<OrderTicketCard ticket={ticketFixture({ kind: "manufacturing", capturedName: "Rifter" })} />);
     expect(screen.getByText("Rifter")).not.toHaveAttribute("data-private");
+  });
+});
+
+describe("OrderTicketCard combined tickets", () => {
+  it("marks a combined ticket with how many Epics it serves", () => {
+    render(
+      <OrderTicketCard
+        ticket={ticketFixture({
+          kind: "reaction",
+          orderId: null,
+          operations: [
+            { orderId: "epic-1", occurrenceKey: "build:hexite" },
+            { orderId: "epic-2", occurrenceKey: "build:hexite" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("⧉ 2 epics")).toHaveAttribute(
+      "title",
+      "Combined ticket: does this step for 2 Epics",
+    );
+  });
+
+  it("shows no chip on an ordinary step ticket", () => {
+    render(
+      <OrderTicketCard
+        ticket={ticketFixture({
+          kind: "reaction",
+          orderId: "epic-1",
+          operations: [{ orderId: "epic-1", occurrenceKey: "build:hexite" }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/epics$/)).not.toBeInTheDocument();
   });
 });

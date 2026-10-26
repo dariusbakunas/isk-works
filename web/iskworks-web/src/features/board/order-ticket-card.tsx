@@ -9,6 +9,8 @@ import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
 import type { TicketJobSummary } from "./ticket-job-progress";
+import { groupBlockersByType } from "./blockers";
+import { isBatchableOrderTicket } from "./ticket-selection";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
 // A small, secondary "how much of this has actually been recorded" readout
@@ -97,12 +99,10 @@ function JobRemainingLabel({
 }
 
 // A ticket can join a new standalone Acquisition Run only while it's a
-// To Do, unbatched Acquisition ticket -- Manufacturing/Reaction tickets are
-// never batchable. There is no per-ticket "acquisition location" preview
-// field, so the create call remains the authoritative check.
-export function isBatchableOrderTicket(ticket: Ticket): boolean {
-  return ticket.kind === "acquisition" && ticket.status === "todo" && ticket.acquisitionRunId === null;
-}
+// To Do, unbatched Acquisition ticket. There is no per-ticket "acquisition
+// location" preview field, so the create call remains the authoritative
+// check. Lives with the rest of the selection rules.
+export { isBatchableOrderTicket } from "./ticket-selection";
 
 // A standalone order::Ticket's own Board card -- deliberately a distinct
 // component from OrderCard rather than a shared/polymorphic one.
@@ -114,6 +114,7 @@ export function OrderTicketCard({
   assignee,
   jobProgress = null,
   selectable = false,
+  selectionEnabled,
   selected = false,
   active = false,
   compact = false,
@@ -131,6 +132,10 @@ export function OrderTicketCard({
    * Board's current tick. `null` when nothing is matched. */
   jobProgress?: TicketJobSummary | null;
   selectable?: boolean;
+  /** Whether this card's checkbox is enabled in selection mode -- the
+   * Board decides from what is already selected (see ticket-selection.ts).
+   * Defaults to Acquisition Run eligibility. */
+  selectionEnabled?: boolean;
   selected?: boolean;
   /** The ticket the Board's inspector is showing. */
   active?: boolean;
@@ -150,13 +155,15 @@ export function OrderTicketCard({
   const cost = ticket.actualLineTotal ?? ticket.estimatedLineTotal;
   // Derived from the dependency read model, independent of workflow status
   // -- a ticket in any lane (including Complete) can still show blockers.
-  const blocked = ticket.blockedBy.length > 0;
-  const firstBlocker = ticket.blockedBy[0] ?? null;
-  const remainingBlockers = ticket.blockedBy.length - 1;
+  const blockers = groupBlockersByType(ticket.blockedBy);
+  const blocked = blockers.length > 0;
+  const firstBlocker = blockers[0] ?? null;
+  const remainingBlockers = blockers.length - 1;
   const isBatched = ticket.acquisitionRunId !== null;
   const isProduction = ticket.kind === "manufacturing" || ticket.kind === "reaction";
   const quantity = ticket.kind !== "generic" ? `×${(ticket.quantity ?? 0).toLocaleString()}` : null;
-  const batchable = isBatchableOrderTicket(ticket);
+  const batchable = selectionEnabled ?? isBatchableOrderTicket(ticket);
+  const combinedEpicCount = ticket.orderId ? 0 : new Set((ticket.operations ?? []).map((op) => op.orderId)).size;
   // Drag moves the card between workflow lanes -- a bare status write, both
   // directions (see ticket-drag.ts). Disabled during selection mode
   // (checkbox clicks own that gesture) and for a batched ticket (must move
@@ -234,6 +241,14 @@ export function OrderTicketCard({
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] tabular-nums text-muted">
             <span className={`font-semibold ${textToneClasses[kindMeta.tone]}`}>{kindMeta.label}</span>
+            {combinedEpicCount > 1 ? (
+              <span
+                className="shrink-0 rounded-[2px] border border-border px-1 text-[10px] text-muted"
+                title={`Combined ticket: does this step for ${combinedEpicCount} Epics`}
+              >
+                ⧉ {combinedEpicCount} epics
+              </span>
+            ) : null}
             {quantity ? (
               <span className="truncate">
                 {quantity}
