@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use esf_data::Info;
 use esf_dogma_engine::{
-    Calculation, Character, Charge, Environment, Fit, ItemResult, Options, ReactiveArmor, Ship,
-    Slot, State, Target, Violation,
+    Calculation, Character, Charge, Environment, Fit, ItemResult, Mutation, Options, ReactiveArmor,
+    Ship, Slot, State, Target, Violation,
 };
 use iskworks_core::fitting::{
     CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats, FitCalculation,
@@ -27,40 +27,11 @@ impl EsfFittingEngine {
             .filter(|id| self.info.get_type(*id).is_some())
             .ok_or(FittingError::UnknownShip(fit.ship_type_id))?;
 
-        // Items the data does not know are left out (and reported); the
-        // engine's results index into what it was given, so keep the way
-        // back to the caller's indexes.
-        let mut unknown_items = Vec::new();
-        let mut included = Vec::new();
-        let mut items = Vec::new();
-        for (index, item) in fit.items.iter().enumerate() {
-            let Some(type_id) = known_id(item.type_id).filter(|id| self.is_known(*id)) else {
-                unknown_items.push(index);
-                continue;
-            };
-            let charge = match item.charge_type_id {
-                Some(charge) => match known_id(charge).filter(|id| self.is_known(*id)) {
-                    Some(type_id) => Some(Charge { type_id }),
-                    None => {
-                        unknown_items.push(index);
-                        None
-                    }
-                },
-                None => None,
-            };
-            included.push(index);
-            items.push(esf_dogma_engine::FitItem {
-                type_id,
-                slot: slot(item),
-                quantity: item.quantity,
-                state: state(item.state),
-                charge,
-                mutation: None,
-                fighter_abilities: None,
-                booster_side_effects: Default::default(),
-                spool: None,
-            });
-        }
+        let EngineItems {
+            items,
+            included,
+            unknown_items,
+        } = self.engine_items(fit);
 
         let [em, thermal, kinetic, explosive] = profile.normalized();
         let uniform = profile.normalized() == DamageProfile::uniform().normalized();
@@ -114,11 +85,58 @@ impl EsfFittingEngine {
         })
     }
 
-    fn is_known(&self, type_id: i32) -> bool {
+    /// The fit's items as the engine takes them. Items the data does not
+    /// know are left out (and reported); the engine's results index into
+    /// what it was given, so `included` is the way back to the caller's
+    /// indexes.
+    pub(super) fn engine_items(&self, fit: &FitInput) -> EngineItems {
+        let mut engine_items = EngineItems::default();
+        for (index, item) in fit.items.iter().enumerate() {
+            let Some(type_id) = known_id(item.type_id).filter(|id| self.is_known(*id)) else {
+                engine_items.unknown_items.push(index);
+                continue;
+            };
+            let charge = match item.charge_type_id {
+                Some(charge) => match known_id(charge).filter(|id| self.is_known(*id)) {
+                    Some(type_id) => Some(Charge { type_id }),
+                    None => {
+                        engine_items.unknown_items.push(index);
+                        None
+                    }
+                },
+                None => None,
+            };
+            let mutation = item.mutation.as_ref().and_then(|mutation| {
+                Some(Mutation {
+                    base: known_id(mutation.base_type_id)?,
+                    attributes: mutation
+                        .attributes
+                        .iter()
+                        .filter_map(|(id, value)| Some((known_id(*id)?, *value)))
+                        .collect(),
+                })
+            });
+            engine_items.included.push(index);
+            engine_items.items.push(esf_dogma_engine::FitItem {
+                type_id,
+                slot: slot(item),
+                quantity: item.quantity,
+                state: state(item.state),
+                charge,
+                mutation,
+                fighter_abilities: None,
+                booster_side_effects: Default::default(),
+                spool: None,
+            });
+        }
+        engine_items
+    }
+
+    pub(super) fn is_known(&self, type_id: i32) -> bool {
         self.info.get_type(type_id).is_some()
     }
 
-    fn skill_levels(&self, pilot: &Pilot) -> BTreeMap<i32, u8> {
+    pub(super) fn skill_levels(&self, pilot: &Pilot) -> BTreeMap<i32, u8> {
         match pilot {
             Pilot::AllV => self.skills.iter().map(|skill| (*skill, 5)).collect(),
             Pilot::AllZero => BTreeMap::new(),
@@ -277,6 +295,14 @@ impl EsfFittingEngine {
     }
 }
 
+#[derive(Default)]
+pub(super) struct EngineItems {
+    pub(super) items: Vec<esf_dogma_engine::FitItem>,
+    /// For each engine item, its index in the caller's fit.
+    pub(super) included: Vec<usize>,
+    pub(super) unknown_items: Vec<usize>,
+}
+
 /// An attribute's final value; absent attributes read as 0.
 fn value(result: &ItemResult, attribute_id: i32) -> f64 {
     result
@@ -286,7 +312,7 @@ fn value(result: &ItemResult, attribute_id: i32) -> f64 {
 }
 
 /// Engine type ids are `i32`; anything outside that range is unknown.
-fn known_id(type_id: i64) -> Option<i32> {
+pub(super) fn known_id(type_id: i64) -> Option<i32> {
     i32::try_from(type_id).ok()
 }
 

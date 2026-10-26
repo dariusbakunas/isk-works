@@ -53,6 +53,7 @@ fn module(name: &str, slot_kind: SlotKind, slot_index: i16, state: ModuleState) 
         quantity: 1,
         state,
         charge_type_id: None,
+        mutation: None,
     }
 }
 
@@ -285,6 +286,7 @@ fn an_unknown_ship_is_refused_and_unknown_items_are_left_out() {
         quantity: 1,
         state: ModuleState::Online,
         charge_type_id: None,
+        mutation: None,
     });
     let calculation = calculate(&fit, &Pilot::AllV);
     assert_eq!(calculation.unknown_items, vec![3]);
@@ -318,6 +320,7 @@ fn drone_damage_is_counted_apart_from_weapons() {
         quantity: 5,
         state: ModuleState::Active,
         charge_type_id: None,
+        mutation: None,
     });
     let calculation = calculate(&fit, &Pilot::AllV);
     assert_eq!(calculation.violations, Vec::new());

@@ -5,11 +5,16 @@
 //! by `iskworks-fitting` on EVEShip.fit's dogma engine. No engine types
 //! appear here.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
 
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::{InventoryError, WorkspaceId};
 
 /// Highest trainable skill level.
 const MAX_LEVEL: i16 = 5;
@@ -134,6 +139,8 @@ impl fmt::Display for UnknownName {
 pub enum FittingError {
     /// The engine data has no ship of this type.
     UnknownShip(i64),
+    /// The engine could not write the fit out (e.g. as EFT).
+    Export,
     InvalidDamageProfile,
     InvalidSkillLevel {
         skill_type_id: i64,
@@ -154,6 +161,19 @@ pub struct FitItem {
     /// The requested state.
     pub state: ModuleState,
     pub charge_type_id: Option<i64>,
+    /// For a mutated (Abyssal) item: what it was before, and its rolls.
+    /// Kept so a fit round-trips; not editable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation: Option<FitMutation>,
+}
+
+/// How a mutated item differs from its base type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitMutation {
+    pub base_type_id: i64,
+    /// The rolled value per attribute id.
+    pub attributes: BTreeMap<i64, f64>,
 }
 
 /// A fit as the engine calculates it: a hull and what it carries.
@@ -162,6 +182,142 @@ pub struct FitItem {
 pub struct FitInput {
     pub ship_type_id: i64,
     pub items: Vec<FitItem>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FitId(pub Uuid);
+
+/// A saved fit. Fits belong to the workspace, like skill plans.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fit {
+    pub id: FitId,
+    pub name: String,
+    pub description: String,
+    pub ship_type_id: i64,
+    /// In the order they were saved.
+    pub items: Vec<FitItem>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl Fit {
+    /// What the engine calculates.
+    #[must_use]
+    pub fn input(&self) -> FitInput {
+        FitInput {
+            ship_type_id: self.ship_type_id,
+            items: self.items.clone(),
+        }
+    }
+}
+
+const MAX_NAME_CHARS: usize = 100;
+const MAX_DESCRIPTION_CHARS: usize = 2_000;
+const MAX_ITEMS: usize = 512;
+const MAX_SLOT_INDEX: i16 = 31;
+
+/// What a create or update writes: the whole fit, items replaced.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitDraft {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub ship_type_id: i64,
+    pub items: Vec<FitItem>,
+}
+
+impl FitDraft {
+    /// The fit's shape: names, positions and quantities. Fitting rules (CPU,
+    /// racks the ship has, skills) are not checked: a fit that breaks them
+    /// still saves, and its calculation reports them.
+    pub fn validate(&self) -> Result<(), String> {
+        let name_chars = self.name.trim().chars().count();
+        if name_chars == 0 || name_chars > MAX_NAME_CHARS {
+            return Err(format!("a fit name is 1 to {MAX_NAME_CHARS} characters"));
+        }
+        if self.description.chars().count() > MAX_DESCRIPTION_CHARS {
+            return Err(format!(
+                "a fit description is at most {MAX_DESCRIPTION_CHARS} characters"
+            ));
+        }
+        if self.items.len() > MAX_ITEMS {
+            return Err(format!("a fit holds at most {MAX_ITEMS} items"));
+        }
+        let mut taken = HashSet::new();
+        for item in &self.items {
+            let kind = item.slot_kind.as_str();
+            if item.slot_kind.is_rack() {
+                // Implants and boosters count from 1, as EVE numbers them.
+                let first = match item.slot_kind {
+                    SlotKind::Implant | SlotKind::Booster => 1,
+                    _ => 0,
+                };
+                let Some(index) = item
+                    .slot_index
+                    .filter(|index| (first..=MAX_SLOT_INDEX).contains(index))
+                else {
+                    return Err(format!(
+                        "a {kind} item needs a position from {first} to {MAX_SLOT_INDEX}"
+                    ));
+                };
+                if !taken.insert((item.slot_kind, index)) {
+                    return Err(format!("two items are in {kind} {index}"));
+                }
+            } else if item.slot_index.is_some() {
+                return Err(format!("a {kind} item has no position"));
+            }
+            if item.quantity == 0 {
+                return Err(format!("a {kind} item needs a quantity of at least 1"));
+            }
+            let stacks = !item.slot_kind.is_rack() || item.slot_kind == SlotKind::FighterTube;
+            if !stacks && item.quantity != 1 {
+                return Err(format!("a {kind} item has a quantity of 1"));
+            }
+            if !item.slot_kind.is_rack() && item.charge_type_id.is_some() {
+                return Err(format!("a {kind} item cannot hold a charge"));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait FitRepository: Send + Sync {
+    /// Every fit of the workspace, by name.
+    async fn list_fits(&self, workspace_id: WorkspaceId) -> Result<Vec<Fit>, InventoryError>;
+
+    async fn fit(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+    ) -> Result<Option<Fit>, InventoryError>;
+
+    async fn create_fit(
+        &self,
+        workspace_id: WorkspaceId,
+        draft: &FitDraft,
+        now: DateTime<Utc>,
+    ) -> Result<Fit, InventoryError>;
+
+    /// Replaces the fit and every item in one transaction. `None` when the
+    /// fit isn't in the workspace.
+    async fn update_fit(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+        draft: &FitDraft,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Fit>, InventoryError>;
+
+    /// `false` when the fit isn't in the workspace.
+    async fn delete_fit(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+    ) -> Result<bool, InventoryError>;
 }
 
 /// Incoming damage, for effective hitpoints. Only the ratios matter.
@@ -495,9 +651,45 @@ pub struct FittingEngineInfo {
     pub build_number: i32,
 }
 
-/// Calculates fit stats. Implemented by `iskworks-fitting`; tests fake it.
+/// A fit read from text, before it is saved.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedFit {
+    /// The name the text gives; `None` when it gives none (the client
+    /// writes `.` for an unnamed fit).
+    pub name: Option<String>,
+    pub fit: FitInput,
+}
+
+/// A line of pasted text, numbered from 1 as the text is.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EftLine {
+    pub line: usize,
+    pub text: String,
+}
+
+/// Why EFT text could not be read.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum EftError {
+    /// Names that match no type, every one of them.
+    UnknownLines(Vec<EftLine>),
+    /// Not EFT, or EFT the engine can't place (a module with no rack, a bad
+    /// mutation); the message says what.
+    Invalid(String),
+}
+
+/// Calculates fit stats and reads and writes fits as text. Implemented by
+/// `iskworks-fitting`; tests fake it.
 pub trait FittingEngine: Send + Sync {
     fn info(&self) -> FittingEngineInfo;
+
+    /// Reads EFT (the client's copy/paste format, which pyfa also writes),
+    /// with modules in the states EVE gives an imported fit.
+    fn parse_eft(&self, text: &str) -> Result<ParsedFit, EftError>;
+
+    /// Writes EFT. Items the engine data doesn't know are left out.
+    fn write_eft(&self, name: &str, fit: &FitInput) -> Result<String, FittingError>;
 
     fn calculate(
         &self,

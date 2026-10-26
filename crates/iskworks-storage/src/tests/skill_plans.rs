@@ -6,7 +6,7 @@ use crate::PgSkillPlanRepository;
 
 /// A workspace and its owner, inserted directly: the workspace service only
 /// ever creates the one legacy workspace.
-async fn workspace(pool: &PgPool, name: &str) -> WorkspaceId {
+pub(super) async fn workspace(pool: &PgPool, name: &str) -> WorkspaceId {
     let workspace_id = uuid::Uuid::new_v4();
     let owner_id = uuid::Uuid::new_v4();
     let mut tx = pool.begin().await.unwrap();

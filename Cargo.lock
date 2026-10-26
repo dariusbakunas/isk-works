@@ -860,6 +860,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "esf-format"
+version = "13.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d2aaf8b059d6c7b3c94d0a1ec71dd783b6a374a4b409f237e5564ef04122a6"
+dependencies = [
+ "esf-data",
+ "esf-dogma-engine",
+ "serde",
+]
+
+[[package]]
 name = "etcetera"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1637,6 +1648,7 @@ version = "0.1.0"
 dependencies = [
  "esf-data",
  "esf-dogma-engine",
+ "esf-format",
  "iskworks-core",
  "serde_json",
 ]
