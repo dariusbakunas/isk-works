@@ -336,6 +336,11 @@ pub struct OrderRequirementRollup {
     pub needs_action: usize,
     pub in_progress: usize,
     pub total: usize,
+    /// Of the needs-action work, how many items could be started now (see
+    /// [`count_ready_to_start`]) -- set by callers that have the
+    /// requirements, `0` from [`compute_order_rollup`] alone.
+    #[serde(default)]
+    pub ready_to_start: usize,
 }
 
 #[must_use]
@@ -357,9 +362,103 @@ pub fn compute_order_rollup(states: &[RequirementFulfillmentState]) -> OrderRequ
     rollup
 }
 
+/// How many needs-action items of an Epic could be started now, counted
+/// the way the Epic inspector lists them: one item per bought type, one
+/// per produced step. A buy is always startable; a step is startable once
+/// every input of its own operation is covered (`Satisfied` or
+/// `InventorySatisfied`). `states[i]` is `requirements[i]`'s state.
+#[must_use]
+pub fn count_ready_to_start(
+    requirements: &[OrderRequirement],
+    states: &[RequirementFulfillmentState],
+) -> usize {
+    let covered = |state: &RequirementFulfillmentState| {
+        matches!(
+            state,
+            RequirementFulfillmentState::Satisfied
+                | RequirementFulfillmentState::InventorySatisfied
+        )
+    };
+    let mut items: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
+    for (requirement, state) in requirements.iter().zip(states) {
+        if *state != RequirementFulfillmentState::NeedsAction {
+            continue;
+        }
+        let step = match requirement.kind {
+            RequirementKind::Buy => None,
+            _ => requirement.child_occurrence_key.as_deref(),
+        };
+        let (key, ready) = match step {
+            Some(step) => (
+                format!("step:{step}"),
+                requirements.iter().zip(states).all(|(input, state)| {
+                    input.operation_occurrence_key.as_deref() != Some(step) || covered(state)
+                }),
+            ),
+            None if requirement.kind == RequirementKind::Buy => {
+                (format!("buy:{}", requirement.type_id), true)
+            }
+            None => (format!("req:{}", requirement.id.0), true),
+        };
+        items.entry(key).or_insert(ready);
+    }
+    items.values().filter(|ready| **ready).count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn produced(type_id: i64, operation: &str, child: &str) -> OrderRequirement {
+        OrderRequirement {
+            type_id,
+            kind: RequirementKind::React,
+            operation_occurrence_key: Some(operation.to_string()),
+            child_occurrence_key: Some(child.to_string()),
+            ..requirement(100)
+        }
+    }
+
+    fn input(type_id: i64, operation: &str) -> OrderRequirement {
+        OrderRequirement {
+            type_id,
+            operation_occurrence_key: Some(operation.to_string()),
+            ..requirement(100)
+        }
+    }
+
+    #[test]
+    fn ready_to_start_counts_buys_and_steps_whose_inputs_are_covered() {
+        use RequirementFulfillmentState::{InventorySatisfied, Linked, NeedsAction, Satisfied};
+        let requirements = [
+            // Two needs-action buys of one type: one item.
+            input(34, "root:1"),
+            input(34, "build:a"),
+            // Step a: its own inputs are the buy above (needs action) -> blocked.
+            produced(16_658, "root:1", "build:a"),
+            // Step b: its only input is satisfied -> ready.
+            produced(16_659, "root:1", "build:b"),
+            input(35, "build:b"),
+            // Step c: input covered from stock -> ready.
+            produced(16_660, "root:1", "build:c"),
+            input(36, "build:c"),
+            // Step d is already in hand (linked) -> not counted.
+            produced(16_661, "root:1", "build:d"),
+        ];
+        let states = [
+            NeedsAction,
+            NeedsAction,
+            NeedsAction,
+            NeedsAction,
+            Satisfied,
+            NeedsAction,
+            InventorySatisfied,
+            Linked,
+        ];
+
+        // Buy type 34, step b, step c.
+        assert_eq!(count_ready_to_start(&requirements, &states), 3);
+    }
 
     fn requirement(fresh_quantity: u64) -> OrderRequirement {
         OrderRequirement {
@@ -463,6 +562,7 @@ mod tests {
                 needs_action: 2,
                 in_progress: 2,
                 total: 6,
+                ready_to_start: 0,
             }
         );
     }

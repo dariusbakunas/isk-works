@@ -8,19 +8,20 @@ use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_core::build_materials::MaterialActivity;
 use iskworks_core::order::{
-    compare_reuse, compute_order_rollup, derive_operation_dag, derive_order_status,
-    derive_recording_summary, derive_requirement_state, derive_ticket_blockers, epic_plan_overlay,
-    frozen_reuse, intended_build_backed_runs, planned_root_output, project_frozen_execution_plan,
-    requirement_to_prerequisite, reuse_by_type, EpicPlanOverlay, FrozenDemandEdge,
-    FrozenPlanInventory, NewOrderPlan, NewOrderRequirement, NewPlanReservation, NewPlanTicket,
-    NewTicket, NewTicketPrerequisite, OperationDependency, OperationTicketCreation, Order,
-    OrderError, OrderId, OrderRepository, OrderRequirement, OrderRequirementFulfillment,
-    OrderRequirementId, OrderRequirementRollup, OrderStatus, PlanOperation, RecordAcquisitionInput,
-    RecordProductionInput, RecordProductionInputLine, RecordingState, RequirementFulfillmentState,
-    RequirementKind, RequirementReservationTotals, RequirementTicketCreation, ReservationShortfall,
-    ReuseChange, TakeFrom, Ticket, TicketBlockerRef, TicketId, TicketInventoryRecording,
-    TicketKind, TicketMetadataUpdate, TicketPrerequisite, TicketPrerequisiteId,
-    TicketRecordingSummary, TicketStatus, ROOT_OCCURRENCE_PREFIX,
+    compare_reuse, compute_order_rollup, count_ready_to_start, derive_operation_dag,
+    derive_order_status, derive_recording_summary, derive_requirement_state,
+    derive_ticket_blockers, epic_plan_overlay, frozen_reuse, intended_build_backed_runs,
+    planned_root_output, project_frozen_execution_plan, requirement_to_prerequisite, reuse_by_type,
+    EpicPlanOverlay, FrozenDemandEdge, FrozenPlanInventory, NewOrderPlan, NewOrderRequirement,
+    NewPlanReservation, NewPlanTicket, NewTicket, NewTicketPrerequisite, OperationDependency,
+    OperationTicketCreation, Order, OrderError, OrderId, OrderRepository, OrderRequirement,
+    OrderRequirementFulfillment, OrderRequirementId, OrderRequirementRollup, OrderStatus,
+    PlanOperation, RecordAcquisitionInput, RecordProductionInput, RecordProductionInputLine,
+    RecordingState, RequirementFulfillmentState, RequirementKind, RequirementReservationTotals,
+    RequirementTicketCreation, ReservationShortfall, ReuseChange, TakeFrom, Ticket,
+    TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind, TicketMetadataUpdate,
+    TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary, TicketStatus,
+    ROOT_OCCURRENCE_PREFIX,
 };
 use iskworks_core::{
     BuildId, BuildRecipe, ConnectedCharacterId, MarketScope, Money, PreviewBuildPlanCommand,
