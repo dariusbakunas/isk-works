@@ -874,6 +874,17 @@ pub trait OrderRepository: Send + Sync {
         ticket_ids: &[TicketId],
     ) -> Result<Ticket, OrderError>;
 
+    /// Undoes `combine_tickets` while nothing has been done on the combined
+    /// ticket (To Do or Canceled, no unreverted recording, no linked job):
+    /// each claim goes back to its member, the members return to To Do,
+    /// children go back under the member holding their parent step, and
+    /// the combined ticket is deleted. Returns the restored members.
+    async fn split_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Vec<Ticket>, OrderError>;
+
     /// `available = physical_balance - active allocations`, read-only, no
     /// lock. Neither `create_order` nor `create_ticket` allocates anything,
     /// so for any newly created row this equals the physical balance; a

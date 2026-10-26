@@ -903,3 +903,256 @@ async fn a_combined_ticket_records_into_both_epics(pool: PgPool) {
     expected.sort();
     assert_eq!(reserved, expected);
 }
+
+// ─── Split ────────────────────────────────────────────────────────────────
+
+async fn claims(pool: &PgPool) -> Vec<(Uuid, String, Uuid)> {
+    sqlx::query_as(
+        "SELECT order_id, occurrence_key, ticket_id FROM order_operation_ticket_claims \
+         ORDER BY order_id, occurrence_key",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+/// A ticket as split must restore it: everything but `updated_at`.
+fn comparable(mut ticket: Ticket) -> Ticket {
+    ticket.updated_at = ticket.created_at;
+    ticket
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn split_restores_the_members_exactly(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let first_epic = fx.epic(true).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let child = fx.step(first_epic, "hexite-2").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let root = fx.step(second_epic, "root").await;
+    let consumer_prerequisite = fx
+        .repository
+        .list_ticket_prerequisites(root.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|prerequisite| prerequisite.type_id == HEXITE)
+        .unwrap();
+    fx.repository
+        .link_ticket_prerequisite_to_ticket(consumer_prerequisite.id, b.id, 400)
+        .await
+        .unwrap();
+    let before_tickets = [
+        fx.ticket(a.id).await,
+        fx.ticket(b.id).await,
+        fx.ticket(child.id).await,
+    ];
+    assert_eq!(before_tickets[2].parent_ticket_id, Some(a.id));
+    let before_claims = claims(&pool).await;
+
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+    assert_eq!(
+        fx.ticket(child.id).await.parent_ticket_id,
+        Some(combined.id)
+    );
+    let restored = fx
+        .repository
+        .split_ticket(fx.workspace_id, combined.id)
+        .await
+        .unwrap();
+
+    let mut restored_ids: Vec<TicketId> = restored.iter().map(|ticket| ticket.id).collect();
+    restored_ids.sort_by_key(|id| id.0);
+    let mut expected_ids = vec![a.id, b.id];
+    expected_ids.sort_by_key(|id| id.0);
+    assert_eq!(restored_ids, expected_ids);
+    for before in before_tickets {
+        assert_eq!(
+            comparable(fx.ticket(before.id).await),
+            comparable(before.clone()),
+            "{} is back as it was",
+            before.display_id
+        );
+    }
+    assert_eq!(claims(&pool).await, before_claims);
+    assert!(matches!(
+        fx.repository.get_ticket(fx.workspace_id, combined.id).await,
+        Err(OrderError::TicketNotFound)
+    ));
+    let links = fx
+        .repository
+        .list_ticket_prerequisite_fulfillments(consumer_prerequisite.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        links
+            .iter()
+            .map(|link| link.fulfilling_ticket_id)
+            .collect::<Vec<_>>(),
+        vec![b.id]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_merged_member_cannot_be_reopened_on_its_own(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    match fx
+        .repository
+        .set_ticket_status(fx.workspace_id, a.id, TicketStatus::Todo)
+        .await
+    {
+        Err(OrderError::TicketMerged { into_display_id }) => {
+            assert_eq!(into_display_id, combined.display_id)
+        }
+        other => panic!("expected TicketMerged, got {other:?}"),
+    }
+    // Writing Canceled again is harmless.
+    fx.repository
+        .set_ticket_status(fx.workspace_id, a.id, TicketStatus::Canceled)
+        .await
+        .unwrap();
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn split_waits_until_recordings_are_reverted(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let import_id: Uuid = sqlx::query_scalar("SELECT id FROM sde_imports WHERE active")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    seed_sde_type(&pool, import_id, HEXITE, "Hexite").await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+    let outcome = fx
+        .repository
+        .record_ticket_production(
+            fx.workspace_id,
+            combined.id,
+            production_input(1, HEXITE, 0, &[], "0"),
+        )
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        fx.repository
+            .split_ticket(fx.workspace_id, combined.id)
+            .await,
+        Err(OrderError::TicketNotSplittable)
+    ));
+
+    fx.repository
+        .revert_ticket_inventory_recording(fx.workspace_id, combined.id, outcome.recording.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.repository
+            .split_ticket(fx.workspace_id, combined.id)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_canceled_combined_ticket_still_splits(pool: PgPool) {
+    let fx = CombineFixture::new(pool).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+    fx.repository
+        .set_ticket_status(fx.workspace_id, combined.id, TicketStatus::Canceled)
+        .await
+        .unwrap();
+
+    let restored = fx
+        .repository
+        .split_ticket(fx.workspace_id, combined.id)
+        .await
+        .unwrap();
+
+    assert!(restored
+        .iter()
+        .all(|ticket| ticket.status == TicketStatus::Todo));
+    // A started combined ticket doesn't split; neither does a plain one.
+    assert!(matches!(
+        fx.repository.split_ticket(fx.workspace_id, a.id).await,
+        Err(OrderError::TicketNotCombined)
+    ));
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn split_after_an_epic_is_deleted_restores_the_rest(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+    fx.repository
+        .delete_order(fx.workspace_id, second_epic)
+        .await
+        .unwrap();
+    let combined = fx.ticket(combined.id).await;
+    assert_eq!(
+        combined.epics(),
+        [first_epic].into_iter().collect(),
+        "the deleted Epic's claim is gone"
+    );
+
+    let restored = fx
+        .repository
+        .split_ticket(fx.workspace_id, combined.id)
+        .await
+        .unwrap();
+
+    assert!(restored.iter().any(|ticket| ticket.id == a.id));
+    assert!(fx.ticket(a.id).await.executes(first_epic, "hexite"));
+    assert_eq!(
+        claims(&pool).await,
+        vec![(first_epic.0, "hexite".to_string(), a.id.0)]
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_a_combined_ticket_frees_its_members(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    fx.repository
+        .delete_ticket(fx.workspace_id, combined.id)
+        .await
+        .unwrap();
+
+    for member in [&a, &b] {
+        let member = fx.ticket(member.id).await;
+        assert_eq!(member.status, TicketStatus::Canceled);
+        assert_eq!(member.merged_into_ticket_id, None);
+    }
+    assert!(claims(&pool).await.is_empty());
+    // The step can be ticketed again on demand.
+    let again = fx.step(first_epic, "hexite").await;
+    assert_ne!(again.id, a.id);
+}

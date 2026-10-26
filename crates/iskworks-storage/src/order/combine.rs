@@ -245,3 +245,116 @@ pub(super) async fn combine_tickets(
     tx.commit().await.map_err(map_error)?;
     Ok(combined.id)
 }
+
+/// See `OrderRepository::split_ticket`. Returns the restored members' ids.
+pub(super) async fn split_ticket(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    ticket_id: TicketId,
+) -> Result<Vec<TicketId>, OrderError> {
+    let mut tx = pool.begin().await.map_err(map_error)?;
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM tickets WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+    )
+    .bind(workspace_id.0)
+    .bind(ticket_id.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    let status = ticket_status_from_str(&status.ok_or(OrderError::TicketNotFound)?)?;
+    let members: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM tickets WHERE merged_into_ticket_id = $1 ORDER BY id FOR UPDATE",
+    )
+    .bind(ticket_id.0)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    if members.is_empty() {
+        return Err(OrderError::TicketNotCombined);
+    }
+    let (has_live_recording, has_linked_jobs): (bool, bool) = sqlx::query_as(
+        "SELECT EXISTS (SELECT 1 FROM ticket_inventory_recordings \
+                        WHERE ticket_id = $1 AND reverted_at IS NULL), \
+                EXISTS (SELECT 1 FROM ticket_industry_jobs WHERE ticket_id = $1)",
+    )
+    .bind(ticket_id.0)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    if !matches!(status, TicketStatus::Todo | TicketStatus::Canceled)
+        || has_live_recording
+        || has_linked_jobs
+    {
+        return Err(OrderError::TicketNotSplittable);
+    }
+    let now = crate::db_now();
+
+    // Each claim back to the member that held it. A claim whose Epic was
+    // deleted is gone; its member comes back without one.
+    sqlx::query(
+        "UPDATE order_operation_ticket_claims c SET ticket_id = m.id, claimed_at = $2 \
+         FROM tickets m \
+         WHERE c.ticket_id = $1 AND m.merged_into_ticket_id = $1 \
+           AND m.order_id = c.order_id AND m.occurrence_key = c.occurrence_key",
+    )
+    .bind(ticket_id.0)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    // Children go back under the member running their parent step.
+    sqlx::query(
+        "UPDATE tickets child SET parent_ticket_id = m.id \
+         FROM order_plan_operations p, tickets m \
+         WHERE child.parent_ticket_id = $1 \
+           AND p.order_id = child.order_id AND p.occurrence_key = child.occurrence_key \
+           AND m.merged_into_ticket_id = $1 \
+           AND m.order_id = p.order_id AND m.occurrence_key = p.parent_occurrence_key",
+    )
+    .bind(ticket_id.0)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    sqlx::query(
+        "UPDATE tickets SET status = 'todo', merged_into_ticket_id = NULL, updated_at = $2 \
+         WHERE merged_into_ticket_id = $1",
+    )
+    .bind(ticket_id.0)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_error)?;
+    crate::cascade::teardown_tickets(&mut tx, &[ticket_id.0])
+        .await
+        .map_err(map_error)?;
+
+    tx.commit().await.map_err(map_error)?;
+    Ok(members.into_iter().map(TicketId).collect())
+}
+
+/// `TicketMerged` if `ticket_id` is a merged member and `status` would move
+/// it out of Canceled -- its operation already has an active ticket.
+pub(super) async fn guard_merged_status(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    ticket_id: TicketId,
+    status: TicketStatus,
+) -> Result<(), OrderError> {
+    if status == TicketStatus::Canceled {
+        return Ok(());
+    }
+    let into: Option<String> = sqlx::query_scalar(
+        "SELECT combined.display_id FROM tickets member \
+         JOIN tickets combined ON combined.id = member.merged_into_ticket_id \
+         WHERE member.workspace_id = $1 AND member.id = $2",
+    )
+    .bind(workspace_id.0)
+    .bind(ticket_id.0)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_error)?;
+    match into {
+        Some(into_display_id) => Err(OrderError::TicketMerged { into_display_id }),
+        None => Ok(()),
+    }
+}
