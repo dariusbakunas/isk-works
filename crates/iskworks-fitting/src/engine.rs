@@ -1,12 +1,15 @@
 //! Loading `sde.dat` and calculating fits with it.
 
 mod attributes;
+mod calculate;
 
 use std::fmt;
 use std::path::Path;
 
 use esf_data::{eve, InfoSde, Sde};
-use iskworks_core::fitting::FittingEngineInfo;
+use iskworks_core::fitting::{
+    DamageProfile, FitCalculation, FitInput, FittingEngine, FittingEngineInfo, FittingError, Pilot,
+};
 
 use crate::DataLock;
 use attributes::StatAttributes;
@@ -50,8 +53,6 @@ impl fmt::Display for FittingLoadError {
 }
 
 /// [`iskworks_core::fitting::FittingEngine`] on `esf-dogma-engine`.
-// Read by `calculate`, which lands in the next commit.
-#[allow(dead_code)]
 pub struct EsfFittingEngine {
     info: InfoSde<'static>,
     sde: &'static Sde<'static>,
@@ -102,10 +103,32 @@ impl EsfFittingEngine {
         self.engine_info.clone()
     }
 
+    /// The type of this English name (case-insensitive), as the engine data
+    /// knows it.
+    #[must_use]
+    pub fn type_id(&self, name: &str) -> Option<i64> {
+        self.sde.type_name_to_id(name).map(i64::from)
+    }
+
     /// How many skills an All V pilot has.
     #[must_use]
     pub fn skill_count(&self) -> usize {
         self.skills.len()
+    }
+}
+
+impl FittingEngine for EsfFittingEngine {
+    fn info(&self) -> FittingEngineInfo {
+        self.engine_info()
+    }
+
+    fn calculate(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+    ) -> Result<FitCalculation, FittingError> {
+        self.run(fit, pilot, profile)
     }
 }
 

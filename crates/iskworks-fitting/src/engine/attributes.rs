@@ -11,8 +11,6 @@ macro_rules! stat_attributes {
     ($($field:ident => $name:literal,)*) => {
         /// Attribute ids by role. Unless noted they are read off the ship.
         #[derive(Debug, Clone, Copy)]
-        // Read by `calculate`, which lands in the next commit.
-        #[allow(dead_code)]
         pub(super) struct StatAttributes {
             $(pub(super) $field: i32,)*
         }
