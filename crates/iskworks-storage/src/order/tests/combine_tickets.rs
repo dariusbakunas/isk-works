@@ -494,6 +494,8 @@ async fn a_ticket_is_listed_under_every_epic_it_executes(pool: PgPool) {
 
 const HEXITE: i64 = 16_658;
 const INPUT: i64 = 16_640;
+/// The fixture Epics' root step, keyed like a real plan's.
+const ROOT: &str = "root:fixture";
 
 async fn insert_operations(pool: &PgPool, order_id: OrderId, operations: &[(&str, Option<&str>)]) {
     for (key, parent) in operations {
@@ -529,9 +531,9 @@ async fn hexite_epic(
     second_step: bool,
 ) -> OrderId {
     let steps: &[(&str, &str)] = if second_step {
-        &[("hexite", "root"), ("hexite-2", "hexite")]
+        &[("hexite", ROOT), ("hexite-2", "hexite")]
     } else {
-        &[("hexite", "root")]
+        &[("hexite", ROOT)]
     };
     let mut requirements = Vec::new();
     for (step, parent) in steps {
@@ -554,7 +556,7 @@ async fn hexite_epic(
         })
         .await
         .unwrap();
-    let mut operations = vec![("root", None)];
+    let mut operations = vec![(ROOT, None)];
     operations.extend(steps.iter().map(|(step, parent)| (*step, Some(*parent))));
     insert_operations(pool, order.id, &operations).await;
     order.id
@@ -638,7 +640,7 @@ async fn combining_two_epics_steps_moves_their_work_onto_one_ticket(pool: PgPool
     let second_epic = fx.epic(false).await;
     let a = fx.step(first_epic, "hexite").await;
     let b = fx.step(second_epic, "hexite").await;
-    let root = fx.step(first_epic, "root").await;
+    let root = fx.step(first_epic, ROOT).await;
     // The root ticket was created after its step: it adopted `a` as child.
     assert_eq!(fx.ticket(a.id).await.parent_ticket_id, Some(root.id));
     // A consumer's prerequisite fulfilled by `a`.
@@ -786,7 +788,7 @@ async fn a_refused_combine_changes_nothing(pool: PgPool) {
     let second_epic = fx.epic(false).await;
     let a = fx.step(first_epic, "hexite").await;
     let b = fx.step(second_epic, "hexite").await;
-    let root = fx.step(second_epic, "root").await;
+    let root = fx.step(second_epic, ROOT).await;
     let ticket_count = || async {
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM tickets")
             .fetch_one(&fx.pool)
@@ -931,7 +933,7 @@ async fn split_restores_the_members_exactly(pool: PgPool) {
     let a = fx.step(first_epic, "hexite").await;
     let child = fx.step(first_epic, "hexite-2").await;
     let b = fx.step(second_epic, "hexite").await;
-    let root = fx.step(second_epic, "root").await;
+    let root = fx.step(second_epic, ROOT).await;
     let consumer_prerequisite = fx
         .repository
         .list_ticket_prerequisites(root.id)
@@ -1155,4 +1157,27 @@ async fn deleting_a_combined_ticket_frees_its_members(pool: PgPool) {
     // The step can be ticketed again on demand.
     let again = fx.step(first_epic, "hexite").await;
     assert_ne!(again.id, a.id);
+}
+
+/// A step feeding several consumers is frozen with no parent, like the
+/// root -- but only the `root:` step is the Epic's product.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_fan_in_step_with_no_parent_still_combines(pool: PgPool) {
+    let fx = CombineFixture::new(pool.clone()).await;
+    let first_epic = fx.epic(false).await;
+    let second_epic = fx.epic(false).await;
+    sqlx::query(
+        "UPDATE order_plan_operations SET parent_occurrence_key = NULL \
+         WHERE occurrence_key = 'hexite'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let a = fx.step(first_epic, "hexite").await;
+    let b = fx.step(second_epic, "hexite").await;
+
+    let combined = fx.combine(&[&a, &b]).await.unwrap();
+
+    assert_eq!(combined.operations.len(), 2);
 }

@@ -5,7 +5,9 @@ use super::*;
 
 use std::collections::BTreeSet;
 
-use iskworks_core::order::{check_combinable, combined_ticket, CombineCandidate, CombineMember};
+use iskworks_core::order::{
+    check_combinable, combined_ticket, CombineCandidate, CombineMember, ROOT_OCCURRENCE_PREFIX,
+};
 
 use super::inserts::insert_ticket_with_prerequisites;
 
@@ -54,19 +56,24 @@ async fn candidate_facts(
 ) -> Result<CandidateFacts, OrderError> {
     let (legacy_epic, root_operation) = match ticket.operations.as_slice() {
         [operation] => {
-            let row: Option<(i16, Option<bool>)> = sqlx::query_as(
-                "SELECT o.planning_snapshot_version, p.parent_occurrence_key IS NULL \
-                 FROM orders o LEFT JOIN order_plan_operations p \
-                   ON p.order_id = o.id AND p.occurrence_key = $2 \
-                 WHERE o.id = $1",
+            // The root is the step keyed `root:` -- not "the step with no
+            // parent": a step feeding several consumers is frozen without
+            // one too. A claimed step missing from the frozen plan is
+            // refused the same way.
+            let row: Option<(i16, bool)> = sqlx::query_as(
+                "SELECT o.planning_snapshot_version, EXISTS ( \
+                   SELECT 1 FROM order_plan_operations p \
+                   WHERE p.order_id = o.id AND p.occurrence_key = $2) \
+                 FROM orders o WHERE o.id = $1",
             )
             .bind(operation.order_id.0)
             .bind(&operation.occurrence_key)
             .fetch_optional(&mut **tx)
             .await
             .map_err(map_error)?;
+            let root = operation.occurrence_key.starts_with(ROOT_OCCURRENCE_PREFIX);
             match row {
-                Some((version, root)) => (version < 3, root.unwrap_or(true)),
+                Some((version, planned)) => (version < 3, root || !planned),
                 None => (false, true),
             }
         }
