@@ -46,6 +46,29 @@ function actualInstallPerRun(jobs: IndustryJob[]): { perRun: number; total: numb
   return { perRun: total / runs, total, runs };
 }
 
+// One input per material. A combined ticket carries a copy of each
+// member's prerequisites (one per Epic it serves), so the same material can
+// appear more than once; recording consumes it as one line.
+function recordingMaterials(
+  prerequisites: TicketSummary["prerequisites"],
+): { id: string; typeId: number; capturedName: string; requiredQuantity: number }[] {
+  const byType = new Map<number, { id: string; typeId: number; capturedName: string; requiredQuantity: number }>();
+  for (const prerequisite of prerequisites) {
+    const material = byType.get(prerequisite.typeId);
+    if (material) {
+      material.requiredQuantity += prerequisite.requiredQuantity;
+    } else {
+      byType.set(prerequisite.typeId, {
+        id: `type:${prerequisite.typeId}`,
+        typeId: prerequisite.typeId,
+        capturedName: prerequisite.capturedName,
+        requiredQuantity: prerequisite.requiredQuantity,
+      });
+    }
+  }
+  return [...byType.values()];
+}
+
 export function ProductionRecordingForm({
   ticket,
   jobs = [],
@@ -60,6 +83,7 @@ export function ProductionRecordingForm({
   onRecorded: () => void;
 }) {
   const snapshot = ticket.executionSnapshot;
+  const materials = useMemo(() => recordingMaterials(ticket.prerequisites), [ticket.prerequisites]);
   const legacyNoSnapshot = snapshot === null;
   const plannedRuns = snapshot?.runs ?? 0;
   const plannedInstallTotal = snapshot?.installationCost?.total ?? null;
@@ -107,7 +131,7 @@ export function ProductionRecordingForm({
   const [output, setOutput] = useState(() => defaultOutput(seedRuns));
   const [inputs, setInputs] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      ticket.prerequisites.map((prerequisite) => [
+      materials.map((prerequisite) => [
         prerequisite.id,
         defaultInput(prerequisite.requiredQuantity, seedRuns),
       ]),
@@ -146,7 +170,7 @@ export function ProductionRecordingForm({
     if (!touched.has("install")) setInstallCost(defaultInstall(runsNumber));
     setInputs((current) => {
       const nextInputs = { ...current };
-      for (const prerequisite of ticket.prerequisites) {
+      for (const prerequisite of materials) {
         if (!touched.has(`input:${prerequisite.id}`)) {
           nextInputs[prerequisite.id] = defaultInput(prerequisite.requiredQuantity, runsNumber);
         }
@@ -157,7 +181,7 @@ export function ProductionRecordingForm({
 
   const runsValid = isPositiveInteger(runs);
   const outputValid = isNonNegativeInteger(output);
-  const inputsValid = ticket.prerequisites.every((prerequisite) =>
+  const inputsValid = materials.every((prerequisite) =>
     isPositiveInteger(inputs[prerequisite.id] ?? ""),
   );
   const installValid =
@@ -179,7 +203,7 @@ export function ProductionRecordingForm({
       idempotencyKey: idempotencyKeyRef.current,
       runsCompleted: Number(runs),
       output: { typeId: outputTypeId, quantity: Number(output) },
-      inputs: ticket.prerequisites.map((prerequisite) => ({
+      inputs: materials.map((prerequisite) => ({
         typeId: prerequisite.typeId,
         quantity: Number(inputs[prerequisite.id]),
       })),
@@ -325,10 +349,10 @@ export function ProductionRecordingForm({
           />
         </div>
 
-        {ticket.prerequisites.length > 0 ? (
+        {materials.length > 0 ? (
           <div className="space-y-1">
             <span className="block text-xs font-medium text-muted">Materials consumed</span>
-            {ticket.prerequisites.map((prerequisite) => (
+            {materials.map((prerequisite) => (
               <label className="block text-[11px] text-muted" key={prerequisite.id}>
                 {prerequisite.capturedName}
                 <input

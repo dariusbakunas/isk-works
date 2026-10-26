@@ -27,6 +27,7 @@ import {
   orderTicketStatusMeta,
   requirementKindMeta,
 } from "./order-meta";
+import { ticketEpicIds } from "./board-filters";
 import { RemoveEpicDialog, type RemoveEpicChoice } from "./remove-epic-dialog";
 import { recordingStateMeta } from "./recording/recording-meta";
 
@@ -134,8 +135,9 @@ export function EpicInspector({
   // requirement fulfillments or `sourceBuildId` equality anymore: a
   // shared `sourceBuildId` is Build *context*, and a fulfillment link
   // can point at a ticket that belongs to a different Epic entirely (see
-  // `link_ticket_to_requirement`) -- neither is Epic membership.
-  const linkedTickets = tickets.filter((ticket) => ticket.orderId === order.id);
+  // `link_ticket_to_requirement`) -- neither is Epic membership. A combined
+  // ticket has no `orderId`: it belongs to every Epic whose step it does.
+  const linkedTickets = tickets.filter((ticket) => ticketEpicIds(ticket).includes(order.id));
 
   const ticketTotal = linkedTickets.length;
   const ticketComplete = linkedTickets.filter((ticket) => ticket.status === "complete").length;
