@@ -92,6 +92,10 @@ export interface OrderRequirementRollup {
   needsAction: number;
   inProgress: number;
   total: number;
+  // Of the needs-action items, how many can be started now: buys, and steps
+  // whose own inputs are all covered -- the Epic inspector's "can start
+  // now". Optional so fixtures may omit it.
+  readyToStart?: number;
 }
 
 // "Execute this version of this Build" -- an immutable snapshot: there is

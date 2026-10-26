@@ -197,7 +197,8 @@ pub(super) fn order_detail_response(
             }
         })
         .collect();
-    let rollup = compute_order_rollup(&states);
+    let mut rollup = compute_order_rollup(&states);
+    rollup.ready_to_start = count_ready_to_start(&requirements, &states);
     let status = derive_order_status(order, &states);
     let requirement_views = requirements
         .into_iter()
