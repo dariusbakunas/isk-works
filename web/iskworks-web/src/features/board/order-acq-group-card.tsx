@@ -7,7 +7,7 @@ import { MoneyAmount } from "../../components/money";
 import { sumDecimalStrings } from "../industry/shared/decimal";
 import { acquisitionPricingIdentity, type AcquisitionPricingIcon } from "./acquisition-pricing";
 import type { OrderAcquisitionGroup } from "./order-acq-group";
-import { isBatchableOrderTicket } from "./order-ticket-card";
+import { isBatchableOrderTicket } from "./ticket-selection";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
 import { useAcquisitionPricingDescriptor } from "./use-acquisition-pricing-descriptor";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
@@ -38,6 +38,7 @@ export function OrderAcqGroupCard({
   expanded,
   onToggleExpand,
   selecting = false,
+  selectionLocked = false,
   selectedIds,
   onToggleSelect,
   onSelectAll,
@@ -54,6 +55,8 @@ export function OrderAcqGroupCard({
   expanded: boolean;
   onToggleExpand: () => void;
   selecting?: boolean;
+  /** Another kind of ticket is selected: none of this group's can join. */
+  selectionLocked?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (ticketId: string) => void;
   onSelectAll?: (ticketIds: string[]) => void;
@@ -75,9 +78,10 @@ export function OrderAcqGroupCard({
   // per the backend `BatchKey` -- never offer a select/batch affordance for
   // it, even though its member tickets are individually "batchable" by
   // kind/status.
-  const selectableIds = group.batchable
-    ? group.tickets.filter(isBatchableOrderTicket).map((ticket) => ticket.id)
-    : [];
+  const selectableIds =
+    group.batchable && !selectionLocked
+      ? group.tickets.filter(isBatchableOrderTicket).map((ticket) => ticket.id)
+      : [];
   const selectedCount = selectedIds ? selectableIds.filter((id) => selectedIds.has(id)).length : 0;
   const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -211,7 +215,7 @@ export function OrderAcqGroupCard({
             const selected = selectedIds?.has(ticket.id) ?? false;
             // A `none` group can't be batched at all -- suppress the whole
             // selection affordance for its rows (not just disable it).
-            const batchable = group.batchable && isBatchableOrderTicket(ticket);
+            const batchable = group.batchable && !selectionLocked && isBatchableOrderTicket(ticket);
             const draggable = !selecting && isTicketDraggable(ticket);
             return (
               <div

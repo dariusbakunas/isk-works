@@ -193,9 +193,19 @@ describe("OrderTicketCard selection", () => {
     expect(screen.getByLabelText("Select ISK-2000")).toBeChecked();
   });
 
-  it("disables the checkbox for a Manufacturing/Reaction ticket -- never batchable", () => {
+  it("disables the checkbox for a Manufacturing/Reaction ticket by default -- never batchable", () => {
     render(<OrderTicketCard selectable ticket={ticketFixture({ kind: "manufacturing" })} />);
 
+    expect(screen.getByLabelText("Select ISK-2000")).toBeDisabled();
+  });
+
+  it("follows the Board's eligibility when given -- a production step can be picked to combine", () => {
+    const { rerender } = render(
+      <OrderTicketCard selectable selectionEnabled ticket={ticketFixture({ kind: "reaction" })} />,
+    );
+    expect(screen.getByLabelText("Select ISK-2000")).toBeEnabled();
+
+    rerender(<OrderTicketCard selectable selectionEnabled={false} ticket={ticketFixture()} />);
     expect(screen.getByLabelText("Select ISK-2000")).toBeDisabled();
   });
 

@@ -39,6 +39,7 @@ import { OrderAcquisitionRunCard } from "./order-acquisition-run-card";
 import { OrderAcquisitionRunDrawer } from "./order-acquisition-run-drawer";
 import { OrderCard } from "./order-card";
 import { OrderSelectionBar } from "./order-selection-bar";
+import { isSelectable, selectionKind } from "./ticket-selection";
 import { OrderTicketCard } from "./order-ticket-card";
 import { OrderTicketDetailDrawer } from "./order-ticket-detail-drawer";
 import { summarizeTicketJobs } from "./ticket-job-progress";
@@ -752,6 +753,9 @@ export function BoardPage() {
                     onOpen={openTicketFromCard}
                     onToggleSelect={toggleSelected}
                     selectable={selectionMode}
+                    selectionEnabled={isSelectable(ticket, selectedTickets, {
+                      hasJobs: (jobsByTicketId.get(ticket.id)?.length ?? 0) > 0,
+                    })}
                     selected={selectedTicketIds.has(ticket.id)}
                     ticket={ticket}
                   />
@@ -780,6 +784,7 @@ export function BoardPage() {
                       }
                       selectedIds={selectedTicketIds}
                       selecting={selectionMode}
+                      selectionLocked={selectedTickets.length > 0 && selectionKind(selectedTickets[0]) !== "acquisition"}
                     />
                   );
                 })}

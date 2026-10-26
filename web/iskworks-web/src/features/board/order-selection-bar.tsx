@@ -1,5 +1,5 @@
 import type { Ticket } from "../../api/industry";
-import { isBatchableOrderTicket } from "./order-ticket-card";
+import { isBatchableOrderTicket } from "./ticket-selection";
 
 // Standalone-ticket counterpart to SelectionBar -- kept as a fully separate
 // component (not a shared/parameterized one) so the two selection systems
