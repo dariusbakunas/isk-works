@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 
 use iskworks_core::fitting::{
     AttributeExplanation, CapacitorState, DamageProfile, ExplainTarget, FitCalculation, FitInput,
-    FitItem, FittingEngine, FittingError, ModuleState, Pilot, PilotSkills, SlotKind, SourceRef,
+    FitItem, FittingEngine, FittingError, HeadlineKind, ModuleState, Pilot, PilotSkills, SlotKind,
+    SourceRef,
 };
 use iskworks_fitting::{DataLock, EsfFittingEngine};
 
@@ -530,4 +531,48 @@ fn an_item_attribute_can_be_explained_and_bad_requests_are_refused() {
             .err(),
         Some(FittingError::UnknownItem(9))
     );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn modules_headline_what_they_do() {
+    let fit = bustard();
+    let calculation = calculate(&fit, &Pilot::AllV);
+    let headline_of = |name: &str| {
+        let index = fit
+            .items
+            .iter()
+            .position(|item| item.type_id == type_id(name))
+            .unwrap();
+        calculation.items[index].unwrap().headline
+    };
+    let kind_of = |name: &str| headline_of(name).map(|headline| headline.kind);
+    assert_eq!(
+        kind_of("Multispectrum Shield Hardener II"),
+        Some(HeadlineKind::Resist)
+    );
+    assert_eq!(
+        kind_of("Republic Fleet Medium Shield Extender"),
+        Some(HeadlineKind::ShieldHp)
+    );
+    assert_eq!(
+        kind_of("50MN Y-T8 Compact Microwarpdrive"),
+        Some(HeadlineKind::Velocity)
+    );
+    assert_eq!(kind_of("Nanofiber Internal Structure II"), None);
+    for name in [
+        "Multispectrum Shield Hardener II",
+        "Republic Fleet Medium Shield Extender",
+        "50MN Y-T8 Compact Microwarpdrive",
+    ] {
+        assert!(headline_of(name).unwrap().value > 0.0, "{name}");
+    }
+
+    let guns = calculate(&gun_rifter(), &Pilot::AllV);
+    let gun = guns.items[0].unwrap();
+    assert_eq!(
+        gun.headline.map(|headline| headline.kind),
+        Some(HeadlineKind::Dps)
+    );
+    assert_close(gun.headline.unwrap().value, gun.dps, "gun headline");
 }

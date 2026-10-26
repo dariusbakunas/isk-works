@@ -669,6 +669,38 @@ pub struct ItemStats {
     pub falloff: f64,
     /// Its damage per second, without reloads (drones included).
     pub dps: f64,
+    /// What it does, in one number; `None` for a module the table shows
+    /// no headline for.
+    pub headline: Option<Headline>,
+}
+
+/// What kind of number a module's headline is.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HeadlineKind {
+    /// Damage per second.
+    Dps,
+    /// Shield HP per second.
+    ShieldRepair,
+    /// Armor HP per second.
+    ArmorRepair,
+    /// The average of its four resistance bonuses, in percent.
+    Resist,
+    /// The velocity bonus, in percent.
+    Velocity,
+    /// Shield HP added.
+    ShieldHp,
+    /// Armor HP added.
+    ArmorHp,
+    /// Capacitor (GJ) per charge injected.
+    Capacitor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Headline {
+    pub kind: HeadlineKind,
+    pub value: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

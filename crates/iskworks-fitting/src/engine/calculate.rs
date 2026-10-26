@@ -10,10 +10,12 @@ use esf_dogma_engine::{
 use iskworks_core::fitting::{
     AttributeExplanation, CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats,
     ExplainTarget, FitCalculation, FitInput, FitItem, FitStats, FitViolation, FittingError,
-    ItemStats, LayerStats, ModifierSource, ModuleState, NavigationStats, OffenseStats, Pilot,
-    Resists, ResourceStats, SlotKind, SourceRef, TargetingStats, Usage, ViolationTarget,
+    Headline, HeadlineKind, ItemStats, LayerStats, ModifierSource, ModuleState, NavigationStats,
+    OffenseStats, Pilot, Resists, ResourceStats, SlotKind, SourceRef, TargetingStats, Usage,
+    ViolationTarget,
 };
 
+use super::attributes::ItemAttributes;
 use super::EsfFittingEngine;
 
 impl EsfFittingEngine {
@@ -238,6 +240,7 @@ impl EsfFittingEngine {
             optimal: attribute(a.optimal),
             falloff: attribute(a.falloff),
             dps: attribute(a.dps),
+            headline: headline(a, result, cycle_ms),
         }
     }
 
@@ -410,6 +413,48 @@ pub(super) struct EngineItems {
     /// For each engine item, its index in the caller's fit.
     pub(super) included: Vec<usize>,
     pub(super) unknown_items: Vec<usize>,
+}
+
+/// The first thing the item does that the table shows, in this order:
+/// damage, repair, resistance, velocity, shield or armor HP, capacitor.
+fn headline(a: &ItemAttributes, result: &ItemResult, cycle_ms: Option<f64>) -> Option<Headline> {
+    let attribute = |id: i32| value(result, id);
+    let per_second = |amount: f64| cycle_ms.map(|cycle_ms| amount / (cycle_ms / 1000.0));
+    let resist_bonus = [
+        a.em_resist_bonus,
+        a.thermal_resist_bonus,
+        a.kinetic_resist_bonus,
+        a.explosive_resist_bonus,
+    ]
+    .map(attribute)
+    .iter()
+    .sum::<f64>()
+        / -4.0;
+    let charge_capacitor = result
+        .charge
+        .as_ref()
+        .map_or(0.0, |charge| value(charge, a.capacitor_bonus));
+    let candidates = [
+        (HeadlineKind::Dps, Some(attribute(a.dps))),
+        (
+            HeadlineKind::ShieldRepair,
+            per_second(attribute(a.shield_repair)),
+        ),
+        (
+            HeadlineKind::ArmorRepair,
+            per_second(attribute(a.armor_repair)),
+        ),
+        (HeadlineKind::Resist, Some(resist_bonus)),
+        (HeadlineKind::Velocity, Some(attribute(a.velocity_bonus))),
+        (HeadlineKind::ShieldHp, Some(attribute(a.shield_hp_bonus))),
+        (HeadlineKind::ArmorHp, Some(attribute(a.armor_hp_bonus))),
+        (HeadlineKind::Capacitor, Some(charge_capacitor)),
+    ];
+    candidates.into_iter().find_map(|(kind, value)| {
+        value
+            .filter(|value| *value > 0.0)
+            .map(|value| Headline { kind, value })
+    })
 }
 
 /// An attribute's final value; absent attributes read as 0.

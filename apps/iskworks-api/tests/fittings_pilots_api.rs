@@ -269,6 +269,7 @@ impl FittingEngine for FakeEngine {
                         optimal: 0.0,
                         falloff: 0.0,
                         dps: 0.0,
+                        headline: None,
                     })
                 })
                 .collect(),

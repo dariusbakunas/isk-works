@@ -116,5 +116,22 @@ attribute_table! {
     optimal => "maxRange",
     falloff => "falloff",
     dps => "damagePerSecondWithoutReload",
+    // HP per cycle
+    shield_repair => "shieldBonus",
+    // HP per cycle
+    armor_repair => "armorDamageAmount",
+    // percent, negative for a bonus
+    em_resist_bonus => "emDamageResistanceBonus",
+    thermal_resist_bonus => "thermalDamageResistanceBonus",
+    kinetic_resist_bonus => "kineticDamageResistanceBonus",
+    explosive_resist_bonus => "explosiveDamageResistanceBonus",
+    // percent
+    velocity_bonus => "speedFactor",
+    // shield HP added
+    shield_hp_bonus => "capacityBonus",
+    // armor HP added
+    armor_hp_bonus => "armorHPBonusAdd",
+    // GJ, on a capacitor booster's charge
+    capacitor_bonus => "capacitorBonus",
     }
 }
