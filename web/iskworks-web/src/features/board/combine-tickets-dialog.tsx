@@ -128,8 +128,8 @@ export function CombineTicketsDialog({
                   <span className="shrink-0 font-mono tabular-nums text-muted">
                     ×{(ticket.quantity ?? 0).toLocaleString()}
                   </span>
-                  <span className="w-14 shrink-0 text-right font-mono tabular-nums text-muted">
-                    {ticket.executionSnapshot?.runs ?? "—"} runs
+                  <span className="w-24 shrink-0 whitespace-nowrap text-right font-mono tabular-nums text-muted">
+                    {ticket.executionSnapshot?.runs.toLocaleString() ?? "—"} runs
                   </span>
                 </li>
               );

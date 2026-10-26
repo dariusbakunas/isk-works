@@ -9,6 +9,7 @@ import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { recordingStateMeta } from "./recording/recording-meta";
 import { isTicketDraggable, TICKET_DRAG_MIME } from "./ticket-drag";
 import type { TicketJobSummary } from "./ticket-job-progress";
+import { groupBlockersByType } from "./blockers";
 import { isBatchableOrderTicket } from "./ticket-selection";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
@@ -154,9 +155,10 @@ export function OrderTicketCard({
   const cost = ticket.actualLineTotal ?? ticket.estimatedLineTotal;
   // Derived from the dependency read model, independent of workflow status
   // -- a ticket in any lane (including Complete) can still show blockers.
-  const blocked = ticket.blockedBy.length > 0;
-  const firstBlocker = ticket.blockedBy[0] ?? null;
-  const remainingBlockers = ticket.blockedBy.length - 1;
+  const blockers = groupBlockersByType(ticket.blockedBy);
+  const blocked = blockers.length > 0;
+  const firstBlocker = blockers[0] ?? null;
+  const remainingBlockers = blockers.length - 1;
   const isBatched = ticket.acquisitionRunId !== null;
   const isProduction = ticket.kind === "manufacturing" || ticket.kind === "reaction";
   const quantity = ticket.kind !== "generic" ? `×${(ticket.quantity ?? 0).toLocaleString()}` : null;

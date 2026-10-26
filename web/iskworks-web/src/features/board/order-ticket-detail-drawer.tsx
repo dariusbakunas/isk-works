@@ -16,6 +16,7 @@ import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { apiMessage } from "../industry/shared/api-error";
 import { formatDuration } from "../industry/shared/formatting";
+import { groupBlockersByType } from "./blockers";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { prerequisiteSourcePresentation } from "./prerequisite-source";
 import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
@@ -507,7 +508,15 @@ export function OrderTicketDetailDrawer({
                 const source = prerequisiteSourcePresentation(prerequisite, { met });
                 return (
                   <div className="flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.id}>
-                    <span className="min-w-0 flex-1 truncate text-foreground">{prerequisite.capturedName}</span>
+                    <span className="min-w-0 flex-1 text-foreground">
+                      <span className="block truncate">{prerequisite.capturedName}</span>
+                      {/* A combined ticket holds one copy per Epic it serves. */}
+                      {prerequisite.orderId && epics && epics.length > 1 ? (
+                        <span className="block truncate text-[10px] text-muted">
+                          {epics.find((epic) => epic.id === prerequisite.orderId)?.name ?? "Unknown Epic"}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="w-16 shrink-0 text-right font-mono tabular-nums text-foreground">
                       {prerequisite.requiredQuantity.toLocaleString()}
                     </span>
@@ -556,7 +565,7 @@ export function OrderTicketDetailDrawer({
           <div>
             <SectionHeading>Blocked by</SectionHeading>
             <ul className="mt-1.5 space-y-1">
-              {ticket.blockedBy.map((blocker) => (
+              {groupBlockersByType(ticket.blockedBy).map((blocker) => (
                 <li
                   className="flex items-start gap-1.5 rounded-[2px] border border-border bg-panel px-2 py-1 text-[11px]"
                   key={blocker.prerequisiteId}
