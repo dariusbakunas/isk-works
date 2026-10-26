@@ -419,3 +419,39 @@ describe("OrderTicketCard recording indicator", () => {
     expect(screen.getByText("Rifter")).not.toHaveAttribute("data-private");
   });
 });
+
+describe("OrderTicketCard combined tickets", () => {
+  it("marks a combined ticket with how many Epics it serves", () => {
+    render(
+      <OrderTicketCard
+        ticket={ticketFixture({
+          kind: "reaction",
+          orderId: null,
+          operations: [
+            { orderId: "epic-1", occurrenceKey: "build:hexite" },
+            { orderId: "epic-2", occurrenceKey: "build:hexite" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("⧉ 2 epics")).toHaveAttribute(
+      "title",
+      "Combined ticket: does this step for 2 Epics",
+    );
+  });
+
+  it("shows no chip on an ordinary step ticket", () => {
+    render(
+      <OrderTicketCard
+        ticket={ticketFixture({
+          kind: "reaction",
+          orderId: "epic-1",
+          operations: [{ orderId: "epic-1", occurrenceKey: "build:hexite" }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByText(/epics$/)).not.toBeInTheDocument();
+  });
+});

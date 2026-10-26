@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CharacterRosterEntry, IndustryJob } from "../../api/characters";
 import {
   deleteTicket,
+  splitTicket,
   updateTicketMetadata,
   updateTicketStatus,
   type FacilityProfile,
@@ -52,6 +53,11 @@ export function OrderTicketDetailDrawer({
   jobs = [],
   nowMs = Date.now(),
   facilityById,
+  epics,
+  onOpenEpicById,
+  combinedFrom,
+  mergedInto = null,
+  onOpenTicket,
 }: {
   ticket: TicketSummary;
   /** The owning Epic's display name, when `ticket.orderId` is set and the
@@ -80,6 +86,15 @@ export function OrderTicketDetailDrawer({
    * execution snapshot carries no facility) can still name where its job
    * was planned, from its plan evidence's facility profile id. */
   facilityById?: ReadonlyMap<string, FacilityProfile>;
+  /** A combined ticket has no Epic of its own: the Epics whose steps it
+   * does, names resolved by the Board. */
+  epics?: { id: string; name: string }[];
+  onOpenEpicById?: (orderId: string) => void;
+  /** A combined ticket's members (canceled, merged into it). */
+  combinedFrom?: { id: string; displayId: string; epicName: string; quantity: number | null }[];
+  /** A merged member's combined ticket. */
+  mergedInto?: { id: string; displayId: string } | null;
+  onOpenTicket?: (ticketId: string) => void;
 }) {
   const kindMeta = orderTicketKindMeta[ticket.kind];
   const statusMeta = orderTicketStatusMeta[ticket.status];
@@ -99,9 +114,32 @@ export function OrderTicketDetailDrawer({
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [confirmSplit, setConfirmSplit] = useState(false);
+  const isCombined = (combinedFrom?.length ?? 0) > 0;
+  // Split undoes a combine only while nothing has been done on it; the
+  // server re-checks.
+  const canSplit =
+    isCombined &&
+    (ticket.status === "todo" || ticket.status === "canceled") &&
+    (ticket.recording?.recordedQuantity ?? 0) === 0 &&
+    jobs.length === 0;
   // Generic tickets have no recording; a batched acquisition records
   // through its Acquisition Run.
   const canRecord = ticket.recording !== null && !isBatched;
+
+  async function split() {
+    setConfirmSplit(false);
+    setError("");
+    setBusy(true);
+    try {
+      await splitTicket(ticket.id);
+      onChanged?.();
+      onClose();
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+      setBusy(false);
+    }
+  }
 
   async function remove() {
     setConfirmDelete(false);
@@ -226,7 +264,19 @@ export function OrderTicketDetailDrawer({
             direction. Deliberately independent of the Dependencies section
             below and of Recording: no gating, no "conflicts with
             dependencies" warning. */}
-        {isBatched ? (
+        {mergedInto ? (
+          <p className="iw-muted text-xs">
+            Merged into{" "}
+            <button
+              className="font-mono text-primary hover:underline"
+              onClick={() => onOpenTicket?.(mergedInto.id)}
+              type="button"
+            >
+              {mergedInto.displayId}
+            </button>
+            , which does this step now — split it to restore this ticket.
+          </p>
+        ) : isBatched ? (
           <p className="iw-muted text-xs">
             Batched into an Acquisition Run — advance it from the Run.
           </p>
@@ -256,6 +306,43 @@ export function OrderTicketDetailDrawer({
           </button>
         ) : null}
 
+        {isCombined && combinedFrom ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <SectionHeading>Combined from</SectionHeading>
+              <button
+                className="iw-button-secondary px-2 py-0.5 text-xs"
+                disabled={busy || !canSplit}
+                onClick={() => setConfirmSplit(true)}
+                title={canSplit ? undefined : "Only before anything is recorded or linked on this ticket."}
+                type="button"
+              >
+                Split
+              </button>
+            </div>
+            <ul aria-label="Combined from" className="rounded-[2px] border border-border">
+              {combinedFrom.map((member) => (
+                <li
+                  className="flex items-center gap-2 border-b border-border px-2 py-1 text-[11px] last:border-b-0"
+                  key={member.id}
+                >
+                  <button
+                    className="font-mono text-primary hover:underline"
+                    onClick={() => onOpenTicket?.(member.id)}
+                    type="button"
+                  >
+                    {member.displayId}
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-foreground">{member.epicName}</span>
+                  <span className="shrink-0 font-mono tabular-nums text-muted">
+                    ×{(member.quantity ?? 0).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <SectionHeading>Details</SectionHeading>
           <div className="space-y-1">
@@ -276,21 +363,39 @@ export function OrderTicketDetailDrawer({
               requirement links and reservations with the old Epic. A ticket
               filed under the wrong Epic is deleted and created again. */}
           <div className="space-y-1">
-            <span className="block text-[10px] text-muted">Epic</span>
-            <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {ticket.orderId ? (epicName ?? "Unknown Epic") : "No Epic"}
-              </span>
-              {ticket.orderId && epicName && onOpenEpic ? (
-                <button
-                  className="shrink-0 text-[10px] font-semibold uppercase text-primary hover:underline"
-                  onClick={onOpenEpic}
-                  type="button"
-                >
-                  Open
-                </button>
-              ) : null}
-            </div>
+            <span className="block text-[10px] text-muted">{epics && epics.length > 1 ? "Epics" : "Epic"}</span>
+            {!ticket.orderId && epics && epics.length > 0 ? (
+              epics.map((epic) => (
+                <div className="flex items-center gap-2" key={epic.id}>
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{epic.name}</span>
+                  {onOpenEpicById ? (
+                    <button
+                      aria-label={`Open ${epic.name}`}
+                      className="shrink-0 text-[10px] font-semibold uppercase text-primary hover:underline"
+                      onClick={() => onOpenEpicById(epic.id)}
+                      type="button"
+                    >
+                      Open
+                    </button>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                  {ticket.orderId ? (epicName ?? "Unknown Epic") : "No Epic"}
+                </span>
+                {ticket.orderId && epicName && onOpenEpic ? (
+                  <button
+                    className="shrink-0 text-[10px] font-semibold uppercase text-primary hover:underline"
+                    onClick={onOpenEpic}
+                    type="button"
+                  >
+                    Open
+                  </button>
+                ) : null}
+              </div>
+            )}
           </div>
 
           {characters ? (
@@ -497,6 +602,17 @@ export function OrderTicketDetailDrawer({
           ticket={ticket}
         />
       ) : null}
+
+      <ConfirmDialog
+        confirmLabel="Split ticket"
+        onCancel={() => setConfirmSplit(false)}
+        onConfirm={() => void split()}
+        open={confirmSplit}
+        title="Split this ticket?"
+      >
+        The tickets it was combined from come back as they were, each doing its own Epic's step, and this
+        ticket is removed.
+      </ConfirmDialog>
 
       <ConfirmDialog
         confirmLabel="Delete ticket"

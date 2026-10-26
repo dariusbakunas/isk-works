@@ -161,6 +161,7 @@ export function OrderTicketCard({
   const isProduction = ticket.kind === "manufacturing" || ticket.kind === "reaction";
   const quantity = ticket.kind !== "generic" ? `×${(ticket.quantity ?? 0).toLocaleString()}` : null;
   const batchable = selectionEnabled ?? isBatchableOrderTicket(ticket);
+  const combinedEpicCount = ticket.orderId ? 0 : new Set((ticket.operations ?? []).map((op) => op.orderId)).size;
   // Drag moves the card between workflow lanes -- a bare status write, both
   // directions (see ticket-drag.ts). Disabled during selection mode
   // (checkbox clicks own that gesture) and for a batched ticket (must move
@@ -238,6 +239,14 @@ export function OrderTicketCard({
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] tabular-nums text-muted">
             <span className={`font-semibold ${textToneClasses[kindMeta.tone]}`}>{kindMeta.label}</span>
+            {combinedEpicCount > 1 ? (
+              <span
+                className="shrink-0 rounded-[2px] border border-border px-1 text-[10px] text-muted"
+                title={`Combined ticket: does this step for ${combinedEpicCount} Epics`}
+              >
+                ⧉ {combinedEpicCount} epics
+              </span>
+            ) : null}
             {quantity ? (
               <span className="truncate">
                 {quantity}

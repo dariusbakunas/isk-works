@@ -117,6 +117,33 @@ const laneHoverClasses: Record<Tone, string> = {
   reaction: "border-reaction bg-reaction/15",
 };
 
+// What the ticket drawer shows about combining: a combined ticket's Epics
+// and members, or a merged member's combined ticket. Derived from the
+// already-loaded tickets and Epics.
+function combinedTicketContext(ticket: Ticket, tickets: Ticket[], orders: { id: string; displayName: string }[]) {
+  const nameOf = (orderId: string) => orders.find((order) => order.id === orderId)?.displayName ?? "Unknown Epic";
+  const epicOf = (member: Ticket) => member.operations?.[0]?.orderId ?? member.orderId;
+  const epicIds = ticket.orderId ? [] : [...new Set((ticket.operations ?? []).map((op) => op.orderId))];
+  const combinedInto = ticket.mergedIntoTicketId
+    ? (tickets.find((other) => other.id === ticket.mergedIntoTicketId) ?? null)
+    : null;
+  return {
+    epics: epicIds.map((id) => ({ id, name: nameOf(id) })),
+    combinedFrom: tickets
+      .filter((member) => member.mergedIntoTicketId === ticket.id)
+      .map((member) => {
+        const epic = epicOf(member);
+        return {
+          id: member.id,
+          displayId: member.displayId,
+          epicName: epic ? nameOf(epic) : "No Epic",
+          quantity: member.quantity,
+        };
+      }),
+    mergedInto: combinedInto ? { id: combinedInto.id, displayId: combinedInto.displayId } : null,
+  };
+}
+
 export function BoardPage() {
   // `?ticket=<id>` / `?epic=<id>` deep-links -- read once at mount to seed
   // which Ticket Inspector or Epic Inspector opens (e.g. "Navigate to
@@ -884,6 +911,9 @@ export function BoardPage() {
           nowMs={nowMs}
           facilityById={facilityById}
           ticket={openTicket}
+          {...combinedTicketContext(openTicket, state.tickets, state.orders)}
+          onOpenEpicById={openEpic}
+          onOpenTicket={openTicketFromCard}
         />
       ) : openOrder ? (
         <EpicInspector

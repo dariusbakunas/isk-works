@@ -1019,7 +1019,10 @@ describe("BoardPage combining tickets", () => {
     // The Board reloads: the combined ticket replaces its canceled members,
     // and its drawer opens.
     expect(await screen.findAllByText("ISK-1300")).toHaveLength(2);
-    expect(screen.queryByText("ISK-1205")).not.toBeInTheDocument();
+    // Its members are gone from the lanes, listed only in its drawer.
+    const combinedFrom = screen.getByRole("list", { name: "Combined from" });
+    expect(screen.getAllByText("ISK-1205")).toEqual([within(combinedFrom).getByText("ISK-1205")]);
+    expect(screen.getByText("⧉ 2 epics")).toBeInTheDocument();
   });
 });
 
