@@ -312,3 +312,90 @@ async fn recording_draws_from_every_epic_the_ticket_executes(pool: PgPool) {
     assert!(consumed[&epics[1].1]);
     assert!(!consumed[&epics[2].1], "an unclaimed Epic keeps its stock");
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn recorded_output_is_reserved_to_every_epic_the_ticket_executes(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    seed_sde_type(&pool, import_id, 16_658, "Hexite").await;
+    let repository = PgOrderRepository::new(pool.clone());
+    // Two live Epics, each needing 100 Hexite from its `hexite` step.
+    let mut needs = Vec::new();
+    for _ in 0..2 {
+        let snapshot = empty_price_snapshot();
+        let mut order = draft_order(workspace_id, owner_id, build_id, snapshot.id);
+        order.planning_snapshot_version = 3;
+        let mut consumer = requirement(16_658, RequirementKind::React, 100);
+        consumer.operation_occurrence_key = Some("root".to_string());
+        consumer.child_occurrence_key = Some("hexite".to_string());
+        let (order, _) = repository
+            .create_order(NewOrder {
+                order,
+                price_snapshot: snapshot,
+                requirements: vec![consumer],
+            })
+            .await
+            .unwrap();
+        for (key, parent) in [("root", None), ("hexite", Some("root"))] {
+            sqlx::query(
+                "INSERT INTO order_plan_operations \
+                 (id, order_id, occurrence_key, parent_occurrence_key, activity, runs, \
+                  persisted_runs, product_type_id, product_name, output_per_run, \
+                  produced_quantity, blueprint_or_formula_type_id, complete, evidence, created_at) \
+                 VALUES ($1, $2, $3, $4, 'reaction', 1, 1, 16658, 'Hexite', 200, 200, 1, true, \
+                         '{}'::jsonb, now())",
+            )
+            .bind(Uuid::new_v4())
+            .bind(order.id.0)
+            .bind(key)
+            .bind(parent)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let requirement_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM order_requirements WHERE order_id = $1")
+                .bind(order.id.0)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        needs.push((order.id, requirement_id));
+    }
+    let (ticket, _) = repository
+        .create_ticket(mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Reaction,
+            16_658,
+            "Hexite",
+            build_id,
+            Vec::new(),
+            Some(2),
+        ))
+        .await
+        .unwrap();
+    for (order_id, _) in &needs {
+        claim(&pool, *order_id, "hexite", ticket.id).await;
+    }
+
+    repository
+        .record_ticket_production(
+            workspace_id,
+            ticket.id,
+            production_input(2, 16_658, 250, &[], "0"),
+        )
+        .await
+        .unwrap();
+
+    let reserved: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT order_requirement_id, quantity FROM inventory_allocations \
+         WHERE reason = 'recorded_output' ORDER BY order_requirement_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let mut expected: Vec<(Uuid, i64)> = needs.iter().map(|(_, id)| (*id, 100)).collect();
+    expected.sort();
+    assert_eq!(reserved, expected, "50 overshoot stays free");
+}

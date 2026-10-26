@@ -2661,21 +2661,16 @@ impl PgOrderRepository {
             .await?;
             event_ids.push(output_event.0);
 
-            // The output is reserved to the steps this ticket's operation
-            // feeds, up to what they still need; overshoot stays free.
-            if let [TicketOperation {
-                order_id,
-                occurrence_key,
-            }] = consumers.as_slice()
-            {
+            // The output is reserved to the steps this ticket's operations
+            // feed, up to what they still need; overshoot stays free.
+            if !consumers.is_empty() {
                 super::reservations::reserve_recorded_output(
                     &mut tx,
                     super::reservations::RecordedOutput {
                         workspace_id,
                         owner_id,
                         feeds: super::reservations::OutputFeeds::Production {
-                            order_id: *order_id,
-                            occurrence_key,
+                            operations: &consumers,
                         },
                         type_id: input.output_type_id,
                         quantity: input.output_quantity,

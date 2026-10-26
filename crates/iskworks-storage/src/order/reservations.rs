@@ -483,12 +483,9 @@ pub(super) async fn undo_recording_allocations(
 /// Which requirements a recording's output feeds.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum OutputFeeds<'a> {
-    /// A production ticket: its Epic's requirements produced by its
-    /// operation (`child_occurrence_key`).
-    Production {
-        order_id: OrderId,
-        occurrence_key: &'a str,
-    },
+    /// A production ticket: the requirements its operations produce
+    /// (`child_occurrence_key`) -- in every Epic it serves.
+    Production { operations: &'a [TicketOperation] },
     /// An acquisition ticket: the requirements it was created for or
     /// linked to.
     Acquisition { ticket_id: TicketId },
@@ -498,6 +495,7 @@ pub(super) enum OutputFeeds<'a> {
 struct FedRequirementRow {
     id: Uuid,
     order_id: Uuid,
+    order_created_at: DateTime<Utc>,
     required_quantity: i64,
     operation_occurrence_key: Option<String>,
     held: i64,
@@ -505,7 +503,8 @@ struct FedRequirementRow {
 
 /// Reserves a recording's output to the live (version-3, not completed,
 /// canceled or archived) Epic requirements it feeds, each up to its remaining need
-/// (`required - held`), earliest consumer first. Overshoot stays free.
+/// (`required - held`): oldest Epic first, and within an Epic earliest
+/// consumer first. Overshoot stays free.
 /// Call with the output type's balance locked (both recording paths post
 /// the output under it).
 /// One recording's output, as `reserve_recorded_output` needs it.
@@ -540,22 +539,33 @@ pub(super) async fn reserve_recorded_output(
     let held = "COALESCE((SELECT SUM(a.quantity) FROM inventory_allocations a \
          WHERE a.order_requirement_id = r.id AND a.released_at IS NULL), 0)::bigint AS held";
     let rows: Vec<FedRequirementRow> = match feeds {
-        OutputFeeds::Production {
-            order_id,
-            occurrence_key,
-        } => sqlx::query_as(&format!(
-            "SELECT r.id, r.order_id, r.required_quantity, r.operation_occurrence_key, {held} \
+        OutputFeeds::Production { operations } => sqlx::query_as(&format!(
+            "SELECT r.id, r.order_id, o.created_at AS order_created_at, r.required_quantity, \
+                    r.operation_occurrence_key, {held} \
              FROM order_requirements r JOIN orders o ON o.id = r.order_id \
-             WHERE r.order_id = $1 AND r.child_occurrence_key = $2 AND r.type_id = $3 AND {LIVE}"
+             WHERE (r.order_id, r.child_occurrence_key) IN \
+                   (SELECT * FROM UNNEST($1::uuid[], $2::text[])) \
+               AND r.type_id = $3 AND {LIVE}"
         ))
-        .bind(order_id.0)
-        .bind(occurrence_key)
+        .bind(
+            operations
+                .iter()
+                .map(|operation| operation.order_id.0)
+                .collect::<Vec<_>>(),
+        )
+        .bind(
+            operations
+                .iter()
+                .map(|operation| operation.occurrence_key.as_str())
+                .collect::<Vec<_>>(),
+        )
         .bind(output_type_id)
         .fetch_all(&mut **tx)
         .await
         .map_err(map_error)?,
         OutputFeeds::Acquisition { ticket_id } => sqlx::query_as(&format!(
-            "SELECT r.id, r.order_id, r.required_quantity, r.operation_occurrence_key, {held} \
+            "SELECT r.id, r.order_id, o.created_at AS order_created_at, r.required_quantity, \
+                    r.operation_occurrence_key, {held} \
              FROM order_requirements r JOIN orders o ON o.id = r.order_id \
              WHERE r.type_id = $2 AND {LIVE} AND r.id IN ( \
                SELECT f.order_requirement_id FROM order_requirement_fulfillments f \
@@ -571,10 +581,16 @@ pub(super) async fn reserve_recorded_output(
         return Ok(());
     }
 
-    // Serving order needs each fed Epic's operation stages.
-    let mut stages: BTreeMap<String, u32> = BTreeMap::new();
-    let order_ids: BTreeSet<Uuid> = rows.iter().map(|row| row.order_id).collect();
-    for order_id in order_ids {
+    // Each fed Epic is served by its own operation stages, oldest Epic
+    // first: Epics planned from the same Build share occurrence keys.
+    let mut epics: Vec<(DateTime<Utc>, Uuid)> = rows
+        .iter()
+        .map(|row| (row.order_created_at, row.order_id))
+        .collect();
+    epics.sort_unstable();
+    epics.dedup();
+    let mut stages_by_epic: Vec<BTreeMap<String, u32>> = Vec::with_capacity(epics.len());
+    for &(_, order_id) in &epics {
         let keys: Vec<String> = sqlx::query_scalar(
             "SELECT occurrence_key FROM order_plan_operations WHERE order_id = $1",
         )
@@ -600,19 +616,25 @@ pub(super) async fn reserve_recorded_output(
                 })
             }),
         )?;
-        stages.extend(dag.stages);
+        stages_by_epic.push(dag.stages);
     }
 
-    let mut needs = Vec::with_capacity(rows.len());
-    for row in &rows {
-        needs.push(ReservationNeed {
-            requirement_id: OrderRequirementId(row.id),
-            type_id: output_type_id,
-            operation_occurrence_key: row.operation_occurrence_key.as_deref(),
-            quantity: u64_from_i64(row.required_quantity)?.saturating_sub(u64_from_i64(row.held)?),
-        });
+    let mut output_epics = Vec::with_capacity(epics.len());
+    for (&(_, order_id), stages) in epics.iter().zip(&stages_by_epic) {
+        let mut needs = Vec::new();
+        for row in rows.iter().filter(|row| row.order_id == order_id) {
+            needs.push(ReservationNeed {
+                requirement_id: OrderRequirementId(row.id),
+                type_id: output_type_id,
+                operation_occurrence_key: row.operation_occurrence_key.as_deref(),
+                quantity: u64_from_i64(row.required_quantity)?
+                    .saturating_sub(u64_from_i64(row.held)?),
+            });
+        }
+        output_epics.push(OutputEpic { needs, stages });
     }
-    let reservations = plan_recorded_output(output_type_id, output_quantity, &needs, &stages);
+    let reservations =
+        plan_recorded_output_for_epics(output_type_id, output_quantity, &output_epics);
     for reservation in &reservations {
         sqlx::query(
             "INSERT INTO inventory_allocations \
