@@ -837,6 +837,13 @@ pub trait OrderRepository: Send + Sync {
         &self,
         ticket_prerequisite_ids: &[TicketPrerequisiteId],
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
+    /// The frozen operations each ticket executes (see [`TicketOperation`]),
+    /// each ticket's sorted by `(order_id, occurrence_key)`. Tickets that
+    /// execute none (acquisition, generic, standalone) are absent.
+    async fn list_ticket_operations(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError>;
 
     /// `available = physical_balance - active allocations`, read-only, no
     /// lock. Neither `create_order` nor `create_ticket` allocates anything,

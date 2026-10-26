@@ -100,3 +100,110 @@ async fn prerequisite_epic_round_trips(pool: PgPool) {
     let reloaded: Vec<_> = reloaded.iter().map(|p| (p.type_id, p.order_id)).collect();
     assert_eq!(reloaded, vec![(34, Some(order.id)), (35, None)]);
 }
+
+async fn claim(pool: &PgPool, order_id: OrderId, occurrence_key: &str, ticket_id: TicketId) {
+    sqlx::query(
+        "INSERT INTO order_operation_ticket_claims (order_id, occurrence_key, ticket_id, claimed_at) \
+         VALUES ($1, $2, $3, now())",
+    )
+    .bind(order_id.0)
+    .bind(occurrence_key)
+    .bind(ticket_id.0)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn ticket_operations_come_from_claims_with_an_unclaimed_fallback(pool: PgPool) {
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let mut orders = Vec::new();
+    for _ in 0..2 {
+        let snapshot = empty_price_snapshot();
+        let (order, _) = repository
+            .create_order(NewOrder {
+                order: draft_order(workspace_id, owner_id, build_id, snapshot.id),
+                price_snapshot: snapshot,
+                requirements: vec![requirement(34, RequirementKind::Buy, 100)],
+            })
+            .await
+            .unwrap();
+        orders.push(order.id);
+    }
+    let mut orders_sorted = orders.clone();
+    orders_sorted.sort();
+    let step_ticket = |order_id: OrderId| {
+        let mut ticket = mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Reaction,
+            16_658,
+            "Hexite",
+            build_id,
+            Vec::new(),
+            Some(1),
+        );
+        ticket.order_id = Some(order_id);
+        ticket.occurrence_key = Some("hexite".to_string());
+        ticket
+    };
+    let (claimed, _) = repository
+        .create_ticket(step_ticket(orders[0]))
+        .await
+        .unwrap();
+    claim(&pool, orders[0], "hexite", claimed.id).await;
+    let (unclaimed, _) = repository
+        .create_ticket(step_ticket(orders[1]))
+        .await
+        .unwrap();
+    let (combined, _) = repository
+        .create_ticket(mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Reaction,
+            16_658,
+            "Hexite",
+            build_id,
+            Vec::new(),
+            Some(2),
+        ))
+        .await
+        .unwrap();
+    claim(&pool, orders[0], "hexite-2", combined.id).await;
+    claim(&pool, orders[1], "hexite-2", combined.id).await;
+    let (acquisition, _) = repository
+        .create_ticket(new_acquisition_ticket(
+            workspace_id,
+            owner_id,
+            34,
+            "Tritanium",
+            100,
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+
+    let operations = repository
+        .list_ticket_operations(&[claimed.id, unclaimed.id, combined.id, acquisition.id])
+        .await
+        .unwrap();
+
+    let op = |order_id: OrderId, key: &str| TicketOperation {
+        order_id,
+        occurrence_key: key.to_string(),
+    };
+    assert_eq!(operations[&claimed.id], vec![op(orders[0], "hexite")]);
+    assert_eq!(operations[&unclaimed.id], vec![op(orders[1], "hexite")]);
+    assert_eq!(
+        operations[&combined.id],
+        vec![
+            op(orders_sorted[0], "hexite-2"),
+            op(orders_sorted[1], "hexite-2")
+        ]
+    );
+    assert!(!operations.contains_key(&acquisition.id));
+}

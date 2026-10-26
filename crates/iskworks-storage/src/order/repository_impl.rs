@@ -1125,6 +1125,14 @@ impl OrderRepository for PgOrderRepository {
         .collect()
     }
 
+    async fn list_ticket_operations(
+        &self,
+        ticket_ids: &[TicketId],
+    ) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError> {
+        let ids: Vec<Uuid> = ticket_ids.iter().map(|id| id.0).collect();
+        super::reservations::ticket_operations(&self.pool, &ids).await
+    }
+
     async fn available_quantity(
         &self,
         workspace_id: WorkspaceId,

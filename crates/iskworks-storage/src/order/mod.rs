@@ -14,8 +14,8 @@ use iskworks_core::order::{
     ReservationNeed, RevertTicketInventoryRecordingOutcome, Ticket, TicketId,
     TicketInventoryEffect, TicketInventoryRecording, TicketInventoryRecordingId,
     TicketInventoryRecordingKind, TicketInventoryRecordingStatus, TicketKind, TicketMetadataUpdate,
-    TicketPrerequisite, TicketPrerequisiteFulfillment, TicketPrerequisiteFulfillmentId,
-    TicketPrerequisiteId, TicketStatus,
+    TicketOperation, TicketPrerequisite, TicketPrerequisiteFulfillment,
+    TicketPrerequisiteFulfillmentId, TicketPrerequisiteId, TicketStatus,
 };
 use iskworks_core::{
     allocate_acquisition_delivery, weighted_unit_cost, AcquisitionProgressUpdate, AcquisitionRun,

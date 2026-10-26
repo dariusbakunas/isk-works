@@ -627,6 +627,41 @@ pub(super) async fn reserve_recorded_output(
     Ok(())
 }
 
+/// The frozen operations each of `ticket_ids` executes: its claims, or --
+/// for a ticket holding none (version-1/2, pre-claims, or one whose claim
+/// moved to a recreated ticket) -- its own `(order_id, occurrence_key)` when
+/// both are set. Sorted per ticket; tickets executing nothing are absent.
+pub(super) async fn ticket_operations<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    ticket_ids: &[Uuid],
+) -> Result<HashMap<TicketId, Vec<TicketOperation>>, OrderError> {
+    let rows: Vec<(Uuid, Uuid, String)> = sqlx::query_as(
+        "SELECT c.ticket_id, c.order_id, c.occurrence_key \
+         FROM order_operation_ticket_claims c WHERE c.ticket_id = ANY($1) \
+         UNION ALL \
+         SELECT t.id, t.order_id, t.occurrence_key FROM tickets t \
+         WHERE t.id = ANY($1) AND t.order_id IS NOT NULL AND t.occurrence_key IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM order_operation_ticket_claims c \
+                           WHERE c.ticket_id = t.id) \
+         ORDER BY 1, 2, 3",
+    )
+    .bind(ticket_ids)
+    .fetch_all(executor)
+    .await
+    .map_err(map_error)?;
+    let mut operations: HashMap<TicketId, Vec<TicketOperation>> = HashMap::new();
+    for (ticket_id, order_id, occurrence_key) in rows {
+        operations
+            .entry(TicketId(ticket_id))
+            .or_default()
+            .push(TicketOperation {
+                order_id: OrderId(order_id),
+                occurrence_key,
+            });
+    }
+    Ok(operations)
+}
+
 /// Claims `(order_id, occurrence_key)` for `ticket_id`
 /// (`order_operation_ticket_claims`). Returns `None` when the claim is now
 /// held for `ticket_id` -- newly taken, or re-pointed from a canceled

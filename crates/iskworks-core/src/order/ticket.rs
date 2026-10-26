@@ -205,6 +205,18 @@ pub struct Ticket {
     pub merged_into_ticket_id: Option<TicketId>,
 }
 
+/// One frozen Epic operation a production ticket executes -- a row of
+/// `order_operation_ticket_claims`, or, for a ticket holding no claim (a
+/// version-1/2 or pre-claims ticket), its own `(order_id, occurrence_key)`.
+/// Every ticket executes at most one today; a combined ticket executes
+/// several.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TicketOperation {
+    pub order_id: OrderId,
+    pub occurrence_key: String,
+}
+
 /// A Manufacturing/Reaction ticket's own frozen, single-level material
 /// need -- computed at ticket-creation time from the linked build's own
 /// recipe (`ComponentExpansionService::expand`, same function
