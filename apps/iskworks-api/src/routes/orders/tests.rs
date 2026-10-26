@@ -169,3 +169,58 @@ fn a_completed_producer_without_held_output_does_not_satisfy() {
     );
     assert_eq!(response.status, OrderStatus::Blocked);
 }
+
+fn step_prerequisite(order_id: Option<OrderId>, type_id: i64) -> TicketPrerequisite {
+    TicketPrerequisite {
+        id: iskworks_core::order::TicketPrerequisiteId::new(),
+        ticket_id: TicketId::new(),
+        type_id,
+        captured_name: "Input".to_string(),
+        kind: RequirementKind::Buy,
+        source_build_id: None,
+        required_quantity: 100,
+        fulfillment_scope: FulfillmentScope::Full,
+        reused_quantity: 0,
+        fresh_quantity: 100,
+        estimated_unit_cost: None,
+        estimated_line_total: None,
+        reused_line_total: None,
+        operation_occurrence_key: Some("hexite".to_string()),
+        child_occurrence_key: None,
+        inventory_unit_basis: None,
+        child_produced_quantity: None,
+        child_consumed_quantity: None,
+        child_surplus_quantity: None,
+        child_surplus_retained_basis: None,
+        child_consumed_cost: None,
+        dependency_id: None,
+        price_evidence: None,
+        order_id,
+    }
+}
+
+/// A combined ticket's prerequisite copies each serve their own Epic: only
+/// the copy whose Epic holds the stock counts as held, whatever the
+/// ticket's own `order_id`.
+#[test]
+fn a_prerequisite_is_held_by_its_own_epic() {
+    let holding = OrderId::new();
+    let not_holding = OrderId::new();
+    let held: HashMap<OrderId, HashSet<(String, i64)>> =
+        HashMap::from([(holding, HashSet::from([("hexite".to_string(), 34)]))]);
+    let prerequisites = [
+        step_prerequisite(Some(holding), 34),
+        step_prerequisite(Some(not_holding), 34),
+    ];
+
+    let unheld = tickets::unheld_prerequisites(&held, None, &prerequisites);
+
+    assert_eq!(unheld, vec![prerequisites[1].clone()]);
+    // An untagged prerequisite serves the ticket's own Epic.
+    let untagged = [step_prerequisite(None, 34)];
+    assert!(tickets::unheld_prerequisites(&held, Some(holding), &untagged).is_empty());
+    assert_eq!(
+        tickets::unheld_prerequisites(&held, Some(not_holding), &untagged).len(),
+        1
+    );
+}

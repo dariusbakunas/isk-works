@@ -564,9 +564,16 @@ pub(super) async fn list_order_tickets(
             .or_default()
             .push(recording);
     }
+    // A combined ticket's prerequisites name the Epics they serve.
     let order_ids: Vec<OrderId> = tickets
         .iter()
         .filter_map(|ticket| ticket.order_id)
+        .chain(
+            prerequisites_by_ticket
+                .values()
+                .flatten()
+                .filter_map(|prerequisite| prerequisite.order_id),
+        )
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
@@ -576,7 +583,6 @@ pub(super) async fn list_order_tickets(
     // What each open ticket still waits on. A finished ticket waits on
     // nothing. Otherwise derived independently of the open lane (To Do /
     // In Progress) it sits in.
-    let no_holdings = HashSet::new();
     let unheld_by_ticket: HashMap<TicketId, Vec<TicketPrerequisite>> = tickets
         .iter()
         .filter(|ticket| {
@@ -586,15 +592,14 @@ pub(super) async fn list_order_tickets(
             )
         })
         .map(|ticket| {
-            let held = ticket
-                .order_id
-                .and_then(|order_id| held_by_order.get(&order_id))
-                .unwrap_or(&no_holdings);
             let prerequisites = prerequisites_by_ticket
                 .get(&ticket.id)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            (ticket.id, unheld_prerequisites(held, prerequisites))
+            (
+                ticket.id,
+                unheld_prerequisites(&held_by_order, ticket.order_id, prerequisites),
+            )
         })
         .collect();
     let unheld_ids: Vec<TicketPrerequisiteId> = unheld_by_ticket
