@@ -839,6 +839,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "esf-data"
+version = "13.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c50ad3cd13bdd94b673fca9d69c3ff9284ea93fdb4db68ffcef1795759bcf63c"
+dependencies = [
+ "flatbuffers",
+]
+
+[[package]]
+name = "esf-dogma-engine"
+version = "13.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3d822ca54f174514b5530a3e8704f0c4aba816843b2a1af6bc24d1c06c37835"
+dependencies = [
+ "esf-data",
+ "serde",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
 name = "etcetera"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -898,6 +919,16 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
+name = "flatbuffers"
+version = "25.12.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+dependencies = [
+ "bitflags",
+ "rustc_version",
+]
 
 [[package]]
 name = "flate2"
@@ -1597,6 +1628,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "iskworks-fitting"
+version = "0.1.0"
+dependencies = [
+ "esf-data",
+ "esf-dogma-engine",
+ "iskworks-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -3160,6 +3201,24 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "subtle"

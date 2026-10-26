@@ -1,0 +1,14 @@
+[package]
+name = "iskworks-fitting"
+version = "0.1.0"
+edition.workspace = true
+# The esf-* crates are edition 2024, which needs Rust 1.85.
+rust-version = "1.85"
+license.workspace = true
+
+[dependencies]
+# Pinned exactly: bump together with fitting-data.lock (see that file).
+esf-data = "=13.6.1"
+esf-dogma-engine = "=13.6.1"
+iskworks-core = { path = "../iskworks-core" }
+serde_json.workspace = true

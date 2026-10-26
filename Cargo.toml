@@ -4,6 +4,7 @@ members = [
   "crates/iskworks-app",
   "crates/iskworks-core",
   "crates/iskworks-esi",
+  "crates/iskworks-fitting",
   "crates/iskworks-sde",
   "crates/iskworks-storage",
   "apps/iskworks-admin",
