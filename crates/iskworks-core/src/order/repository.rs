@@ -462,6 +462,22 @@ pub enum OrderError {
     TicketNotArchivable,
     #[error("ticket is not archived")]
     TicketNotRestorable,
+    #[error("select at least two tickets to combine")]
+    CombineNeedsTwoTickets,
+    #[error("{display_id} can't be combined: {}", reason.message())]
+    TicketNotCombinable {
+        display_id: String,
+        reason: CombineRefusalReason,
+    },
+    /// Moving a merged member out of Canceled on its own would give its
+    /// operation two active tickets.
+    #[error("this ticket was merged into {into_display_id} -- split that ticket to restore it")]
+    TicketMerged { into_display_id: String },
+    #[error("only a combined ticket can be split")]
+    TicketNotCombined,
+    /// Work has started on the combined ticket.
+    #[error("a combined ticket can only be split before anything is recorded or linked to it")]
+    TicketNotSplittable,
     #[error("quantity arithmetic exceeds the supported range")]
     ArithmeticOverflow,
     /// Reserving a new Epic's frozen reuse needs more of these types than
