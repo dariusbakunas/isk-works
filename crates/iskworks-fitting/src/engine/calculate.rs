@@ -9,7 +9,7 @@ use esf_dogma_engine::{
 };
 use iskworks_core::fitting::{
     CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats, FitCalculation,
-    FitInput, FitItem, FitStats, FitViolation, FittingError, LayerStats, ModuleState,
+    FitInput, FitItem, FitStats, FitViolation, FittingError, ItemStats, LayerStats, ModuleState,
     NavigationStats, OffenseStats, Pilot, Resists, ResourceStats, SlotKind, TargetingStats, Usage,
     ViolationTarget,
 };
@@ -73,8 +73,13 @@ impl EsfFittingEngine {
 
         let included_items: Vec<&FitItem> =
             included.iter().map(|index| &fit.items[*index]).collect();
+        let mut items = vec![None; fit.items.len()];
+        for (result, index) in calculation.items.iter().zip(&included) {
+            items[*index] = Some(self.item_stats(result));
+        }
         Ok(FitCalculation {
             stats: self.stats(&calculation, &engine_fit, &included_items),
+            items,
             violations: calculation
                 .violations
                 .iter()
@@ -130,6 +135,31 @@ impl EsfFittingEngine {
             });
         }
         engine_items
+    }
+
+    fn item_stats(&self, result: &ItemResult) -> ItemStats {
+        let a = &self.item_attributes;
+        let attribute = |id: i32| value(result, id);
+        let cycle_ms = [attribute(a.duration), attribute(a.rate_of_fire)]
+            .into_iter()
+            .find(|cycle| *cycle > 0.0);
+        let capacitor_per_second = match cycle_ms {
+            Some(cycle_ms) if result.state >= State::Active => {
+                attribute(a.capacitor_need) / (cycle_ms / 1000.0)
+            }
+            _ => 0.0,
+        };
+        ItemStats {
+            reached_state: module_state(result.state),
+            max_state: module_state(result.max_state),
+            cpu: attribute(a.cpu),
+            powergrid: attribute(a.powergrid),
+            calibration: attribute(a.calibration),
+            capacitor_per_second,
+            optimal: attribute(a.optimal),
+            falloff: attribute(a.falloff),
+            dps: attribute(a.dps),
+        }
     }
 
     pub(super) fn is_known(&self, type_id: i32) -> bool {
@@ -337,6 +367,15 @@ fn slot(item: &FitItem) -> Slot {
         SlotKind::Cargo => Slot::Cargo,
         SlotKind::Implant => Slot::Implant(index),
         SlotKind::Booster => Slot::Booster(u16::from(index)),
+    }
+}
+
+fn module_state(state: State) -> ModuleState {
+    match state {
+        State::Offline => ModuleState::Offline,
+        State::Online => ModuleState::Online,
+        State::Active => ModuleState::Active,
+        State::Overload => ModuleState::Overload,
     }
 }
 

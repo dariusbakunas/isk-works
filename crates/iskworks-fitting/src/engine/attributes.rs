@@ -7,15 +7,15 @@ use esf_data::Sde;
 
 use super::FittingLoadError;
 
-macro_rules! stat_attributes {
-    ($($field:ident => $name:literal,)*) => {
-        /// Attribute ids by role. Unless noted they are read off the ship.
+macro_rules! attribute_table {
+    ($(#[$meta:meta])* $table:ident { $($field:ident => $name:literal,)* }) => {
+        $(#[$meta])*
         #[derive(Debug, Clone, Copy)]
-        pub(super) struct StatAttributes {
+        pub(super) struct $table {
             $(pub(super) $field: i32,)*
         }
 
-        impl StatAttributes {
+        impl $table {
             pub(super) fn resolve(sde: &Sde<'_>) -> Result<Self, FittingLoadError> {
                 Ok(Self {
                     $($field: sde
@@ -27,7 +27,9 @@ macro_rules! stat_attributes {
     };
 }
 
-stat_attributes! {
+attribute_table! {
+    /// Attribute ids by role. Unless noted they are read off the ship.
+    StatAttributes {
     cpu_output => "cpuOutput",
     cpu_load => "cpuLoad",
     power_output => "powerOutput",
@@ -96,4 +98,23 @@ stat_attributes! {
     max_active_drones => "maxActiveDrones",
     // on the character
     drone_control_range => "droneControlDistance",
+    }
+}
+
+attribute_table! {
+    /// Attribute ids read off each fitted item.
+    ItemAttributes {
+    cpu => "cpu",
+    powergrid => "power",
+    calibration => "upgradeCost",
+    // GJ per cycle
+    capacitor_need => "capacitorNeed",
+    // cycle time in ms, for most modules
+    duration => "duration",
+    // cycle time in ms, for turrets and launchers
+    rate_of_fire => "speed",
+    optimal => "maxRange",
+    falloff => "falloff",
+    dps => "damagePerSecondWithoutReload",
+    }
 }

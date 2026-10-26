@@ -91,6 +91,16 @@ export interface FitItemView extends FitItem {
   chargeName: string | null;
 }
 
+/** Mirrors `iskworks_core::fitting::FlyabilityStatus`. */
+export type FlyabilityStatus = "canUseAll" | "canFlyHull" | "cannot";
+
+/** Mirrors `iskworks_app::FitListPilot`; `status` is `null` without synced skills. */
+export interface FitListPilot {
+  connectionId: string;
+  name: string;
+  status: FlyabilityStatus | null;
+}
+
 /** Mirrors `iskworks_app::FitSummary`. */
 export interface FitSummary {
   id: string;
@@ -98,6 +108,7 @@ export interface FitSummary {
   ship: FitType;
   itemCount: number;
   updatedAt: string;
+  pilots: FitListPilot[];
 }
 
 /** Mirrors `iskworks_app::FitDetail`. */
@@ -178,4 +189,166 @@ export async function exportFitText(id: string): Promise<string> {
     throw new ApiError(response.status, payload?.error ?? { code: "api_error", message: "Fit export failed." });
   }
   return response.text();
+}
+
+/** `allV` (the default), `allZero`, or a character's connection id. */
+export type PilotChoice = "allV" | "allZero" | string;
+
+/** Mirrors `iskworks_core::fitting::Usage`. */
+export interface Usage {
+  used: number;
+  total: number;
+}
+
+/** Mirrors `iskworks_core::fitting::CapacitorState`; `level` is a share (0.735 = 73.5%). */
+export type CapacitorState = { kind: "stable"; level: number } | { kind: "depletes"; seconds: number };
+
+/** Mirrors `iskworks_core::fitting::Resists`; fractions (0.75 = 75%). */
+export interface Resists {
+  em: number;
+  thermal: number;
+  kinetic: number;
+  explosive: number;
+}
+
+export interface LayerStats {
+  hp: number;
+  ehp: number;
+  resists: Resists;
+}
+
+/** Mirrors `iskworks_core::fitting::FitStats`. */
+export interface FitStats {
+  resources: {
+    cpu: Usage;
+    powergrid: Usage;
+    calibration: Usage;
+    turretHardpoints: Usage;
+    launcherHardpoints: Usage;
+    highSlots: Usage;
+    medSlots: Usage;
+    lowSlots: Usage;
+    rigSlots: Usage;
+    droneBandwidth: Usage;
+    droneBay: Usage;
+  };
+  capacitor: { capacity: number; rechargeSeconds: number; peakDelta: number; state: CapacitorState };
+  offense: { weaponDps: number; weaponDpsWithReload: number; volley: number; droneDps: number; totalDps: number };
+  defense: {
+    ehp: number;
+    shield: LayerStats;
+    armor: LayerStats;
+    hull: LayerStats;
+    shieldPassiveRegen: number;
+    shieldBoost: number;
+    armorRepair: number;
+    hullRepair: number;
+  };
+  targeting: { maxTargets: number; lockRange: number; scanResolution: number; sensorStrength: number; signatureRadius: number };
+  navigation: { maxVelocity: number; mass: number; inertia: number; alignSeconds: number; warpSpeed: number };
+  drones: { active: number; maxActive: number; controlRange: number };
+}
+
+/** Mirrors `iskworks_core::fitting::ItemStats`. */
+export interface ItemStats {
+  reachedState: ModuleState;
+  maxState: ModuleState;
+  cpu: number;
+  powergrid: number;
+  calibration: number;
+  capacitorPerSecond: number;
+  optimal: number;
+  falloff: number;
+  dps: number;
+}
+
+/** Mirrors `iskworks_core::fitting::FitViolation`; `detail` is the engine's values. */
+export interface FitViolation {
+  target: { kind: "ship" } | { kind: "item"; index: number } | { kind: "charge"; index: number };
+  rule: string;
+  detail: Record<string, unknown>;
+}
+
+/** Mirrors `iskworks_core::fitting::MissingSkill`. */
+export interface MissingSkill {
+  skillTypeId: number;
+  activeLevel: number;
+  trainedLevel: number;
+  requiredLevel: number;
+  /** `null` when it needs Omega or the training rate is unknown. */
+  seconds: number | null;
+  omegaRequired: boolean;
+}
+
+/** Mirrors `iskworks_core::fitting::PilotFlyability`. */
+export interface PilotFlyability {
+  status: FlyabilityStatus;
+  missing: MissingSkill[];
+  remainingSeconds: number | null;
+  missingSkillbooks: number[];
+  omegaRequired: boolean;
+  estimated: boolean;
+  blockedItems: number[];
+}
+
+/** Mirrors `iskworks_app::FitStatsView`. */
+export interface FitStatsView {
+  stats: FitStats;
+  /** Index-parallel to the fit's items; `null` for a type the engine data lacks. */
+  items: (ItemStats | null)[];
+  violations: FitViolation[];
+  unknownItems: number[];
+  /** Only for a character pilot. */
+  flyability: PilotFlyability | null;
+}
+
+/** Mirrors `iskworks_app::FitPilot`. */
+export interface FitPilot {
+  connectionId: string;
+  name: string;
+  status: FlyabilityStatus | null;
+  flyability: PilotFlyability | null;
+  /** `null` without synced skills or without the fitting engine. */
+  stats: { ehp: number; dps: number; capacitor: CapacitorState; maxVelocity: number; alignSeconds: number } | null;
+}
+
+/** Mirrors `iskworks_core::skill_plans::SkillPlan`. */
+export interface CreatedSkillPlan {
+  id: string;
+  name: string;
+  description: string;
+  entries: { skillTypeId: number; level: number }[];
+}
+
+const query = (params: Record<string, string | undefined>) => {
+  const defined = Object.entries(params).filter((entry): entry is [string, string] => entry[1] !== undefined);
+  return defined.length ? `?${new URLSearchParams(defined)}` : "";
+};
+
+/** Calculates a fit that may not be saved (the editor's draft). */
+export function calculateFit(
+  body: { fit: { shipTypeId: number; items: FitItem[] }; pilot?: PilotChoice; profile?: string },
+  signal?: AbortSignal,
+): Promise<FitStatsView> {
+  return request<FitStatsView>("/api/fittings/calculate", { method: "POST", signal, ...jsonBody(body) });
+}
+
+export function getFitStats(
+  id: string,
+  options: { pilot?: PilotChoice; profile?: string } = {},
+  signal?: AbortSignal,
+): Promise<FitStatsView> {
+  return request<FitStatsView>(`/api/fittings/${encodeURIComponent(id)}/stats${query(options)}`, { signal });
+}
+
+export function getFitPilots(id: string, profile?: string, signal?: AbortSignal): Promise<FitPilot[]> {
+  return request<FitPilot[]>(`/api/fittings/${encodeURIComponent(id)}/pilots${query({ profile })}`, { signal });
+}
+
+/** Without `connectionId` the plan holds everything the fit needs. */
+export function createFitSkillPlan(id: string, connectionId?: string): Promise<CreatedSkillPlan> {
+  return request<CreatedSkillPlan>(`/api/fittings/${encodeURIComponent(id)}/skill-plan`, {
+    method: "POST",
+    ...jsonBody(connectionId ? { connectionId } : {}),
+  });
 }

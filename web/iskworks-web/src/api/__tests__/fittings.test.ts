@@ -1,6 +1,15 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import { exportFitText, getFittingsMeta, importFitText, listFits, updateFit } from "../fittings";
+import {
+  createFitSkillPlan,
+  exportFitText,
+  getFitPilots,
+  getFitStats,
+  getFittingsMeta,
+  importFitText,
+  listFits,
+  updateFit,
+} from "../fittings";
 import { ApiError } from "../workspace";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -63,4 +72,34 @@ test("an export without the engine fails with the API's error", async () => {
   expect(error).toBeInstanceOf(ApiError);
   expect((error as ApiError).status).toBe(503);
   expect((error as ApiError).body.code).toBe("fitting_engine_unavailable");
+});
+
+test("stats ask for the pilot and profile only when given", async () => {
+  const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await getFitStats("f1");
+  await getFitStats("f1", { pilot: "allZero", profile: "em" });
+  expect(fetch.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
+    "/api/fittings/f1/stats",
+    "/api/fittings/f1/stats?pilot=allZero&profile=em",
+  ]);
+});
+
+test("pilots are read for a profile", async () => {
+  const fetch = vi.fn(async () => new Response("[]", { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await getFitPilots("f1", "guristas");
+  expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("/api/fittings/f1/pilots?profile=guristas");
+});
+
+test("a fit skill plan posts the character only when given", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ id: "p1" }), { status: 201 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await createFitSkillPlan("f1");
+  await createFitSkillPlan("f1", "c1");
+  const bodies = fetch.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string));
+  expect(bodies).toEqual([{}, { connectionId: "c1" }]);
 });

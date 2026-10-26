@@ -771,14 +771,21 @@ impl AppState {
     }
 
     pub(crate) fn fitting_service(&self) -> Result<iskworks_app::FittingService, ApiError> {
-        Ok(iskworks_app::FittingService::new(
+        let mut service = iskworks_app::FittingService::new(
             self.fit_repository.clone().ok_or_else(|| {
                 ApiError::Inventory(InventoryError::Persistence(
                     "Fit persistence is unavailable.".to_string(),
                 ))
             })?,
             self.sde_repository.clone(),
-        ))
+        );
+        if let Some(characters) = self.skills_characters.clone() {
+            service = service.with_characters(characters);
+        }
+        if let Some(skill_plans) = self.skill_plan_repository.clone() {
+            service = service.with_skill_plans(skill_plans);
+        }
+        Ok(service)
     }
 
     /// The fitting engine, for anything that reads or writes fit text or

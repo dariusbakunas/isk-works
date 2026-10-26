@@ -16,6 +16,13 @@ use uuid::Uuid;
 
 use crate::{InventoryError, WorkspaceId};
 
+mod flyability;
+
+pub use flyability::{
+    evaluate_flyability, fit_requirements, requirement_plan, FitRequirements, FlyabilityStatus,
+    MissingSkill, PilotFlyability,
+};
+
 /// Highest trainable skill level.
 const MAX_LEVEL: i16 = 5;
 
@@ -453,7 +460,7 @@ pub enum Pilot {
 }
 
 /// Resistances as fractions (0.75 = 75%), in damage type order.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Resists {
     pub em: f64,
@@ -475,15 +482,22 @@ impl Resists {
     }
 }
 
+/// An idle capacitor: nothing draws on it, so it stays full.
+impl Default for CapacitorState {
+    fn default() -> Self {
+        Self::Stable { level: 1.0 }
+    }
+}
+
 /// Something used out of something available: CPU, a rack, a bay.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Usage {
     pub used: f64,
     pub total: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceStats {
     /// teraflops
@@ -512,7 +526,7 @@ pub enum CapacitorState {
     Depletes { seconds: f64 },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapacitorStats {
     /// GJ
@@ -524,7 +538,7 @@ pub struct CapacitorStats {
     pub state: CapacitorState,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OffenseStats {
     /// Turrets, launchers and smartbombs, without reloads.
@@ -535,7 +549,7 @@ pub struct OffenseStats {
     pub total_dps: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayerStats {
     pub hp: f64,
@@ -544,7 +558,7 @@ pub struct LayerStats {
     pub resists: Resists,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DefenseStats {
     pub ehp: f64,
@@ -559,7 +573,7 @@ pub struct DefenseStats {
     pub hull_repair: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetingStats {
     pub max_targets: f64,
@@ -573,7 +587,7 @@ pub struct TargetingStats {
     pub signature_radius: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavigationStats {
     /// m/s, with the fit's propulsion modules as requested.
@@ -586,7 +600,7 @@ pub struct NavigationStats {
     pub warp_speed: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DroneStats {
     pub active: f64,
@@ -596,7 +610,7 @@ pub struct DroneStats {
 }
 
 /// The stats the Fittings page shows, grouped the way its rail is.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FitStats {
     pub resources: ResourceStats,
@@ -630,10 +644,36 @@ pub struct FitViolation {
     pub detail: serde_json::Value,
 }
 
+/// What the module table shows for one item.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemStats {
+    /// The state it actually reached (can be below the requested one).
+    pub reached_state: ModuleState,
+    /// The highest state it can reach at all.
+    pub max_state: ModuleState,
+    /// teraflops
+    pub cpu: f64,
+    /// MW
+    pub powergrid: f64,
+    pub calibration: f64,
+    /// GJ/s while it runs; 0 unless it reached active.
+    pub capacitor_per_second: f64,
+    /// metres
+    pub optimal: f64,
+    /// metres
+    pub falloff: f64,
+    /// Its damage per second, without reloads (drones included).
+    pub dps: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FitCalculation {
     pub stats: FitStats,
+    /// Index-parallel to the fit's items; `None` for an item the engine
+    /// data doesn't know.
+    pub items: Vec<Option<ItemStats>>,
     pub violations: Vec<FitViolation>,
     /// Indexes of items (or their charges) the engine data does not know;
     /// they are left out of the calculation.
