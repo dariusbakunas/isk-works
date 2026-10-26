@@ -16,6 +16,13 @@ use uuid::Uuid;
 
 use crate::{InventoryError, WorkspaceId};
 
+mod flyability;
+
+pub use flyability::{
+    evaluate_flyability, fit_requirements, requirement_plan, FitRequirements, FlyabilityStatus,
+    MissingSkill, PilotFlyability,
+};
+
 /// Highest trainable skill level.
 const MAX_LEVEL: i16 = 5;
 
