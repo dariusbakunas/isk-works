@@ -105,7 +105,29 @@ fn the_bustard_imports_into_its_racks_with_eves_states() {
         find(&fit, "Improved Cloaking Device II").state,
         ModuleState::Online
     );
-    assert_eq!(find(&fit, "Damage Control II").state, ModuleState::Active);
+    assert_eq!(
+        find(&fit, "Dread Guristas EM Shield Hardener").state,
+        ModuleState::Active
+    );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn passive_modules_and_rigs_import_online() {
+    let fit = engine().parse_eft(BUSTARD).unwrap().fit;
+    // Damage Control is passive in current data; the engine data decides.
+    for passive in [
+        "Damage Control II",
+        "Nanofiber Internal Structure II",
+        "Republic Fleet Medium Shield Extender",
+        "Medium Core Defense Field Extender II",
+    ] {
+        assert_eq!(find(&fit, passive).state, ModuleState::Online, "{passive}");
+    }
+    assert_eq!(
+        find(&fit, "Multispectrum Shield Hardener II").state,
+        ModuleState::Active
+    );
 }
 
 #[test]

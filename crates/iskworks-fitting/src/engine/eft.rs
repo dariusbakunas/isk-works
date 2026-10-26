@@ -31,6 +31,12 @@ impl EsfFittingEngine {
         // want of one.
         fit.character.skills = self.skill_levels(&Pilot::AllV);
         esf_format::post_load(&self.info, &mut fit);
+        // EFT reads every module as active; a passive module or rig can't
+        // go past online, so ask for what it can reach.
+        let calculation = esf_dogma_engine::calculate(&self.info, &fit, &Default::default());
+        for (item, result) in fit.items.iter_mut().zip(&calculation.items) {
+            item.state = item.state.min(result.max_state);
+        }
 
         Ok(ParsedFit {
             name: fit
