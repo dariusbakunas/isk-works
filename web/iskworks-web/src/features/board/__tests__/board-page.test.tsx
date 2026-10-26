@@ -307,11 +307,38 @@ describe("BoardPage", () => {
     // The lane count still covers every card, shown or not.
     expect(lane.getByText("12")).toBeInTheDocument();
 
-    await user.click(lane.getByRole("button", { name: "Show all 12 tickets" }));
+    await user.click(lane.getByRole("button", { name: "Show all 12" }));
     expect(lane.getByText("ISK-1010")).toBeInTheDocument();
 
     await user.click(lane.getByRole("button", { name: "Show fewer" }));
     expect(lane.queryByText("ISK-1010")).not.toBeInTheDocument();
+  });
+
+  it("files finished Epics among Complete tickets by completion time, collapsed", async () => {
+    industryApi.listTickets.mockResolvedValue([
+      ticketFixture({ id: "t-new", displayId: "ISK-1002", status: "complete", kind: "manufacturing", completedAt: "2026-10-20T00:00:00Z" }),
+      ticketFixture({ id: "t-old", displayId: "ISK-1001", status: "complete", kind: "manufacturing", completedAt: "2026-10-10T00:00:00Z" }),
+    ]);
+    industryApi.listOrders.mockResolvedValue([
+      orderFixture({
+        id: "order-done",
+        displayName: "Manufacture Sabre build",
+        status: "complete",
+        completedAt: "2026-10-15T00:00:00Z",
+        rollup: { satisfied: 79, needsAction: 0, inProgress: 0, total: 79 },
+      }),
+    ]);
+
+    renderPage();
+
+    const lane = within(await screen.findByTestId("board-lane-complete"));
+    const rows = lane.getAllByRole("button").map((row) => row.textContent ?? "");
+    const order = ["ISK-1002", "Manufacture Sabre build", "ISK-1001"].map((label) =>
+      rows.findIndex((text) => text.includes(label)),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(lane.queryByText(/dependencies satisfied/)).not.toBeInTheDocument();
   });
 
   it("orders Complete tickets without a completion time by newest display id", async () => {
