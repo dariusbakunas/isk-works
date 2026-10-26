@@ -24,6 +24,7 @@ clap.workspace = true
 csv.workspace = true
 iskworks-app = { path = "../../crates/iskworks-app" }
 iskworks-core = { path = "../../crates/iskworks-core" }
+iskworks-fitting = { path = "../../crates/iskworks-fitting" }
 iskworks-esi = { path = "../../crates/iskworks-esi" }
 iskworks-sde = { path = "../../crates/iskworks-sde" }
 iskworks-storage = { path = "../../crates/iskworks-storage" }

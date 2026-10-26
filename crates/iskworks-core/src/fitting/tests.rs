@@ -117,3 +117,23 @@ fn resists_are_one_minus_resonance() {
         }
     );
 }
+
+#[test]
+fn every_preset_is_a_valid_profile_with_a_unique_id() {
+    let presets = damage_profile_presets();
+    assert_eq!(presets[0].id, "uniform");
+    assert_eq!(
+        presets[0].profile.normalized(),
+        DamageProfile::uniform().normalized()
+    );
+    let mut ids = std::collections::BTreeSet::new();
+    for preset in &presets {
+        let [em, thermal, kinetic, explosive] = preset.profile.normalized();
+        assert!(
+            DamageProfile::new(em, thermal, kinetic, explosive).is_ok(),
+            "{}",
+            preset.id
+        );
+        assert!(ids.insert(preset.id), "duplicate {}", preset.id);
+    }
+}

@@ -209,6 +209,59 @@ impl DamageProfile {
     }
 }
 
+/// A named damage profile the pilot can pick.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DamageProfilePreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    #[serde(flatten)]
+    pub profile: DamageProfile,
+}
+
+/// The built-in profiles, uniform first: the four pure damage types, then
+/// the pirate factions' rats as pyfa's `[NPC][Asteroid]` built-ins have
+/// them (pyfa `eos/saveddata/damagePattern.py`).
+#[must_use]
+pub fn damage_profile_presets() -> Vec<DamageProfilePreset> {
+    let preset = |id, name, em, thermal, kinetic, explosive| DamageProfilePreset {
+        id,
+        name,
+        profile: DamageProfile {
+            em,
+            thermal,
+            kinetic,
+            explosive,
+        },
+    };
+    vec![
+        preset("uniform", "Uniform", 25.0, 25.0, 25.0, 25.0),
+        preset("em", "EM", 1.0, 0.0, 0.0, 0.0),
+        preset("thermal", "Thermal", 0.0, 1.0, 0.0, 0.0),
+        preset("kinetic", "Kinetic", 0.0, 0.0, 1.0, 0.0),
+        preset("explosive", "Explosive", 0.0, 0.0, 0.0, 1.0),
+        preset(
+            "angel-cartel",
+            "Angel Cartel",
+            1838.0,
+            562.0,
+            2215.0,
+            3838.0,
+        ),
+        preset("blood-raiders", "Blood Raiders", 5067.0, 4214.0, 0.0, 0.0),
+        preset("guristas", "Guristas", 0.0, 1828.0, 7413.0, 0.0),
+        preset(
+            "sanshas-nation",
+            "Sansha's Nation",
+            5586.0,
+            4112.0,
+            0.0,
+            0.0,
+        ),
+        preset("serpentis", "Serpentis", 0.0, 5373.0, 4813.0, 0.0),
+    ]
+}
+
 /// Skill levels (0–5) by skill type id; a skill left out counts as 0.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PilotSkills(BTreeMap<i64, i16>);

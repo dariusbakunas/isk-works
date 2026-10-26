@@ -51,6 +51,9 @@ pub struct AppState {
     planetary_characters: Option<Arc<dyn PlanetaryCharacterSource>>,
     skills_characters: Option<Arc<dyn iskworks_app::SkillsCharacterSource>>,
     skill_plan_repository: Option<Arc<dyn iskworks_core::skill_plans::SkillPlanRepository>>,
+    /// Fit stats; absent when the engine data is missing or stale, which
+    /// leaves the rest of the API working.
+    pub(crate) fitting_engine: Option<Arc<dyn iskworks_core::fitting::FittingEngine>>,
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
     facility_repository: Option<Arc<iskworks_storage::PgFacilityRepository>>,
@@ -97,6 +100,7 @@ impl AppState {
             planetary_characters: None,
             skills_characters: None,
             skill_plan_repository: None,
+            fitting_engine: None,
             planetary_preferences: None,
             facility_repository: None,
             facility_defaults_repository: None,
@@ -250,6 +254,15 @@ impl AppState {
         characters: Arc<dyn iskworks_app::SkillsCharacterSource>,
     ) -> Self {
         self.skills_characters = Some(characters);
+        self
+    }
+
+    #[must_use]
+    pub fn with_fitting_engine(
+        mut self,
+        engine: Arc<dyn iskworks_core::fitting::FittingEngine>,
+    ) -> Self {
+        self.fitting_engine = Some(engine);
         self
     }
 

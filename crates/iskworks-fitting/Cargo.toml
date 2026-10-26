@@ -2,7 +2,9 @@
 name = "iskworks-fitting"
 version = "0.1.0"
 edition.workspace = true
-# The esf-* crates are edition 2024, which needs Rust 1.85.
+# The esf-* crates are edition 2024, which needs Rust 1.85. The rest of the
+# workspace still declares 1.78 (raising it there turns on MSRV-gated clippy
+# lints across every crate); CI and the images build with stable.
 rust-version = "1.85"
 license.workspace = true
 

@@ -11,6 +11,7 @@ pub(crate) mod esi;
 pub(crate) mod facilities;
 pub(crate) mod finance;
 pub(crate) mod finance_analytics;
+pub(crate) mod fittings;
 pub(crate) mod inventory;
 pub(crate) mod jobs;
 pub(crate) mod market;
