@@ -92,3 +92,30 @@ describe("OrderCard", () => {
     expect(screen.getByText("All 4 dependencies satisfied")).toBeInTheDocument();
   });
 });
+
+describe("OrderCard compact", () => {
+  it("collapses a finished Epic to one row, like a completed ticket", async () => {
+    const onOpen = vi.fn();
+    render(
+      <MemoryRouter>
+        <OrderCard
+          compact
+          onOpen={onOpen}
+          order={orderFixture({
+            status: "complete",
+            completedAt: "2026-10-20T00:00:00Z",
+            rollup: { satisfied: 79, needsAction: 0, inProgress: 0, total: 79 },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("EPIC")).toBeInTheDocument();
+    expect(screen.getByText("Manufacture Ishtar")).toBeInTheDocument();
+    expect(screen.queryByText(/dependencies satisfied/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Runs/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button"));
+    expect(onOpen).toHaveBeenCalledWith("order-1");
+  });
+});

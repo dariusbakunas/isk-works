@@ -1,6 +1,6 @@
 import type { OrderSummary } from "../../api/industry";
 import { Badge, ProgressBar } from "../../components/primitives";
-import { MoneyAmount } from "../../components/money";
+import { formatIskSummary, MoneyAmount } from "../../components/money";
 import { orderStatusMeta } from "./order-meta";
 import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 
@@ -14,14 +14,40 @@ import { ACTIVE_CARD_CLASS, useScrollIntoViewWhenActive } from "./active-card";
 export function OrderCard({
   order,
   active = false,
+  compact = false,
   onOpen,
 }: {
   order: OrderSummary;
   /** The Epic the Board's inspector is showing. */
   active?: boolean;
+  /** One-line row (the Complete lane), the same as a completed ticket's:
+   * a finished Epic is history, not work. */
+  compact?: boolean;
   onOpen?: (orderId: string) => void;
 }) {
   const ref = useScrollIntoViewWhenActive<HTMLDivElement>(active);
+  if (compact) {
+    return (
+      <div
+        aria-current={active ? "true" : undefined}
+        className={`relative flex items-center gap-1.5 overflow-hidden rounded-[2px] border border-border bg-panel-strong py-1 pl-3 pr-1.5 text-sm hover:border-primary/70 ${active ? ACTIVE_CARD_CLASS : ""}`}
+        ref={ref}
+        onClick={() => onOpen?.(order.id)}
+        role="button"
+        tabIndex={0}
+        // Totals live in the tooltip, as on a completed ticket's row.
+        title={`${order.rollup.satisfied}/${order.rollup.total} satisfied${order.estimatedMaterialCost ? ` · ${formatIskSummary(order.estimatedMaterialCost)}` : ""}`}
+      >
+        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-muted" />
+        <Badge square tone="primary">
+          EPIC
+        </Badge>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-snug text-foreground">
+          {order.displayName}
+        </span>
+      </div>
+    );
+  }
   const status = orderStatusMeta[order.status];
   const percentSatisfied = order.rollup.total === 0 ? 100 : (order.rollup.satisfied / order.rollup.total) * 100;
   const isComplete = order.status === "complete";

@@ -80,9 +80,23 @@ function epicLaneStatus(orderStatus: OrderSummary["status"]): TicketStatus {
 }
 
 // The Complete lane is history, not a work queue: it shows this many
-// standalone tickets (most recently completed first) as one-line rows until
-// expanded.
+// finished Epics and standalone tickets (most recently completed first) as
+// one-line rows until expanded.
 const COMPLETE_LANE_PREVIEW = 10;
+
+// One row of the Complete lane: Epics and tickets share one history.
+type CompleteLaneEntry =
+  | { kind: "epic"; order: OrderSummary }
+  | { kind: "ticket"; ticket: TicketSummary };
+
+function completeEntryTime(entry: CompleteLaneEntry): string {
+  return (entry.kind === "epic" ? entry.order.completedAt : entry.ticket.completedAt) ?? "";
+}
+
+function byMostRecentlyCompletedEntry(a: CompleteLaneEntry, b: CompleteLaneEntry): number {
+  if (a.kind === "ticket" && b.kind === "ticket") return byMostRecentlyCompleted(a.ticket, b.ticket);
+  return completeEntryTime(b).localeCompare(completeEntryTime(a));
+}
 
 // Most recently completed first. Ties (and any ticket without a
 // `completedAt`) fall back to the newest display id, comparing its numeric
@@ -699,12 +713,18 @@ export function BoardPage() {
           const acqGroups = deriveOrderAcquisitionGroups(laneTicketsAll);
           const laneCardCount = laneOrderCards.length + laneRunCards.length + nonAcqTickets.length + acqGroups.length;
           const isCompleteLane = lane.status === "complete";
-          const laneTickets = isCompleteLane
-            ? [...nonAcqTickets].sort(byMostRecentlyCompleted)
-            : nonAcqTickets;
-          const hiddenTicketCount =
-            isCompleteLane && !showAllComplete ? Math.max(0, laneTickets.length - COMPLETE_LANE_PREVIEW) : 0;
-          const visibleTickets = hiddenTicketCount > 0 ? laneTickets.slice(0, COMPLETE_LANE_PREVIEW) : laneTickets;
+          // The Complete lane files finished Epics among the tickets, by
+          // completion time; the other lanes keep Epics on top.
+          const laneEntries: CompleteLaneEntry[] = isCompleteLane
+            ? [
+                ...laneOrderCards.map((order) => ({ kind: "epic" as const, order })),
+                ...nonAcqTickets.map((ticket) => ({ kind: "ticket" as const, ticket })),
+              ].sort(byMostRecentlyCompletedEntry)
+            : nonAcqTickets.map((ticket) => ({ kind: "ticket" as const, ticket }));
+          const hiddenEntryCount =
+            isCompleteLane && !showAllComplete ? Math.max(0, laneEntries.length - COMPLETE_LANE_PREVIEW) : 0;
+          const visibleEntries =
+            hiddenEntryCount > 0 ? laneEntries.slice(0, COMPLETE_LANE_PREVIEW) : laneEntries;
           const isEligibleLane =
             draggingTicket !== null &&
             draggingTicketDraggable &&
@@ -747,7 +767,7 @@ export function BoardPage() {
               </div>
               <div className="flex flex-col gap-1.5 p-1.5">
                 {laneCardCount === 0 ? <p className="iw-muted text-xs">No tickets.</p> : null}
-                {laneOrderCards.map((order) => (
+                {(isCompleteLane ? [] : laneOrderCards).map((order) => (
                   <OrderCard
                     // A ticket opened from the Epic takes over the rail;
                     // the Epic stays only as "Back".
@@ -766,32 +786,47 @@ export function BoardPage() {
                     tickets={tickets}
                   />
                 ))}
-                {visibleTickets.map((ticket) => (
-                  <OrderTicketCard
-                    active={ticket.id === openTicketId}
-                    assignee={
-                      ticket.assigneeCharacterId
-                        ? (view.characterById.get(ticket.assigneeCharacterId) ?? null)
-                        : null
-                    }
-                    compact={isCompleteLane}
-                    jobProgress={summarizeTicketJobs(jobsByTicketId.get(ticket.id) ?? [], nowMs)}
-                    key={ticket.id}
-                    onDragEnd={() => {
-                      setDraggingTicketId(null);
-                      setDragOverLane(null);
-                    }}
-                    onDragStart={setDraggingTicketId}
-                    onOpen={openTicketFromCard}
-                    onToggleSelect={toggleSelected}
-                    selectable={selectionMode}
-                    selectionEnabled={isSelectable(ticket, selectedTickets, {
-                      hasJobs: (jobsByTicketId.get(ticket.id)?.length ?? 0) > 0,
-                    })}
-                    selected={selectedTicketIds.has(ticket.id)}
-                    ticket={ticket}
-                  />
-                ))}
+                {visibleEntries.map((entry) => {
+                  if (entry.kind === "epic") {
+                    const order = entry.order;
+                    return (
+                      <OrderCard
+                        active={order.id === openOrderId && openTicketId === null}
+                        compact
+                        key={order.id}
+                        onOpen={openEpic}
+                        order={order}
+                      />
+                    );
+                  }
+                  const ticket = entry.ticket;
+                  return (
+                    <OrderTicketCard
+                      active={ticket.id === openTicketId}
+                      assignee={
+                        ticket.assigneeCharacterId
+                          ? (view.characterById.get(ticket.assigneeCharacterId) ?? null)
+                          : null
+                      }
+                      compact={isCompleteLane}
+                      jobProgress={summarizeTicketJobs(jobsByTicketId.get(ticket.id) ?? [], nowMs)}
+                      key={ticket.id}
+                      onDragEnd={() => {
+                        setDraggingTicketId(null);
+                        setDragOverLane(null);
+                      }}
+                      onDragStart={setDraggingTicketId}
+                      onOpen={openTicketFromCard}
+                      onToggleSelect={toggleSelected}
+                      selectable={selectionMode}
+                      selectionEnabled={isSelectable(ticket, selectedTickets, {
+                        hasJobs: (jobsByTicketId.get(ticket.id)?.length ?? 0) > 0,
+                      })}
+                      selected={selectedTicketIds.has(ticket.id)}
+                      ticket={ticket}
+                    />
+                  );
+                })}
                 {acqGroups.map((group) => {
                   const key = `${group.key}:${lane.status}`;
                   return (
@@ -820,13 +855,13 @@ export function BoardPage() {
                     />
                   );
                 })}
-                {isCompleteLane && (hiddenTicketCount > 0 || (showAllComplete && laneTickets.length > COMPLETE_LANE_PREVIEW)) ? (
+                {isCompleteLane && (hiddenEntryCount > 0 || (showAllComplete && laneEntries.length > COMPLETE_LANE_PREVIEW)) ? (
                   <button
                     className="py-1 text-[11px] text-primary hover:opacity-80"
                     onClick={() => setShowAllComplete((current) => !current)}
                     type="button"
                   >
-                    {showAllComplete ? "Show fewer" : `Show all ${laneTickets.length} tickets`}
+                    {showAllComplete ? "Show fewer" : `Show all ${laneEntries.length}`}
                   </button>
                 ) : null}
               </div>
