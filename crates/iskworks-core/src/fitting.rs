@@ -148,6 +148,10 @@ pub enum FittingError {
     UnknownShip(i64),
     /// The engine could not write the fit out (e.g. as EFT).
     Export,
+    /// No attribute of that name.
+    UnknownAttribute,
+    /// No item at that index the engine knows.
+    UnknownItem(usize),
     InvalidDamageProfile,
     InvalidSkillLevel {
         skill_type_id: i64,
@@ -691,6 +695,59 @@ pub struct FittingEngineInfo {
     pub build_number: i32,
 }
 
+/// What an explanation is about.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ExplainTarget {
+    Ship,
+    /// The item at this index of the fit.
+    Item(usize),
+}
+
+/// Where a modifier comes from. Item and charge indexes are the fit's.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SourceRef {
+    Ship,
+    /// The ship's active mode (tactical destroyers).
+    Mode,
+    Character,
+    Item(usize),
+    /// The charge loaded in the item at this index.
+    Charge(usize),
+    /// A skill, by type id.
+    Skill(i64),
+    /// A projected effect.
+    Projected(usize),
+    /// A buff (fleet boost), by buff id.
+    Buff(i64),
+}
+
+/// One modifier on an attribute, in the order the engine applied them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModifierSource {
+    pub from: SourceRef,
+    /// The engine's operator name: `pre_assign`, `pre_mul`, `mod_add`,
+    /// `post_percent`, ….
+    pub operator: String,
+    pub value: f64,
+    /// The stacking penalty factor, when penalised.
+    pub penalty: Option<f64>,
+    /// False when the source's state is too low for its effect.
+    pub applied: bool,
+}
+
+/// How one attribute got from its base value to its final one. How much
+/// each source added isn't reported: multiplications compound and
+/// stacking penalties depend on order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeExplanation {
+    pub base: f64,
+    pub value: f64,
+    pub sources: Vec<ModifierSource>,
+}
+
 /// A fit read from text, before it is saved.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -737,6 +794,17 @@ pub trait FittingEngine: Send + Sync {
         pilot: &Pilot,
         profile: &DamageProfile,
     ) -> Result<FitCalculation, FittingError>;
+
+    /// Every modifier on one attribute (by its dogma name) of the ship or
+    /// an item, for the "Why?" view.
+    fn explain(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError>;
 }
 
 #[cfg(test)]

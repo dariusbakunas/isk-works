@@ -5,24 +5,26 @@ use std::collections::BTreeMap;
 use esf_data::Info;
 use esf_dogma_engine::{
     Calculation, Character, Charge, Environment, Fit, ItemResult, Mutation, Options, ReactiveArmor,
-    Ship, Slot, State, Target, Violation,
+    Ship, Slot, SourceRef as EngineSourceRef, State, Target, Violation,
 };
 use iskworks_core::fitting::{
-    CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats, FitCalculation,
-    FitInput, FitItem, FitStats, FitViolation, FittingError, ItemStats, LayerStats, ModuleState,
-    NavigationStats, OffenseStats, Pilot, Resists, ResourceStats, SlotKind, TargetingStats, Usage,
-    ViolationTarget,
+    AttributeExplanation, CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats,
+    ExplainTarget, FitCalculation, FitInput, FitItem, FitStats, FitViolation, FittingError,
+    ItemStats, LayerStats, ModifierSource, ModuleState, NavigationStats, OffenseStats, Pilot,
+    Resists, ResourceStats, SlotKind, SourceRef, TargetingStats, Usage, ViolationTarget,
 };
 
 use super::EsfFittingEngine;
 
 impl EsfFittingEngine {
-    pub(super) fn run(
+    /// The fit as the engine takes it, with `included` (each engine item's
+    /// index in the caller's fit) and the caller's unknown items.
+    fn engine_fit(
         &self,
         fit: &FitInput,
         pilot: &Pilot,
         profile: &DamageProfile,
-    ) -> Result<FitCalculation, FittingError> {
+    ) -> Result<(Fit, Vec<usize>, Vec<usize>), FittingError> {
         let ship_type_id = known_id(fit.ship_type_id)
             .filter(|id| self.info.get_type(*id).is_some())
             .ok_or(FittingError::UnknownShip(fit.ship_type_id))?;
@@ -62,6 +64,16 @@ impl EsfFittingEngine {
             },
             incoming: Default::default(),
         };
+        Ok((engine_fit, included, unknown_items))
+    }
+
+    pub(super) fn run(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+    ) -> Result<FitCalculation, FittingError> {
+        let (engine_fit, included, unknown_items) = self.engine_fit(fit, pilot, profile)?;
         let calculation = esf_dogma_engine::calculate(
             &self.info,
             &engine_fit,
@@ -87,6 +99,73 @@ impl EsfFittingEngine {
                 .map(|violation| fit_violation(violation, &included))
                 .collect(),
             unknown_items,
+        })
+    }
+
+    pub(super) fn explain_attribute(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        let attribute_id = self
+            .info
+            .attribute_name_to_id(attribute)
+            .ok_or(FittingError::UnknownAttribute)?;
+        let (engine_fit, included, _) = self.engine_fit(fit, pilot, profile)?;
+        let calculation = esf_dogma_engine::calculate(
+            &self.info,
+            &engine_fit,
+            &Options {
+                sources: true,
+                validate: false,
+            },
+        );
+        let result = match target {
+            ExplainTarget::Ship => &calculation.ship,
+            ExplainTarget::Item(index) => included
+                .iter()
+                .position(|included| *included == index)
+                .and_then(|engine_index| calculation.items.get(engine_index))
+                .ok_or(FittingError::UnknownItem(index))?,
+        };
+        let Some(attribute) = result.attributes.get(&attribute_id) else {
+            // The target doesn't carry it: nothing modified it.
+            return Ok(AttributeExplanation {
+                base: 0.0,
+                value: 0.0,
+                sources: Vec::new(),
+            });
+        };
+        let caller = |engine_index: usize| included[engine_index];
+        Ok(AttributeExplanation {
+            base: attribute.base,
+            value: attribute.value,
+            sources: attribute
+                .sources
+                .iter()
+                .map(|source| ModifierSource {
+                    from: match source.from {
+                        EngineSourceRef::Ship => SourceRef::Ship,
+                        EngineSourceRef::Mode => SourceRef::Mode,
+                        EngineSourceRef::Character => SourceRef::Character,
+                        EngineSourceRef::Item { index } => SourceRef::Item(caller(index)),
+                        EngineSourceRef::Charge { index } => SourceRef::Charge(caller(index)),
+                        EngineSourceRef::Skill { type_id } => SourceRef::Skill(i64::from(type_id)),
+                        EngineSourceRef::Projected { index } => SourceRef::Projected(index),
+                        EngineSourceRef::Buff { id } => SourceRef::Buff(i64::from(id)),
+                    },
+                    operator: serde_json::to_value(source.operator)
+                        .ok()
+                        .and_then(|name| name.as_str().map(str::to_string))
+                        .unwrap_or_default(),
+                    value: source.value,
+                    penalty: source.penalty,
+                    applied: source.applied,
+                })
+                .collect(),
         })
     }
 

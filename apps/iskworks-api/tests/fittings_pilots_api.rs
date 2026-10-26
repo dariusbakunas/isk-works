@@ -12,9 +12,9 @@ use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_app::{SkillsCharacter, SkillsCharacterSource};
 use iskworks_core::fitting::{
-    DamageProfile, EftError, Fit, FitCalculation, FitDraft, FitId, FitInput, FitItem,
-    FitRepository, FitStats, FittingEngine, FittingEngineInfo, FittingError, ItemStats,
-    ModuleState, ParsedFit, Pilot, SlotKind,
+    AttributeExplanation, DamageProfile, EftError, ExplainTarget, Fit, FitCalculation, FitDraft,
+    FitId, FitInput, FitItem, FitRepository, FitStats, FittingEngine, FittingEngineInfo,
+    FittingError, ItemStats, ModuleState, ParsedFit, Pilot, SlotKind,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
@@ -275,6 +275,17 @@ impl FittingEngine for FakeEngine {
             violations: Vec::new(),
             unknown_items: Vec::new(),
         })
+    }
+
+    fn explain(
+        &self,
+        _: &FitInput,
+        _: &Pilot,
+        _: &DamageProfile,
+        _: ExplainTarget,
+        _: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        unimplemented!()
     }
 }
 
