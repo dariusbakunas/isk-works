@@ -74,11 +74,19 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: test
+      # The fitting engine data the #[ignore]d engine tests read (run in the
+      # Postgres step below, which runs every ignored test).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/fitting
+          key: fitting-data-${{ hashFiles('fitting-data.lock') }}
+      - name: Fitting engine data
+        run: bash scripts/fitting-data.sh
       - name: Unit and in-memory tests
         run: cargo test --workspace
       - name: dev-auth feature tests
         run: cargo test -p iskworks-api --features dev-auth
-      - name: Postgres-backed tests
+      - name: Postgres-backed and engine data tests
         # Everything #[ignore]d except the two tests ignored for other reasons
         # (a manual Excel artifact generator and a known-flaky log capture).
         # --no-fail-fast so one run reports failures from every test binary.
@@ -118,6 +126,7 @@ jobs:
           persist-credentials: false
       - run: bash ci/test-web-runtime-config.sh
       - run: bash ci/test-monitoring-config.sh
+      - run: bash ci/test-fitting-data.sh
 
   images:
     name: Container images build

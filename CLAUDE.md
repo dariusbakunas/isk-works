@@ -14,6 +14,7 @@ Rust API + Postgres backend, React/TypeScript frontend.
 - `crates/iskworks-storage` — Postgres repository implementations (`Pg*Repository`).
 - `crates/iskworks-sde` — SDE read repository trait + import parsing (`SdeReadRepository`).
 - `crates/iskworks-esi` — EVE ESI (SSO/API) client.
+- `crates/iskworks-fitting` — fit stats on EVEShip.fit's `esf-dogma-engine` (`EsfFittingEngine`, behind `iskworks_core::fitting::FittingEngine`); its data (`sde.dat`) is pinned in `fitting-data.lock`. See `docs/implementation/fittings.md`.
 - Test-only helpers shared across crates (`SecretCipher::for_tests`, `UnusedEsiTransport`, `EsiApplicationService::new_for_tests`, `FakeLinkTransport`) sit behind each crate's `test-support` feature, enabled only from `[dev-dependencies]`, so release builds never contain them.
 - `web/iskworks-web` — Vite + React + TypeScript + Tailwind SPA.
   - `src/api/<domain>.ts` — typed fetch client per API domain, mirrors `routes/<domain>.rs`.
@@ -38,6 +39,7 @@ One planner. Every Build belongs to a plan through `builds.plan_root_build_id` (
 - `make api` — run the API (`cargo run -p iskworks-api`).
 - `make web` — run the Vite dev server.
 - `make sde-import SDE_PATH=...` — import an SDE export.
+- `make fitting-data` — download the pinned fitting engine data into `data/fitting/` (the API runs without it, minus fit stats; the engine data tests need it: `cargo test -p iskworks-fitting -- --include-ignored`).
 - `make fmt` / `make clippy` / `make rust-test` — Rust checks.
 - `make web-check` / `make web-test` / `make web-build` — web checks.
 - `make verify` — everything above, in order. Run before considering a change done.

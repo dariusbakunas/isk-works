@@ -1,0 +1,6 @@
+# Fitting engine data: the @eveshipfit/sde npm package (sde.dat) that
+# esf-dogma-engine reads. Bump together with the esf-* crate versions in
+# crates/iskworks-fitting/Cargo.toml, then run `make fitting-data`.
+# integrity is the npm registry's dist.integrity for that version.
+version=13.3650286.0
+integrity=sha512-/Q34aT40uYOjy4a+qfHUJwxIvZdMoqa3segB6qlZRxtycDClMbkQlt1hfwXKCp9oSlCpmEX9jV1QiLgPhH8qEA==

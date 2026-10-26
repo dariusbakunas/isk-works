@@ -176,6 +176,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(cipher) => state.with_invite_cipher(cipher),
         None => state,
     };
+    let state = match load_fitting_engine() {
+        Some(engine) => state.with_fitting_engine(engine),
+        None => state,
+    };
     let app = build_router(state);
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
 
@@ -186,6 +190,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
     Ok(())
+}
+
+/// The fitting engine and its data (`FITTING_SDE_PATH`, default
+/// `data/fitting/sde.dat` from `make fitting-data`; the API image sets the
+/// path). Missing or stale data only disables fit stats.
+fn load_fitting_engine() -> Option<Arc<dyn iskworks_core::fitting::FittingEngine>> {
+    let path = std::env::var("FITTING_SDE_PATH")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "data/fitting/sde.dat".to_string());
+    match iskworks_fitting::EsfFittingEngine::load(std::path::Path::new(&path)) {
+        Ok(engine) => {
+            let info = engine.engine_info();
+            tracing::info!(
+                path,
+                data_version = info.data_version,
+                build = info.build_number,
+                "loaded fitting engine data"
+            );
+            Some(Arc::new(engine))
+        }
+        Err(error) => {
+            tracing::warn!(path, %error, "fit stats are unavailable");
+            None
+        }
+    }
 }
 
 #[cfg(test)]
