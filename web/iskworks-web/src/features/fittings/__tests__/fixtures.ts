@@ -245,6 +245,16 @@ export interface StubOptions {
   fits?: FitSummary[];
   preview?: FitTextPreview;
   statsView?: FitStatsView;
+  /** What a draft calculation answers; by default 1,000 more EHP than saved. */
+  calculateView?: FitStatsView;
+  catalogue?: unknown;
+}
+
+/** The saved fit's stats with 1,000 more EHP: what an edit calculates. */
+export function editedStatsView(): FitStatsView {
+  const edited = stats();
+  edited.defense.ehp += 1000;
+  return statsView({ stats: edited });
 }
 
 /** Answers every Fittings request from the fixtures, recording the calls. */
@@ -255,6 +265,12 @@ export function stubFetch(options: StubOptions = {}) {
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     if (url.endsWith("/api/fittings/meta")) return json(options.meta ?? meta());
+    if (url.includes("/api/fittings/calculate")) return json(options.calculateView ?? editedStatsView());
+    if (url.includes("/api/fittings/catalogue")) return json(options.catalogue ?? { entries: [], truncated: false });
+    if (url.includes(`/api/fittings/`) && method === "PUT") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return json({ ...fitDetail(), name: body.name });
+    }
     if (url.endsWith("/api/characters")) return json(characters());
     if (url.endsWith("/api/fittings") && method === "GET") return json(options.fits ?? fits());
     if (url.endsWith("/api/fittings") && method === "POST") return json({ ...fitDetail(), id: "copy-id" }, 201);

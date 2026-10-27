@@ -1,7 +1,14 @@
 import { Battery, Crosshair, Gauge, HelpCircle, Navigation, Shield, Swords, X } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
-import { explainFitAttribute, type AttributeView, type FitStatsView, type LayerStats, type Usage } from "../../api/fittings";
+import {
+  explainFitAttribute,
+  type AttributeView,
+  type FitStats,
+  type FitStatsView,
+  type LayerStats,
+  type Usage,
+} from "../../api/fittings";
 import { capacitorLabel, formatDistance, formatPercent, formatStat } from "./fittings-format";
 import { useFitParams } from "./use-fittings";
 
@@ -122,6 +129,19 @@ function WhyPopover({ fitId, explain, onClose }: { fitId: string; explain: Expla
   );
 }
 
+/** How a stat moved from the saved fit; nothing when it didn't. Green when
+ * the change is good (more EHP, less CPU used, a faster align). */
+function Delta({ value, digits = 0, higherIsGood = true, testId }: { value: number | null; digits?: number; higherIsGood?: boolean; testId: string }) {
+  if (value === null || Math.abs(value) < 10 ** -(digits + 1)) return null;
+  const good = higherIsGood ? value > 0 : value < 0;
+  return (
+    <span className={`ml-1.5 font-mono text-[0.625rem] ${good ? "text-positive" : "text-danger"}`} data-testid={testId}>
+      {value > 0 ? "+" : "−"}
+      {formatStat(Math.abs(value), digits)}
+    </span>
+  );
+}
+
 function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
     <section className="border-b border-border px-3 py-2.5 last:border-b-0">
@@ -167,7 +187,22 @@ function Line({
   );
 }
 
-function Meter({ label, usage, unit, why, fitId }: { label: string; usage: Usage; unit: string; why: Explainable; fitId: string }) {
+function Meter({
+  label,
+  usage,
+  unit,
+  why,
+  fitId,
+  delta = null,
+}: {
+  label: string;
+  usage: Usage;
+  unit: string;
+  why: Explainable;
+  fitId: string;
+  /** Change in what's used since the saved fit. */
+  delta?: number | null;
+}) {
   const over = usage.used > usage.total;
   const percent = usage.total > 0 ? Math.min(100, (usage.used / usage.total) * 100) : usage.used > 0 ? 100 : 0;
   return (
@@ -175,7 +210,12 @@ function Meter({ label, usage, unit, why, fitId }: { label: string; usage: Usage
       <Line
         fitId={fitId}
         label={label}
-        value={<span className={over ? "text-danger" : undefined}>{`${formatStat(usage.used, 1)} / ${formatStat(usage.total, 1)} ${unit}`}</span>}
+        value={
+          <>
+            <span className={over ? "text-danger" : undefined}>{`${formatStat(usage.used, 1)} / ${formatStat(usage.total, 1)} ${unit}`}</span>
+            <Delta digits={1} higherIsGood={false} testId={`delta-${label.toLowerCase()}`} value={delta} />
+          </>
+        }
         why={why}
       />
       <div
@@ -233,8 +273,20 @@ function ResistGrid({ shield, armor, hull }: { shield: LayerStats; armor: LayerS
   );
 }
 
-/** The calculated stats, in the order the page's rail lists them. */
-export function StatsRail({ fitId, stats: view }: { fitId: string; stats: FitStatsView | null }) {
+/** The calculated stats, in the order the page's rail lists them. While
+ * editing, `baseline` is the saved fit's: the main stats show how far the
+ * draft moved them. */
+export function StatsRail({
+  fitId,
+  stats: view,
+  baseline = null,
+  recalculating = false,
+}: {
+  fitId: string;
+  stats: FitStatsView | null;
+  baseline?: FitStats | null;
+  recalculating?: boolean;
+}) {
   if (!view) {
     return (
       <aside aria-label="Fit stats" className="iw-panel p-3 text-xs text-muted">
@@ -245,12 +297,18 @@ export function StatsRail({ fitId, stats: view }: { fitId: string; stats: FitSta
   }
   const { resources, capacitor, offense, defense, targeting, navigation, drones } = view.stats;
   const depletes = capacitor.state.kind === "depletes";
+  const delta = (pick: (stats: FitStats) => number) => (baseline ? pick(view.stats) - pick(baseline) : null);
   return (
     <aside aria-label="Fit stats" className="iw-panel h-fit xl:sticky xl:top-3">
+      {baseline ? (
+        <p className="border-b border-border px-3 py-1.5 text-[0.625rem] text-muted" role="status">
+          {recalculating ? "Recalculating…" : "Changes from the saved fit"}
+        </p>
+      ) : null}
       <Section icon={<Gauge aria-hidden="true" className="h-3 w-3" />} title="Resources">
-        <Meter fitId={fitId} label="CPU" unit="tf" usage={resources.cpu} why={WHY.cpu} />
-        <Meter fitId={fitId} label="Powergrid" unit="MW" usage={resources.powergrid} why={WHY.powergrid} />
-        <Meter fitId={fitId} label="Calibration" unit="" usage={resources.calibration} why={WHY.calibration} />
+        <Meter delta={delta((stats) => stats.resources.cpu.used)} fitId={fitId} label="CPU" unit="tf" usage={resources.cpu} why={WHY.cpu} />
+        <Meter delta={delta((stats) => stats.resources.powergrid.used)} fitId={fitId} label="Powergrid" unit="MW" usage={resources.powergrid} why={WHY.powergrid} />
+        <Meter delta={delta((stats) => stats.resources.calibration.used)} fitId={fitId} label="Calibration" unit="" usage={resources.calibration} why={WHY.calibration} />
         <Line fitId={fitId} label="Turrets" value={`${resources.turretHardpoints.used} / ${resources.turretHardpoints.total}`} />
         <Line fitId={fitId} label="Launchers" value={`${resources.launcherHardpoints.used} / ${resources.launcherHardpoints.total}`} />
         {resources.droneBay.total > 0 ? (
@@ -279,13 +337,19 @@ export function StatsRail({ fitId, stats: view }: { fitId: string; stats: FitSta
         <Line fitId={fitId} label="Volley" value={formatStat(offense.volley)} />
         <div className="flex items-baseline justify-between pt-1">
           <span className="text-xs text-muted">Total DPS</span>
-          <span className="font-mono text-lg font-semibold" data-testid="total-dps">{formatStat(offense.totalDps, 1)}</span>
+          <span>
+            <span className="font-mono text-lg font-semibold" data-testid="total-dps">{formatStat(offense.totalDps, 1)}</span>
+            <Delta digits={1} testId="delta-dps" value={delta((stats) => stats.offense.totalDps)} />
+          </span>
         </div>
       </Section>
       <Section icon={<Shield aria-hidden="true" className="h-3 w-3" />} title="Defense">
         <div className="flex items-baseline justify-between">
           <span className="text-xs text-muted">Effective HP</span>
-          <span className="font-mono text-lg font-semibold" data-testid="total-ehp">{formatStat(defense.ehp)}</span>
+          <span>
+            <span className="font-mono text-lg font-semibold" data-testid="total-ehp">{formatStat(defense.ehp)}</span>
+            <Delta testId="delta-ehp" value={delta((stats) => stats.defense.ehp)} />
+          </span>
         </div>
         <ResistGrid armor={defense.armor} hull={defense.hull} shield={defense.shield} />
         <Line fitId={fitId} label="Shield HP" value={formatStat(defense.shield.hp)} why={WHY.shieldHp} />
@@ -303,8 +367,27 @@ export function StatsRail({ fitId, stats: view }: { fitId: string; stats: FitSta
         <Line fitId={fitId} label="Signature radius" value={`${formatStat(targeting.signatureRadius)} m`} why={WHY.signature} />
       </Section>
       <Section icon={<Navigation aria-hidden="true" className="h-3 w-3" />} title="Navigation">
-        <Line fitId={fitId} label="Max velocity" value={`${formatStat(navigation.maxVelocity, 1)} m/s`} why={WHY.velocity} />
-        <Line fitId={fitId} label="Align time" value={`${formatStat(navigation.alignSeconds, 2)} s`} />
+        <Line
+          fitId={fitId}
+          label="Max velocity"
+          value={
+            <>
+              {`${formatStat(navigation.maxVelocity, 1)} m/s`}
+              <Delta digits={1} testId="delta-velocity" value={delta((stats) => stats.navigation.maxVelocity)} />
+            </>
+          }
+          why={WHY.velocity}
+        />
+        <Line
+          fitId={fitId}
+          label="Align time"
+          value={
+            <>
+              {`${formatStat(navigation.alignSeconds, 2)} s`}
+              <Delta digits={2} higherIsGood={false} testId="delta-align" value={delta((stats) => stats.navigation.alignSeconds)} />
+            </>
+          }
+        />
         <Line fitId={fitId} label="Inertia" value={formatStat(navigation.inertia, 4)} why={WHY.inertia} />
         <Line fitId={fitId} label="Mass" value={`${formatStat(navigation.mass / 1000)} t`} />
         <Line fitId={fitId} label="Warp speed" value={`${formatStat(navigation.warpSpeed, 2)} AU/s`} why={WHY.warp} />

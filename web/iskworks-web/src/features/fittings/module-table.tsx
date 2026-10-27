@@ -1,7 +1,6 @@
 import { Circle, CircleCheck, CircleDot, Flame, Lock } from "lucide-react";
 
 import type {
-  FitDetail,
   FitItemView,
   FitStatsView,
   FitViolation,
@@ -103,6 +102,11 @@ function Chip({ children, tone }: { children: string; tone: "danger" | "muted" }
   return <span className={`shrink-0 rounded-[2px] border px-1 py-px text-[0.625rem] ${classes}`}>{children}</span>;
 }
 
+/** What the table offers while the fit is being edited. */
+export interface ModuleTableEditor {
+  onCycleState: (index: number) => void;
+}
+
 function ModuleRow({
   index,
   item,
@@ -110,6 +114,7 @@ function ModuleRow({
   blocked,
   unknown,
   violations,
+  editor,
 }: {
   index: number;
   item: FitItemView;
@@ -117,6 +122,7 @@ function ModuleRow({
   blocked: boolean;
   unknown: boolean;
   violations: FitViolation[];
+  editor?: ModuleTableEditor;
 }) {
   const name = item.name ?? `Type ${item.typeId}`;
   const stack = item.slotKind === "drone_bay" || item.slotKind === "cargo" || item.slotKind === "fighter_bay";
@@ -125,7 +131,18 @@ function ModuleRow({
     <OperationalTableRow
       accent={violations.length ? "blocking" : undefined}
       cells={{
-        state: <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />,
+        state: editor && !stack ? (
+          <button
+            aria-label={`State: ${stateLabel(item.state)} — change`}
+            className="rounded p-0.5 hover:bg-panel-strong"
+            onClick={() => editor.onCycleState(index)}
+            type="button"
+          >
+            <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />
+          </button>
+        ) : (
+          <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />
+        ),
         module: (
           <span className="flex min-w-0 items-center gap-1.5">
             <EveTypeImage size={24} typeId={item.typeId} typeName={name} />
@@ -159,8 +176,20 @@ function ModuleRow({
 
 /** The fit's racks (with empty slots), drones and cargo, with each item's
  * stats when the engine calculated them. */
-export function ModuleTable({ fit, stats }: { fit: FitDetail; stats: FitStatsView | null }) {
-  const indexed = fit.items.map((item, index) => ({ item, index }));
+export function ModuleTable({
+  items,
+  stats,
+  rackStats = null,
+  editor,
+}: {
+  items: FitItemView[];
+  /** Index-parallel to `items`; `null` hides calculated values. */
+  stats: FitStatsView | null;
+  /** Rack sizes to use while `stats` is out of date (the saved fit's). */
+  rackStats?: FitStatsView["stats"] | null;
+  editor?: ModuleTableEditor;
+}) {
+  const indexed = items.map((item, index) => ({ item, index }));
   const blocked = new Set(stats?.flyability?.blockedItems ?? []);
   const unknown = new Set(stats?.unknownItems ?? []);
   const violationsOf = (index: number) =>
@@ -170,6 +199,7 @@ export function ModuleTable({ fit, stats }: { fit: FitDetail; stats: FitStatsVie
   const row = ({ item, index }: { item: FitItemView; index: number }) => (
     <ModuleRow
       blocked={blocked.has(index)}
+      editor={editor}
       index={index}
       item={item}
       key={`item-${index}`}
@@ -183,7 +213,8 @@ export function ModuleTable({ fit, stats }: { fit: FitDetail; stats: FitStatsVie
     const items = indexed
       .filter(({ item }) => item.slotKind === kind)
       .sort((a, b) => (a.item.slotIndex ?? 0) - (b.item.slotIndex ?? 0));
-    const slots = stats ? total(stats.stats) : items.length;
+    const sizes = stats?.stats ?? rackStats;
+    const slots = sizes ? total(sizes) : items.length;
     if (!items.length && !slots) return null;
     const taken = new Set(items.map(({ item }) => item.slotIndex));
     const empty = Array.from({ length: Math.max(0, slots) }, (_, position) => position).filter(
