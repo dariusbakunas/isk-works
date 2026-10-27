@@ -1,24 +1,8 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { FittingsPage } from "../fittings-page";
 import { AURA, FIT_ID, meta, stubFetch } from "./fixtures";
-
-function LocationProbe() {
-  const location = useLocation();
-  return <div data-testid="location">{location.pathname}{location.search}</div>;
-}
-
-export function renderPage(path = "/fittings") {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route element={<><FittingsPage /><LocationProbe /></>} path="/fittings/*" />
-      </Routes>
-    </MemoryRouter>,
-  );
-}
+import { renderPage } from "./render";
 
 afterEach(() => vi.restoreAllMocks());
 
