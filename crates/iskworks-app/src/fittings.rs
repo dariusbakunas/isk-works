@@ -8,19 +8,23 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use iskworks_core::fitting::{
-    evaluate_flyability, fit_requirements, requirement_plan, CapacitorState, CatalogueEntry,
-    CatalogueKind, DamageProfile, EftError, EftLine, ExplainTarget, Fit, FitCalculation,
-    FitCatalogue, FitDraft, FitId, FitInput, FitItem, FitRepository, FitRequirements,
-    FittingEngine, FittingError, FlyabilityStatus, Hardpoint, Pilot, PilotFlyability, PilotSkills,
-    SlotKind, SourceRef,
+    evaluate_flyability, fit_requirements, requirement_plan, AssetHoldingsRepository,
+    CapacitorState, CatalogueEntry, CatalogueKind, DamageProfile, EftError, EftLine, ExplainTarget,
+    Fit, FitCalculation, FitCatalogue, FitDraft, FitId, FitInput, FitItem, FitRepository,
+    FitRequirements, FittingEngine, FittingError, FlyabilityStatus, Hardpoint, Pilot,
+    PilotFlyability, PilotSkills, SlotKind, SourceRef,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::skills::{parse_skills_summary, CharacterSkillsSnapshot};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, InventoryError, MarketRepository, WorkspaceId};
 use iskworks_sde::{RequiredSkill, SdeReadRepository, SkillDefinition, TypeReference};
 use serde::Serialize;
 
 use crate::{SkillsCharacter, SkillsCharacterSource};
+
+mod cost;
+
+pub use cost::{FitAssetsView, FitCostLine, FitCostView, FitLocationCoverage, FitShortfall};
 
 /// A type as the page shows it, named from the active SDE import. `name`
 /// and `group_name` are `None` for a type the import doesn't have.
@@ -218,6 +222,8 @@ pub struct FittingService {
     sde: Arc<dyn SdeReadRepository>,
     characters: Option<Arc<dyn SkillsCharacterSource>>,
     skill_plans: Option<Arc<dyn SkillPlanRepository>>,
+    market: Option<Arc<dyn MarketRepository>>,
+    holdings: Option<Arc<dyn AssetHoldingsRepository>>,
 }
 
 /// A character's synced skills, when it has them.
@@ -289,6 +295,8 @@ impl FittingService {
             sde,
             characters: None,
             skill_plans: None,
+            market: None,
+            holdings: None,
         }
     }
 
@@ -303,6 +311,20 @@ impl FittingService {
     #[must_use]
     pub fn with_skill_plans(mut self, skill_plans: Arc<dyn SkillPlanRepository>) -> Self {
         self.skill_plans = Some(skill_plans);
+        self
+    }
+
+    /// Where fit prices come from.
+    #[must_use]
+    pub fn with_market(mut self, market: Arc<dyn MarketRepository>) -> Self {
+        self.market = Some(market);
+        self
+    }
+
+    /// What the workspace's characters own, for asset coverage.
+    #[must_use]
+    pub fn with_asset_holdings(mut self, holdings: Arc<dyn AssetHoldingsRepository>) -> Self {
+        self.holdings = Some(holdings);
         self
     }
 

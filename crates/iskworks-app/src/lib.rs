@@ -51,9 +51,10 @@ pub use esi_service::{
 };
 pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
 pub use fittings::{
-    AttributeView, CatalogueItem, CatalogueQuery, CatalogueView, ExplainedSource, FitDetail,
-    FitItemView, FitListPilot, FitPilot, FitPreview, FitStatsView, FitSummary, FitTextPreview,
-    FitType, FittingService, PilotChoice, PilotHeadline,
+    AttributeView, CatalogueItem, CatalogueQuery, CatalogueView, ExplainedSource, FitAssetsView,
+    FitCostLine, FitCostView, FitDetail, FitItemView, FitListPilot, FitLocationCoverage, FitPilot,
+    FitPreview, FitShortfall, FitStatsView, FitSummary, FitTextPreview, FitType, FittingService,
+    PilotChoice, PilotHeadline,
 };
 pub use jobs::{
     ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,
