@@ -51,7 +51,7 @@ describe("Fittings › stats", () => {
     expect(within(panel).getByTestId("total-ehp")).toHaveTextContent("90,790");
     const grid = within(panel).getByRole("table", { name: "Resists" });
     const shield = within(grid).getByRole("row", { name: /Shield/ });
-    expect(within(shield).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["82%", "93%", "89%", "82%", "9,900"]);
+    expect(within(shield).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["81.7%", "92.9%", "89.4%", "82.3%", "9,900"]);
     expect(within(panel).getByText("22.4 km")).toBeInTheDocument();
     expect(within(panel).getByText("655.3 m/s")).toBeInTheDocument();
     expect(within(panel).getByText("19.71 s")).toBeInTheDocument();

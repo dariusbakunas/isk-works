@@ -7,6 +7,7 @@ import {
   formatDistance,
   formatHeadline,
   formatPercent,
+  formatResist,
   formatStat,
   pilotsByStatus,
   rackLabel,
@@ -97,3 +98,11 @@ describe("flyability chips", () => {
   });
 });
 
+describe("formatResist", () => {
+  test("keeps one decimal, even on a whole percent, so the grid lines up", () => {
+    expect(formatResist(0.817)).toBe("81.7%");
+    expect(formatResist(0.6)).toBe("60.0%");
+    expect(formatResist(0)).toBe("0.0%");
+    expect(formatResist(0.8749)).toBe("87.5%");
+  });
+});
