@@ -52,6 +52,31 @@ describe("Fittings › editor", () => {
     expect(screen.getByTestId("delta-ehp")).toHaveTextContent("+1,000");
   });
 
+  test("a module's state toggles without pressing Edit first, opening a draft", async () => {
+    const fetchSpy = stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const row = (name: RegExp) => within(table).getByRole("row", { name });
+    const state = (name: RegExp) => within(row(name)).getByRole("button", { name: /^State:/ });
+    const sent = async (count: number) => {
+      await waitFor(() => expect(calls(fetchSpy, "/api/fittings/calculate")).toHaveLength(count));
+      return JSON.parse(String((calls(fetchSpy, "/api/fittings/calculate")[count - 1][1] as RequestInit).body)).fit.items;
+    };
+
+    // Click: the microwarpdrive goes from active to online.
+    fireEvent.click(await waitFor(() => state(/Microwarpdrive/)));
+    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
+    expect(bar).toHaveTextContent("1 unsaved change");
+    expect((await sent(1))[1].state).toBe("online");
+
+    // Shift-click overheats the gun; alt-click takes it offline.
+    fireEvent.click(state(/AutoCannon/), { shiftKey: true });
+    expect((await sent(2))[3].state).toBe("overload");
+    fireEvent.click(state(/AutoCannon/), { altKey: true });
+    expect((await sent(3))[3].state).toBe("offline");
+  });
+
   test("saving puts the whole fit and leaves editing", async () => {
     const fetchSpy = stubFetch();
     renderPage(`/fittings/${FIT_ID}`);

@@ -129,8 +129,9 @@ export function useFitEditor({
     current: calculation && calculation.key === key ? calculation.view : null,
     /** The latest calculation, even if the draft has moved on since. */
     latest: draft && key !== savedKey ? (calculation?.view ?? null) : null,
-    start: () => {
-      setDraft(saved);
+    /** Opens a draft of the saved fit, with `change` made to it. */
+    start: (change?: (current: Draft) => Draft) => {
+      setDraft(change ? change(saved) : saved);
       setRestored(false);
     },
     discard: close,

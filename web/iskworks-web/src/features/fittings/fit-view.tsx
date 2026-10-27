@@ -21,7 +21,6 @@ import { capacitorLabel, formatPercent, formatStat, rackLabel } from "./fittings
 import {
   addStack,
   addToFreeSlot,
-  cycleState,
   draftFrom,
   fillRack,
   placeAt,
@@ -30,7 +29,9 @@ import {
   setCharge,
   setQuantity,
   setState,
+  toggleState,
   toFitDraft,
+  type Draft,
   type RackSizes,
 } from "./fit-draft";
 import { AssetsPanel, PriceSection, unitPrices } from "./fit-cost";
@@ -362,7 +363,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         fit={fit}
         name={editor.draft?.name ?? fit.name}
         onChanged={onChanged}
-        onEdit={editor.start}
+        onEdit={() => editor.start()}
         onRename={(name) => editor.setDraft((draft) => ({ ...draft, name }))}
         pilots={pilots.data ?? []}
       />
@@ -404,17 +405,20 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                     onUnloadCharge: (index) => editor.setDraft((draft) => setCharge(draft, index, null)),
                     onVariations: setVariationsFor,
                     onQuantity: (index, quantity) => editor.setDraft((draft) => setQuantity(draft, index, quantity)),
-                    onCycleState: (index) =>
-                      editor.setDraft((draft) =>
-                        setState(
-                          draft,
-                          index,
-                          cycleState(draft.items[index].state, tableStats?.items[index]?.maxState ?? "overload"),
-                        ),
-                      ),
                   }
                 : undefined
             }
+            onToggleState={(index, toggle) => {
+              const change = (draft: Draft) =>
+                setState(
+                  draft,
+                  index,
+                  toggleState(draft.items[index].state, tableStats?.items[index]?.maxState ?? "overload", toggle),
+                );
+              // Outside editing, a toggle opens a draft with it made.
+              if (editor.editing) editor.setDraft(change);
+              else editor.start(change);
+            }}
             items={items}
             prices={prices}
             rackStats={statsView?.stats ?? null}

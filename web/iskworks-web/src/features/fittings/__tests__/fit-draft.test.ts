@@ -6,7 +6,6 @@ import {
   addToFreeSlot,
   capStates,
   changeCount,
-  cycleState,
   draftFrom,
   fillRack,
   placeAt,
@@ -15,6 +14,7 @@ import {
   setCharge,
   setQuantity,
   setState,
+  toggleState,
   toFitDraft,
 } from "../fit-draft";
 import { fitDetail, item } from "./fixtures";
@@ -74,16 +74,28 @@ describe("the fit draft", () => {
     expect(draft.items.some((entry) => entry.typeId === 2881)).toBe(false);
   });
 
-  test("states cycle offline → online → active → overload, no further than the module goes", () => {
-    expect(cycleState("offline", "overload")).toBe("online");
-    expect(cycleState("online", "overload")).toBe("active");
-    expect(cycleState("active", "overload")).toBe("overload");
-    expect(cycleState("overload", "overload")).toBe("offline");
-    expect(cycleState("online", "online")).toBe("offline");
-    expect(cycleState("active", "active")).toBe("offline");
+  test("a click turns a module on or off: active ↔ online, or online ↔ offline for a passive one", () => {
+    expect(toggleState("active", "overload", "toggle")).toBe("online");
+    expect(toggleState("overload", "overload", "toggle")).toBe("online");
+    expect(toggleState("online", "overload", "toggle")).toBe("active");
+    expect(toggleState("offline", "overload", "toggle")).toBe("active");
+    expect(toggleState("active", "active", "toggle")).toBe("online");
+    expect(toggleState("online", "online", "toggle")).toBe("offline");
+    expect(toggleState("offline", "online", "toggle")).toBe("online");
 
     const draft = setState(draftFrom(fitDetail()), 0, "offline");
     expect(draft.items[0].state).toBe("offline");
+  });
+
+  test("shift overheats a module that can, and alt takes it offline", () => {
+    expect(toggleState("active", "overload", "overload")).toBe("overload");
+    expect(toggleState("online", "overload", "overload")).toBe("overload");
+    expect(toggleState("overload", "overload", "overload")).toBe("active");
+    // Nothing to overheat: a plain toggle.
+    expect(toggleState("active", "active", "overload")).toBe("online");
+
+    expect(toggleState("active", "overload", "offline")).toBe("offline");
+    expect(toggleState("offline", "overload", "offline")).toBe("online");
   });
 
   test("after a calculation, asked-for states above what a module reaches come down to its most", () => {

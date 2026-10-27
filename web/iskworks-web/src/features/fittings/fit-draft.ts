@@ -84,11 +84,21 @@ export function setState(draft: Draft, position: number, state: ModuleState): Dr
   return update(draft, position, (item) => ({ ...item, state }));
 }
 
-/** The next state a click asks for, wrapping to offline past what the
- * module can reach. */
-export function cycleState(state: ModuleState, maxState: ModuleState): ModuleState {
-  const next = STATES.indexOf(state) + 1;
-  return next > STATES.indexOf(maxState) ? "offline" : STATES[next];
+/** What a click on a module's state asks for: a plain click turns it on
+ * or off, shift overheats it, alt takes it offline. */
+export type StateToggle = "toggle" | "overload" | "offline";
+
+const rank = (state: ModuleState) => STATES.indexOf(state);
+
+/** The state a click asks for, as pyfa does it. On is active (or online
+ * for a passive module); off is a step below that. Shift flips overheat
+ * on a module that can overheat; alt flips offline. */
+export function toggleState(state: ModuleState, maxState: ModuleState, toggle: StateToggle): ModuleState {
+  if (toggle === "offline") return state === "offline" ? "online" : "offline";
+  if (toggle === "overload" && maxState === "overload") return state === "overload" ? "active" : "overload";
+  const on: ModuleState = rank(maxState) >= rank("active") ? "active" : "online";
+  const off: ModuleState = on === "active" ? "online" : "offline";
+  return rank(state) >= rank(on) ? off : on;
 }
 
 export function setCharge(draft: Draft, position: number, charge: PickedType | null): Draft {

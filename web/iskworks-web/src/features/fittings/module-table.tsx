@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, CircleDot, Flame, Lock, MoreHorizontal } from "lucide-react";
+import { Check, Circle, Flame, Lock, MoreHorizontal, X } from "lucide-react";
 
 import type {
   FitItemView,
@@ -8,6 +8,7 @@ import type {
   ModuleState,
   SlotKind,
 } from "../../api/fittings";
+import type { StateToggle } from "./fit-draft";
 import { DropdownMenu } from "../../components/dropdown-menu";
 import { EveTypeImage } from "../../components/eve-type-image";
 import {
@@ -49,12 +50,19 @@ const EMPTY_LABELS: Partial<Record<SlotKind, string>> = {
   rig: "Empty rig slot",
 };
 
+/** As pyfa draws them: a red cross offline, a yellow ring online, a green
+ * check active, and a flame overheated. */
 const STATE_ICONS: Record<ModuleState, { icon: typeof Circle; className: string }> = {
-  offline: { icon: Circle, className: "text-muted" },
-  online: { icon: CircleDot, className: "text-foreground" },
-  active: { icon: CircleCheck, className: "text-positive" },
-  overload: { icon: Flame, className: "text-warning" },
+  offline: { icon: X, className: "text-danger" },
+  online: { icon: Circle, className: "text-warning" },
+  active: { icon: Check, className: "text-positive" },
+  overload: { icon: Flame, className: "text-danger" },
 };
+
+const STATE_HINT = "Click: on/off · Shift-click: overheat · Alt-click: offline";
+
+const toggleOf = (event: { shiftKey: boolean; altKey: boolean }): StateToggle =>
+  event.altKey ? "offline" : event.shiftKey ? "overload" : "toggle";
 
 /** The state a module reached (or, without stats, the one it asks for). */
 function StateGlyph({ requested, reached }: { requested: ModuleState; reached: ModuleState | null }) {
@@ -108,7 +116,6 @@ function Chip({ children, tone }: { children: string; tone: "danger" | "muted" }
 
 /** What the table offers while the fit is being edited. */
 export interface ModuleTableEditor {
-  onCycleState: (index: number) => void;
   /** The row picked (for its charges in the browser). */
   selectedIndex: number | null;
   onSelect: (index: number) => void;
@@ -137,6 +144,7 @@ function ModuleRow({
   unknown,
   violations,
   editor,
+  onToggleState,
 }: {
   index: number;
   item: FitItemView;
@@ -147,6 +155,7 @@ function ModuleRow({
   unknown: boolean;
   violations: FitViolation[];
   editor?: ModuleTableEditor;
+  onToggleState?: (index: number, toggle: StateToggle) => void;
 }) {
   const name = item.name ?? `Type ${item.typeId}`;
   const stack = item.slotKind === "drone_bay" || item.slotKind === "cargo" || item.slotKind === "fighter_bay";
@@ -155,11 +164,12 @@ function ModuleRow({
     <OperationalTableRow
       accent={violations.length ? "blocking" : undefined}
       cells={{
-        state: editor && !stack ? (
+        state: onToggleState && !stack ? (
           <button
             aria-label={`State: ${stateLabel(item.state)} — change`}
             className="rounded p-0.5 hover:bg-panel-strong"
-            onClick={() => editor.onCycleState(index)}
+            onClick={(event) => onToggleState(index, toggleOf(event))}
+            title={STATE_HINT}
             type="button"
           >
             <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />
@@ -247,6 +257,7 @@ export function ModuleTable({
   rackStats = null,
   prices = null,
   editor,
+  onToggleState,
 }: {
   items: FitItemView[];
   /** Index-parallel to `items`; `null` hides calculated values. */
@@ -256,6 +267,8 @@ export function ModuleTable({
   /** Lowest sell per unit, by type; types without one are left out. */
   prices?: ReadonlyMap<number, string> | null;
   editor?: ModuleTableEditor;
+  /** A click on a module's state; it works outside editing too. */
+  onToggleState?: (index: number, toggle: StateToggle) => void;
 }) {
   const indexed = items.map((item, index) => ({ item, index }));
   const blocked = new Set(stats?.flyability?.blockedItems ?? []);
@@ -269,6 +282,7 @@ export function ModuleTable({
       blocked={blocked.has(index)}
       editor={editor}
       index={index}
+      onToggleState={onToggleState}
       item={item}
       key={`item-${index}`}
       stats={stats?.items[index] ?? null}
