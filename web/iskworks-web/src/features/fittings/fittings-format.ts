@@ -30,7 +30,9 @@ const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, mi
 /** A resist (0.6) as a percent with one decimal always ("60.0%"), so a
  * grid of them lines up. */
 export function formatResist(share: number): string {
-  return `${oneDecimal.format(share * 100)}%`;
+  // The data holds 32-bit floats: 73.75% comes out as 73.7499…%, which
+  // should still round up, as pyfa shows it.
+  return `${oneDecimal.format(share * 100 + 1e-4)}%`;
 }
 
 /** m:ss, or h:mm:ss from an hour up. */

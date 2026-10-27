@@ -102,6 +102,8 @@ describe("formatResist", () => {
   test("keeps one decimal, even on a whole percent, so the grid lines up", () => {
     expect(formatResist(0.817)).toBe("81.7%");
     expect(formatResist(0.6)).toBe("60.0%");
+    // 73.75% held as a 32-bit float rounds up, as pyfa shows it.
+    expect(formatResist(0.7374999895691872)).toBe("73.8%");
     expect(formatResist(0)).toBe("0.0%");
     expect(formatResist(0.8749)).toBe("87.5%");
   });
