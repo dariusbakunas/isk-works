@@ -320,6 +320,8 @@ export interface StubOptions {
   assets?: FitAssetsView;
   /** Saving a fit (PUT) fails with a server error. */
   failSave?: boolean;
+  /** The fit the page opens; by default `fitDetail()`. */
+  fit?: FitDetail;
 }
 
 /** The saved fit's stats with 1,000 more EHP: what an edit calculates. */
@@ -420,7 +422,7 @@ function savedItems(before: FitItemView[], items: FitItem[]): FitItemView[] {
 /** Answers every Fittings request from the fixtures, recording the calls. */
 export function stubFetch(options: StubOptions = {}) {
   // The fit as last saved: a PUT is what the next read answers, as the API does.
-  let saved = fitDetail();
+  let saved = options.fit ?? fitDetail();
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
