@@ -12,9 +12,9 @@ use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_app::{SkillsCharacter, SkillsCharacterSource};
 use iskworks_core::fitting::{
-    DamageProfile, EftError, Fit, FitCalculation, FitDraft, FitId, FitInput, FitItem,
-    FitRepository, FitStats, FittingEngine, FittingEngineInfo, FittingError, ItemStats,
-    ModuleState, ParsedFit, Pilot, SlotKind,
+    AttributeExplanation, DamageProfile, EftError, ExplainTarget, Fit, FitCalculation, FitDraft,
+    FitId, FitInput, FitItem, FitRepository, FitStats, FittingEngine, FittingEngineInfo,
+    FittingError, ItemStats, ModifierSource, ModuleState, ParsedFit, Pilot, SlotKind, SourceRef,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
@@ -97,6 +97,33 @@ impl SdeReadRepository for FakeSde {
             ),
             skill(SHIELD_UPGRADES, "Shield Upgrades", 2, Vec::new()),
         ])
+    }
+    async fn type_reference(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<BTreeMap<i64, iskworks_sde::TypeReference>, SdeError> {
+        let names = [
+            (BUSTARD, "Bustard"),
+            (EXTENDER, "Medium Shield Extender II"),
+            (SHIELD_UPGRADES, "Shield Upgrades"),
+        ];
+        Ok(names
+            .into_iter()
+            .filter(|(type_id, _)| type_ids.contains(type_id))
+            .map(|(type_id, name)| {
+                (
+                    type_id,
+                    iskworks_sde::TypeReference {
+                        type_name: Some(name.to_string()),
+                        group_id: None,
+                        group_name: None,
+                        category_id: None,
+                        category_name: None,
+                        packaged_volume_m3: None,
+                    },
+                )
+            })
+            .collect())
     }
     async fn required_skills(
         &self,
@@ -269,11 +296,52 @@ impl FittingEngine for FakeEngine {
                         optimal: 0.0,
                         falloff: 0.0,
                         dps: 0.0,
+                        headline: None,
                     })
                 })
                 .collect(),
             violations: Vec::new(),
             unknown_items: Vec::new(),
+        })
+    }
+
+    /// `nope` is no attribute; item 7 is no item; otherwise a skill and
+    /// the first item modify it.
+    fn explain(
+        &self,
+        _: &FitInput,
+        _: &Pilot,
+        _: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        if attribute == "nope" {
+            return Err(FittingError::UnknownAttribute);
+        }
+        if target == ExplainTarget::Item(7) {
+            return Err(FittingError::UnknownItem(7));
+        }
+        let source = |from, operator: &str, value| ModifierSource {
+            from,
+            operator: operator.to_string(),
+            value,
+            penalty: None,
+            applied: true,
+        };
+        Ok(AttributeExplanation {
+            base: 100.0,
+            value: 137.5,
+            sources: vec![
+                source(
+                    SourceRef::Skill {
+                        type_id: SHIELD_UPGRADES,
+                    },
+                    "post_percent",
+                    25.0,
+                ),
+                source(SourceRef::Item { index: 0 }, "mod_add", 10.0),
+                source(SourceRef::Buff { id: 10 }, "post_percent", 5.0),
+            ],
         })
     }
 }
@@ -576,6 +644,7 @@ async fn pilots_are_sorted_by_how_close_they_are_with_stats_for_each() {
 
     let aura = &rows[1]["flyability"];
     assert_eq!(aura["missing"][0]["skillTypeId"], SHIELD_UPGRADES);
+    assert_eq!(aura["missing"][0]["name"], "Shield Upgrades");
     assert_eq!(aura["missing"][0]["requiredLevel"], 4);
     assert!(aura["remainingSeconds"].as_i64().unwrap() > 0);
 }
@@ -649,4 +718,60 @@ async fn a_skill_plan_for_a_fit_holds_its_closure_or_what_a_pilot_lacks() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(app.plans.0.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn an_attribute_is_explained_with_named_sources() {
+    let app = test_app(true);
+    let id = saved_fit(&app).await;
+    let (status, body) = get(
+        &app,
+        &format!("/api/fittings/{id}/explain?target=ship&attribute=shieldCapacity"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["base"], 100.0);
+    assert_eq!(body["value"], 137.5);
+    assert_eq!(
+        body["sources"][0],
+        json!({ "from": { "kind": "skill", "typeId": SHIELD_UPGRADES }, "name": "Shield Upgrades",
+                "operator": "post_percent", "value": 25.0, "penalty": null, "applied": true })
+    );
+    assert_eq!(
+        body["sources"][1]["from"],
+        json!({ "kind": "item", "index": 0 })
+    );
+    assert_eq!(body["sources"][1]["name"], "Medium Shield Extender II");
+    assert_eq!(body["sources"][2]["name"], Value::Null);
+
+    let (status, _) = get(
+        &app,
+        &format!("/api/fittings/{id}/explain?target=0&attribute=maxRange"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn explaining_refuses_a_bad_target_or_attribute_and_needs_the_engine() {
+    let app = test_app(true);
+    let id = saved_fit(&app).await;
+    for query in [
+        "target=hull&attribute=cpuOutput",
+        "target=ship&attribute=nope",
+        "target=7&attribute=cpuOutput",
+        "target=ship",
+    ] {
+        let (status, body) = get(&app, &format!("/api/fittings/{id}/explain?{query}")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{query}: {body}");
+    }
+
+    let app = test_app(false);
+    let id = saved_fit(&app).await;
+    let (status, _) = get(
+        &app,
+        &format!("/api/fittings/{id}/explain?target=ship&attribute=cpuOutput"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }

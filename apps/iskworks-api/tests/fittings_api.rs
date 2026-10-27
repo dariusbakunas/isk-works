@@ -7,9 +7,9 @@ use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_core::fitting::{
-    DamageProfile, EftError, EftLine, Fit, FitCalculation, FitDraft, FitId, FitInput, FitItem,
-    FitRepository, FittingEngine, FittingEngineInfo, FittingError, ModuleState, ParsedFit, Pilot,
-    SlotKind,
+    AttributeExplanation, DamageProfile, EftError, EftLine, ExplainTarget, Fit, FitCalculation,
+    FitDraft, FitId, FitInput, FitItem, FitRepository, FittingEngine, FittingEngineInfo,
+    FittingError, ModuleState, ParsedFit, Pilot, SlotKind,
 };
 use iskworks_core::{InventoryError, WorkspaceId};
 use iskworks_sde::{
@@ -227,6 +227,17 @@ impl FittingEngine for FakeEngine {
         _: &DamageProfile,
     ) -> Result<FitCalculation, FittingError> {
         unimplemented!("meta does not calculate")
+    }
+
+    fn explain(
+        &self,
+        _: &FitInput,
+        _: &Pilot,
+        _: &DamageProfile,
+        _: ExplainTarget,
+        _: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        unimplemented!()
     }
 }
 

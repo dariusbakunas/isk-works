@@ -51,8 +51,8 @@ pub use esi_service::{
 };
 pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
 pub use fittings::{
-    FitDetail, FitItemView, FitListPilot, FitPilot, FitPreview, FitStatsView, FitSummary,
-    FitTextPreview, FitType, FittingService, PilotChoice, PilotHeadline,
+    AttributeView, ExplainedSource, FitDetail, FitItemView, FitListPilot, FitPilot, FitPreview,
+    FitStatsView, FitSummary, FitTextPreview, FitType, FittingService, PilotChoice, PilotHeadline,
 };
 pub use jobs::{
     ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,

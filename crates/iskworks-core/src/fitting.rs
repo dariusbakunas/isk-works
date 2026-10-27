@@ -148,6 +148,10 @@ pub enum FittingError {
     UnknownShip(i64),
     /// The engine could not write the fit out (e.g. as EFT).
     Export,
+    /// No attribute of that name.
+    UnknownAttribute,
+    /// No item at that index the engine knows.
+    UnknownItem(usize),
     InvalidDamageProfile,
     InvalidSkillLevel {
         skill_type_id: i64,
@@ -665,6 +669,38 @@ pub struct ItemStats {
     pub falloff: f64,
     /// Its damage per second, without reloads (drones included).
     pub dps: f64,
+    /// What it does, in one number; `None` for a module the table shows
+    /// no headline for.
+    pub headline: Option<Headline>,
+}
+
+/// What kind of number a module's headline is.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HeadlineKind {
+    /// Damage per second.
+    Dps,
+    /// Shield HP per second.
+    ShieldRepair,
+    /// Armor HP per second.
+    ArmorRepair,
+    /// The average of its four resistance bonuses, in percent.
+    Resist,
+    /// The velocity bonus, in percent.
+    Velocity,
+    /// Shield HP added.
+    ShieldHp,
+    /// Armor HP added.
+    ArmorHp,
+    /// Capacitor (GJ) per charge injected.
+    Capacitor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Headline {
+    pub kind: HeadlineKind,
+    pub value: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -689,6 +725,69 @@ pub struct FittingEngineInfo {
     pub major: i32,
     /// The EVE build the data was made from.
     pub build_number: i32,
+}
+
+/// What an explanation is about.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ExplainTarget {
+    Ship,
+    /// The item at this index of the fit.
+    Item(usize),
+}
+
+/// Where a modifier comes from. Item and charge indexes are the fit's.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SourceRef {
+    Ship,
+    /// The ship's active mode (tactical destroyers).
+    Mode,
+    Character,
+    Item {
+        index: usize,
+    },
+    /// The charge loaded in the item at `index`.
+    Charge {
+        index: usize,
+    },
+    Skill {
+        #[serde(rename = "typeId")]
+        type_id: i64,
+    },
+    /// A projected effect.
+    Projected {
+        index: usize,
+    },
+    /// A buff (fleet boost).
+    Buff {
+        id: i64,
+    },
+}
+
+/// One modifier on an attribute, in the order the engine applied them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModifierSource {
+    pub from: SourceRef,
+    /// The engine's operator name: `pre_assign`, `pre_mul`, `mod_add`,
+    /// `post_percent`, ….
+    pub operator: String,
+    pub value: f64,
+    /// The stacking penalty factor, when penalised.
+    pub penalty: Option<f64>,
+    /// False when the source's state is too low for its effect.
+    pub applied: bool,
+}
+
+/// How one attribute got from its base value to its final one. How much
+/// each source added isn't reported: multiplications compound and
+/// stacking penalties depend on order.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeExplanation {
+    pub base: f64,
+    pub value: f64,
+    pub sources: Vec<ModifierSource>,
 }
 
 /// A fit read from text, before it is saved.
@@ -737,6 +836,17 @@ pub trait FittingEngine: Send + Sync {
         pilot: &Pilot,
         profile: &DamageProfile,
     ) -> Result<FitCalculation, FittingError>;
+
+    /// Every modifier on one attribute (by its dogma name) of the ship or
+    /// an item, for the "Why?" view.
+    fn explain(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError>;
 }
 
 #[cfg(test)]

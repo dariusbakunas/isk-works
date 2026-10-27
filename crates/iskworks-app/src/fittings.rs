@@ -9,9 +9,9 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use iskworks_core::fitting::{
     evaluate_flyability, fit_requirements, requirement_plan, CapacitorState, DamageProfile,
-    EftError, EftLine, Fit, FitCalculation, FitDraft, FitId, FitInput, FitItem, FitRepository,
-    FitRequirements, FittingEngine, FittingError, FlyabilityStatus, Pilot, PilotFlyability,
-    PilotSkills,
+    EftError, EftLine, ExplainTarget, Fit, FitCalculation, FitDraft, FitId, FitInput, FitItem,
+    FitRepository, FitRequirements, FittingEngine, FittingError, FlyabilityStatus, Pilot,
+    PilotFlyability, PilotSkills, SourceRef,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::skills::{parse_skills_summary, CharacterSkillsSnapshot};
@@ -70,6 +70,28 @@ pub struct FitStatsView {
     pub calculation: FitCalculation,
     /// Only for a character pilot.
     pub flyability: Option<PilotFlyability>,
+}
+
+/// One modifier, with its source named from the SDE import (skills and
+/// fitted items; the ship; nothing for a buff).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainedSource {
+    pub from: SourceRef,
+    pub name: Option<String>,
+    pub operator: String,
+    pub value: f64,
+    pub penalty: Option<f64>,
+    pub applied: bool,
+}
+
+/// How one attribute got from its base to its final value.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributeView {
+    pub base: f64,
+    pub value: f64,
+    pub sources: Vec<ExplainedSource>,
 }
 
 /// The numbers the pilots table compares.
@@ -186,6 +208,8 @@ fn calculation_error(error: FittingError) -> InventoryError {
         FittingError::UnknownShip(type_id) => {
             format!("the fitting engine doesn't know ship type {type_id}")
         }
+        FittingError::UnknownAttribute => "no attribute of that name".to_string(),
+        FittingError::UnknownItem(index) => format!("the fit has no item {index} to explain"),
         other => format!("the fit could not be calculated: {other:?}"),
     })
 }
@@ -329,6 +353,74 @@ impl FittingService {
             calculation,
             flyability,
         })
+    }
+
+    /// Every modifier on one attribute of a saved fit's ship or item, with
+    /// named sources. `None` when the fit isn't in the workspace.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn explain(
+        &self,
+        workspace_id: WorkspaceId,
+        engine: &dyn FittingEngine,
+        id: FitId,
+        pilot: PilotChoice,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<Option<AttributeView>, InventoryError> {
+        let Some(fit) = self.fits.fit(workspace_id, id).await? else {
+            return Ok(None);
+        };
+        let (pilot, _) = self.resolve_pilot(workspace_id, pilot).await?;
+        let explanation = engine
+            .explain(&fit.input(), &pilot, profile, target, attribute)
+            .map_err(calculation_error)?;
+        let skill_ids: Vec<i64> = explanation
+            .sources
+            .iter()
+            .filter_map(|source| match source.from {
+                SourceRef::Skill { type_id } => Some(type_id),
+                _ => None,
+            })
+            .collect();
+        let mut references = self.references(&[(fit.ship_type_id, &fit.items)]).await?;
+        references.extend(
+            self.sde
+                .type_reference(&skill_ids)
+                .await
+                .map_err(sde_error)?,
+        );
+        let name_of = |type_id: i64| fit_type(&references, type_id).name;
+        let item = |index: usize| fit.items.get(index);
+        Ok(Some(AttributeView {
+            base: explanation.base,
+            value: explanation.value,
+            sources: explanation
+                .sources
+                .into_iter()
+                .map(|source| ExplainedSource {
+                    name: match source.from {
+                        SourceRef::Ship => name_of(fit.ship_type_id),
+                        SourceRef::Item { index } => {
+                            item(index).and_then(|item| name_of(item.type_id))
+                        }
+                        SourceRef::Charge { index } => item(index)
+                            .and_then(|item| item.charge_type_id)
+                            .and_then(name_of),
+                        SourceRef::Skill { type_id } => name_of(type_id),
+                        SourceRef::Character => Some("Character".to_string()),
+                        SourceRef::Mode | SourceRef::Projected { .. } | SourceRef::Buff { .. } => {
+                            None
+                        }
+                    },
+                    from: source.from,
+                    operator: source.operator,
+                    value: source.value,
+                    penalty: source.penalty,
+                    applied: source.applied,
+                })
+                .collect(),
+        }))
     }
 
     /// A saved fit's stats; `None` when the fit isn't in the workspace.

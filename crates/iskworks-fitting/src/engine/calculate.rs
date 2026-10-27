@@ -5,24 +5,28 @@ use std::collections::BTreeMap;
 use esf_data::Info;
 use esf_dogma_engine::{
     Calculation, Character, Charge, Environment, Fit, ItemResult, Mutation, Options, ReactiveArmor,
-    Ship, Slot, State, Target, Violation,
+    Ship, Slot, SourceRef as EngineSourceRef, State, Target, Violation,
 };
 use iskworks_core::fitting::{
-    CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats, FitCalculation,
-    FitInput, FitItem, FitStats, FitViolation, FittingError, ItemStats, LayerStats, ModuleState,
-    NavigationStats, OffenseStats, Pilot, Resists, ResourceStats, SlotKind, TargetingStats, Usage,
+    AttributeExplanation, CapacitorState, CapacitorStats, DamageProfile, DefenseStats, DroneStats,
+    ExplainTarget, FitCalculation, FitInput, FitItem, FitStats, FitViolation, FittingError,
+    Headline, HeadlineKind, ItemStats, LayerStats, ModifierSource, ModuleState, NavigationStats,
+    OffenseStats, Pilot, Resists, ResourceStats, SlotKind, SourceRef, TargetingStats, Usage,
     ViolationTarget,
 };
 
+use super::attributes::ItemAttributes;
 use super::EsfFittingEngine;
 
 impl EsfFittingEngine {
-    pub(super) fn run(
+    /// The fit as the engine takes it, with `included` (each engine item's
+    /// index in the caller's fit) and the caller's unknown items.
+    fn engine_fit(
         &self,
         fit: &FitInput,
         pilot: &Pilot,
         profile: &DamageProfile,
-    ) -> Result<FitCalculation, FittingError> {
+    ) -> Result<(Fit, Vec<usize>, Vec<usize>), FittingError> {
         let ship_type_id = known_id(fit.ship_type_id)
             .filter(|id| self.info.get_type(*id).is_some())
             .ok_or(FittingError::UnknownShip(fit.ship_type_id))?;
@@ -62,6 +66,16 @@ impl EsfFittingEngine {
             },
             incoming: Default::default(),
         };
+        Ok((engine_fit, included, unknown_items))
+    }
+
+    pub(super) fn run(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+    ) -> Result<FitCalculation, FittingError> {
+        let (engine_fit, included, unknown_items) = self.engine_fit(fit, pilot, profile)?;
         let calculation = esf_dogma_engine::calculate(
             &self.info,
             &engine_fit,
@@ -87,6 +101,79 @@ impl EsfFittingEngine {
                 .map(|violation| fit_violation(violation, &included))
                 .collect(),
             unknown_items,
+        })
+    }
+
+    pub(super) fn explain_attribute(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        let attribute_id = self
+            .info
+            .attribute_name_to_id(attribute)
+            .ok_or(FittingError::UnknownAttribute)?;
+        let (engine_fit, included, _) = self.engine_fit(fit, pilot, profile)?;
+        let calculation = esf_dogma_engine::calculate(
+            &self.info,
+            &engine_fit,
+            &Options {
+                sources: true,
+                validate: false,
+            },
+        );
+        let result = match target {
+            ExplainTarget::Ship => &calculation.ship,
+            ExplainTarget::Item(index) => included
+                .iter()
+                .position(|included| *included == index)
+                .and_then(|engine_index| calculation.items.get(engine_index))
+                .ok_or(FittingError::UnknownItem(index))?,
+        };
+        let Some(attribute) = result.attributes.get(&attribute_id) else {
+            // The target doesn't carry it: nothing modified it.
+            return Ok(AttributeExplanation {
+                base: 0.0,
+                value: 0.0,
+                sources: Vec::new(),
+            });
+        };
+        let caller = |engine_index: usize| included[engine_index];
+        Ok(AttributeExplanation {
+            base: attribute.base,
+            value: attribute.value,
+            sources: attribute
+                .sources
+                .iter()
+                .map(|source| ModifierSource {
+                    from: match source.from {
+                        EngineSourceRef::Ship => SourceRef::Ship,
+                        EngineSourceRef::Mode => SourceRef::Mode,
+                        EngineSourceRef::Character => SourceRef::Character,
+                        EngineSourceRef::Item { index } => SourceRef::Item {
+                            index: caller(index),
+                        },
+                        EngineSourceRef::Charge { index } => SourceRef::Charge {
+                            index: caller(index),
+                        },
+                        EngineSourceRef::Skill { type_id } => SourceRef::Skill {
+                            type_id: i64::from(type_id),
+                        },
+                        EngineSourceRef::Projected { index } => SourceRef::Projected { index },
+                        EngineSourceRef::Buff { id } => SourceRef::Buff { id: i64::from(id) },
+                    },
+                    operator: serde_json::to_value(source.operator)
+                        .ok()
+                        .and_then(|name| name.as_str().map(str::to_string))
+                        .unwrap_or_default(),
+                    value: source.value,
+                    penalty: source.penalty,
+                    applied: source.applied,
+                })
+                .collect(),
         })
     }
 
@@ -159,6 +246,7 @@ impl EsfFittingEngine {
             optimal: attribute(a.optimal),
             falloff: attribute(a.falloff),
             dps: attribute(a.dps),
+            headline: headline(a, result, cycle_ms),
         }
     }
 
@@ -331,6 +419,48 @@ pub(super) struct EngineItems {
     /// For each engine item, its index in the caller's fit.
     pub(super) included: Vec<usize>,
     pub(super) unknown_items: Vec<usize>,
+}
+
+/// The first thing the item does that the table shows, in this order:
+/// damage, repair, resistance, velocity, shield or armor HP, capacitor.
+fn headline(a: &ItemAttributes, result: &ItemResult, cycle_ms: Option<f64>) -> Option<Headline> {
+    let attribute = |id: i32| value(result, id);
+    let per_second = |amount: f64| cycle_ms.map(|cycle_ms| amount / (cycle_ms / 1000.0));
+    let resist_bonus = [
+        a.em_resist_bonus,
+        a.thermal_resist_bonus,
+        a.kinetic_resist_bonus,
+        a.explosive_resist_bonus,
+    ]
+    .map(attribute)
+    .iter()
+    .sum::<f64>()
+        / -4.0;
+    let charge_capacitor = result
+        .charge
+        .as_ref()
+        .map_or(0.0, |charge| value(charge, a.capacitor_bonus));
+    let candidates = [
+        (HeadlineKind::Dps, Some(attribute(a.dps))),
+        (
+            HeadlineKind::ShieldRepair,
+            per_second(attribute(a.shield_repair)),
+        ),
+        (
+            HeadlineKind::ArmorRepair,
+            per_second(attribute(a.armor_repair)),
+        ),
+        (HeadlineKind::Resist, Some(resist_bonus)),
+        (HeadlineKind::Velocity, Some(attribute(a.velocity_bonus))),
+        (HeadlineKind::ShieldHp, Some(attribute(a.shield_hp_bonus))),
+        (HeadlineKind::ArmorHp, Some(attribute(a.armor_hp_bonus))),
+        (HeadlineKind::Capacitor, Some(charge_capacitor)),
+    ];
+    candidates.into_iter().find_map(|(kind, value)| {
+        value
+            .filter(|value| *value > 0.0)
+            .map(|value| Headline { kind, value })
+    })
 }
 
 /// An attribute's final value; absent attributes read as 0.

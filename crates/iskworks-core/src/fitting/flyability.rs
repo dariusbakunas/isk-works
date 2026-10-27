@@ -92,6 +92,7 @@ pub enum FlyabilityStatus {
 #[serde(rename_all = "camelCase")]
 pub struct MissingSkill {
     pub skill_type_id: i64,
+    pub name: String,
     /// What the character can use (an Alpha's cap applied).
     pub active_level: i16,
     pub trained_level: i16,
@@ -158,6 +159,7 @@ pub fn evaluate_flyability(
     // Training times for the closure; a level that is trained counts as
     // done here, which is right for training and why the Omega case is
     // handled apart below.
+    let graph = SkillGraph::new(definitions);
     let closure = closure(requirements, definitions).unwrap_or_default();
     let evaluation = evaluate_plan(&closure, definitions, character, now);
     let mut missing: Vec<MissingSkill> = Vec::new();
@@ -193,6 +195,9 @@ pub fn evaluate_flyability(
             }
             None => missing.push(MissingSkill {
                 skill_type_id: entry.skill_type_id,
+                name: graph
+                    .skill(entry.skill_type_id)
+                    .map_or_else(String::new, |skill| skill.name.clone()),
                 active_level,
                 trained_level,
                 required_level: entry.level,

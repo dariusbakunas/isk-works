@@ -244,6 +244,7 @@ fn a_pilot_who_flies_the_hull_but_not_a_module_is_hull_only() {
         ),
         (SHIELD_UPGRADES, 2, 4)
     );
+    assert_eq!(missing.name, "Shield Upgrades");
     assert!(missing.seconds.unwrap() > 0);
     assert_eq!(flyability.remaining_seconds, missing.seconds);
 }

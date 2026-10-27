@@ -7,8 +7,9 @@ use std::sync::OnceLock;
 use std::collections::BTreeMap;
 
 use iskworks_core::fitting::{
-    CapacitorState, DamageProfile, FitCalculation, FitInput, FitItem, FittingEngine, FittingError,
-    ModuleState, Pilot, PilotSkills, SlotKind,
+    AttributeExplanation, CapacitorState, DamageProfile, ExplainTarget, FitCalculation, FitInput,
+    FitItem, FittingEngine, FittingError, HeadlineKind, ModuleState, Pilot, PilotSkills, SlotKind,
+    SourceRef,
 };
 use iskworks_fitting::{DataLock, EsfFittingEngine};
 
@@ -420,4 +421,164 @@ fn unknown_items_have_no_item_stats() {
     assert_eq!(calculation.items.len(), 4);
     assert!(calculation.items[3].is_none());
     assert!(calculation.items[0].is_some());
+}
+
+fn explain(
+    fit: &FitInput,
+    pilot: &Pilot,
+    target: ExplainTarget,
+    attribute: &str,
+) -> AttributeExplanation {
+    engine()
+        .explain(fit, pilot, &DamageProfile::uniform(), target, attribute)
+        .unwrap()
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn cpu_output_is_explained_by_cpu_management() {
+    let explained = explain(
+        &empty("Rifter"),
+        &Pilot::AllV,
+        ExplainTarget::Ship,
+        "cpuOutput",
+    );
+    assert_close(explained.value, explained.base * 1.25, "cpu output");
+    let cpu_management = type_id("CPU Management");
+    assert!(
+        explained.sources.iter().any(|source| source.from
+            == SourceRef::Skill {
+                type_id: cpu_management
+            }
+            && source.applied),
+        "{:?}",
+        explained.sources
+    );
+    let skill = explained
+        .sources
+        .iter()
+        .find(|source| {
+            source.from
+                == SourceRef::Skill {
+                    type_id: cpu_management,
+                }
+        })
+        .unwrap();
+    assert_eq!(skill.operator, "post_percent");
+    assert_close(skill.value, 25.0, "CPU Management V");
+    // Every source of an empty hull is a skill or the hull itself.
+    assert!(explained.sources.iter().all(|source| matches!(
+        source.from,
+        SourceRef::Skill { .. } | SourceRef::Ship | SourceRef::Character
+    )));
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn shield_capacity_lists_the_extender_and_rigs_by_their_fit_index() {
+    let fit = bustard();
+    let index_of = |name: &str| {
+        let type_id = type_id(name);
+        fit.items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| item.type_id == type_id)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>()
+    };
+    let explained = explain(&fit, &Pilot::AllV, ExplainTarget::Ship, "shieldCapacity");
+    let items: Vec<usize> = explained
+        .sources
+        .iter()
+        .filter_map(|source| match source.from {
+            SourceRef::Item { index } => Some(index),
+            _ => None,
+        })
+        .collect();
+    for index in index_of("Republic Fleet Medium Shield Extender")
+        .into_iter()
+        .chain(index_of("Medium Core Defense Field Extender II"))
+    {
+        assert!(items.contains(&index), "{index} not in {items:?}");
+    }
+    assert!(explained.value > explained.base);
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn an_item_attribute_can_be_explained_and_bad_requests_are_refused() {
+    let fit = gun_rifter();
+    let explained = explain(&fit, &Pilot::AllV, ExplainTarget::Item(0), "maxRange");
+    assert!(explained.value > 0.0);
+
+    let engine = engine();
+    let profile = DamageProfile::uniform();
+    assert_eq!(
+        engine
+            .explain(
+                &fit,
+                &Pilot::AllV,
+                &profile,
+                ExplainTarget::Ship,
+                "notAnAttribute"
+            )
+            .err(),
+        Some(FittingError::UnknownAttribute)
+    );
+    assert_eq!(
+        engine
+            .explain(
+                &fit,
+                &Pilot::AllV,
+                &profile,
+                ExplainTarget::Item(9),
+                "maxRange"
+            )
+            .err(),
+        Some(FittingError::UnknownItem(9))
+    );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn modules_headline_what_they_do() {
+    let fit = bustard();
+    let calculation = calculate(&fit, &Pilot::AllV);
+    let headline_of = |name: &str| {
+        let index = fit
+            .items
+            .iter()
+            .position(|item| item.type_id == type_id(name))
+            .unwrap();
+        calculation.items[index].unwrap().headline
+    };
+    let kind_of = |name: &str| headline_of(name).map(|headline| headline.kind);
+    assert_eq!(
+        kind_of("Multispectrum Shield Hardener II"),
+        Some(HeadlineKind::Resist)
+    );
+    assert_eq!(
+        kind_of("Republic Fleet Medium Shield Extender"),
+        Some(HeadlineKind::ShieldHp)
+    );
+    assert_eq!(
+        kind_of("50MN Y-T8 Compact Microwarpdrive"),
+        Some(HeadlineKind::Velocity)
+    );
+    assert_eq!(kind_of("Nanofiber Internal Structure II"), None);
+    for name in [
+        "Multispectrum Shield Hardener II",
+        "Republic Fleet Medium Shield Extender",
+        "50MN Y-T8 Compact Microwarpdrive",
+    ] {
+        assert!(headline_of(name).unwrap().value > 0.0, "{name}");
+    }
+
+    let guns = calculate(&gun_rifter(), &Pilot::AllV);
+    let gun = guns.items[0].unwrap();
+    assert_eq!(
+        gun.headline.map(|headline| headline.kind),
+        Some(HeadlineKind::Dps)
+    );
+    assert_close(gun.headline.unwrap().value, gun.dps, "gun headline");
 }

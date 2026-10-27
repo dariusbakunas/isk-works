@@ -9,8 +9,8 @@ use std::path::Path;
 
 use esf_data::{eve, InfoSde, Sde};
 use iskworks_core::fitting::{
-    DamageProfile, EftError, FitCalculation, FitInput, FittingEngine, FittingEngineInfo,
-    FittingError, ParsedFit, Pilot,
+    AttributeExplanation, DamageProfile, EftError, ExplainTarget, FitCalculation, FitInput,
+    FittingEngine, FittingEngineInfo, FittingError, ParsedFit, Pilot,
 };
 
 use crate::DataLock;
@@ -142,6 +142,17 @@ impl FittingEngine for EsfFittingEngine {
         profile: &DamageProfile,
     ) -> Result<FitCalculation, FittingError> {
         self.run(fit, pilot, profile)
+    }
+
+    fn explain(
+        &self,
+        fit: &FitInput,
+        pilot: &Pilot,
+        profile: &DamageProfile,
+        target: ExplainTarget,
+        attribute: &str,
+    ) -> Result<AttributeExplanation, FittingError> {
+        self.explain_attribute(fit, pilot, profile, target, attribute)
     }
 }
 
