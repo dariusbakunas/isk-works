@@ -13,5 +13,8 @@ license.workspace = true
 esf-data = "=13.6.1"
 esf-dogma-engine = "=13.6.1"
 esf-format = "=13.6.1"
+# Only to read a field esf-data's generated reader lacks (see
+# engine/catalogue.rs); the same version esf-data uses.
+flatbuffers = "25.2"
 iskworks-core = { path = "../iskworks-core" }
 serde_json.workspace = true

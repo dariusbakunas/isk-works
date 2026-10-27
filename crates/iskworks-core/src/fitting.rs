@@ -16,8 +16,12 @@ use uuid::Uuid;
 
 use crate::{InventoryError, WorkspaceId};
 
+mod catalogue;
 mod flyability;
 
+pub use catalogue::{
+    CatalogueEntry, CatalogueKind, FitCatalogue, Hardpoint, MarketGroup, ShipSlots,
+};
 pub use flyability::{
     evaluate_flyability, fit_requirements, requirement_plan, FitRequirements, FlyabilityStatus,
     MissingSkill, PilotFlyability,
@@ -822,6 +826,10 @@ pub enum EftError {
 /// `iskworks-fitting`; tests fake it.
 pub trait FittingEngine: Send + Sync {
     fn info(&self) -> FittingEngineInfo;
+
+    /// Every fittable type and the market groups, built once from the
+    /// engine data.
+    fn catalogue(&self) -> std::sync::Arc<FitCatalogue>;
 
     /// Reads EFT (the client's copy/paste format, which pyfa also writes),
     /// with modules in the states EVE gives an imported fit.
