@@ -15,6 +15,34 @@ use super::EsfFittingEngine;
 /// `esf-format` reads them in lower case only.
 const STATE_SUFFIXES: [&str; 4] = ["/offline", "/online", "/active", "/overload"];
 
+/// Modules pyfa imports online rather than active (its
+/// `activeStateLimit`), by dogma effect: ones run for a moment or a
+/// situation, like a cyno, a jump drive or a scanner, whose active effect
+/// (a cyno pins the ship in place) shouldn't shape a fit's standing stats.
+const ONLINE_ON_IMPORT: [&str; 21] = [
+    "moduleBonusAssaultDamageControl",
+    "moduleBonusIndustrialInvulnerability",
+    "microJumpDrive",
+    "microJumpPortalDrive",
+    "emergencyHullEnergizer",
+    "cynosuralGeneration",
+    "jumpPortalGeneration",
+    "jumpPortalGenerationBO",
+    "cloneJumpAccepting",
+    "cloakingWarpSafe",
+    "cloakingPrototype",
+    "cloaking",
+    "massEntanglerEffect5",
+    "electronicAttributeModifyOnline",
+    "targetPassively",
+    "cargoScan",
+    "shipScan",
+    "surveyScan",
+    "targetSpectrumBreakerBonus",
+    "interdictionNullifierBonus",
+    "industrialItemCompression",
+];
+
 impl EsfFittingEngine {
     pub(super) fn read_eft(&self, text: &str) -> Result<ParsedFit, EftError> {
         let unknown = unknown_lines(text, |name| self.sde.type_name_to_id(name).is_some());
@@ -31,6 +59,14 @@ impl EsfFittingEngine {
         // want of one.
         fit.character.skills = self.skill_levels(&Pilot::AllV);
         esf_format::post_load(&self.info, &mut fit);
+        for item in &mut fit.items {
+            if ONLINE_ON_IMPORT
+                .iter()
+                .any(|effect| self.has_effect(item.type_id, effect))
+            {
+                item.state = item.state.min(State::Online);
+            }
+        }
         // EFT reads every module as active; a passive module or rig can't
         // go past online, so ask for what it can reach.
         let calculation = esf_dogma_engine::calculate(&self.info, &fit, &Default::default());
