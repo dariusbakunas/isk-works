@@ -5,7 +5,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use iskworks_core::fitting::{
-    EftError, EftLine, FitInput, FitItem, FittingEngine, ModuleState, SlotKind,
+    DamageProfile, EftError, EftLine, FitInput, FitItem, FittingEngine, ModuleState, Pilot,
+    SlotKind,
 };
 use iskworks_fitting::EsfFittingEngine;
 
@@ -342,4 +343,41 @@ fn blank_lines_holding_a_space_still_separate_sections() {
     assert_eq!(grams, 24);
     let ecm = find(&fit, "Radar ECM II");
     assert_eq!((ecm.slot_kind, ecm.quantity), (SlotKind::Cargo, 2));
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn situational_modules_like_a_cyno_import_online() {
+    // An active cyno pins the ship in place; pyfa and the client bring it
+    // in online, and a fit's speed is read with it off.
+    let text = "[Devoter, Support]
+Damage Control II
+
+50MN Quad LiF Restrained Microwarpdrive
+Sensor Booster II
+
+Warp Disruption Field Generator II
+Cynosural Field Generator I
+";
+    let fit = engine().parse_eft(text).unwrap().fit;
+    assert_eq!(
+        find(&fit, "Cynosural Field Generator I").state,
+        ModuleState::Online
+    );
+    assert_eq!(
+        find(&fit, "50MN Quad LiF Restrained Microwarpdrive").state,
+        ModuleState::Active
+    );
+    assert_eq!(
+        find(&fit, "Warp Disruption Field Generator II").state,
+        ModuleState::Active
+    );
+
+    let speed = engine()
+        .calculate(&fit, &Pilot::AllV, &DamageProfile::uniform())
+        .unwrap()
+        .stats
+        .navigation
+        .max_velocity;
+    assert!(speed > 1000.0, "speed {speed}");
 }
