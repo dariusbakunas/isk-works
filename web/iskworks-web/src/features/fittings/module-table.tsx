@@ -64,6 +64,7 @@ const STATE_ICONS: Record<ModuleState, { icon: typeof Circle; className: string 
 const STATE_ORDER: ModuleState[] = ["offline", "online", "active", "overload"];
 
 const STATE_HINT = "Click: on/off · Shift-click: overheat · Alt-click: offline";
+const DRONE_HINT = "Click: launch or return to the drone bay";
 
 const toggleOf = (event: { shiftKey: boolean; altKey: boolean }): StateToggle =>
   event.altKey ? "offline" : event.shiftKey ? "overload" : "toggle";
@@ -173,15 +174,20 @@ function ModuleRow({
 }) {
   const name = item.name ?? `Type ${item.typeId}`;
   const stack = item.slotKind === "drone_bay" || item.slotKind === "cargo" || item.slotKind === "fighter_bay";
+  const drones = item.slotKind === "drone_bay";
   const dash = <span className="text-muted">—</span>;
   return (
     <OperationalTableRow
       accent={violations.length ? "blocking" : undefined}
       cells={{
         // Cargo is never on: no state to show.
-        state: item.slotKind === "cargo" ? null : onToggleState && !stack ? (
+        state: item.slotKind === "cargo" ? null : onToggleState && (!stack || drones) ? (
           <button
-            aria-label={`State: ${stateLabel(item.state)} — change`}
+            aria-label={
+              drones
+                ? `Drones: ${item.state === "active" ? "Launched" : "In the bay"} — change`
+                : `State: ${stateLabel(item.state)} — change`
+            }
             className="rounded p-0.5 hover:bg-panel-strong"
             onClick={(event) => {
               // A mouse click shouldn't leave focus behind: the next key
@@ -189,7 +195,7 @@ function ModuleRow({
               if (event.detail > 0) event.currentTarget.blur();
               onToggleState(index, toggleOf(event));
             }}
-            title={STATE_HINT}
+            title={drones ? DRONE_HINT : STATE_HINT}
             type="button"
           >
             <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />

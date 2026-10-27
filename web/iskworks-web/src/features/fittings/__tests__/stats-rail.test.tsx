@@ -28,6 +28,28 @@ describe("Fittings › stats", () => {
     expect(within(panel).getByText("216.5 / 250 MW")).toBeInTheDocument();
   });
 
+  test("launching more drones than the bandwidth or the pilot allows runs red", async () => {
+    const over = stats();
+    over.resources.droneBandwidth = { used: 50, total: 25 };
+    over.drones = { ...over.drones, active: 10, maxActive: 5 };
+    stubFetch({ statsView: statsView({ stats: over }) });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const panel = await rail();
+    expect(within(panel).getByRole("meter", { name: "Drone bandwidth" })).toHaveAttribute("data-over", "true");
+    expect(within(panel).getByText("50 / 25 Mbit/s")).toHaveClass("text-danger");
+    expect(within(panel).getByText("10 / 5 active")).toHaveClass("text-danger");
+  });
+
+  test("drones within limits don't", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const panel = await rail();
+    expect(within(panel).getByRole("meter", { name: "Drone bandwidth" })).toHaveAttribute("data-over", "false");
+    expect(within(panel).getByText("5 / 5 active")).not.toHaveClass("text-danger");
+  });
+
   test("the capacitor either depletes or settles", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);

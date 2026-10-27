@@ -84,6 +84,30 @@ describe("Fittings › editor", () => {
     expect(calls(fetchSpy, "/api/fittings/calculate")).toHaveLength(0);
   });
 
+  test("outside editing, a drone stack goes back to the bay and launches again", async () => {
+    const fetchSpy = stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const drones = () => within(within(table).getByRole("row", { name: /Hobgoblin II/ })).getByRole("button", { name: /^Drones:/ });
+    const savedDrones = (count: number) => {
+      const put = calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT")[count - 1];
+      const items = JSON.parse(String((put[1] as RequestInit).body)).items as Array<{ typeId: number; state: string }>;
+      return items.find((item) => item.typeId === 2456)?.state;
+    };
+
+    expect(await waitFor(drones)).toHaveAccessibleName("Drones: Launched — change");
+    fireEvent.click(drones());
+    expect(drones()).toHaveAccessibleName("Drones: In the bay — change");
+    await waitFor(() => expect(calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT")).toHaveLength(1));
+    expect(savedDrones(1)).toBe("offline");
+
+    // Shift or alt make no difference to a drone.
+    fireEvent.click(drones(), { shiftKey: true });
+    await waitFor(() => expect(calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT")).toHaveLength(2));
+    expect(savedDrones(2)).toBe("active");
+  });
+
   test("a mouse click on a state leaves no focus ring behind; the keyboard keeps focus", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);

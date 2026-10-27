@@ -29,6 +29,7 @@ import {
   setCharge,
   setQuantity,
   setState,
+  toggleDrones,
   toggleState,
   toFitDraft,
   type Draft,
@@ -429,12 +430,16 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
               },
             }}
             onToggleState={(index, toggle) => {
-              const change = (draft: Draft) =>
-                setState(
+              const change = (draft: Draft) => {
+                const item = draft.items[index];
+                return setState(
                   draft,
                   index,
-                  toggleState(draft.items[index].state, tableStats?.items[index]?.maxState ?? "overload", toggle),
+                  item.slotKind === "drone_bay"
+                    ? toggleDrones(item.state)
+                    : toggleState(item.state, tableStats?.items[index]?.maxState ?? "overload", toggle),
                 );
+              };
               // In the editor it is part of the draft; outside, it saves.
               if (editor.editing) editor.setDraft(change);
               else quick.change((current) => change({ ...draftFrom(fit), items: current }).items);
