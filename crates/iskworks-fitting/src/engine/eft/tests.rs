@@ -84,10 +84,19 @@ fn malformed_text_is_left_for_the_loader() {
 #[test]
 fn state_suffixes_are_lowercased_for_the_loader_in_any_case() {
     assert_eq!(
-        lowercase_state_suffixes("Damage Control II /OFFLINE\nWarp Disruptor II/Active"),
+        for_loader("Damage Control II /OFFLINE\nWarp Disruptor II/Active"),
         "Damage Control II /offline\nWarp Disruptor II/active"
     );
-    assert_eq!(lowercase_state_suffixes("AC/DC Module"), "AC/DC Module");
+    assert_eq!(for_loader("AC/DC Module"), "AC/DC Module");
+}
+
+#[test]
+fn lines_are_trimmed_for_the_loader_so_a_space_still_separates_sections() {
+    // The client writes the blank line between sections as one space.
+    assert_eq!(
+        for_loader("[Rifter, x]\n \nDamage Control II  \n\t\n Warrior II x2 "),
+        "[Rifter, x]\n\nDamage Control II\n\nWarrior II x2"
+    );
 }
 
 #[test]

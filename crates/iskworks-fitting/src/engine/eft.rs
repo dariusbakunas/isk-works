@@ -23,7 +23,7 @@ impl EsfFittingEngine {
         }
         let names = InfoNameSde::new(self.sde, None)
             .map_err(|error| EftError::Invalid(error.to_string()))?;
-        let mut fit = esf_format::eft::load_eft(&names, &lowercase_state_suffixes(text))
+        let mut fit = esf_format::eft::load_eft(&names, &for_loader(text))
             .map_err(|error| EftError::Invalid(error.to_string()))?;
 
         // EVE's own import rules (cloaks online, group limits, how many
@@ -138,8 +138,12 @@ fn fit_item(item: &esf_dogma_engine::FitItem) -> FitItem {
     }
 }
 
-fn lowercase_state_suffixes(text: &str) -> String {
+/// The text as `esf-format` reads it: each line trimmed, since it splits
+/// sections only on empty lines and the client writes them as one space,
+/// and the state suffixes in lower case.
+fn for_loader(text: &str) -> String {
     text.lines()
+        .map(str::trim)
         .map(|line| match state_suffix(line) {
             Some(position) => format!("{}{}", &line[..position], line[position..].to_lowercase()),
             None => line.to_string(),
