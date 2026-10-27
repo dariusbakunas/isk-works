@@ -1,7 +1,7 @@
 import { ChevronDown, Coins, Package } from "lucide-react";
 import { useId, useState } from "react";
 
-import { costScope, type FitAssetsView, type FitCostView } from "../../api/fittings";
+import { costScope, type CostSection, type FitAssetsView, type FitCostView } from "../../api/fittings";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { useMarketScopeLabel } from "../../hooks/use-market-scope-label";
 import { PRIVATE_ATTR } from "../../observability/private";
@@ -21,11 +21,12 @@ function Isk({ value, className = "" }: { value: string; className?: string }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/** A section's sum; a dash when nothing in it has a price. */
+function Row({ label, value, priced }: { label: string; value: string; priced: boolean }) {
   return (
     <div className="flex items-baseline justify-between text-xs">
       <span className="text-muted">{label}</span>
-      <Isk value={value} />
+      {priced ? <Isk value={value} /> : <span className="font-mono text-muted">—</span>}
     </div>
   );
 }
@@ -35,17 +36,19 @@ export function PriceSection({ cost, error, stale }: { cost: FitCostView | null;
   const scope = useMarketScopeLabel(cost ? costScope(cost) : null);
   const market = cost?.scope.locationId === null ? scope.regionName : scope.locationName;
   const unpriced = cost ? cost.lines.filter((line) => line.unitPrice === null) : [];
-  const has = (section: string) => cost?.lines.some((line) => line.section === section) ?? false;
+  const has = (section: CostSection) => cost?.lines.some((line) => line.section === section) ?? false;
+  const priced = (section: CostSection) =>
+    cost?.lines.some((line) => line.section === section && line.unitPrice !== null) ?? false;
   return (
     <Section icon={<Coins aria-hidden="true" className="h-3 w-3" />} title="Price">
       {error ? <p className="text-xs text-danger">{error}</p> : null}
       {!cost && !error ? <p className="text-xs text-muted">Loading prices…</p> : null}
       {cost ? (
         <>
-          <Row label="Hull" value={cost.hull} />
-          <Row label="Fittings" value={cost.fittings} />
-          {has("drones") ? <Row label="Drones" value={cost.drones} /> : null}
-          {has("cargo") ? <Row label="Cargo" value={cost.cargo} /> : null}
+          <Row label="Hull" priced={priced("hull")} value={cost.hull} />
+          <Row label="Fittings" priced={priced("fittings")} value={cost.fittings} />
+          {has("drones") ? <Row label="Drones" priced={priced("drones")} value={cost.drones} /> : null}
+          {has("cargo") ? <Row label="Cargo" priced={priced("cargo")} value={cost.cargo} /> : null}
           <div className="flex items-baseline justify-between pt-1">
             <span className="text-xs text-muted">Total</span>
             <Isk className="text-lg font-semibold" value={cost.total} />

@@ -37,6 +37,20 @@ describe("Fittings › price and assets", () => {
     expect(priceCell(paste)).toHaveTextContent("—");
   });
 
+  test("a section with nothing priced shows a dash, not zero", async () => {
+    const unpricedHull = cost();
+    unpricedHull.lines[0] = { ...unpricedHull.lines[0], unitPrice: null, total: null };
+    unpricedHull.hull = "0";
+    stubFetch({ cost: unpricedHull });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const rail = await screen.findByRole("complementary", { name: "Fit stats" });
+    await within(rail).findByTestId("total-dps");
+    const price = within(rail).getByRole("heading", { name: "Price" }).closest("section")!;
+    const hull = (await within(price).findByText("Hull")).parentElement!;
+    expect(hull).toHaveTextContent("Hull—");
+  });
+
   test("prices show without the stats engine", async () => {
     stubFetch({ meta: meta(false) });
     renderPage(`/fittings/${FIT_ID}`);
