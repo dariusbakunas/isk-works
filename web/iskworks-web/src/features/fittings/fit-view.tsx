@@ -41,6 +41,7 @@ import { ModuleTable } from "./module-table";
 import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
 import { useFitEditor } from "./use-fit-editor";
+import { useQuickChanges } from "./use-quick-changes";
 import { useFit, useFitAssets, useFitCost, useFitParams, useFitPilots, useFitStats } from "./use-fittings";
 
 const STATUS: Record<FlyabilityStatus | "unknown", { label: string; icon: LucideIcon; className: string }> = {
@@ -305,6 +306,16 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
     },
   });
 
+  const quick = useQuickChanges({
+    fit,
+    onSaved: () => {
+      reload();
+      stats.retry();
+      pilots.retry();
+      onChanged();
+    },
+  });
+
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [variationsFor, setVariationsFor] = useState<number | null>(null);
@@ -323,7 +334,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
       { replace: true },
     );
   }, []);
-  const items = editor.draft?.items ?? fit.items;
+  const items = editor.draft?.items ?? quick.items ?? fit.items;
   const racks: RackSizes | null = statsView
     ? {
         high: statsView.stats.resources.highSlots.total,
@@ -369,6 +380,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
       />
       {engineAvailable ? null : <EngineUnavailableHint />}
       {stats.error ? <InlineAlert title="Couldn't calculate the fit">{stats.error.message}</InlineAlert> : null}
+      {quick.error ? <InlineAlert title="Couldn't save the module state">{quick.error}</InlineAlert> : null}
       {railStats ? <SummaryStrip view={railStats} /> : null}
       <div
         className={`grid gap-3 ${editor.editing ? "xl:grid-cols-[260px_minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)_320px]"}`}
@@ -415,9 +427,9 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                   index,
                   toggleState(draft.items[index].state, tableStats?.items[index]?.maxState ?? "overload", toggle),
                 );
-              // Outside editing, a toggle opens a draft with it made.
+              // In the editor it is part of the draft; outside, it saves.
               if (editor.editing) editor.setDraft(change);
-              else editor.start(change);
+              else quick.change((current) => change({ ...draftFrom(fit), items: current }).items);
             }}
             items={items}
             prices={prices}

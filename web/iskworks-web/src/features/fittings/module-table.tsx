@@ -59,6 +59,8 @@ const STATE_ICONS: Record<ModuleState, { icon: typeof Circle; className: string 
   overload: { icon: Flame, className: "text-danger" },
 };
 
+const STATE_ORDER: ModuleState[] = ["offline", "online", "active", "overload"];
+
 const STATE_HINT = "Click: on/off · Shift-click: overheat · Alt-click: offline";
 
 const toggleOf = (event: { shiftKey: boolean; altKey: boolean }): StateToggle =>
@@ -66,9 +68,10 @@ const toggleOf = (event: { shiftKey: boolean; altKey: boolean }): StateToggle =>
 
 /** The state a module reached (or, without stats, the one it asks for). */
 function StateGlyph({ requested, reached }: { requested: ModuleState; reached: ModuleState | null }) {
-  const shown = reached ?? requested;
+  // A state above the requested one is from stats not yet recalculated.
+  const shown = reached !== null && STATE_ORDER.indexOf(reached) <= STATE_ORDER.indexOf(requested) ? reached : requested;
   const { icon: Icon, className } = STATE_ICONS[shown];
-  const lower = reached !== null && reached !== requested;
+  const lower = shown !== requested;
   const label = lower ? `${stateLabel(shown)} (requested ${stateLabel(requested)})` : stateLabel(shown);
   return (
     <span aria-label={label} className={`inline-flex ${lower ? "opacity-60" : ""}`} role="img" title={label}>
@@ -168,7 +171,12 @@ function ModuleRow({
           <button
             aria-label={`State: ${stateLabel(item.state)} — change`}
             className="rounded p-0.5 hover:bg-panel-strong"
-            onClick={(event) => onToggleState(index, toggleOf(event))}
+            onClick={(event) => {
+              // A mouse click shouldn't leave focus behind: the next key
+              // (shift for the next click) would draw the keyboard ring.
+              if (event.detail > 0) event.currentTarget.blur();
+              onToggleState(index, toggleOf(event));
+            }}
             title={STATE_HINT}
             type="button"
           >
