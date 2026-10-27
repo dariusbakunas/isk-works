@@ -9,7 +9,7 @@ import {
   type LayerStats,
   type Usage,
 } from "../../api/fittings";
-import { capacitorLabel, formatDistance, formatPercent, formatStat } from "./fittings-format";
+import { capacitorLabel, formatDistance, formatPercent, formatResist, formatStat } from "./fittings-format";
 import { useFitParams } from "./use-fittings";
 
 /** A stat the "Why?" view can explain: its label and dogma attribute. */
@@ -262,7 +262,7 @@ function ResistGrid({ shield, armor, hull }: { shield: LayerStats; armor: LayerS
             <th className="text-left font-normal text-muted" scope="row">{name}</th>
             {DAMAGE_COLUMNS.map((column) => (
               <td className={`px-0.5 text-center font-mono ${column.className}`} key={column.key}>
-                {formatPercent(layer.resists[column.key], 0)}
+                {formatResist(layer.resists[column.key])}
               </td>
             ))}
             <td className="text-right font-mono">{formatStat(layer.hp)}</td>

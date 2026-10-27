@@ -273,7 +273,7 @@ impl EsfFittingEngine {
 
     /// Whether a type carries the dogma effect of this name (how the engine
     /// itself tells turrets and launchers apart).
-    fn has_effect(&self, type_id: i32, name: &str) -> bool {
+    pub(super) fn has_effect(&self, type_id: i32, name: &str) -> bool {
         self.info
             .get_dogma_effects(type_id)
             .into_iter()
