@@ -259,6 +259,7 @@ export interface ItemStats {
   cpu: number;
   powergrid: number;
   calibration: number;
+  /** GJ/s used; negative for a nosferatu's gain. */
   capacitorPerSecond: number;
   optimal: number;
   falloff: number;

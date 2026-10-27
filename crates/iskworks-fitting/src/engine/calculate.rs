@@ -18,6 +18,9 @@ use iskworks_core::fitting::{
 use super::attributes::ItemAttributes;
 use super::EsfFittingEngine;
 
+/// The dogma effect that makes a module a nosferatu.
+const ENERGY_NOSFERATU: &str = "energyNosferatuFalloff";
+
 impl EsfFittingEngine {
     /// The fit as the engine takes it, with `included` (each engine item's
     /// index in the caller's fit) and the caller's unknown items.
@@ -89,8 +92,13 @@ impl EsfFittingEngine {
         let included_items: Vec<&FitItem> =
             included.iter().map(|index| &fit.items[*index]).collect();
         let mut items = vec![None; fit.items.len()];
-        for (result, index) in calculation.items.iter().zip(&included) {
-            items[*index] = Some(self.item_stats(result));
+        for ((result, item), index) in calculation
+            .items
+            .iter()
+            .zip(&engine_fit.items)
+            .zip(&included)
+        {
+            items[*index] = Some(self.item_stats(result, item.type_id));
         }
         Ok(FitCalculation {
             stats: self.stats(&calculation, &engine_fit, &included_items),
@@ -226,17 +234,34 @@ impl EsfFittingEngine {
         engine_items
     }
 
-    fn item_stats(&self, result: &ItemResult) -> ItemStats {
+    fn item_stats(&self, result: &ItemResult, type_id: i32) -> ItemStats {
         let a = &self.item_attributes;
         let attribute = |id: i32| value(result, id);
         let cycle_ms = [attribute(a.duration), attribute(a.rate_of_fire)]
             .into_iter()
             .find(|cycle| *cycle > 0.0);
+        // A nosferatu costs nothing and drains its target into our
+        // capacitor; pyfa shows that as a gain.
+        let drained = if self.has_effect(type_id, ENERGY_NOSFERATU) {
+            attribute(a.power_transfer_amount)
+        } else {
+            0.0
+        };
         let capacitor_per_second = match cycle_ms {
             Some(cycle_ms) if result.state >= State::Active => {
-                attribute(a.capacitor_need) / (cycle_ms / 1000.0)
+                (attribute(a.capacitor_need) - drained) / (cycle_ms / 1000.0)
             }
             _ => 0.0,
+        };
+        // pyfa's range column: maxRange, else a bubble's radius; falloff,
+        // else the falloff of an energy or electronic warfare module.
+        let either = |first: i32, second: i32| {
+            let value = attribute(first);
+            if value > 0.0 {
+                value
+            } else {
+                attribute(second)
+            }
         };
         ItemStats {
             reached_state: module_state(result.state),
@@ -245,8 +270,8 @@ impl EsfFittingEngine {
             powergrid: attribute(a.powergrid),
             calibration: attribute(a.calibration),
             capacitor_per_second,
-            optimal: attribute(a.optimal),
-            falloff: attribute(a.falloff),
+            optimal: either(a.optimal, a.warp_scramble_range),
+            falloff: either(a.falloff, a.falloff_effectiveness),
             dps: attribute(a.dps),
             headline: headline(a, result, cycle_ms),
         }

@@ -670,11 +670,13 @@ pub struct ItemStats {
     /// MW
     pub powergrid: f64,
     pub calibration: f64,
-    /// GJ/s while it runs; 0 unless it reached active.
+    /// GJ/s while it runs: what it uses, or negative for what a nosferatu
+    /// drains into the capacitor; 0 unless it reached active.
     pub capacitor_per_second: f64,
-    /// metres
+    /// metres; a bubble's radius when it has no optimal range
     pub optimal: f64,
-    /// metres
+    /// metres; falloff, or the falloff of an energy or electronic warfare
+    /// module
     pub falloff: f64,
     /// Its damage per second, without reloads (drones included).
     pub dps: f64,
