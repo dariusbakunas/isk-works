@@ -511,30 +511,21 @@ export interface FitCostView {
   observedAt: string | null;
 }
 
-export interface FitShortfall {
-  typeId: number;
-  needed: number;
-  have: number;
-  name: string | null;
-}
-
-/** One character's holdings of the fit at one location. */
-export interface FitLocationCoverage {
+/** Mirrors `iskworks_core::fitting::AssetHolding`. */
+export interface FitHolding {
   connectionId: string;
   characterName: string;
   locationId: number;
   locationName: string;
-  covered: number;
-  needed: number;
-  short: FitShortfall[];
+  typeId: number;
+  quantity: number;
 }
 
 /** Mirrors `iskworks_app::FitAssetsView`. */
 export interface FitAssetsView {
-  /** Units the fit is made of: hull, items and stacks. */
-  needed: number;
-  /** Best covered first, at most ten. */
-  locations: FitLocationCoverage[];
+  /** Every holding of the fit's types, fitted or packaged: by type, the
+   * most held first. */
+  holdings: FitHolding[];
 }
 
 export function getFitCost(id: string, signal?: AbortSignal): Promise<FitCostView> {

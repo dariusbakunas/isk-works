@@ -24,8 +24,7 @@ pub use catalogue::{
     CatalogueEntry, CatalogueKind, FitCatalogue, Hardpoint, MarketGroup, ShipSlots,
 };
 pub use cost::{
-    asset_coverage, fit_cost, fit_needs, AssetHolding, AssetHoldingsRepository, CostLine,
-    CostSection, FitCost, LocationCoverage, Shortfall,
+    fit_cost, fit_needs, AssetHolding, AssetHoldingsRepository, CostLine, CostSection, FitCost,
 };
 pub use flyability::{
     evaluate_flyability, fit_requirements, requirement_plan, FitRequirements, FlyabilityStatus,

@@ -1,5 +1,5 @@
-//! What a fit costs on the market, and how much of it the workspace's
-//! characters already own. Pure: callers pass prices and asset holdings.
+//! What a fit costs on the market, and where the workspace's characters
+//! already hold its types. Pure: callers pass prices.
 
 use std::collections::BTreeMap;
 
@@ -9,9 +9,6 @@ use serde::Serialize;
 
 use super::{FitInput, SlotKind};
 use crate::{ConnectedCharacterId, InventoryError, Money, WorkspaceId};
-
-/// The most locations an asset coverage answer lists.
-const COVERAGE_LIMIT: usize = 10;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +119,9 @@ pub fn fit_cost(fit: &FitInput, prices: &BTreeMap<i64, Money>) -> FitCost {
 }
 
 /// How many of a type a character holds at one location.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// How many of one type a character holds at one location.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AssetHolding {
     pub connection_id: ConnectedCharacterId,
     pub character_name: String,
@@ -141,96 +140,6 @@ pub trait AssetHoldingsRepository: Send + Sync {
         workspace_id: WorkspaceId,
         type_ids: &[i64],
     ) -> Result<Vec<AssetHolding>, InventoryError>;
-}
-
-/// A type a location has fewer of than the fit needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Shortfall {
-    pub type_id: i64,
-    pub needed: u32,
-    pub have: u32,
-}
-
-/// How much of a fit one character already has at one location.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocationCoverage {
-    pub connection_id: ConnectedCharacterId,
-    pub character_name: String,
-    pub location_id: i64,
-    pub location_name: String,
-    /// Units of the fit there (up to what it needs of each type).
-    pub covered: u32,
-    pub needed: u32,
-    /// What's short, in type order.
-    pub short: Vec<Shortfall>,
-}
-
-/// For each character and location holding any of the fit, how much of it
-/// is there: best covered first, the ten best.
-#[must_use]
-pub fn asset_coverage(
-    needed: &BTreeMap<i64, u32>,
-    holdings: &[AssetHolding],
-) -> Vec<LocationCoverage> {
-    let total: u32 = needed.values().sum();
-    // (character name, location name, quantity by type) per place.
-    type Place = (String, String, BTreeMap<i64, i64>);
-    let mut places: BTreeMap<(uuid::Uuid, i64), Place> = BTreeMap::new();
-    for holding in holdings
-        .iter()
-        .filter(|holding| needed.contains_key(&holding.type_id))
-    {
-        let place = places
-            .entry((holding.connection_id.0, holding.location_id))
-            .or_insert_with(|| {
-                (
-                    holding.character_name.clone(),
-                    holding.location_name.clone(),
-                    BTreeMap::new(),
-                )
-            });
-        *place.2.entry(holding.type_id).or_insert(0) += holding.quantity;
-    }
-    let mut coverage: Vec<LocationCoverage> = places
-        .into_iter()
-        .map(
-            |((connection_id, location_id), (character_name, location_name, have))| {
-                let mut covered = 0;
-                let mut short = Vec::new();
-                for (type_id, need) in needed {
-                    let have = u32::try_from(have.get(type_id).copied().unwrap_or(0).max(0))
-                        .unwrap_or(u32::MAX);
-                    covered += have.min(*need);
-                    if have < *need {
-                        short.push(Shortfall {
-                            type_id: *type_id,
-                            needed: *need,
-                            have,
-                        });
-                    }
-                }
-                LocationCoverage {
-                    connection_id: ConnectedCharacterId(connection_id),
-                    character_name,
-                    location_id,
-                    location_name,
-                    covered,
-                    needed: total,
-                    short,
-                }
-            },
-        )
-        .collect();
-    coverage.sort_by(|a, b| {
-        b.covered
-            .cmp(&a.covered)
-            .then_with(|| a.character_name.cmp(&b.character_name))
-            .then_with(|| a.location_name.cmp(&b.location_name))
-    });
-    coverage.truncate(COVERAGE_LIMIT);
-    coverage
 }
 
 #[cfg(test)]

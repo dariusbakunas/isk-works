@@ -1,7 +1,7 @@
 import { ChevronDown, Coins, Package } from "lucide-react";
 import { useId, useState } from "react";
 
-import { costScope, type CostSection, type FitAssetsView, type FitCostView } from "../../api/fittings";
+import { costScope, type CostSection, type FitCostView } from "../../api/fittings";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { useMarketScopeLabel } from "../../hooks/use-market-scope-label";
 import { PRIVATE_ATTR } from "../../observability/private";
@@ -73,68 +73,3 @@ export function PriceSection({ cost, error, stale }: { cost: FitCostView | null;
 
 /** Where the workspace's characters already hold the fit, best covered
  * first, each expandable to what's short there. */
-export function AssetsPanel({ assets, error }: { assets: FitAssetsView | null; error: string | null }) {
-  const headingId = useId();
-  const [expanded, setExpanded] = useState<string | null>(null);
-  return (
-    <section aria-labelledby={headingId} className="iw-panel">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Package aria-hidden="true" className="h-3.5 w-3.5 text-primary" />
-        <h2 className="text-xs font-semibold uppercase tracking-wide" id={headingId}>Assets</h2>
-        <span className="ml-auto hidden text-[0.625rem] text-muted sm:inline">What your characters already own, by location</span>
-      </div>
-      {error ? <p className="px-3 py-2 text-xs text-danger">{error}</p> : null}
-      {!assets && !error ? <p className="px-3 py-2 text-xs text-muted">Loading assets…</p> : null}
-      {assets && !assets.locations.length ? (
-        <p className="px-3 py-2 text-xs text-muted">None of your characters hold any of this fit.</p>
-      ) : null}
-      {assets?.locations.map((location) => {
-        const key = `${location.connectionId}:${location.locationId}`;
-        const complete = location.short.length === 0;
-        return (
-          <div key={key}>
-            <div className="flex items-stretch border-b border-border">
-              <div className="flex min-h-9 flex-1 items-center gap-2 px-3 py-1 text-xs">
-                <span className="min-w-0 flex-1 truncate">
-                  <span {...PRIVATE_ATTR}>{location.characterName}</span>
-                  <span className="text-muted"> · {location.locationName}</span>
-                </span>
-                <span className={`font-mono ${complete ? "text-positive" : "text-muted"}`}>
-                  {location.covered} / {location.needed} items
-                </span>
-              </div>
-              {complete ? (
-                <span className="w-[30px]" />
-              ) : (
-                <button
-                  aria-expanded={expanded === key}
-                  aria-label={`What's short at ${location.locationName} for ${location.characterName}`}
-                  className="px-2 text-muted hover:text-foreground"
-                  onClick={() => setExpanded((current) => (current === key ? null : key))}
-                  type="button"
-                >
-                  <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition ${expanded === key ? "rotate-180" : ""}`} />
-                </button>
-              )}
-            </div>
-            {expanded === key ? (
-              <ul
-                aria-label={`Short at ${location.locationName}`}
-                className="space-y-1 border-b border-border bg-background/40 px-3 py-2 text-xs md:pl-6"
-              >
-                {location.short.map((shortfall) => (
-                  <li className="flex items-center justify-between gap-2" key={shortfall.typeId}>
-                    <span>{shortfall.name ?? `Type ${shortfall.typeId}`}</span>
-                    <span className="font-mono text-muted">
-                      {shortfall.have.toLocaleString("en-US")} / {shortfall.needed.toLocaleString("en-US")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        );
-      })}
-    </section>
-  );
-}

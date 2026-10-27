@@ -21,18 +21,20 @@ import {
 } from "../../components/operational-table";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { formatDistance, formatHeadline, formatStat, rackLabel, stateLabel } from "./fittings-format";
+import { HeldCell } from "./holdings-dialog";
 import { DRAG_TYPE, type DraggedType } from "./module-browser";
 
 const COLUMNS: OperationalColumn[] = [
   { key: "state", label: "", width: "28px" },
-  { key: "module", label: "Module", width: "minmax(220px, 2fr)" },
-  { key: "charge", label: "Charge", width: "minmax(120px, 1fr)", hideBelow: "tablet" },
+  { key: "module", label: "Module", width: "minmax(220px, 3fr)" },
+  { key: "charge", label: "Charge", width: "minmax(112px, 1fr)", hideBelow: "tablet" },
   { key: "cpu", label: "CPU", width: "56px", align: "right", numeric: true, hideBelow: "tablet" },
-  { key: "pg", label: "PG", width: "64px", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "pg", label: "PG", width: "60px", align: "right", numeric: true, hideBelow: "tablet" },
   { key: "range", label: "Optimal + falloff", width: "128px", align: "right", hideBelow: "desktop" },
   { key: "cap", label: "Cap/s", width: "64px", align: "right", numeric: true, hideBelow: "desktop" },
-  { key: "effect", label: "Effect", width: "128px", align: "right", hideBelow: "tablet" },
-  { key: "price", label: "Price", width: "72px", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "effect", label: "Effect", width: "112px", align: "right", hideBelow: "tablet" },
+  { key: "price", label: "Price", width: "64px", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "held", label: "Held", width: "52px", align: "right" },
 ];
 
 /** Racks with positions, shown with their empty slots up to the ship's count. */
@@ -159,6 +161,8 @@ function ModuleRow({
   editor,
   onToggleState,
   charges,
+  held,
+  onHoldings,
 }: {
   index: number;
   item: FitItemView;
@@ -171,6 +175,9 @@ function ModuleRow({
   editor?: ModuleTableEditor;
   onToggleState?: (index: number, toggle: StateToggle) => void;
   charges?: ModuleTableCharges;
+  /** How many the workspace's characters hold; `undefined` until known. */
+  held?: number;
+  onHoldings?: (type: { typeId: number; name: string }) => void;
 }) {
   const name = item.name ?? `Type ${item.typeId}`;
   const stack = item.slotKind === "drone_bay" || item.slotKind === "cargo" || item.slotKind === "fighter_bay";
@@ -284,6 +291,7 @@ function ModuleRow({
             : dash,
         effect: stats ? formatHeadline(stats.headline) : dash,
         price: <PriceCell quantity={item.quantity} unitPrice={unitPrice} />,
+        held: onHoldings ? <HeldCell held={held} name={name} onOpen={() => onHoldings({ typeId: item.typeId, name })} /> : null,
       }}
       interactive={Boolean(editor)}
       rowKey={`item-${index}`}
@@ -301,6 +309,8 @@ export function ModuleTable({
   editor,
   onToggleState,
   charges,
+  held = null,
+  onHoldings,
 }: {
   items: FitItemView[];
   /** Index-parallel to `items`; `null` hides calculated values. */
@@ -313,6 +323,11 @@ export function ModuleTable({
   /** A click on a module's state; it works outside editing too. */
   onToggleState?: (index: number, toggle: StateToggle) => void;
   charges?: ModuleTableCharges;
+  /** How many of each type the workspace's characters hold, by type;
+   * a type left out isn't known (one added since saving). */
+  held?: ReadonlyMap<number, number> | null;
+  /** The magnifier on each row: where the workspace's characters hold it. */
+  onHoldings?: (type: { typeId: number; name: string }) => void;
 }) {
   const indexed = items.map((item, index) => ({ item, index }));
   const blocked = new Set(stats?.flyability?.blockedItems ?? []);
@@ -328,6 +343,8 @@ export function ModuleTable({
       index={index}
       onToggleState={onToggleState}
       charges={charges}
+      held={held?.get(item.typeId)}
+      onHoldings={onHoldings}
       item={item}
       key={`item-${index}`}
       stats={stats?.items[index] ?? null}

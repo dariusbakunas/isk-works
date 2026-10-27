@@ -24,7 +24,7 @@ use crate::{SkillsCharacter, SkillsCharacterSource};
 
 mod cost;
 
-pub use cost::{FitAssetsView, FitCostLine, FitCostView, FitLocationCoverage, FitShortfall};
+pub use cost::{FitAssetsView, FitCostLine, FitCostView};
 
 /// A type as the page shows it, named from the active SDE import. `name`
 /// and `group_name` are `None` for a type the import doesn't have.

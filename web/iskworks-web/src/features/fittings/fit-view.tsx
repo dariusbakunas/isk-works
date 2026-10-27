@@ -35,7 +35,8 @@ import {
   type Draft,
   type RackSizes,
 } from "./fit-draft";
-import { AssetsPanel, PriceSection, unitPrices } from "./fit-cost";
+import { PriceSection, unitPrices } from "./fit-cost";
+import { HoldingsButton, HoldingsDialog } from "./holdings-dialog";
 import { ModuleBrowser, type DraggedType } from "./module-browser";
 import { VariationsDialog } from "./variations-dialog";
 import { ModuleTable } from "./module-table";
@@ -105,6 +106,8 @@ function Header({
   name,
   onRename,
   onEdit,
+  held,
+  onHoldings,
 }: {
   fit: FitDetail;
   pilots: FitPilot[];
@@ -114,6 +117,10 @@ function Header({
   name: string;
   onRename: (name: string) => void;
   onEdit: () => void;
+  /** How many hulls the workspace's characters hold; `undefined` until known. */
+  held: number | undefined;
+  /** Shows where they hold them. */
+  onHoldings: () => void;
 }) {
   const navigate = useNavigate();
   const { meta } = useFittingsContext();
@@ -142,7 +149,16 @@ function Header({
         </Link>
         <EveTypeImage size={64} typeId={fit.ship.typeId} typeName={shipName} variation="render" />
         <div className="min-w-0">
-          <p className="text-[0.6875rem] text-muted">{shipName}</p>
+          <p className="flex items-center gap-1 text-[0.6875rem] text-muted">
+            {shipName}
+            {held === 0 ? <span>· none held</span> : null}
+            {held ? (
+              <>
+                <span>· {held.toLocaleString("en-US")} held</span>
+                <HoldingsButton name={shipName} onClick={onHoldings} />
+              </>
+            ) : null}
+          </p>
           {editing ? (
             <label className="block">
               <span className="sr-only">Fit name</span>
@@ -292,7 +308,6 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
   const stats = useFitStats(fit.id, pilot, profile, engineAvailable);
   const statsView: FitStatsView | null = engineAvailable ? stats.data : null;
   const cost = useFitCost(fit.id, fit.updatedAt);
-  const assets = useFitAssets(fit.id, fit.updatedAt);
   const prices = useMemo(() => unitPrices(cost.data), [cost.data]);
   const editor = useFitEditor({
     fit,
@@ -320,6 +335,15 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [variationsFor, setVariationsFor] = useState<number | null>(null);
+  const [holdingsOf, setHoldingsOf] = useState<{ typeId: number; name: string } | null>(null);
+  const assets = useFitAssets(fit.id, fit.updatedAt);
+  // Totals for the saved fit's types; a type added since isn't known.
+  const held = useMemo(() => {
+    if (!assets.data) return null;
+    const totals = new Map<number, number>([[fit.ship.typeId, 0], ...fit.items.map((item) => [item.typeId, 0] as const)]);
+    for (const holding of assets.data.holdings) totals.set(holding.typeId, (totals.get(holding.typeId) ?? 0) + holding.quantity);
+    return totals;
+  }, [assets.data, fit]);
   const [params, setParams] = useSearchParams();
 
   // A new fit arrives with ?edit=1: open it straight into the editor.
@@ -376,6 +400,8 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         name={editor.draft?.name ?? fit.name}
         onChanged={onChanged}
         onEdit={() => editor.start()}
+        held={held?.get(fit.ship.typeId)}
+        onHoldings={() => setHoldingsOf({ typeId: fit.ship.typeId, name: fit.ship.name ?? `Type ${fit.ship.typeId}` })}
         onRename={(name) => editor.setDraft((draft) => ({ ...draft, name }))}
         pilots={pilots.data ?? []}
       />
@@ -421,6 +447,8 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                   }
                 : undefined
             }
+            held={held}
+            onHoldings={setHoldingsOf}
             charges={{
               pilot,
               onPick: (index, charge) => {
@@ -450,7 +478,6 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
             stats={tableStats}
           />
           <PilotsPanel fit={fit} onSelect={setPilot} pilots={pilots.data ?? []} selected={pilot} />
-          <AssetsPanel assets={assets.data} error={assets.error?.message ?? null} />
         </div>
         <StatsRail
           baseline={editor.differs ? (statsView?.stats ?? null) : null}
@@ -461,6 +488,13 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         />
       </div>
       {editor.editing ? <EditBar editor={editor} /> : null}
+      {holdingsOf ? (
+        <HoldingsDialog
+          holdings={assets.data?.holdings.filter((holding) => holding.typeId === holdingsOf.typeId) ?? []}
+          name={holdingsOf.name}
+          onClose={() => setHoldingsOf(null)}
+        />
+      ) : null}
       {variationsFor !== null && items[variationsFor] ? (
         <VariationsDialog
           item={items[variationsFor]}

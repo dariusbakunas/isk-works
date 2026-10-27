@@ -382,7 +382,7 @@ async fn a_fit_is_priced_at_the_lowest_sell_in_the_workspace_market() {
 }
 
 #[tokio::test]
-async fn coverage_lists_what_each_character_holds_where_best_first() {
+async fn assets_list_where_each_character_holds_each_type_of_the_fit() {
     let fit = fit();
     let (status, body) = get(
         &app(&fit, Arc::new(FakeMarket::default())),
@@ -391,19 +391,29 @@ async fn coverage_lists_what_each_character_holds_where_best_first() {
     .await;
 
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["needed"], 8);
-    let locations = body["locations"].as_array().unwrap();
-    assert_eq!(locations.len(), 2);
-    assert_eq!(locations[0]["characterName"], "Valka");
-    assert_eq!(locations[0]["locationName"], "Jita IV - Moon 4");
-    // The hull and two guns; four guns held count as two.
-    assert_eq!(locations[0]["covered"], 3);
-    assert_eq!(locations[0]["short"][0]["name"], "Hobgoblin II");
-    assert_eq!(locations[0]["short"][0]["needed"], 5);
-    assert_eq!(locations[0]["short"][0]["have"], 0);
-    assert_eq!(locations[1]["characterName"], "Rook");
-    assert_eq!(locations[1]["covered"], 1);
-    assert_eq!(locations[1]["short"].as_array().unwrap().len(), 3);
+    let holdings = body["holdings"].as_array().unwrap();
+    let rows: Vec<_> = holdings
+        .iter()
+        .map(|holding| {
+            (
+                holding["typeId"].as_i64().unwrap(),
+                holding["characterName"].as_str().unwrap(),
+                holding["locationName"].as_str().unwrap(),
+                holding["quantity"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    // By type, the most held first.
+    assert_eq!(
+        rows,
+        [
+            (AUTOCANNON, "Valka", "Jita IV - Moon 4", 4),
+            (AUTOCANNON, "Rook", "Amarr VIII", 1),
+            (BUSTARD, "Valka", "Jita IV - Moon 4", 1),
+        ]
+    );
+    assert!(holdings[0]["connectionId"].is_string());
+    assert_eq!(holdings[0]["locationId"], 60_003_760);
 }
 
 #[tokio::test]
