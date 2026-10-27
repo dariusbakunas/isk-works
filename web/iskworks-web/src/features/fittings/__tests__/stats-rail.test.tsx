@@ -4,7 +4,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { FIT_ID, meta, stats, statsView, stubFetch } from "./fixtures";
 import { renderPage } from "./render";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.localStorage.clear();
+});
 
 async function rail() {
   const panel = await screen.findByRole("complementary", { name: "Fit stats" });
@@ -48,6 +51,29 @@ describe("Fittings › stats", () => {
     const panel = await rail();
     expect(within(panel).getByRole("meter", { name: "Drone bandwidth" })).toHaveAttribute("data-over", "false");
     expect(within(panel).getByText("5 / 5 active")).not.toHaveClass("text-danger");
+  });
+
+  test("a section collapses and stays collapsed when the fit is opened again", async () => {
+    stubFetch();
+    const { unmount } = renderPage(`/fittings/${FIT_ID}`);
+
+    const panel = await rail();
+    const capacitor = within(panel).getByRole("button", { name: "Capacitor" });
+    expect(capacitor).toHaveAttribute("aria-expanded", "true");
+    expect(within(panel).getByText("Depletes in 3:10")).toBeInTheDocument();
+
+    fireEvent.click(capacitor);
+    expect(capacitor).toHaveAttribute("aria-expanded", "false");
+    expect(within(panel).queryByText("Depletes in 3:10")).not.toBeInTheDocument();
+    // The others stay open.
+    expect(within(panel).getByRole("button", { name: "Resources" })).toHaveAttribute("aria-expanded", "true");
+
+    unmount();
+    renderPage(`/fittings/${FIT_ID}`);
+    const again = await rail();
+    expect(within(again).getByRole("button", { name: "Capacitor" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(within(again).getByRole("button", { name: "Capacitor" }));
+    expect(within(again).getByText("Depletes in 3:10")).toBeInTheDocument();
   });
 
   test("the capacitor either depletes or settles", async () => {

@@ -1,4 +1,4 @@
-import { Battery, Crosshair, Gauge, HelpCircle, Navigation, Shield, Swords, X } from "lucide-react";
+import { Battery, ChevronDown, Crosshair, Gauge, HelpCircle, Navigation, Shield, Swords, X } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import {
@@ -143,14 +143,56 @@ function Delta({ value, digits = 0, higherIsGood = true, testId }: { value: numb
   );
 }
 
+/** Which rail sections are collapsed, kept per browser: a convenience. */
+const COLLAPSED_KEY = "iskworks:fit-rail-collapsed";
+
+function readCollapsed(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function useCollapsed(title: string): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => readCollapsed().includes(title));
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      const others = readCollapsed().filter((entry) => entry !== title);
+      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next ? [...others, title] : others));
+    } catch {
+      // Storage off: it just won't be remembered.
+    }
+  };
+  return [collapsed, toggle];
+}
+
 export function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  const [collapsed, toggle] = useCollapsed(title);
+  const bodyId = useId();
   return (
     <section className="border-b border-border px-3 py-2.5 last:border-b-0">
-      <h2 className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-muted">
-        {icon}
-        {title}
+      <h2 className="text-[0.625rem] font-semibold uppercase tracking-wide text-muted">
+        <button
+          aria-controls={bodyId}
+          aria-expanded={!collapsed}
+          className="flex w-full items-center gap-1.5 uppercase tracking-wide hover:text-foreground"
+          onClick={toggle}
+          type="button"
+        >
+          {icon}
+          {title}
+          <ChevronDown aria-hidden="true" className={`ml-auto h-3 w-3 transition ${collapsed ? "-rotate-90" : ""}`} />
+        </button>
       </h2>
-      <div className="space-y-1">{children}</div>
+      {collapsed ? null : (
+        <div className="mt-1.5 space-y-1" id={bodyId}>
+          {children}
+        </div>
+      )}
     </section>
   );
 }
