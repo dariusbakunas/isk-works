@@ -142,7 +142,7 @@ function Delta({ value, digits = 0, higherIsGood = true, testId }: { value: numb
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+export function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
   return (
     <section className="border-b border-border px-3 py-2.5 last:border-b-0">
       <h2 className="mb-1.5 flex items-center gap-1.5 text-[0.625rem] font-semibold uppercase tracking-wide text-muted">
@@ -281,17 +281,23 @@ export function StatsRail({
   stats: view,
   baseline = null,
   recalculating = false,
+  price = null,
 }: {
   fitId: string;
   stats: FitStatsView | null;
   baseline?: FitStats | null;
   recalculating?: boolean;
+  /** The Price section, first in the rail; prices need no engine. */
+  price?: ReactNode;
 }) {
   if (!view) {
     return (
-      <aside aria-label="Fit stats" className="iw-panel p-3 text-xs text-muted">
-        <p className="font-semibold text-foreground">Stats unavailable</p>
-        <p className="mt-1">Without fitting engine data the server can't calculate this fit.</p>
+      <aside aria-label="Fit stats" className="iw-panel h-fit">
+        {price}
+        <div className="p-3 text-xs text-muted">
+          <p className="font-semibold text-foreground">Stats unavailable</p>
+          <p className="mt-1">Without fitting engine data the server can't calculate this fit.</p>
+        </div>
       </aside>
     );
   }
@@ -305,6 +311,7 @@ export function StatsRail({
           {recalculating ? "Recalculating…" : "Changes from the saved fit"}
         </p>
       ) : null}
+      {price}
       <Section icon={<Gauge aria-hidden="true" className="h-3 w-3" />} title="Resources">
         <Meter delta={delta((stats) => stats.resources.cpu.used)} fitId={fitId} label="CPU" unit="tf" usage={resources.cpu} why={WHY.cpu} />
         <Meter delta={delta((stats) => stats.resources.powergrid.used)} fitId={fitId} label="Powergrid" unit="MW" usage={resources.powergrid} why={WHY.powergrid} />

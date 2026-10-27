@@ -1,5 +1,5 @@
 import { ChevronLeft, CircleCheck, CircleHelp, CircleX, Copy, CopyPlus, Pencil, Trash2, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import {
@@ -33,13 +33,14 @@ import {
   toFitDraft,
   type RackSizes,
 } from "./fit-draft";
+import { AssetsPanel, PriceSection, unitPrices } from "./fit-cost";
 import { ModuleBrowser, type DraggedType } from "./module-browser";
 import { VariationsDialog } from "./variations-dialog";
 import { ModuleTable } from "./module-table";
 import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
 import { useFitEditor } from "./use-fit-editor";
-import { useFit, useFitParams, useFitPilots, useFitStats } from "./use-fittings";
+import { useFit, useFitAssets, useFitCost, useFitParams, useFitPilots, useFitStats } from "./use-fittings";
 
 const STATUS: Record<FlyabilityStatus | "unknown", { label: string; icon: LucideIcon; className: string }> = {
   canUseAll: { label: "can use all", icon: CircleCheck, className: "text-positive" },
@@ -287,6 +288,9 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
   const pilots = useFitPilots(fit.id, profile);
   const stats = useFitStats(fit.id, pilot, profile, engineAvailable);
   const statsView: FitStatsView | null = engineAvailable ? stats.data : null;
+  const cost = useFitCost(fit.id, fit.updatedAt);
+  const assets = useFitAssets(fit.id, fit.updatedAt);
+  const prices = useMemo(() => unitPrices(cost.data), [cost.data]);
   const editor = useFitEditor({
     fit,
     pilot,
@@ -412,14 +416,17 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                 : undefined
             }
             items={items}
+            prices={prices}
             rackStats={statsView?.stats ?? null}
             stats={tableStats}
           />
           <PilotsPanel fit={fit} onSelect={setPilot} pilots={pilots.data ?? []} selected={pilot} />
+          <AssetsPanel assets={assets.data} error={assets.error?.message ?? null} />
         </div>
         <StatsRail
           baseline={editor.differs ? (statsView?.stats ?? null) : null}
           fitId={fit.id}
+          price={<PriceSection cost={cost.data} error={cost.error?.message ?? null} stale={editor.changes > 0} />}
           recalculating={editor.calculating}
           stats={railStats}
         />

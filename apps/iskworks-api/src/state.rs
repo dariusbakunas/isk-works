@@ -66,6 +66,7 @@ pub struct AppState {
     inventory_consumption_repository:
         Option<Arc<dyn iskworks_core::InventoryConsumptionRepository>>,
     asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
+    fit_asset_holdings: Option<Arc<dyn iskworks_core::fitting::AssetHoldingsRepository>>,
     blueprint_library_repository: Option<Arc<dyn iskworks_core::BlueprintLibraryRepository>>,
     pub(crate) market_repository: Option<Arc<dyn MarketRepository>>,
     adjusted_price_repository: Option<Arc<dyn AdjustedPriceRepository>>,
@@ -111,6 +112,7 @@ impl AppState {
             inventory_runway_repository: None,
             inventory_consumption_repository: None,
             asset_browser_repository: None,
+            fit_asset_holdings: None,
             blueprint_library_repository: None,
             market_repository: None,
             adjusted_price_repository: None,
@@ -363,6 +365,16 @@ impl AppState {
         repository: Arc<iskworks_storage::PgAssetBrowserRepository>,
     ) -> Self {
         self.asset_browser_repository = Some(repository);
+        self
+    }
+
+    /// What the workspace's characters own, for a fit's asset coverage.
+    #[must_use]
+    pub fn with_fit_asset_holdings(
+        mut self,
+        repository: Arc<dyn iskworks_core::fitting::AssetHoldingsRepository>,
+    ) -> Self {
+        self.fit_asset_holdings = Some(repository);
         self
     }
 
@@ -784,6 +796,12 @@ impl AppState {
         }
         if let Some(skill_plans) = self.skill_plan_repository.clone() {
             service = service.with_skill_plans(skill_plans);
+        }
+        if let Some(market) = self.market_repository.clone() {
+            service = service.with_market(market);
+        }
+        if let Some(holdings) = self.fit_asset_holdings.clone() {
+            service = service.with_asset_holdings(holdings);
         }
         Ok(service)
     }

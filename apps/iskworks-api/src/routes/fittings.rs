@@ -1,18 +1,22 @@
+use std::collections::BTreeMap;
+
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_app::{
-    AttributeView, CatalogueQuery, CatalogueView, FitDetail, FitPilot, FitStatsView, FitSummary,
-    FitTextPreview, PilotChoice,
+    AttributeView, CatalogueQuery, CatalogueView, FitAssetsView, FitCostView, FitDetail, FitPilot,
+    FitStatsView, FitSummary, FitTextPreview, PilotChoice,
 };
 use iskworks_core::fitting::{
     damage_profile_presets, DamageProfile, DamageProfilePreset, ExplainTarget, FitDraft, FitId,
     FitInput, FittingEngineInfo, SlotKind,
 };
 use iskworks_core::skill_plans::SkillPlan;
-use iskworks_core::{ConnectedCharacterId, InventoryError};
+use iskworks_core::{
+    ConnectedCharacterId, InventoryError, MarketCoverageRegistration, MarketScope, WorkspaceId,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{workspace_context, ApiError, AppState};
@@ -28,6 +32,8 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/fittings/catalogue/variations", get(variations))
         .route("/api/fittings/:fit_id/stats", get(fit_stats))
         .route("/api/fittings/:fit_id/pilots", get(fit_pilots))
+        .route("/api/fittings/:fit_id/cost", get(fit_cost))
+        .route("/api/fittings/:fit_id/assets", get(fit_assets))
         .route("/api/fittings/:fit_id/explain", get(explain_attribute))
         .route("/api/fittings/:fit_id/skill-plan", post(create_skill_plan))
         .route("/api/fittings/:fit_id/export", get(export_fit))
@@ -309,6 +315,83 @@ async fn fit_pilots(
             &profile,
             Utc::now(),
         )
+        .await?
+        .map(Json)
+        .ok_or(ApiError::NotFound)
+}
+
+/// A saved fit priced at the workspace's market: the lowest sell order
+/// of each type. Types the market worker doesn't cover yet are registered
+/// for it, so they're priced on a later load.
+async fn fit_cost(
+    State(state): State<AppState>,
+    Path(fit_id): Path<uuid::Uuid>,
+) -> Result<Json<FitCostView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let scope = state.workspace_default_market_scope(workspace_id).await?;
+    let cost = state
+        .fitting_service()?
+        .cost(workspace_id, FitId(fit_id), scope)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    register_price_coverage(&state, workspace_id, scope, &cost);
+    Ok(Json(cost))
+}
+
+/// Fire-and-forget, like Planetary's: a slow or failing ESI fetch must not
+/// hold the page.
+fn register_price_coverage(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    scope: MarketScope,
+    cost: &FitCostView,
+) {
+    let items: BTreeMap<i64, String> = cost
+        .lines
+        .iter()
+        .filter_map(|line| Some((line.line.type_id, line.name.clone()?)))
+        .collect();
+    if items.is_empty() {
+        return;
+    }
+    let (Ok(market), Ok(public_market)) =
+        (state.market_repository(), state.public_market_service())
+    else {
+        return;
+    };
+    tokio::spawn(async move {
+        let source_id = match market
+            .ensure_esi_price_source_for_scope(workspace_id, scope)
+            .await
+        {
+            Ok(source_id) => source_id,
+            Err(error) => {
+                tracing::warn!(%error, "fit market coverage registration failed");
+                return;
+            }
+        };
+        let coverage = items
+            .into_iter()
+            .map(|(type_id, type_name)| MarketCoverageRegistration { type_id, type_name })
+            .collect();
+        if let Err(error) = public_market
+            .register_and_refresh(workspace_id, source_id, coverage)
+            .await
+        {
+            tracing::warn!(%error, "fit market coverage refresh failed");
+        }
+    });
+}
+
+/// Where the workspace's characters already hold a saved fit's types.
+async fn fit_assets(
+    State(state): State<AppState>,
+    Path(fit_id): Path<uuid::Uuid>,
+) -> Result<Json<FitAssetsView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    state
+        .fitting_service()?
+        .assets(workspace_id, FitId(fit_id))
         .await?
         .map(Json)
         .ok_or(ApiError::NotFound)

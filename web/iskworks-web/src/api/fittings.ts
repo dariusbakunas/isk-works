@@ -1,3 +1,4 @@
+import type { MarketScope } from "./industry/market";
 import { jsonRequest } from "./json-request";
 import { ApiError } from "./workspace";
 
@@ -474,4 +475,72 @@ export function searchFitCatalogue(
 /** A module's variations (Tech I, Tech II, meta, faction, …), itself included. */
 export function getFitVariations(typeId: number, pilot?: PilotChoice, signal?: AbortSignal): Promise<CatalogueView> {
   return request<CatalogueView>(`/api/fittings/catalogue/variations${query({ typeId: String(typeId), pilot })}`, { signal });
+}
+
+export type CostSection = "hull" | "fittings" | "drones" | "cargo";
+
+/** Mirrors `iskworks_app::FitCostLine`: one type of the fit, priced. */
+export interface FitCostLine {
+  typeId: number;
+  section: CostSection;
+  quantity: number;
+  /** Lowest sell; `null` when the market has none. */
+  unitPrice: string | null;
+  total: string | null;
+  name: string | null;
+}
+
+/** Mirrors `iskworks_app::FitCostView`: a saved fit at the workspace market. */
+export interface FitCostView {
+  scope: { regionId: number; locationId: number | null };
+  lines: FitCostLine[];
+  hull: string;
+  fittings: string;
+  drones: string;
+  cargo: string;
+  /** Of what has a price; `missing` lists what doesn't. */
+  total: string;
+  missing: number[];
+  observedAt: string | null;
+}
+
+export interface FitShortfall {
+  typeId: number;
+  needed: number;
+  have: number;
+  name: string | null;
+}
+
+/** One character's holdings of the fit at one location. */
+export interface FitLocationCoverage {
+  connectionId: string;
+  characterName: string;
+  locationId: number;
+  locationName: string;
+  covered: number;
+  needed: number;
+  short: FitShortfall[];
+}
+
+/** Mirrors `iskworks_app::FitAssetsView`. */
+export interface FitAssetsView {
+  /** Units the fit is made of: hull, items and stacks. */
+  needed: number;
+  /** Best covered first, at most ten. */
+  locations: FitLocationCoverage[];
+}
+
+export function getFitCost(id: string, signal?: AbortSignal): Promise<FitCostView> {
+  return request<FitCostView>(`/api/fittings/${encodeURIComponent(id)}/cost`, { signal });
+}
+
+export function getFitAssets(id: string, signal?: AbortSignal): Promise<FitAssetsView> {
+  return request<FitAssetsView>(`/api/fittings/${encodeURIComponent(id)}/assets`, { signal });
+}
+
+/** The cost's scope as the web's `MarketScope` (no location: region-wide). */
+export function costScope(cost: FitCostView): MarketScope {
+  return cost.scope.locationId === null
+    ? { regionId: cost.scope.regionId }
+    : { regionId: cost.scope.regionId, locationId: cost.scope.locationId };
 }

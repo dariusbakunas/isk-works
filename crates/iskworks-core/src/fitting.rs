@@ -17,10 +17,15 @@ use uuid::Uuid;
 use crate::{InventoryError, WorkspaceId};
 
 mod catalogue;
+mod cost;
 mod flyability;
 
 pub use catalogue::{
     CatalogueEntry, CatalogueKind, FitCatalogue, Hardpoint, MarketGroup, ShipSlots,
+};
+pub use cost::{
+    asset_coverage, fit_cost, fit_needs, AssetHolding, AssetHoldingsRepository, CostLine,
+    CostSection, FitCost, LocationCoverage, Shortfall,
 };
 pub use flyability::{
     evaluate_flyability, fit_requirements, requirement_plan, FitRequirements, FlyabilityStatus,

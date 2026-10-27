@@ -158,6 +158,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             finance_repository.clone() as Arc<dyn iskworks_core::FinanceAnalyticsRepository>
         )
         .with_finance_repository(finance_repository)
+        .with_fit_asset_holdings(asset_browser_repository.clone()
+            as Arc<dyn iskworks_core::fitting::AssetHoldingsRepository>)
         .with_asset_browser_repository(asset_browser_repository)
         .with_blueprint_library_repository(blueprint_library_repository)
         .with_skill_plan_repository(skill_plan_repository)

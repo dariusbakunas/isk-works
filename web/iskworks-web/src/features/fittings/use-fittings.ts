@@ -3,10 +3,14 @@ import { useSearchParams } from "react-router";
 import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
 import {
   getFit,
+  getFitAssets,
+  getFitCost,
   getFitPilots,
   getFitStats,
   getFittingsMeta,
   listFits,
+  type FitAssetsView,
+  type FitCostView,
   type FitDetail,
   type FitPilot,
   type FitStatsView,
@@ -39,6 +43,15 @@ export function useFitStats(id: string, pilot: PilotChoice, profile: string, ena
 
 export function useFitPilots(id: string, profile: string): Loaded<FitPilot[]> {
   return useLoad((signal) => getFitPilots(id, profile, signal), `pilots:${id}:${profile}`);
+}
+
+/** `version` (the fit's `updatedAt`) refetches after a save. */
+export function useFitCost(id: string, version: string): Loaded<FitCostView> {
+  return useLoad((signal) => getFitCost(id, signal), `cost:${id}:${version}`);
+}
+
+export function useFitAssets(id: string, version: string): Loaded<FitAssetsView> {
+  return useLoad((signal) => getFitAssets(id, signal), `assets:${id}:${version}`);
 }
 
 /** For portraits: connection id → EVE character id. */
