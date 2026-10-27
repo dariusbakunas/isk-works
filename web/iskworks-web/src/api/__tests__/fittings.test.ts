@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import {
   createFitSkillPlan,
+  explainFitAttribute,
   exportFitText,
   getFitPilots,
   getFitStats,
@@ -102,4 +103,16 @@ test("a fit skill plan posts the character only when given", async () => {
   await createFitSkillPlan("f1", "c1");
   const bodies = fetch.mock.calls.map((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string));
   expect(bodies).toEqual([{}, { connectionId: "c1" }]);
+});
+
+test("an explanation asks for the target and attribute", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ base: 1, value: 1, sources: [] }), { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await explainFitAttribute("f1", { attribute: "cpuOutput" });
+  await explainFitAttribute("f1", { attribute: "maxRange", target: 2, pilot: "allZero" });
+  expect(fetch.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
+    "/api/fittings/f1/explain?target=ship&attribute=cpuOutput",
+    "/api/fittings/f1/explain?target=2&attribute=maxRange&pilot=allZero",
+  ]);
 });

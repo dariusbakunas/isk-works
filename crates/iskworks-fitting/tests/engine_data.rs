@@ -446,24 +446,30 @@ fn cpu_output_is_explained_by_cpu_management() {
     assert_close(explained.value, explained.base * 1.25, "cpu output");
     let cpu_management = type_id("CPU Management");
     assert!(
-        explained
-            .sources
-            .iter()
-            .any(|source| source.from == SourceRef::Skill(cpu_management) && source.applied),
+        explained.sources.iter().any(|source| source.from
+            == SourceRef::Skill {
+                type_id: cpu_management
+            }
+            && source.applied),
         "{:?}",
         explained.sources
     );
     let skill = explained
         .sources
         .iter()
-        .find(|source| source.from == SourceRef::Skill(cpu_management))
+        .find(|source| {
+            source.from
+                == SourceRef::Skill {
+                    type_id: cpu_management,
+                }
+        })
         .unwrap();
     assert_eq!(skill.operator, "post_percent");
     assert_close(skill.value, 25.0, "CPU Management V");
     // Every source of an empty hull is a skill or the hull itself.
     assert!(explained.sources.iter().all(|source| matches!(
         source.from,
-        SourceRef::Skill(_) | SourceRef::Ship | SourceRef::Character
+        SourceRef::Skill { .. } | SourceRef::Ship | SourceRef::Character
     )));
 }
 
@@ -485,7 +491,7 @@ fn shield_capacity_lists_the_extender_and_rigs_by_their_fit_index() {
         .sources
         .iter()
         .filter_map(|source| match source.from {
-            SourceRef::Item(index) => Some(index),
+            SourceRef::Item { index } => Some(index),
             _ => None,
         })
         .collect();

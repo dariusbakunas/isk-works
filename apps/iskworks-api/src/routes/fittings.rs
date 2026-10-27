@@ -3,10 +3,12 @@ use axum::http::{header, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
-use iskworks_app::{FitDetail, FitPilot, FitStatsView, FitSummary, FitTextPreview, PilotChoice};
+use iskworks_app::{
+    AttributeView, FitDetail, FitPilot, FitStatsView, FitSummary, FitTextPreview, PilotChoice,
+};
 use iskworks_core::fitting::{
-    damage_profile_presets, DamageProfile, DamageProfilePreset, FitDraft, FitId, FitInput,
-    FittingEngineInfo,
+    damage_profile_presets, DamageProfile, DamageProfilePreset, ExplainTarget, FitDraft, FitId,
+    FitInput, FittingEngineInfo,
 };
 use iskworks_core::skill_plans::SkillPlan;
 use iskworks_core::{ConnectedCharacterId, InventoryError};
@@ -23,6 +25,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/fittings/calculate", post(calculate))
         .route("/api/fittings/:fit_id/stats", get(fit_stats))
         .route("/api/fittings/:fit_id/pilots", get(fit_pilots))
+        .route("/api/fittings/:fit_id/explain", get(explain_attribute))
         .route("/api/fittings/:fit_id/skill-plan", post(create_skill_plan))
         .route("/api/fittings/:fit_id/export", get(export_fit))
         .route(
@@ -333,4 +336,51 @@ async fn create_skill_plan(
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok((StatusCode::CREATED, Json(plan)))
+}
+
+#[derive(Debug, Deserialize)]
+struct ExplainParams {
+    pilot: Option<String>,
+    profile: Option<String>,
+    /// `ship`, or an item's index in the fit.
+    target: Option<String>,
+    /// The dogma attribute name, e.g. `cpuOutput`.
+    attribute: Option<String>,
+}
+
+/// "Why?": every modifier on one attribute of the ship or an item.
+async fn explain_attribute(
+    State(state): State<AppState>,
+    Path(fit_id): Path<uuid::Uuid>,
+    Query(params): Query<ExplainParams>,
+) -> Result<Json<AttributeView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let engine = state.fitting_engine()?;
+    let pilot = parse_pilot(params.pilot.as_deref())?;
+    let profile = parse_profile(params.profile.as_deref())?;
+    let target = match params.target.as_deref().unwrap_or("ship") {
+        "ship" => ExplainTarget::Ship,
+        index => index
+            .parse()
+            .map(ExplainTarget::Item)
+            .map_err(|_| bad_request(format!("unknown target {index:?}")))?,
+    };
+    let attribute = params
+        .attribute
+        .filter(|attribute| !attribute.is_empty())
+        .ok_or_else(|| bad_request("an attribute is required".to_string()))?;
+    state
+        .fitting_service()?
+        .explain(
+            workspace_id,
+            engine.as_ref(),
+            FitId(fit_id),
+            pilot,
+            &profile,
+            target,
+            &attribute,
+        )
+        .await?
+        .map(Json)
+        .ok_or(ApiError::NotFound)
 }

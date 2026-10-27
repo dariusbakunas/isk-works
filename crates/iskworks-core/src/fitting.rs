@@ -743,15 +743,25 @@ pub enum SourceRef {
     /// The ship's active mode (tactical destroyers).
     Mode,
     Character,
-    Item(usize),
-    /// The charge loaded in the item at this index.
-    Charge(usize),
-    /// A skill, by type id.
-    Skill(i64),
+    Item {
+        index: usize,
+    },
+    /// The charge loaded in the item at `index`.
+    Charge {
+        index: usize,
+    },
+    Skill {
+        #[serde(rename = "typeId")]
+        type_id: i64,
+    },
     /// A projected effect.
-    Projected(usize),
-    /// A buff (fleet boost), by buff id.
-    Buff(i64),
+    Projected {
+        index: usize,
+    },
+    /// A buff (fleet boost).
+    Buff {
+        id: i64,
+    },
 }
 
 /// One modifier on an attribute, in the order the engine applied them.

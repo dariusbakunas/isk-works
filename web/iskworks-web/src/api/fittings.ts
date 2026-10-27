@@ -260,6 +260,25 @@ export interface ItemStats {
   optimal: number;
   falloff: number;
   dps: number;
+  /** What it does, in one number; `null` shows as "—". */
+  headline: Headline | null;
+}
+
+/** Mirrors `iskworks_core::fitting::HeadlineKind`. */
+export type HeadlineKind =
+  | "dps"
+  | "shieldRepair"
+  | "armorRepair"
+  | "resist"
+  | "velocity"
+  | "shieldHp"
+  | "armorHp"
+  | "capacitor";
+
+/** Mirrors `iskworks_core::fitting::Headline`. Repairs are HP/s, resist and velocity percent, capacitor GJ. */
+export interface Headline {
+  kind: HeadlineKind;
+  value: number;
 }
 
 /** Mirrors `iskworks_core::fitting::FitViolation`; `detail` is the engine's values. */
@@ -272,6 +291,7 @@ export interface FitViolation {
 /** Mirrors `iskworks_core::fitting::MissingSkill`. */
 export interface MissingSkill {
   skillTypeId: number;
+  name: string;
   activeLevel: number;
   trainedLevel: number;
   requiredLevel: number;
@@ -351,4 +371,51 @@ export function createFitSkillPlan(id: string, connectionId?: string): Promise<C
     method: "POST",
     ...jsonBody(connectionId ? { connectionId } : {}),
   });
+}
+
+/** Mirrors `iskworks_core::fitting::SourceRef`; indexes are the fit's items. */
+export type SourceRef =
+  | { kind: "ship" }
+  | { kind: "mode" }
+  | { kind: "character" }
+  | { kind: "item"; index: number }
+  | { kind: "charge"; index: number }
+  | { kind: "skill"; typeId: number }
+  | { kind: "projected"; index: number }
+  | { kind: "buff"; id: number };
+
+/** Mirrors `iskworks_app::ExplainedSource`. */
+export interface ExplainedSource {
+  from: SourceRef;
+  /** From the SDE import; `null` for a buff or a type it lacks. */
+  name: string | null;
+  /** The engine's operator: `pre_assign`, `pre_mul`, `mod_add`, `post_percent`, … */
+  operator: string;
+  value: number;
+  /** The stacking penalty factor, when penalised. */
+  penalty: number | null;
+  applied: boolean;
+}
+
+/** Mirrors `iskworks_app::AttributeView`. */
+export interface AttributeView {
+  base: number;
+  value: number;
+  /** In the order applied. */
+  sources: ExplainedSource[];
+}
+
+/** "Why?": every modifier on one attribute (a dogma name, e.g. `cpuOutput`) of the ship or an item. */
+export function explainFitAttribute(
+  id: string,
+  options: { attribute: string; target?: "ship" | number; pilot?: PilotChoice; profile?: string },
+  signal?: AbortSignal,
+): Promise<AttributeView> {
+  const params = query({
+    target: String(options.target ?? "ship"),
+    attribute: options.attribute,
+    pilot: options.pilot,
+    profile: options.profile,
+  });
+  return request<AttributeView>(`/api/fittings/${encodeURIComponent(id)}/explain${params}`, { signal });
 }

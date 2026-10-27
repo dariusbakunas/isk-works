@@ -153,11 +153,17 @@ impl EsfFittingEngine {
                         EngineSourceRef::Ship => SourceRef::Ship,
                         EngineSourceRef::Mode => SourceRef::Mode,
                         EngineSourceRef::Character => SourceRef::Character,
-                        EngineSourceRef::Item { index } => SourceRef::Item(caller(index)),
-                        EngineSourceRef::Charge { index } => SourceRef::Charge(caller(index)),
-                        EngineSourceRef::Skill { type_id } => SourceRef::Skill(i64::from(type_id)),
-                        EngineSourceRef::Projected { index } => SourceRef::Projected(index),
-                        EngineSourceRef::Buff { id } => SourceRef::Buff(i64::from(id)),
+                        EngineSourceRef::Item { index } => SourceRef::Item {
+                            index: caller(index),
+                        },
+                        EngineSourceRef::Charge { index } => SourceRef::Charge {
+                            index: caller(index),
+                        },
+                        EngineSourceRef::Skill { type_id } => SourceRef::Skill {
+                            type_id: i64::from(type_id),
+                        },
+                        EngineSourceRef::Projected { index } => SourceRef::Projected { index },
+                        EngineSourceRef::Buff { id } => SourceRef::Buff { id: i64::from(id) },
                     },
                     operator: serde_json::to_value(source.operator)
                         .ok()
