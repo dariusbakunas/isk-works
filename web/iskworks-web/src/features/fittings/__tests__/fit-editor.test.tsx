@@ -52,29 +52,68 @@ describe("Fittings › editor", () => {
     expect(screen.getByTestId("delta-ehp")).toHaveTextContent("+1,000");
   });
 
-  test("a module's state toggles without pressing Edit first, opening a draft", async () => {
+  test("outside editing, a module's state toggles and saves straight away, in order", async () => {
     const fetchSpy = stubFetch();
     renderPage(`/fittings/${FIT_ID}`);
 
     const table = await screen.findByRole("table", { name: "Modules" });
     const row = (name: RegExp) => within(table).getByRole("row", { name });
     const state = (name: RegExp) => within(row(name)).getByRole("button", { name: /^State:/ });
-    const sent = async (count: number) => {
-      await waitFor(() => expect(calls(fetchSpy, "/api/fittings/calculate")).toHaveLength(count));
-      return JSON.parse(String((calls(fetchSpy, "/api/fittings/calculate")[count - 1][1] as RequestInit).body)).fit.items;
+    const saved = async (count: number) => {
+      await waitFor(() => expect(calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT").length).toBeGreaterThanOrEqual(count));
+      const put = calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT")[count - 1];
+      return JSON.parse(String((put[1] as RequestInit).body)).items.map((item: { state: string }) => item.state);
     };
 
-    // Click: the microwarpdrive goes from active to online.
+    // Click turns the microwarpdrive off; shift-click overheats the gun;
+    // alt-click then takes the gun offline, each before the last save is back.
     fireEvent.click(await waitFor(() => state(/Microwarpdrive/)));
-    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
-    expect(bar).toHaveTextContent("1 unsaved change");
-    expect((await sent(1))[1].state).toBe("online");
-
-    // Shift-click overheats the gun; alt-click takes it offline.
+    expect(state(/Microwarpdrive/)).toHaveAccessibleName(/^State: Online/);
     fireEvent.click(state(/AutoCannon/), { shiftKey: true });
-    expect((await sent(2))[3].state).toBe("overload");
     fireEvent.click(state(/AutoCannon/), { altKey: true });
-    expect((await sent(3))[3].state).toBe("offline");
+
+    // No editor: no draft bar, no module browser.
+    expect(screen.queryByRole("region", { name: "Unsaved changes" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Module browser" })).toBeNull();
+
+    // Each save carries the changes before it.
+    expect((await saved(1))[1]).toBe("online");
+    expect((await saved(2)).slice(1, 4)).toEqual(["online", "active", "overload"]);
+    expect((await saved(3)).slice(1, 4)).toEqual(["online", "active", "offline"]);
+    expect(calls(fetchSpy, `/api/fittings/${FIT_ID}`, "PUT")).toHaveLength(3);
+    expect(calls(fetchSpy, "/api/fittings/calculate")).toHaveLength(0);
+  });
+
+  test("a mouse click on a state leaves no focus ring behind; the keyboard keeps focus", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const button = () =>
+      within(within(table).getByRole("row", { name: /AutoCannon/ })).getByRole("button", { name: /^State:/ });
+    const target = await waitFor(button);
+
+    target.focus();
+    fireEvent.click(target, { detail: 1, shiftKey: true });
+    expect(document.activeElement).not.toBe(button());
+
+    button().focus();
+    // Enter or Space on a focused button clicks with detail 0.
+    fireEvent.click(button(), { detail: 0 });
+    expect(document.activeElement).toBe(button());
+  });
+
+  test("a state toggle that fails to save goes back and says so", async () => {
+    stubFetch({ failSave: true });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const button = () =>
+      within(within(table).getByRole("row", { name: /Microwarpdrive/ })).getByRole("button", { name: /^State:/ });
+    fireEvent.click(await waitFor(button));
+
+    expect(await screen.findByText("Couldn't save the module state")).toBeInTheDocument();
+    expect(button()).toHaveAccessibleName(/^State: Active/);
   });
 
   test("saving puts the whole fit and leaves editing", async () => {

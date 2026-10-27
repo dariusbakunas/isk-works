@@ -317,6 +317,8 @@ export interface StubOptions {
   catalogue?: unknown;
   cost?: FitCostView;
   assets?: FitAssetsView;
+  /** Saving a fit (PUT) fails with a server error. */
+  failSave?: boolean;
 }
 
 /** The saved fit's stats with 1,000 more EHP: what an edit calculates. */
@@ -406,6 +408,9 @@ export function stubFetch(options: StubOptions = {}) {
     if (url.includes("/api/fittings/catalogue")) return json(options.catalogue ?? catalogueFor(url));
     if (url.includes("/api/types/search")) {
       return json([{ typeId: 34, typeName: "Tritanium", groupName: "Mineral", published: true }]);
+    }
+    if (url.includes(`/api/fittings/`) && method === "PUT" && options.failSave) {
+      return json({ title: "Server error" }, 500);
     }
     if (url.includes(`/api/fittings/`) && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}"));
