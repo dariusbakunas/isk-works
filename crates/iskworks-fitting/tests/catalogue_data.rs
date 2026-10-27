@@ -150,3 +150,23 @@ fn the_bustard_takes_medium_rigs_but_not_large_ones() {
     assert!(charges.contains(&"EMP S".to_string()), "{charges:?}");
     assert!(!charges.contains(&"EMP M".to_string()), "{charges:?}");
 }
+
+/// Not an assertion: how big the catalogue is and how long the editor's
+/// queries take. Run with `--release --nocapture`.
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn catalogue_query_timing() {
+    let catalogue = catalogue();
+    let bustard = entry("Bustard");
+    let gun = entry("200mm AutoCannon II");
+    let start = std::time::Instant::now();
+    let modules = catalogue.modules_for(&bustard, None, None).len();
+    let all_modules = start.elapsed();
+    let start = std::time::Instant::now();
+    let charges = catalogue.charges_for(&gun).len();
+    let charge_query = start.elapsed();
+    println!(
+        "catalogue: {} ships, {modules} modules fit the Bustard ({all_modules:?}), {charges} charges for the gun ({charge_query:?})",
+        catalogue.ships(None).len()
+    );
+}
