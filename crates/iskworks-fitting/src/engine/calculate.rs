@@ -76,7 +76,7 @@ impl EsfFittingEngine {
         profile: &DamageProfile,
     ) -> Result<FitCalculation, FittingError> {
         let (engine_fit, included, unknown_items) = self.engine_fit(fit, pilot, profile)?;
-        let calculation = esf_dogma_engine::calculate(
+        let mut calculation = esf_dogma_engine::calculate(
             &self.info,
             &engine_fit,
             &Options {
@@ -84,6 +84,7 @@ impl EsfFittingEngine {
                 validate: true,
             },
         );
+        self.apply_missing_effects(&engine_fit, &mut calculation, false);
 
         let included_items: Vec<&FitItem> =
             included.iter().map(|index| &fit.items[*index]).collect();
@@ -117,7 +118,7 @@ impl EsfFittingEngine {
             .attribute_name_to_id(attribute)
             .ok_or(FittingError::UnknownAttribute)?;
         let (engine_fit, included, _) = self.engine_fit(fit, pilot, profile)?;
-        let calculation = esf_dogma_engine::calculate(
+        let mut calculation = esf_dogma_engine::calculate(
             &self.info,
             &engine_fit,
             &Options {
@@ -125,6 +126,7 @@ impl EsfFittingEngine {
                 validate: false,
             },
         );
+        self.apply_missing_effects(&engine_fit, &mut calculation, true);
         let result = match target {
             ExplainTarget::Ship => &calculation.ship,
             ExplainTarget::Item(index) => included
@@ -278,6 +280,17 @@ impl EsfFittingEngine {
             .flatten()
             .filter_map(|effect| self.info.get_dogma_effect(effect.effect_id()))
             .any(|effect| effect.name() == name)
+    }
+
+    /// The id of the type's dogma effect of this name, if it has one.
+    pub(super) fn effect_id(&self, type_id: i32, name: &str) -> Option<i32> {
+        self.info
+            .get_dogma_effects(type_id)
+            .into_iter()
+            .flatten()
+            .filter_map(|effect| self.info.get_dogma_effect(effect.effect_id()))
+            .find(|effect| effect.name() == name)
+            .map(|effect| effect.id())
     }
 
     fn stats(&self, calculation: &Calculation, fit: &Fit, items: &[&FitItem]) -> FitStats {

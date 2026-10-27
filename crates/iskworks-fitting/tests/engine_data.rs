@@ -587,3 +587,100 @@ fn modules_headline_what_they_do() {
     );
     assert_close(gun.headline.unwrap().value, gun.dps, "gun headline");
 }
+
+/// A Devoter with its microwarpdrive running and two bubbles in `bubbles`.
+fn bubble_devoter(bubbles: [ModuleState; 2]) -> FitInput {
+    FitInput {
+        items: vec![
+            module(
+                "50MN Quad LiF Restrained Microwarpdrive",
+                SlotKind::Med,
+                0,
+                ModuleState::Active,
+            ),
+            module(
+                "Warp Disruption Field Generator II",
+                SlotKind::High,
+                0,
+                bubbles[0],
+            ),
+            module(
+                "Warp Disruption Field Generator II",
+                SlotKind::High,
+                1,
+                bubbles[1],
+            ),
+        ],
+        ..empty("Devoter")
+    }
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn an_active_bubble_blooms_the_signature_unpenalised_as_pyfa_does() {
+    let signature = |bubbles| {
+        calculate(&bubble_devoter(bubbles), &Pilot::AllV)
+            .stats
+            .targeting
+            .signature_radius
+    };
+    let idle = signature([ModuleState::Online, ModuleState::Online]);
+    // The microwarpdrive's +450% on the Devoter's 140 m.
+    assert_close(idle, 770.0, "bubbles online");
+    assert_close(
+        signature([ModuleState::Active, ModuleState::Online]),
+        idle * 1.5,
+        "one bubble",
+    );
+    // pyfa's 1.73k: each bubble's +50% in full.
+    assert_close(
+        signature([ModuleState::Active, ModuleState::Active]),
+        idle * 1.5 * 1.5,
+        "two bubbles",
+    );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn the_bubble_bloom_is_explained_per_bubble() {
+    let explained = explain(
+        &bubble_devoter([ModuleState::Active, ModuleState::Online]),
+        &Pilot::AllV,
+        ExplainTarget::Ship,
+        "signatureRadius",
+    );
+    assert_close(explained.value, 770.0 * 1.5, "explained value");
+    let bubbles: Vec<_> = explained
+        .sources
+        .iter()
+        .filter(|source| matches!(source.from, SourceRef::Item { index: 1 | 2 }))
+        .map(|source| {
+            (
+                source.from,
+                source.operator.as_str(),
+                source.value,
+                source.penalty,
+                source.applied,
+            )
+        })
+        .collect();
+    assert_eq!(
+        bubbles,
+        [
+            (
+                SourceRef::Item { index: 1 },
+                "post_percent",
+                50.0,
+                None,
+                true
+            ),
+            (
+                SourceRef::Item { index: 2 },
+                "post_percent",
+                50.0,
+                None,
+                false
+            ),
+        ]
+    );
+}
