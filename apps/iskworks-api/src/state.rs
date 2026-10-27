@@ -803,6 +803,9 @@ impl AppState {
         if let Some(holdings) = self.fit_asset_holdings.clone() {
             service = service.with_asset_holdings(holdings);
         }
+        if let Some(engine) = &self.fitting_engine {
+            service = service.with_catalogue(engine.catalogue());
+        }
         Ok(service)
     }
 

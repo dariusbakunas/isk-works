@@ -34,6 +34,7 @@ const DAMAGE_CONTROL: i64 = 2_048;
 const LARGE_RIG: i64 = 26_000;
 const SMALL_RIG: i64 = 31_000;
 const EMP_S: i64 = 185;
+const ARCH_ANGEL_EMP_S: i64 = 20979;
 const EMP_M: i64 = 186;
 const WARRIOR: i64 = 2_486;
 const GUNNERY: i64 = 3_300;
@@ -120,6 +121,11 @@ fn catalogue() -> FitCatalogue {
             large_rig,
             small_rig,
             charge(EMP_S, "EMP S", 1),
+            CatalogueEntry {
+                meta_group_id: Some(4),
+                variation_parent: Some(EMP_S),
+                ..charge(ARCH_ANGEL_EMP_S, "Arch Angel EMP S", 1)
+            },
             charge(EMP_M, "EMP M", 2),
             entry(WARRIOR, "Warrior II", CatalogueKind::Drone, None),
         ],
@@ -401,7 +407,12 @@ async fn charges_follow_the_module_and_drones_and_ships_list_by_name() {
         &format!("/api/fittings/catalogue?kind=charges&moduleTypeId={AUTOCANNON}"),
     )
     .await;
-    assert_eq!(names(&body), ["EMP S"]);
+    assert_eq!(names(&body), ["Arch Angel EMP S", "EMP S"]);
+    // A faction charge says what it is a variation of, for the charge menu.
+    let faction = &body["entries"][0];
+    assert_eq!(faction["metaGroupId"], 4);
+    assert_eq!(faction["variationParent"], EMP_S);
+    assert_eq!(body["entries"][1]["variationParent"], Value::Null);
     let (_, body) = get(app(true), "/api/fittings/catalogue?kind=drones").await;
     assert_eq!(names(&body), ["Warrior II"]);
     let (_, body) = get(app(true), "/api/fittings/catalogue?kind=ships&q=rif").await;

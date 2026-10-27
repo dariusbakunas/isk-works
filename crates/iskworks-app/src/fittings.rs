@@ -131,6 +131,10 @@ pub struct CatalogueItem {
     pub charge_size: Option<i64>,
     /// Market groups from the root down.
     pub market_path: Vec<String>,
+    /// Tech I, Tech II, Faction (4), …; `None` for most Tech I types.
+    pub meta_group_id: Option<i64>,
+    /// The type it is a variation of (a faction charge's Tech I one).
+    pub variation_parent: Option<i64>,
     /// For a character pilot, whether its skills cover the type's
     /// requirements; `None` for All V / All 0.
     pub can_use: Option<bool>,
@@ -181,6 +185,9 @@ pub struct FitItemView {
     pub name: Option<String>,
     pub group_name: Option<String>,
     pub charge_name: Option<String>,
+    /// It loads charges (a gun, a launcher, a booster); false when the
+    /// engine data isn't loaded.
+    pub loads_charges: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -224,6 +231,9 @@ pub struct FittingService {
     skill_plans: Option<Arc<dyn SkillPlanRepository>>,
     market: Option<Arc<dyn MarketRepository>>,
     holdings: Option<Arc<dyn AssetHoldingsRepository>>,
+    /// The engine's catalogue, for what fitted items can do; absent when
+    /// the engine data didn't load.
+    catalogue: Option<Arc<FitCatalogue>>,
 }
 
 /// A character's synced skills, when it has them.
@@ -297,6 +307,7 @@ impl FittingService {
             skill_plans: None,
             market: None,
             holdings: None,
+            catalogue: None,
         }
     }
 
@@ -325,6 +336,13 @@ impl FittingService {
     #[must_use]
     pub fn with_asset_holdings(mut self, holdings: Arc<dyn AssetHoldingsRepository>) -> Self {
         self.holdings = Some(holdings);
+        self
+    }
+
+    /// The engine's catalogue: marks the items that load charges.
+    #[must_use]
+    pub fn with_catalogue(mut self, catalogue: Arc<FitCatalogue>) -> Self {
+        self.catalogue = Some(catalogue);
         self
     }
 
@@ -525,6 +543,8 @@ impl FittingService {
                     .market_group_id
                     .map(|id| catalogue.market_path(id))
                     .unwrap_or_default(),
+                meta_group_id: entry.meta_group_id,
+                variation_parent: entry.variation_parent,
                 // Prerequisites are trained before a skill, so the direct
                 // requirements decide it, at active levels.
                 can_use: snapshot.as_ref().map(|snapshot| {
@@ -865,7 +885,11 @@ impl FittingService {
                 Ok(FitTextPreview {
                     fit: Some(FitPreview {
                         name: parsed.name.unwrap_or_else(|| default_name(&ship)),
-                        items: item_views(&references, &parsed.fit.items),
+                        items: item_views(
+                            &references,
+                            Some(&engine.catalogue()),
+                            &parsed.fit.items,
+                        ),
                         ship,
                     }),
                     unknown_lines: Vec::new(),
@@ -949,7 +973,7 @@ impl FittingService {
         Ok(FitDetail {
             id: fit.id,
             ship: fit_type(&references, fit.ship_type_id),
-            items: item_views(&references, &fit.items),
+            items: item_views(&references, self.catalogue.as_deref(), &fit.items),
             name: fit.name,
             description: fit.description,
             created_at: fit.created_at,
@@ -967,7 +991,11 @@ fn fit_type(references: &BTreeMap<i64, TypeReference>, type_id: i64) -> FitType 
     }
 }
 
-fn item_views(references: &BTreeMap<i64, TypeReference>, items: &[FitItem]) -> Vec<FitItemView> {
+fn item_views(
+    references: &BTreeMap<i64, TypeReference>,
+    catalogue: Option<&FitCatalogue>,
+    items: &[FitItem],
+) -> Vec<FitItemView> {
     items
         .iter()
         .map(|item| {
@@ -978,6 +1006,9 @@ fn item_views(references: &BTreeMap<i64, TypeReference>, items: &[FitItem]) -> V
                 charge_name: item
                     .charge_type_id
                     .and_then(|charge| fit_type(references, charge).name),
+                loads_charges: catalogue
+                    .and_then(|catalogue| catalogue.entry(item.type_id))
+                    .is_some_and(|entry| !entry.charge_groups.is_empty()),
                 item: item.clone(),
             }
         })

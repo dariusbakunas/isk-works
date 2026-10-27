@@ -90,6 +90,8 @@ export interface FitItemView extends FitItem {
   name: string | null;
   groupName: string | null;
   chargeName: string | null;
+  /** It loads charges; absent on items added in the editor until saved. */
+  loadsCharges?: boolean;
 }
 
 /** Mirrors `iskworks_core::fitting::FlyabilityStatus`. */
@@ -438,6 +440,10 @@ export interface CatalogueItem {
   chargeSize: number | null;
   /** Market groups from the root down. */
   marketPath: string[];
+  /** Tech I, Tech II, Faction (4), …; `null` for most Tech I types. */
+  metaGroupId: number | null;
+  /** The type it is a variation of (a faction charge's Tech I one). */
+  variationParent: number | null;
   /** For a character pilot, whether it has the skills; `null` for All V / All 0. */
   canUse: boolean | null;
 }
