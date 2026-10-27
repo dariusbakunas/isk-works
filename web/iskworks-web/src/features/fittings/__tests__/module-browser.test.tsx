@@ -95,11 +95,11 @@ describe("Fittings › module browser", () => {
 
     fireEvent.click(within(browser).getByRole("tab", { name: "Drones" }));
     fireEvent.click(await within(browser).findByRole("button", { name: "Add Hobgoblin II" }));
-    expect(within(table()).getByRole("row", { name: /Hobgoblin II/ })).toHaveTextContent("6 × Hobgoblin II");
+    expect(within(table()).getByRole("spinbutton", { name: "Quantity of Hobgoblin II" })).toHaveValue(6);
 
     fireEvent.click(within(browser).getByRole("tab", { name: "Cargo" }));
     fireEvent.change(within(browser).getByRole("searchbox", { name: "Search items" }), { target: { value: "trit" } });
     fireEvent.click(await within(browser).findByRole("button", { name: "Add Tritanium" }));
-    expect(within(table()).getByRole("row", { name: /Tritanium/ })).toHaveTextContent("1 × Tritanium");
+    expect(within(table()).getByRole("spinbutton", { name: "Quantity of Tritanium" })).toHaveValue(1);
   });
 });

@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, CircleDot, Flame, Lock } from "lucide-react";
+import { Circle, CircleCheck, CircleDot, Flame, Lock, MoreHorizontal } from "lucide-react";
 
 import type {
   FitItemView,
@@ -8,6 +8,7 @@ import type {
   ModuleState,
   SlotKind,
 } from "../../api/fittings";
+import { DropdownMenu } from "../../components/dropdown-menu";
 import { EveTypeImage } from "../../components/eve-type-image";
 import {
   OperationalTable,
@@ -111,6 +112,11 @@ export interface ModuleTableEditor {
   onSelect: (index: number) => void;
   /** A browser module dropped on a slot (a module's or an empty one). */
   onDrop: (type: DraggedType, kind: SlotKind, slotIndex: number) => void;
+  onRemove: (index: number) => void;
+  onFillRack: (index: number) => void;
+  onUnloadCharge: (index: number) => void;
+  onVariations: (index: number) => void;
+  onQuantity: (index: number, quantity: number) => void;
 }
 
 function ModuleRow({
@@ -152,7 +158,25 @@ function ModuleRow({
         module: (
           <span className="flex min-w-0 items-center gap-1.5">
             <EveTypeImage size={24} typeId={item.typeId} typeName={name} />
-            <span className="truncate">{stack ? `${item.quantity.toLocaleString("en-US")} × ${name}` : name}</span>
+            {stack && editor ? (
+              <span className="flex min-w-0 items-center gap-1">
+                <input
+                  aria-label={`Quantity of ${name}`}
+                  className="iw-input w-16 py-0 text-right font-mono text-xs"
+                  min={1}
+                  onChange={(event) => {
+                    const quantity = Number(event.target.value);
+                    if (Number.isFinite(quantity) && quantity >= 1) editor.onQuantity(index, quantity);
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                  type="number"
+                  value={item.quantity}
+                />
+                <span className="truncate">× {name}</span>
+              </span>
+            ) : (
+              <span className="truncate">{stack ? `${item.quantity.toLocaleString("en-US")} × ${name}` : name}</span>
+            )}
             {blocked ? (
               <span aria-label="This pilot can't use it" className="text-warning" role="img" title="This pilot can't use it">
                 <Lock aria-hidden="true" className="h-3 w-3" />
@@ -162,6 +186,28 @@ function ModuleRow({
               <Chip key={`${violation.rule}-${position}`} tone="danger">{violationLabel(violation)}</Chip>
             ))}
             {unknown ? <Chip tone="muted">Unknown to stats engine</Chip> : null}
+            {editor ? (
+              <span className="ml-auto shrink-0">
+                <DropdownMenu
+                  icon={<MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />}
+                  items={[
+                    ...(stack
+                      ? []
+                      : [
+                          { key: "variations", label: "Variations…", onSelect: () => editor.onVariations(index) },
+                          { key: "fill", label: "Fill rack with this module", onSelect: () => editor.onFillRack(index) },
+                        ]),
+                    ...(item.chargeTypeId !== null
+                      ? [{ key: "unload", label: "Unload charge", onSelect: () => editor.onUnloadCharge(index) }]
+                      : []),
+                    { key: "remove", label: "Remove", onSelect: () => editor.onRemove(index) },
+                  ]}
+                  label={`Actions for ${name}`}
+                  portal
+                  variant="icon"
+                />
+              </span>
+            ) : null}
           </span>
         ),
         charge: item.chargeName ? <span className="truncate text-muted">{item.chargeName}</span> : null,

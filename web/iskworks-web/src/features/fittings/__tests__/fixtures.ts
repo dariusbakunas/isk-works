@@ -277,6 +277,15 @@ const catalogueItem = (typeId: number, name: string, overrides: Partial<Catalogu
 
 /** What the module browser's catalogue searches answer, by kind. */
 export function catalogueFor(url: string): CatalogueView {
+  if (url.includes("/catalogue/variations")) {
+    return {
+      entries: [
+        catalogueItem(2881, "200mm AutoCannon I", { slot: "high", marketPath: ["Ship Equipment", "Turrets", "Projectile"] }),
+        catalogueItem(2873, "200mm AutoCannon II", { slot: "high", marketPath: ["Ship Equipment", "Turrets", "Projectile"] }),
+      ],
+      truncated: false,
+    };
+  }
   const params = new URL(url, "http://localhost").searchParams;
   const pilot = params.get("pilot");
   const canUse = (value: boolean) => (pilot && pilot !== "allV" && pilot !== "allZero" ? value : null);

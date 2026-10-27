@@ -23,13 +23,18 @@ import {
   addToFreeSlot,
   cycleState,
   draftFrom,
+  fillRack,
   placeAt,
+  removeItem,
+  replaceType,
   setCharge,
+  setQuantity,
   setState,
   toFitDraft,
   type RackSizes,
 } from "./fit-draft";
 import { ModuleBrowser, type DraggedType } from "./module-browser";
+import { VariationsDialog } from "./variations-dialog";
 import { ModuleTable } from "./module-table";
 import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
@@ -297,6 +302,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [variationsFor, setVariationsFor] = useState<number | null>(null);
   const items = editor.draft?.items ?? fit.items;
   const racks: RackSizes | null = statsView
     ? {
@@ -368,6 +374,17 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                     selectedIndex,
                     onSelect: setSelectedIndex,
                     onDrop: drop,
+                    onRemove: (index) => {
+                      editor.setDraft((draft) => removeItem(draft, index));
+                      setSelectedIndex(null);
+                    },
+                    onFillRack: (index) => {
+                      const item = items[index];
+                      if (racks && item) editor.setDraft((draft) => fillRack(draft, { typeId: item.typeId, name: item.name ?? "" }, item.slotKind, racks));
+                    },
+                    onUnloadCharge: (index) => editor.setDraft((draft) => setCharge(draft, index, null)),
+                    onVariations: setVariationsFor,
+                    onQuantity: (index, quantity) => editor.setDraft((draft) => setQuantity(draft, index, quantity)),
                     onCycleState: (index) =>
                       editor.setDraft((draft) =>
                         setState(
@@ -393,6 +410,18 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         />
       </div>
       {editor.editing ? <EditBar editor={editor} /> : null}
+      {variationsFor !== null && items[variationsFor] ? (
+        <VariationsDialog
+          item={items[variationsFor]}
+          onClose={() => setVariationsFor(null)}
+          onPick={(entry) => {
+            const index = variationsFor;
+            editor.setDraft((draft) => replaceType(draft, index, entry));
+            setVariationsFor(null);
+          }}
+          pilot={pilot}
+        />
+      ) : null}
     </div>
   );
 }
