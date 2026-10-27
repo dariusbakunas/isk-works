@@ -57,6 +57,75 @@ Hobgoblin II x5
 Nanite Repair Paste x100
 ";
 
+/// A carrier fit as the client copied it (2026-10-27): fighters, implants,
+/// cargo, and sections separated by lines holding one space.
+const THANATOS: &str = "[Thanatos, GSF - TigersClaw - DPS - V25.1]
+Reactive Armor Hardener
+Drone Damage Amplifier II
+Dark Blood Multispectrum Energized Membrane
+Dark Blood Multispectrum Energized Membrane
+25000mm Steel Plates II
+25000mm Steel Plates II
+
+50000MN Cold-Gas Enduring Microwarpdrive
+Drone Navigation Computer II
+Drone Navigation Computer II
+Omnidirectional Tracking Link II
+Capital Capacitor Booster I
+
+Large Plasma Smartbomb II
+Heavy Energy Neutralizer II
+Fighter Support Unit II
+Fighter Support Unit II
+Integrated Sensor Array
+
+Capital Trimark Armor Pump I
+Capital Trimark Armor Pump I
+Capital Trimark Armor Pump I
+
+
+Gram I x12
+Gram I x12
+Templar I x9
+Templar I x9
+Templar I x9
+Templar I x9
+Templar I x9
+Dromi I x3
+Dromi I x3
+Siren I x3
+Siren I x3
+
+
+Mid-grade Amulet Alpha
+Mid-grade Amulet Beta
+Mid-grade Amulet Gamma
+Mid-grade Amulet Delta
+Mid-grade Amulet Epsilon
+Eifyr and Co. 'Rogue' High Speed Maneuvering HS-903
+Inherent Implants 'Noble' Hull Upgrades HG-1003
+
+
+ECCM Script x2
+Scan Resolution Script x2
+Targeting Range Script x2
+Optimal Range Script x2
+Tracking Speed Script x2
+Omnidirectional Tracking Link II x1
+Heavy Energy Neutralizer II x3
+Sensor Booster II x2
+Ship Scanner II x1
+Large Plasma Smartbomb II x3
+Heavy Stasis Grappler II x1
+Republic Fleet Target Painter x1
+Warp Disruptor II x1
+Warp Scrambler II x1
+Gravimetric ECM II x2
+Ladar ECM II x2
+Magnetometric ECM II x2
+Radar ECM II x2
+";
+
 fn type_id(name: &str) -> i64 {
     engine()
         .type_id(name)
@@ -248,4 +317,29 @@ fn an_export_writes_only_the_state_suffix_the_client_knows() {
             .any(|line| line == "Damage Control II /OFFLINE"),
         "{exported}"
     );
+}
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn blank_lines_holding_a_space_still_separate_sections() {
+    let text: String = THANATOS
+        .lines()
+        .map(|line| if line.is_empty() { " " } else { line })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let fit = engine().parse_eft(&text).unwrap().fit;
+
+    assert_eq!(rack(&fit, SlotKind::Low).len(), 6);
+    assert_eq!(rack(&fit, SlotKind::Rig).len(), 3);
+    assert_eq!(rack(&fit, SlotKind::Implant).len(), 7);
+    // Fighters launch into the tubes on import, the rest stay in the bay.
+    let grams: u32 = fit
+        .items
+        .iter()
+        .filter(|stack| stack.type_id == type_id("Gram I"))
+        .map(|stack| stack.quantity)
+        .sum();
+    assert_eq!(grams, 24);
+    let ecm = find(&fit, "Radar ECM II");
+    assert_eq!((ecm.slot_kind, ecm.quantity), (SlotKind::Cargo, 2));
 }
