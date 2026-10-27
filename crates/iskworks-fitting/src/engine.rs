@@ -2,15 +2,17 @@
 
 mod attributes;
 mod calculate;
+mod catalogue;
 mod eft;
 
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 
 use esf_data::{eve, InfoSde, Sde};
 use iskworks_core::fitting::{
-    AttributeExplanation, DamageProfile, EftError, ExplainTarget, FitCalculation, FitInput,
-    FittingEngine, FittingEngineInfo, FittingError, ParsedFit, Pilot,
+    AttributeExplanation, DamageProfile, EftError, ExplainTarget, FitCalculation, FitCatalogue,
+    FitInput, FittingEngine, FittingEngineInfo, FittingError, ParsedFit, Pilot,
 };
 
 use crate::DataLock;
@@ -32,6 +34,8 @@ pub enum FittingLoadError {
     },
     /// The data has no attribute of this name; the stats mapping needs it.
     MissingAttribute(&'static str),
+    /// The data has no effect of this name; the catalogue needs it.
+    MissingEffect(&'static str),
 }
 
 impl fmt::Display for FittingLoadError {
@@ -50,6 +54,9 @@ impl fmt::Display for FittingLoadError {
             Self::MissingAttribute(name) => {
                 write!(f, "the fitting engine data has no attribute {name}")
             }
+            Self::MissingEffect(name) => {
+                write!(f, "the fitting engine data has no effect {name}")
+            }
         }
     }
 }
@@ -62,6 +69,7 @@ pub struct EsfFittingEngine {
     item_attributes: ItemAttributes,
     /// Every published skill, for an All V pilot.
     skills: Vec<i32>,
+    catalogue: Arc<FitCatalogue>,
     engine_info: FittingEngineInfo,
 }
 
@@ -82,6 +90,10 @@ impl EsfFittingEngine {
 
         let attributes = StatAttributes::resolve(&sde)?;
         let item_attributes = ItemAttributes::resolve(&sde)?;
+        let catalogue = Arc::new(catalogue::build(
+            &eve::root_as_sde(bytes)
+                .map_err(|error| FittingLoadError::Invalid(error.to_string()))?,
+        )?);
         let skills = sde
             .types()
             .filter(|ty| ty.published() && ty.category_id() == SKILL_CATEGORY_ID)
@@ -99,6 +111,7 @@ impl EsfFittingEngine {
             attributes,
             item_attributes,
             skills,
+            catalogue,
             engine_info,
         })
     }
@@ -125,6 +138,10 @@ impl EsfFittingEngine {
 impl FittingEngine for EsfFittingEngine {
     fn info(&self) -> FittingEngineInfo {
         self.engine_info()
+    }
+
+    fn catalogue(&self) -> Arc<FitCatalogue> {
+        Arc::clone(&self.catalogue)
     }
 
     fn parse_eft(&self, text: &str) -> Result<ParsedFit, EftError> {

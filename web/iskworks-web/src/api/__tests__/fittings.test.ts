@@ -5,10 +5,12 @@ import {
   explainFitAttribute,
   exportFitText,
   getFitPilots,
+  getFitVariations,
   getFitStats,
   getFittingsMeta,
   importFitText,
   listFits,
+  searchFitCatalogue,
   updateFit,
 } from "../fittings";
 import { ApiError } from "../workspace";
@@ -114,5 +116,21 @@ test("an explanation asks for the target and attribute", async () => {
   expect(fetch.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
     "/api/fittings/f1/explain?target=ship&attribute=cpuOutput",
     "/api/fittings/f1/explain?target=2&attribute=maxRange&pilot=allZero",
+  ]);
+});
+
+test("catalogue searches name their kind and only the parameters given", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ entries: [], truncated: false }), { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+
+  await searchFitCatalogue({ kind: "modules", shipTypeId: 587, slot: "high" }, { q: " auto ", pilot: "c1" });
+  await searchFitCatalogue({ kind: "charges", moduleTypeId: 2873 });
+  await searchFitCatalogue({ kind: "drones" }, { q: "  " });
+  await getFitVariations(2873);
+  expect(fetch.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
+    "/api/fittings/catalogue?kind=modules&shipTypeId=587&slot=high&q=auto&pilot=c1",
+    "/api/fittings/catalogue?kind=charges&moduleTypeId=2873",
+    "/api/fittings/catalogue?kind=drones",
+    "/api/fittings/catalogue/variations?typeId=2873",
   ]);
 });

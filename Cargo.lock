@@ -1649,6 +1649,7 @@ dependencies = [
  "esf-data",
  "esf-dogma-engine",
  "esf-format",
+ "flatbuffers",
  "iskworks-core",
  "serde_json",
 ]

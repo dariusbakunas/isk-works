@@ -174,6 +174,10 @@ fn loaded_autocannon() -> FitItem {
 struct FakeEngine;
 
 impl FittingEngine for FakeEngine {
+    fn catalogue(&self) -> std::sync::Arc<iskworks_core::fitting::FitCatalogue> {
+        std::sync::Arc::default()
+    }
+
     fn info(&self) -> FittingEngineInfo {
         FittingEngineInfo {
             data_version: "13.3650286.0".to_string(),
