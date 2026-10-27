@@ -1,10 +1,13 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::{
-    build_asset_hierarchy, AssetBlueprintSummary, AssetBrowserFacets, AssetBrowserFilters,
-    AssetBrowserItem, AssetBrowserQuery, AssetBrowserSummary, AssetFilterOption, AssetLocationPage,
+    build_asset_hierarchy,
+    fitting::{AssetHolding, AssetHoldingsRepository},
+    AssetBlueprintSummary, AssetBrowserFacets, AssetBrowserFilters, AssetBrowserItem,
+    AssetBrowserQuery, AssetBrowserSummary, AssetFilterOption, AssetLocationPage,
     AssetLocationSummary, AssetReconciliationSummary, AssetSortColumn, AssetSyncState,
-    FlatAssetCursor, FlatAssetPage, FlatAssetRow, InventoryError, ValidatedFlatAssetQuery,
-    WorkspaceId,
+    ConnectedCharacterId, FlatAssetCursor, FlatAssetPage, FlatAssetRow, InventoryError,
+    ValidatedFlatAssetQuery, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -1128,6 +1131,76 @@ fn map_error(error: sqlx::Error) -> InventoryError {
     InventoryError::Persistence(error.to_string())
 }
 
+/// What each character holds of some types, per effective location (a
+/// station, a structure, a system), blueprint copies left out.
+#[async_trait]
+impl AssetHoldingsRepository for PgAssetBrowserRepository {
+    async fn type_holdings(
+        &self,
+        workspace_id: WorkspaceId,
+        type_ids: &[i64],
+    ) -> Result<Vec<AssetHolding>, InventoryError> {
+        let rows = sqlx::query_as::<_, (Uuid, String, i64, String, i64, i64)>(
+            r#"WITH held AS (
+                 SELECT asset.connection_id,
+                        MIN(asset.character_name) AS character_name,
+                        asset.effective_location_id,
+                        MIN(asset.effective_location_type) AS effective_location_type,
+                        asset.type_id,
+                        SUM(asset.quantity)::bigint AS quantity
+                 FROM asset_browser_current asset
+                 WHERE asset.workspace_id=$1
+                   AND asset.type_id=ANY($2)
+                   AND asset.is_blueprint_copy IS NOT TRUE
+                 GROUP BY asset.connection_id,asset.effective_location_id,asset.type_id
+               )
+               SELECT held.connection_id,
+                      held.character_name,
+                      held.effective_location_id,
+                      COALESCE(location.location_name,station.name_en,system.name_en,
+                        CASE held.effective_location_type
+                          WHEN 'station' THEN 'Station '||held.effective_location_id::text
+                          WHEN 'solar_system' THEN 'Solar system '||held.effective_location_id::text
+                          ELSE initcap(replace(held.effective_location_type,'_',' '))||' '||held.effective_location_id::text
+                        END) AS location_name,
+                      held.type_id,
+                      held.quantity
+               FROM held
+               LEFT JOIN sde_imports import ON import.active
+               LEFT JOIN market_location_names location
+                 ON location.workspace_id=$1
+                AND location.location_id=held.effective_location_id
+               LEFT JOIN sde_npc_stations station
+                 ON station.import_id=import.id
+                AND station.station_id=held.effective_location_id
+               LEFT JOIN sde_solar_systems system
+                 ON system.import_id=import.id
+                AND system.solar_system_id=CASE WHEN held.effective_location_type='solar_system'
+                                                THEN held.effective_location_id END"#,
+        )
+        .bind(workspace_id.0)
+        .bind(type_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(connection_id, character_name, location_id, location_name, type_id, quantity)| {
+                    AssetHolding {
+                        connection_id: ConnectedCharacterId(connection_id),
+                        character_name,
+                        location_id,
+                        location_name,
+                        type_id,
+                        quantity,
+                    }
+                },
+            )
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1372,5 +1445,27 @@ mod tests {
             rows.iter().map(|row| row.quantity).collect::<Vec<_>>(),
             vec![27_075, 1, 1]
         );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+    async fn type_holdings_sum_each_type_per_character_and_station(pool: PgPool) {
+        let (workspace_id, connection_id) = seed_flat_assets(&pool).await;
+        let holdings = PgAssetBrowserRepository::new(pool)
+            .type_holdings(workspace_id, &[34, 587])
+            .await
+            .expect("holdings load");
+
+        // The Tritanium sits in a container, so it counts at the station.
+        assert_eq!(holdings.len(), 1);
+        let tritanium = &holdings[0];
+        assert_eq!(tritanium.connection_id.0, connection_id);
+        assert_eq!(tritanium.character_name, "Valka");
+        assert_eq!(tritanium.location_id, 60_003_760);
+        assert_eq!(
+            tritanium.location_name,
+            "Jita IV - Moon 4 - Caldari Navy Assembly Plant"
+        );
+        assert_eq!((tritanium.type_id, tritanium.quantity), (34, 27_075));
     }
 }
