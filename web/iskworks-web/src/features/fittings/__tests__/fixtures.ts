@@ -9,6 +9,7 @@ import type {
   FitCostLine,
   FitCostView,
   FitDetail,
+  FitItem,
   FitItemView,
   FitPilot,
   FitStats,
@@ -95,7 +96,7 @@ export function fitDetail(): FitDetail {
       item(),
       item({ typeId: 5975, slotKind: "med", slotIndex: 0, state: "active", name: "50MN Y-T8 Compact Microwarpdrive", groupName: "Propulsion Module" }),
       item({ typeId: 12058, slotKind: "med", slotIndex: 1, state: "active", name: "10MN Afterburner II", groupName: "Propulsion Module" }),
-      item({ typeId: 2873, slotKind: "high", slotIndex: 0, state: "active", chargeTypeId: 185, chargeName: "EMP S", name: "200mm AutoCannon II", groupName: "Projectile Weapon" }),
+      item({ typeId: 2873, slotKind: "high", slotIndex: 0, state: "active", chargeTypeId: 185, chargeName: "EMP S", name: "200mm AutoCannon II", groupName: "Projectile Weapon", loadsCharges: true }),
       item({ typeId: 2456, slotKind: "drone_bay", slotIndex: null, quantity: 5, state: "active", name: "Hobgoblin II", groupName: "Combat Drone" }),
       item({ typeId: 28668, slotKind: "cargo", slotIndex: null, quantity: 100, state: "offline", name: "Nanite Repair Paste", groupName: "Nanite Repair Paste" }),
     ],
@@ -340,6 +341,8 @@ const catalogueItem = (typeId: number, name: string, overrides: Partial<Catalogu
   rigSize: null,
   chargeSize: null,
   marketPath: ["Ship Equipment", "Hull & Armor", "Damage Controls"],
+  metaGroupId: null,
+  variationParent: null,
   canUse: null,
   ...overrides,
 });
@@ -362,8 +365,10 @@ export function catalogueFor(url: string): CatalogueView {
     case "charges":
       return {
         entries: [
-          catalogueItem(186, "Phased Plasma S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
-          catalogueItem(185, "EMP S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
+          catalogueItem(12608, "Hail S", { kind: "charge", slot: null, metaGroupId: 2, variationParent: 186, marketPath: ["Ammunition", "Advanced Autocannon Ammo", "Small"] }),
+          catalogueItem(20979, "Republic Fleet EMP S", { kind: "charge", slot: null, metaGroupId: 4, variationParent: 185, marketPath: ["Ammunition", "Faction Ammo", "Small"] }),
+          catalogueItem(186, "Phased Plasma S", { kind: "charge", slot: null, metaGroupId: 1, marketPath: ["Ammunition", "Standard Ammo", "Small"] }),
+          catalogueItem(185, "EMP S", { kind: "charge", slot: null, metaGroupId: 1, marketPath: ["Ammunition", "Standard Ammo", "Small"] }),
         ],
         truncated: false,
       };
@@ -396,8 +401,26 @@ export function catalogueFor(url: string): CatalogueView {
   }
 }
 
+const CHARGE_NAMES: Record<number, string> = { 185: "EMP S", 186: "Phased Plasma S", 12608: "Hail S", 20979: "Republic Fleet EMP S" };
+
+/** Items as saved, with the names the API would add back. */
+function savedItems(before: FitItemView[], items: FitItem[]): FitItemView[] {
+  return items.map((item) => {
+    const known = before.find((entry) => entry.typeId === item.typeId);
+    return {
+      ...item,
+      name: known?.name ?? null,
+      groupName: known?.groupName ?? null,
+      chargeName: item.chargeTypeId === null ? null : (CHARGE_NAMES[item.chargeTypeId] ?? null),
+      loadsCharges: known?.loadsCharges,
+    };
+  });
+}
+
 /** Answers every Fittings request from the fixtures, recording the calls. */
 export function stubFetch(options: StubOptions = {}) {
+  // The fit as last saved: a PUT is what the next read answers, as the API does.
+  let saved = fitDetail();
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -414,7 +437,8 @@ export function stubFetch(options: StubOptions = {}) {
     }
     if (url.includes(`/api/fittings/`) && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}"));
-      return json({ ...fitDetail(), name: body.name });
+      saved = { ...saved, name: body.name, items: savedItems(saved.items, body.items ?? []) };
+      return json(saved);
     }
     if (url.endsWith("/api/characters")) return json(characters());
     if (url.endsWith("/api/fittings") && method === "GET") return json(options.fits ?? fits());
@@ -433,7 +457,7 @@ export function stubFetch(options: StubOptions = {}) {
     if (url.includes("/skill-plan")) return json({ id: "plan-1", name: "Fit: Null Transport", description: "", entries: [] }, 201);
     if (url.includes("/export")) return new Response("[Bustard, Null Transport]\n", { status: 200 });
     if (url.includes(`/api/fittings/`) && method === "DELETE") return new Response(null, { status: 204 });
-    if (url.includes(`/api/fittings/`)) return json(fitDetail());
+    if (url.includes(`/api/fittings/`)) return json(saved);
     return new Response("not stubbed", { status: 404 });
   });
 }

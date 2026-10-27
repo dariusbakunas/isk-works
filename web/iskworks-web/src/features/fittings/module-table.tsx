@@ -6,8 +6,10 @@ import type {
   FitViolation,
   ItemStats,
   ModuleState,
+  PilotChoice,
   SlotKind,
 } from "../../api/fittings";
+import { ChargePicker } from "./charge-picker";
 import type { StateToggle } from "./fit-draft";
 import { DropdownMenu } from "../../components/dropdown-menu";
 import { EveTypeImage } from "../../components/eve-type-image";
@@ -117,6 +119,13 @@ function Chip({ children, tone }: { children: string; tone: "danger" | "muted" }
   return <span className={`shrink-0 rounded-[2px] border px-1 py-px text-[0.625rem] ${classes}`}>{children}</span>;
 }
 
+/** Picking a module's charge from its row; it works outside editing too. */
+export interface ModuleTableCharges {
+  /** Whose skills mark the charges a pilot can't use. */
+  pilot: PilotChoice;
+  onPick: (index: number, charge: { typeId: number; name: string } | null) => void;
+}
+
 /** What the table offers while the fit is being edited. */
 export interface ModuleTableEditor {
   /** The row picked (for its charges in the browser). */
@@ -148,6 +157,7 @@ function ModuleRow({
   violations,
   editor,
   onToggleState,
+  charges,
 }: {
   index: number;
   item: FitItemView;
@@ -159,6 +169,7 @@ function ModuleRow({
   violations: FitViolation[];
   editor?: ModuleTableEditor;
   onToggleState?: (index: number, toggle: StateToggle) => void;
+  charges?: ModuleTableCharges;
 }) {
   const name = item.name ?? `Type ${item.typeId}`;
   const stack = item.slotKind === "drone_bay" || item.slotKind === "cargo" || item.slotKind === "fighter_bay";
@@ -240,7 +251,19 @@ function ModuleRow({
             ) : null}
           </span>
         ),
-        charge: item.chargeName ? <span className="truncate text-muted">{item.chargeName}</span> : null,
+        charge:
+          charges && item.loadsCharges ? (
+            <ChargePicker
+              chargeName={item.chargeName}
+              chargeTypeId={item.chargeTypeId}
+              moduleName={name}
+              moduleTypeId={item.typeId}
+              onPick={(charge) => charges.onPick(index, charge)}
+              pilot={charges.pilot}
+            />
+          ) : item.chargeName ? (
+            <span className="truncate text-muted">{item.chargeName}</span>
+          ) : null,
         cpu: stats && stats.cpu ? formatStat(stats.cpu, 1) : dash,
         pg: stats && stats.powergrid ? formatStat(stats.powergrid, 1) : dash,
         range:
@@ -266,6 +289,7 @@ export function ModuleTable({
   prices = null,
   editor,
   onToggleState,
+  charges,
 }: {
   items: FitItemView[];
   /** Index-parallel to `items`; `null` hides calculated values. */
@@ -277,6 +301,7 @@ export function ModuleTable({
   editor?: ModuleTableEditor;
   /** A click on a module's state; it works outside editing too. */
   onToggleState?: (index: number, toggle: StateToggle) => void;
+  charges?: ModuleTableCharges;
 }) {
   const indexed = items.map((item, index) => ({ item, index }));
   const blocked = new Set(stats?.flyability?.blockedItems ?? []);
@@ -291,6 +316,7 @@ export function ModuleTable({
       editor={editor}
       index={index}
       onToggleState={onToggleState}
+      charges={charges}
       item={item}
       key={`item-${index}`}
       stats={stats?.items[index] ?? null}

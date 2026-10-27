@@ -420,6 +420,14 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
                   }
                 : undefined
             }
+            charges={{
+              pilot,
+              onPick: (index, charge) => {
+                // In the editor it is part of the draft; outside, it saves.
+                if (editor.editing) editor.setDraft((draft) => setCharge(draft, index, charge));
+                else quick.change((current) => setCharge({ ...draftFrom(fit), items: current }, index, charge).items);
+              },
+            }}
             onToggleState={(index, toggle) => {
               const change = (draft: Draft) =>
                 setState(
