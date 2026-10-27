@@ -298,6 +298,13 @@ export function catalogueFor(url: string): CatalogueView {
         ],
         truncated: false,
       };
+    case "ships":
+      return {
+        entries: [
+          catalogueItem(587, "Rifter", { kind: "ship", slot: null, cpu: 0, powergrid: 0, marketPath: ["Ships", "Frigates"] }),
+        ],
+        truncated: false,
+      };
     case "drones":
       return {
         entries: [catalogueItem(2456, "Hobgoblin II", { kind: "drone", slot: null, marketPath: ["Drones", "Combat Drones"] })],

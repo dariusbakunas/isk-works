@@ -1,6 +1,6 @@
 import { ChevronLeft, CircleCheck, CircleHelp, CircleX, Copy, CopyPlus, Pencil, Trash2, type LucideIcon } from "lucide-react";
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
 import {
   createFit,
@@ -303,6 +303,21 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [variationsFor, setVariationsFor] = useState<number | null>(null);
+  const [params, setParams] = useSearchParams();
+
+  // A new fit arrives with ?edit=1: open it straight into the editor.
+  useEffect(() => {
+    if (params.get("edit") !== "1") return;
+    if (!editor.editing) editor.start();
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("edit");
+        return next;
+      },
+      { replace: true },
+    );
+  }, []);
   const items = editor.draft?.items ?? fit.items;
   const racks: RackSizes | null = statsView
     ? {
