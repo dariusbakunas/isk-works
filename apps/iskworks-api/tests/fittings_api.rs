@@ -7,9 +7,10 @@ use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_core::fitting::{
-    AttributeExplanation, DamageProfile, EftError, EftLine, ExplainTarget, Fit, FitCalculation,
-    FitDraft, FitId, FitInput, FitItem, FitRepository, FittingEngine, FittingEngineInfo,
-    FittingError, ModuleState, ParsedFit, Pilot, SlotKind,
+    AttributeExplanation, CatalogueEntry, CatalogueKind, DamageProfile, EftError, EftLine,
+    ExplainTarget, Fit, FitCalculation, FitCatalogue, FitDraft, FitId, FitInput, FitItem,
+    FitRepository, FittingEngine, FittingEngineInfo, FittingError, ModuleState, ParsedFit, Pilot,
+    SlotKind,
 };
 use iskworks_core::{InventoryError, WorkspaceId};
 use iskworks_sde::{
@@ -175,7 +176,34 @@ struct FakeEngine;
 
 impl FittingEngine for FakeEngine {
     fn catalogue(&self) -> std::sync::Arc<iskworks_core::fitting::FitCatalogue> {
-        std::sync::Arc::default()
+        // The autocannon loads projectile ammo; damage control loads nothing.
+        let module = |type_id, charge_groups| CatalogueEntry {
+            type_id,
+            name: String::new(),
+            kind: CatalogueKind::Module,
+            group_id: 1,
+            slot: None,
+            market_group_id: None,
+            meta_group_id: None,
+            variation_parent: None,
+            cpu: 0.0,
+            powergrid: 0.0,
+            calibration: 0.0,
+            rig_size: None,
+            hardpoint: None,
+            charge_groups,
+            charge_size: None,
+            fits_ship_types: Vec::new(),
+            fits_ship_groups: Vec::new(),
+            ship_slots: None,
+        };
+        std::sync::Arc::new(FitCatalogue::new(
+            vec![
+                module(AUTOCANNON, vec![83]),
+                module(DAMAGE_CONTROL, Vec::new()),
+            ],
+            Default::default(),
+        ))
     }
 
     fn info(&self) -> FittingEngineInfo {
@@ -365,6 +393,7 @@ async fn a_fit_is_created_listed_read_replaced_and_deleted() {
     assert_eq!(created["items"][0]["name"], "200mm AutoCannon II");
     assert_eq!(created["items"][0]["groupName"], "Projectile Weapon");
     assert_eq!(created["items"][0]["chargeName"], "EMP S");
+    assert_eq!(created["items"][0]["loadsCharges"], true);
     assert_eq!(created["items"][0]["slotKind"], "high");
     let id = created["id"].as_str().unwrap().to_string();
 
@@ -390,6 +419,7 @@ async fn a_fit_is_created_listed_read_replaced_and_deleted() {
     assert_eq!(replaced["name"], "Renamed");
     assert_eq!(replaced["items"][0]["name"], "Damage Control II");
     assert_eq!(replaced["items"][0]["chargeName"], Value::Null);
+    assert_eq!(replaced["items"][0]["loadsCharges"], false);
 
     let (status, _) = send(
         &app,
@@ -583,4 +613,18 @@ async fn text_needs_the_engine_but_saved_fits_do_not() {
     let (status, body) = get(app.clone(), &format!("/api/fittings/{id}/export")).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["error"]["code"], "fitting_engine_unavailable");
+}
+
+#[tokio::test]
+async fn without_the_engine_no_item_is_marked_as_loading_charges() {
+    let app = build_router(state());
+    let (status, created) = json(
+        &app,
+        "POST",
+        "/api/fittings",
+        fit_body("No engine", vec![loaded_autocannon()]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["items"][0]["loadsCharges"], false);
 }
