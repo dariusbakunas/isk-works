@@ -133,5 +133,7 @@ attribute_table! {
     armor_hp_bonus => "armorHPBonusAdd",
     // GJ, on a capacitor booster's charge
     capacitor_bonus => "capacitorBonus",
+    // percent, on the ship while active (a bubble's; see missing_effects.rs)
+    signature_radius_bonus => "signatureRadiusBonus",
     }
 }

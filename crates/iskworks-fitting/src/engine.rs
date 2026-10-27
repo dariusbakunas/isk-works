@@ -4,6 +4,7 @@ mod attributes;
 mod calculate;
 mod catalogue;
 mod eft;
+mod missing_effects;
 
 use std::fmt;
 use std::path::Path;
