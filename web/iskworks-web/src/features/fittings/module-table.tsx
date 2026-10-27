@@ -178,7 +178,8 @@ function ModuleRow({
     <OperationalTableRow
       accent={violations.length ? "blocking" : undefined}
       cells={{
-        state: onToggleState && !stack ? (
+        // Cargo is never on: no state to show.
+        state: item.slotKind === "cargo" ? null : onToggleState && !stack ? (
           <button
             aria-label={`State: ${stateLabel(item.state)} — change`}
             className="rounded p-0.5 hover:bg-panel-strong"
@@ -252,7 +253,7 @@ function ModuleRow({
           </span>
         ),
         charge:
-          charges && item.loadsCharges ? (
+          charges && item.loadsCharges && !stack ? (
             <ChargePicker
               chargeName={item.chargeName}
               chargeTypeId={item.chargeTypeId}

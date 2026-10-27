@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { FIT_ID, stubFetch } from "./fixtures";
+import { FIT_ID, fitDetail, item, stubFetch } from "./fixtures";
 import { renderPage } from "./render";
 
 beforeEach(() => sessionStorage.clear());
@@ -76,6 +76,28 @@ describe("Fittings › charges", () => {
     const table = await screen.findByRole("table", { name: "Modules" });
     const dcu = within(table).getByRole("row", { name: /Damage Control II/ });
     expect(within(dcu).queryByRole("button", { name: /^Charge:/ })).toBeNull();
+  });
+
+  test("cargo shows no state and no charge picker, even for a module that loads charges", async () => {
+    stubFetch({
+      fit: {
+        ...fitDetail(),
+        items: [
+          ...fitDetail().items,
+          item({ typeId: 1952, slotKind: "cargo", slotIndex: null, quantity: 2, state: "offline", name: "Sensor Booster II", loadsCharges: true }),
+        ],
+      },
+    });
+    renderPage(`/fittings/${FIT_ID}`);
+    const table = await screen.findByRole("table", { name: "Modules" });
+    for (const name of [/Nanite Repair Paste/, /Sensor Booster II/]) {
+      const row = within(table).getByRole("row", { name });
+      expect(within(row).queryByRole("img", { name: /^(Offline|Online|Active|Overloaded)/ })).toBeNull();
+      expect(within(row).queryByRole("button", { name: /^Charge:/ })).toBeNull();
+    }
+    // Drones still show theirs: in space or in the bay.
+    const drones = within(table).getByRole("row", { name: /Hobgoblin II/ });
+    expect(within(drones).getByRole("img", { name: /^Active/ })).toBeInTheDocument();
   });
 
   test("in the editor a picked charge is part of the draft", async () => {
