@@ -573,6 +573,11 @@ fn modules_headline_what_they_do() {
     ] {
         assert!(headline_of(name).unwrap().value > 0.0, "{name}");
     }
+    // A single-type hardener headlines its own bonus, not an average that
+    // counts the three types it doesn't touch.
+    let em = headline_of("Dread Guristas EM Shield Hardener").unwrap();
+    assert_eq!(em.kind, HeadlineKind::Resist);
+    assert!(em.value > 40.0, "{em:?}");
 
     let guns = calculate(&gun_rifter(), &Pilot::AllV);
     let gun = guns.items[0].unwrap();

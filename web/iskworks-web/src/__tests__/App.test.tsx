@@ -600,6 +600,35 @@ describe("App routes", () => {
     expect(within(primaryNav).getByRole("link", { name: /^Market$/ })).not.toHaveAttribute("aria-current");
   });
 
+  test("the Fittings nav link opens the fit list after Skills", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+        if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+        if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+        if (url.endsWith("/api/characters")) return mockResponse([]);
+        if (url.endsWith("/api/fittings/meta")) {
+          return mockResponse({ available: true, engine: null, sde: null, damageProfiles: [] });
+        }
+        if (url.endsWith("/api/fittings")) return mockResponse([]);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    const primaryNav = screen.getByRole("navigation", { name: "Primary navigation" });
+    const labels = within(primaryNav).getAllByRole("link").map((link) => link.textContent);
+    expect(labels.indexOf("Fittings")).toBe(labels.indexOf("Skills") + 1);
+    await user.click(within(primaryNav).getByRole("link", { name: /^Fittings$/ }));
+    expect(await screen.findByRole("heading", { name: "Fittings" })).toBeInTheDocument();
+    expect(await screen.findByText("Paste a fit from the game or pyfa")).toBeInTheDocument();
+  });
+
   test("the header logo links to the Characters home", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
