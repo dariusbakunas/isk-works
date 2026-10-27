@@ -123,8 +123,14 @@ impl FitCatalogue {
         path
     }
 
-    /// By market path, then name.
-    fn sorted<'a>(&self, mut entries: Vec<&'a CatalogueEntry>) -> Vec<&'a CatalogueEntry> {
+    /// What the browser offers, by market path, then name. Types outside
+    /// the market (Abyssal modules, which come from mutating one) are left
+    /// out: a fit that holds one keeps it, but nobody browses for it.
+    fn sorted<'a>(&self, entries: Vec<&'a CatalogueEntry>) -> Vec<&'a CatalogueEntry> {
+        let mut entries: Vec<&CatalogueEntry> = entries
+            .into_iter()
+            .filter(|entry| entry.market_group_id.is_some())
+            .collect();
         entries.sort_by_cached_key(|entry| {
             (
                 entry
@@ -226,7 +232,8 @@ impl FitCatalogue {
             .entries
             .values()
             .filter(|candidate| {
-                candidate.type_id == root || candidate.variation_parent == Some(root)
+                (candidate.type_id == root || candidate.variation_parent == Some(root))
+                    && candidate.market_group_id.is_some()
             })
             .collect();
         family.sort_by(|a, b| a.name.cmp(&b.name));

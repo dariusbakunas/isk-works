@@ -1,4 +1,4 @@
-import { ChevronDown, ClipboardPaste, Search } from "lucide-react";
+import { ChevronDown, ClipboardPaste, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
@@ -10,6 +10,7 @@ import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
 import { fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
 import { ImportDialog } from "./import-dialog";
+import { NewFitDialog } from "./new-fit-dialog";
 import { useFits } from "./use-fittings";
 
 const COLUMNS: OperationalColumn[] = [
@@ -111,6 +112,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   const [query, setQuery] = useState("");
   const [flyableBy, setFlyableBy] = useState("");
   const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -168,6 +170,15 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
               </select>
             </label>
             <button
+              className="iw-button-secondary gap-1.5"
+              disabled={!engineAvailable}
+              onClick={() => setCreating(true)}
+              type="button"
+            >
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+              New fit
+            </button>
+            <button
               className="iw-button-primary gap-1.5"
               disabled={!engineAvailable}
               onClick={() => setImporting(true)}
@@ -209,6 +220,16 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
         ) : null}
       </section>
 
+      {creating ? (
+        <NewFitDialog
+          onClose={() => setCreating(false)}
+          onCreated={(id) => {
+            setCreating(false);
+            onChanged();
+            navigate(`${id}?edit=1`);
+          }}
+        />
+      ) : null}
       {importing ? (
         <ImportDialog
           onClose={() => setImporting(false)}

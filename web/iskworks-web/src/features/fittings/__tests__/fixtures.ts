@@ -3,6 +3,8 @@ import { vi } from "vitest";
 import type { CharacterRosterEntry } from "../../../api/characters";
 import type {
   AttributeView,
+  CatalogueItem,
+  CatalogueView,
   FitDetail,
   FitItemView,
   FitPilot,
@@ -245,6 +247,84 @@ export interface StubOptions {
   fits?: FitSummary[];
   preview?: FitTextPreview;
   statsView?: FitStatsView;
+  /** What a draft calculation answers; by default 1,000 more EHP than saved. */
+  calculateView?: FitStatsView;
+  catalogue?: unknown;
+}
+
+/** The saved fit's stats with 1,000 more EHP: what an edit calculates. */
+export function editedStatsView(): FitStatsView {
+  const edited = stats();
+  edited.defense.ehp += 1000;
+  return statsView({ stats: edited });
+}
+
+const catalogueItem = (typeId: number, name: string, overrides: Partial<CatalogueItem> = {}): CatalogueItem => ({
+  typeId,
+  name,
+  kind: "module",
+  slot: "low",
+  cpu: 30,
+  powergrid: 1,
+  calibration: 0,
+  hardpoint: null,
+  rigSize: null,
+  chargeSize: null,
+  marketPath: ["Ship Equipment", "Hull & Armor", "Damage Controls"],
+  canUse: null,
+  ...overrides,
+});
+
+/** What the module browser's catalogue searches answer, by kind. */
+export function catalogueFor(url: string): CatalogueView {
+  if (url.includes("/catalogue/variations")) {
+    return {
+      entries: [
+        catalogueItem(2881, "200mm AutoCannon I", { slot: "high", marketPath: ["Ship Equipment", "Turrets", "Projectile"] }),
+        catalogueItem(2873, "200mm AutoCannon II", { slot: "high", marketPath: ["Ship Equipment", "Turrets", "Projectile"] }),
+      ],
+      truncated: false,
+    };
+  }
+  const params = new URL(url, "http://localhost").searchParams;
+  const pilot = params.get("pilot");
+  const canUse = (value: boolean) => (pilot && pilot !== "allV" && pilot !== "allZero" ? value : null);
+  switch (params.get("kind")) {
+    case "charges":
+      return {
+        entries: [
+          catalogueItem(186, "Phased Plasma S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
+          catalogueItem(185, "EMP S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
+        ],
+        truncated: false,
+      };
+    case "ships":
+      return {
+        entries: [
+          catalogueItem(587, "Rifter", { kind: "ship", slot: null, cpu: 0, powergrid: 0, marketPath: ["Ships", "Frigates"] }),
+        ],
+        truncated: false,
+      };
+    case "drones":
+      return {
+        entries: [catalogueItem(2456, "Hobgoblin II", { kind: "drone", slot: null, marketPath: ["Drones", "Combat Drones"] })],
+        truncated: false,
+      };
+    default:
+      return {
+        entries: [
+          catalogueItem(2048, "Damage Control II", { canUse: canUse(true) }),
+          catalogueItem(11640, "Warp Core Stabilizer II", { canUse: canUse(false) }),
+          catalogueItem(2873, "200mm AutoCannon II", {
+            slot: "high",
+            hardpoint: "turret",
+            marketPath: ["Ship Equipment", "Turrets", "Projectile"],
+            canUse: canUse(true),
+          }),
+        ],
+        truncated: false,
+      };
+  }
 }
 
 /** Answers every Fittings request from the fixtures, recording the calls. */
@@ -255,6 +335,15 @@ export function stubFetch(options: StubOptions = {}) {
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     if (url.endsWith("/api/fittings/meta")) return json(options.meta ?? meta());
+    if (url.includes("/api/fittings/calculate")) return json(options.calculateView ?? editedStatsView());
+    if (url.includes("/api/fittings/catalogue")) return json(options.catalogue ?? catalogueFor(url));
+    if (url.includes("/api/types/search")) {
+      return json([{ typeId: 34, typeName: "Tritanium", groupName: "Mineral", published: true }]);
+    }
+    if (url.includes(`/api/fittings/`) && method === "PUT") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return json({ ...fitDetail(), name: body.name });
+    }
     if (url.endsWith("/api/characters")) return json(characters());
     if (url.endsWith("/api/fittings") && method === "GET") return json(options.fits ?? fits());
     if (url.endsWith("/api/fittings") && method === "POST") return json({ ...fitDetail(), id: "copy-id" }, 201);
