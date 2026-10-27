@@ -37,8 +37,8 @@ export function useFitStats(id: string, pilot: PilotChoice, profile: string, ena
   );
 }
 
-export function useFitPilots(id: string, profile: string, revision: number): Loaded<FitPilot[]> {
-  return useLoad((signal) => getFitPilots(id, profile, signal), `pilots:${id}:${profile}:${revision}`);
+export function useFitPilots(id: string, profile: string): Loaded<FitPilot[]> {
+  return useLoad((signal) => getFitPilots(id, profile, signal), `pilots:${id}:${profile}`);
 }
 
 /** For portraits: connection id → EVE character id. */

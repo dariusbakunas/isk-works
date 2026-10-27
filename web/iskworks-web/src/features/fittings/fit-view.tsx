@@ -196,8 +196,7 @@ export function FitView({ onChanged }: { onChanged: () => void }) {
   const engineAvailable = useEngineAvailable();
   const { pilot, profile, setPilot } = useFitParams();
   const fit = useFit(fitId);
-  const [pilotsRevision, setPilotsRevision] = useState(0);
-  const pilots = useFitPilots(fitId, profile, pilotsRevision);
+  const pilots = useFitPilots(fitId, profile);
   const stats = useFitStats(fitId, pilot, profile, engineAvailable);
   const statsView: FitStatsView | null = engineAvailable ? stats.data : null;
 
@@ -214,7 +213,6 @@ export function FitView({ onChanged }: { onChanged: () => void }) {
           <ModuleTable fit={fit.data} stats={statsView} />
           <PilotsPanel
             fit={fit.data}
-            onPlanCreated={() => setPilotsRevision((current) => current + 1)}
             onSelect={setPilot}
             pilots={pilots.data ?? []}
             selected={pilot}
