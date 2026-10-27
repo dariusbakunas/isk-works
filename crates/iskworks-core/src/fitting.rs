@@ -684,7 +684,7 @@ pub enum HeadlineKind {
     ShieldRepair,
     /// Armor HP per second.
     ArmorRepair,
-    /// The average of its four resistance bonuses, in percent.
+    /// Its strongest resistance bonus, in percent.
     Resist,
     /// The velocity bonus, in percent.
     Velocity,

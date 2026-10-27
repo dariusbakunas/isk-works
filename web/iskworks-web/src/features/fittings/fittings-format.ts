@@ -51,7 +51,7 @@ export function formatHeadline(headline: Headline | null): string {
     case "armorRepair":
       return `${formatStat(value, 1)} HP/s`;
     case "resist":
-      return `+${formatStat(value, 1)}% resists`;
+      return `+${formatStat(value, 1)}% resist`;
     case "velocity":
       return `+${formatStat(value)}% velocity`;
     case "shieldHp":

@@ -41,7 +41,7 @@ describe("formatting", () => {
   test("headlines say what a module does, and nothing when it has none", () => {
     expect(formatHeadline({ kind: "dps", value: 116.9 })).toBe("116.9 DPS");
     expect(formatHeadline({ kind: "shieldRepair", value: 42.5 })).toBe("42.5 HP/s");
-    expect(formatHeadline({ kind: "resist", value: 32.5 })).toBe("+32.5% resists");
+    expect(formatHeadline({ kind: "resist", value: 32.5 })).toBe("+32.5% resist");
     expect(formatHeadline({ kind: "velocity", value: 505 })).toBe("+505% velocity");
     expect(formatHeadline({ kind: "shieldHp", value: 1875 })).toBe("+1,875 shield HP");
     expect(formatHeadline({ kind: "armorHp", value: 6000 })).toBe("+6,000 armor HP");

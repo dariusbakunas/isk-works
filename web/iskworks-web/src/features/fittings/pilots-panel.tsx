@@ -54,7 +54,7 @@ function MissingSkills({ fit, pilot }: { fit: FitDetail; pilot: FitPilot }) {
         ) : null}
         {error ? <span className="text-xs text-danger">{error}</span> : null}
         {plan ? (
-          <Link className="text-xs text-primary hover:underline" to={`/skills/plans/${plan.id}`}>
+          <Link className="text-xs text-primary hover:underline" to={`/skills/plans/${plan.id}?character=${pilot.connectionId}`}>
             Open {plan.name}
           </Link>
         ) : (
@@ -105,16 +105,20 @@ export function PilotsPanel({
         ) : null}
         <span className="ml-auto hidden text-[0.625rem] text-muted sm:inline">Pick a pilot to recalculate the fit</span>
       </div>
-      <div className="hidden grid-cols-[minmax(160px,1fr)_96px_56px_80px_repeat(5,64px)] px-3 py-1 text-[0.5625rem] uppercase tracking-wide text-muted md:grid">
-        <span>Pilot</span>
-        <span>Status</span>
-        <span className="text-right">Missing</span>
-        <span className="text-right">Training</span>
-        <span className="text-right">EHP</span>
-        <span className="text-right">DPS</span>
-        <span className="text-right">Cap</span>
-        <span className="text-right">Speed</span>
-        <span className="text-right">Align</span>
+      <div className="hidden px-3 py-1 text-[0.5625rem] uppercase tracking-wide text-muted md:flex">
+        {/* Same columns as the rows, plus their expand button's width. */}
+        <div className="grid flex-1 grid-cols-[minmax(160px,1fr)_96px_56px_80px_repeat(5,64px)] gap-x-2">
+          <span>Pilot</span>
+          <span>Status</span>
+          <span className="text-right">Missing</span>
+          <span className="text-right">Training</span>
+          <span className="text-right">EHP</span>
+          <span className="text-right">DPS</span>
+          <span className="text-right">Cap</span>
+          <span className="text-right">Speed</span>
+          <span className="text-right">Align</span>
+        </div>
+        <span className="w-[30px]" />
       </div>
       {pilots.map((pilot) => {
         const chip = STATUS_CHIPS[pilot.status ?? "unknown"];

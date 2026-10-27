@@ -275,7 +275,7 @@ export type HeadlineKind =
   | "armorHp"
   | "capacitor";
 
-/** Mirrors `iskworks_core::fitting::Headline`. Repairs are HP/s, resist and velocity percent, capacitor GJ. */
+/** Mirrors `iskworks_core::fitting::Headline`. Repairs are HP/s, resist (the strongest bonus) and velocity percent, capacitor GJ. */
 export interface Headline {
   kind: HeadlineKind;
   value: number;

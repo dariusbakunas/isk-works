@@ -426,16 +426,17 @@ pub(super) struct EngineItems {
 fn headline(a: &ItemAttributes, result: &ItemResult, cycle_ms: Option<f64>) -> Option<Headline> {
     let attribute = |id: i32| value(result, id);
     let per_second = |amount: f64| cycle_ms.map(|cycle_ms| amount / (cycle_ms / 1000.0));
+    // The strongest of its four bonuses (stored negative): a single-type
+    // hardener reads as its own bonus, an omni one as its even bonus.
     let resist_bonus = [
         a.em_resist_bonus,
         a.thermal_resist_bonus,
         a.kinetic_resist_bonus,
         a.explosive_resist_bonus,
     ]
-    .map(attribute)
-    .iter()
-    .sum::<f64>()
-        / -4.0;
+    .map(|id| -attribute(id))
+    .into_iter()
+    .fold(0.0_f64, f64::max);
     let charge_capacitor = result
         .charge
         .as_ref()

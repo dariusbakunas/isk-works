@@ -68,7 +68,7 @@ describe("Fittings › pilots", () => {
     fireEvent.click(within(region).getByRole("button", { name: "Create skill plan" }));
     expect(await within(region).findByRole("link", { name: "Open Fit: Null Transport" })).toHaveAttribute(
       "href",
-      "/skills/plans/plan-1",
+      `/skills/plans/plan-1?character=${AURA}`,
     );
     await waitFor(() => {
       const call = fetchSpy.mock.calls.find(([input]) => String(input).includes("/skill-plan"));
