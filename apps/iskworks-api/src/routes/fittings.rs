@@ -4,11 +4,12 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_app::{
-    AttributeView, FitDetail, FitPilot, FitStatsView, FitSummary, FitTextPreview, PilotChoice,
+    AttributeView, CatalogueQuery, CatalogueView, FitDetail, FitPilot, FitStatsView, FitSummary,
+    FitTextPreview, PilotChoice,
 };
 use iskworks_core::fitting::{
     damage_profile_presets, DamageProfile, DamageProfilePreset, ExplainTarget, FitDraft, FitId,
-    FitInput, FittingEngineInfo,
+    FitInput, FittingEngineInfo, SlotKind,
 };
 use iskworks_core::skill_plans::SkillPlan;
 use iskworks_core::{ConnectedCharacterId, InventoryError};
@@ -23,6 +24,8 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/fittings/parse", post(parse_text))
         .route("/api/fittings/import", post(import_text))
         .route("/api/fittings/calculate", post(calculate))
+        .route("/api/fittings/catalogue", get(catalogue))
+        .route("/api/fittings/catalogue/variations", get(variations))
         .route("/api/fittings/:fit_id/stats", get(fit_stats))
         .route("/api/fittings/:fit_id/pilots", get(fit_pilots))
         .route("/api/fittings/:fit_id/explain", get(explain_attribute))
@@ -383,4 +386,92 @@ async fn explain_attribute(
         .await?
         .map(Json)
         .ok_or(ApiError::NotFound)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogueParams {
+    /// `modules`, `charges`, `drones` or `ships`.
+    kind: Option<String>,
+    ship_type_id: Option<i64>,
+    slot: Option<String>,
+    module_type_id: Option<i64>,
+    q: Option<String>,
+    pilot: Option<String>,
+}
+
+/// The module browser: modules a ship fits, charges a module loads,
+/// drones or ships.
+async fn catalogue(
+    State(state): State<AppState>,
+    Query(params): Query<CatalogueParams>,
+) -> Result<Json<CatalogueView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let engine = state.fitting_engine()?;
+    let pilot = parse_pilot(params.pilot.as_deref())?;
+    let query = match params.kind.as_deref() {
+        Some("modules") => CatalogueQuery::Modules {
+            ship_type_id: params
+                .ship_type_id
+                .ok_or_else(|| bad_request("modules need a shipTypeId".to_string()))?,
+            slot: params
+                .slot
+                .as_deref()
+                .map(|slot| {
+                    slot.parse::<SlotKind>()
+                        .map_err(|_| bad_request(format!("unknown slot {slot:?}")))
+                })
+                .transpose()?,
+        },
+        Some("charges") => CatalogueQuery::Charges {
+            module_type_id: params
+                .module_type_id
+                .ok_or_else(|| bad_request("charges need a moduleTypeId".to_string()))?,
+        },
+        Some("drones") => CatalogueQuery::Drones,
+        Some("ships") => CatalogueQuery::Ships,
+        other => {
+            return Err(bad_request(format!(
+                "kind must be modules, charges, drones or ships, not {other:?}"
+            )))
+        }
+    };
+    Ok(Json(
+        state
+            .fitting_service()?
+            .catalogue(
+                workspace_id,
+                engine.as_ref(),
+                query,
+                params.q.as_deref(),
+                pilot,
+            )
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VariationsParams {
+    type_id: Option<i64>,
+    pilot: Option<String>,
+}
+
+/// A module's variations (Tech I, Tech II, meta, faction, …).
+async fn variations(
+    State(state): State<AppState>,
+    Query(params): Query<VariationsParams>,
+) -> Result<Json<CatalogueView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let engine = state.fitting_engine()?;
+    let pilot = parse_pilot(params.pilot.as_deref())?;
+    let type_id = params
+        .type_id
+        .ok_or_else(|| bad_request("a typeId is required".to_string()))?;
+    Ok(Json(
+        state
+            .fitting_service()?
+            .variations(workspace_id, engine.as_ref(), type_id, pilot)
+            .await?,
+    ))
 }

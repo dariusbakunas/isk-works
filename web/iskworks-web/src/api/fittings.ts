@@ -419,3 +419,59 @@ export function explainFitAttribute(
   });
   return request<AttributeView>(`/api/fittings/${encodeURIComponent(id)}/explain${params}`, { signal });
 }
+
+/** Mirrors `iskworks_core::fitting::CatalogueKind`. */
+export type CatalogueKind = "ship" | "module" | "drone" | "charge";
+
+/** Mirrors `iskworks_app::CatalogueItem`. Fitting costs are before skills. */
+export interface CatalogueItem {
+  typeId: number;
+  name: string;
+  kind: CatalogueKind;
+  slot: SlotKind | null;
+  cpu: number;
+  powergrid: number;
+  calibration: number;
+  hardpoint: "turret" | "launcher" | null;
+  rigSize: number | null;
+  chargeSize: number | null;
+  /** Market groups from the root down. */
+  marketPath: string[];
+  /** For a character pilot, whether it has the skills; `null` for All V / All 0. */
+  canUse: boolean | null;
+}
+
+/** Mirrors `iskworks_app::CatalogueView`. */
+export interface CatalogueView {
+  entries: CatalogueItem[];
+  /** More matched than are listed (200); narrow the search. */
+  truncated: boolean;
+}
+
+export type CatalogueRequest =
+  | { kind: "modules"; shipTypeId: number; slot?: SlotKind }
+  | { kind: "charges"; moduleTypeId: number }
+  | { kind: "drones" }
+  | { kind: "ships" };
+
+/** The module browser: modules a ship fits, charges a module loads, drones or ships. */
+export function searchFitCatalogue(
+  search: CatalogueRequest,
+  options: { q?: string; pilot?: PilotChoice } = {},
+  signal?: AbortSignal,
+): Promise<CatalogueView> {
+  const params: Record<string, string | undefined> = { kind: search.kind };
+  if (search.kind === "modules") {
+    params.shipTypeId = String(search.shipTypeId);
+    params.slot = search.slot;
+  }
+  if (search.kind === "charges") params.moduleTypeId = String(search.moduleTypeId);
+  params.q = options.q?.trim() || undefined;
+  params.pilot = options.pilot;
+  return request<CatalogueView>(`/api/fittings/catalogue${query(params)}`, { signal });
+}
+
+/** A module's variations (Tech I, Tech II, meta, faction, …), itself included. */
+export function getFitVariations(typeId: number, pilot?: PilotChoice, signal?: AbortSignal): Promise<CatalogueView> {
+  return request<CatalogueView>(`/api/fittings/catalogue/variations${query({ typeId: String(typeId), pilot })}`, { signal });
+}
