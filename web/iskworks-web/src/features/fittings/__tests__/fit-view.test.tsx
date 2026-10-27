@@ -153,3 +153,15 @@ describe("Fittings › fit view states", () => {
     expect(strip).toHaveTextContent("655.3 m/s");
   });
 });
+
+describe("Fittings › empty racks", () => {
+  test("a rack with only empty slots lists them, not 'No rows'", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    // The fixture has no rigs fitted and two rig slots.
+    expect(await within(table).findAllByText("Empty rig slot")).toHaveLength(2);
+    expect(within(table).queryByText("No rows")).not.toBeInTheDocument();
+  });
+});

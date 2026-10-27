@@ -214,3 +214,20 @@ fn variations_are_the_parent_and_everything_sharing_it() {
     }
     assert!(catalogue.variations(99).is_empty());
 }
+
+#[test]
+fn types_outside_the_market_are_not_offered() {
+    // Abyssal (mutated) modules have no market group: they come from
+    // mutating a module, not from a catalogue, and fits keep them by import.
+    let mut abyssal = module(1, "Abyssal Damage Control", SlotKind::Low);
+    abyssal.market_group_id = None;
+    let catalogue = catalogue(vec![abyssal, module(2, "Damage Control II", SlotKind::Low)]);
+    assert_eq!(
+        names(&catalogue.modules_for(&ship(), None, None)),
+        ["Damage Control II"]
+    );
+    assert!(
+        catalogue.entry(1).is_some(),
+        "still known, for a fit that has one"
+    );
+}

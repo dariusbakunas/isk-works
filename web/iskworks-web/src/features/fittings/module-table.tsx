@@ -275,7 +275,8 @@ export function ModuleTable({
     return (
       <OperationalTableGroup
         groupKey={kind}
-        itemCount={items.length}
+        // Empty slots are rows too: a rack with nothing fitted isn't empty.
+        itemCount={items.length + empty.length}
         key={kind}
         label={rackLabel(kind)}
         labelCase="normal"
