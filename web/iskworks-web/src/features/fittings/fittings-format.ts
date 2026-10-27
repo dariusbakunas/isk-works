@@ -25,6 +25,14 @@ export function formatPercent(share: number, digits = 1): string {
   return `${formatStat(share * 100, digits)}%`;
 }
 
+const oneDecimal = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+
+/** A resist (0.6) as a percent with one decimal always ("60.0%"), so a
+ * grid of them lines up. */
+export function formatResist(share: number): string {
+  return `${oneDecimal.format(share * 100)}%`;
+}
+
 /** m:ss, or h:mm:ss from an hour up. */
 export function formatClock(totalSeconds: number): string {
   const seconds = Math.max(0, Math.round(totalSeconds));
