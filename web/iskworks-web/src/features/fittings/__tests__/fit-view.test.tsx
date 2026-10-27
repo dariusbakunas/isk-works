@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { AURA, FIT_ID, pilots, statsView, stubFetch } from "./fixtures";
+import { AURA, FIT_ID, meta, pilots, statsView, stubFetch } from "./fixtures";
 import { location, renderPage } from "./render";
 
 afterEach(() => vi.restoreAllMocks());
@@ -126,5 +126,30 @@ describe("Fittings › fit view", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete fit" }));
     await waitFor(() => expect(location()).toBe("/fittings"));
     expect(fetchSpy.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")).toBe(true);
+  });
+});
+
+describe("Fittings › fit view states", () => {
+  test("without engine data the layout stays but nothing calculated shows, and copy is off", async () => {
+    const fetchSpy = stubFetch({ meta: meta(false) });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    expect(await within(table).findByText("200mm AutoCannon II")).toBeInTheDocument();
+    expect(within(table).queryByText("116.9 DPS")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy for in-game import" })).toBeDisabled();
+    expect(screen.getAllByText(/no fitting engine data/i).length).toBeGreaterThan(0);
+    expect(fetchSpy.mock.calls.some(([input]) => String(input).includes("/stats"))).toBe(false);
+  });
+
+  test("a summary strip carries the headline stats for narrow screens", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const strip = await screen.findByTestId("stats-summary");
+    await waitFor(() => expect(strip).toHaveTextContent("EHP 90,790"));
+    expect(strip).toHaveTextContent("DPS 215.9");
+    expect(strip).toHaveTextContent("Cap 3:10");
+    expect(strip).toHaveTextContent("655.3 m/s");
   });
 });

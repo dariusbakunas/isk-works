@@ -7,6 +7,7 @@ import { EveTypeImage } from "../../components/eve-type-image";
 import { ConfirmDialog, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
+import { capacitorLabel, formatPercent, formatStat } from "./fittings-format";
 import { ModuleTable } from "./module-table";
 import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
@@ -191,6 +192,26 @@ function Header({
   );
 }
 
+/** The headline stats in one line, for screens too narrow for the rail
+ * beside the table (the rail follows below there). */
+function SummaryStrip({ view }: { view: FitStatsView }) {
+  const { defense, offense, capacitor, navigation } = view.stats;
+  const cap = capacitor.state.kind === "stable"
+    ? formatPercent(capacitor.state.level)
+    : capacitorLabel(capacitor.state).replace("Depletes in ", "");
+  return (
+    <p
+      className="iw-panel flex flex-wrap gap-x-3 gap-y-1 px-3 py-2 font-mono text-xs text-muted xl:hidden"
+      data-testid="stats-summary"
+    >
+      <span>EHP <span className="text-foreground">{formatStat(defense.ehp)}</span></span>
+      <span>DPS <span className="text-foreground">{formatStat(offense.totalDps, 1)}</span></span>
+      <span>Cap <span className="text-foreground">{cap}</span></span>
+      <span className="text-foreground">{formatStat(navigation.maxVelocity, 1)} m/s</span>
+    </p>
+  );
+}
+
 export function FitView({ onChanged }: { onChanged: () => void }) {
   const { fitId = "" } = useParams();
   const engineAvailable = useEngineAvailable();
@@ -208,6 +229,7 @@ export function FitView({ onChanged }: { onChanged: () => void }) {
       <Header fit={fit.data} onChanged={onChanged} pilots={pilots.data ?? []} />
       {engineAvailable ? null : <EngineUnavailableHint />}
       {stats.error ? <InlineAlert title="Couldn't calculate the fit">{stats.error.message}</InlineAlert> : null}
+      {statsView ? <SummaryStrip view={statsView} /> : null}
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-3">
           <ModuleTable fit={fit.data} stats={statsView} />
