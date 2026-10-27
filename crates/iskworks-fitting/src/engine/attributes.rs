@@ -114,7 +114,13 @@ attribute_table! {
     // cycle time in ms, for turrets and launchers
     rate_of_fire => "speed",
     optimal => "maxRange",
+    // metres; a bubble's radius, its range when it has no maxRange
+    warp_scramble_range => "warpScrambleRange",
     falloff => "falloff",
+    // metres; the falloff of nosferatus, neutralizers and the like
+    falloff_effectiveness => "falloffEffectiveness",
+    // GJ per cycle a nosferatu drains
+    power_transfer_amount => "powerTransferAmount",
     dps => "damagePerSecondWithoutReload",
     // HP per cycle
     shield_repair => "shieldBonus",

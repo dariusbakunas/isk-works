@@ -684,3 +684,32 @@ fn the_bubble_bloom_is_explained_per_bubble() {
         ]
     );
 }
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn a_nosferatu_gains_capacitor_and_ranges_read_as_pyfa_shows_them() {
+    let mut fit = bubble_devoter([ModuleState::Active, ModuleState::Active]);
+    fit.items[2].charge_type_id = Some(type_id("Focused Warp Disruption Script"));
+    fit.items.push(module(
+        "Small Ghoul Compact Energy Nosferatu",
+        SlotKind::High,
+        2,
+        ModuleState::Active,
+    ));
+    let calculation = calculate(&fit, &Pilot::AllV);
+    let stats = |index: usize| calculation.items[index].unwrap();
+
+    // pyfa's -3.75: 112.5 GJ every 30 s.
+    assert_close(stats(1).capacitor_per_second, 3.75, "bubble cap");
+    // The bubble's radius is its range.
+    assert_close(stats(1).optimal, 25_000.0, "bubble range");
+    // The focused script: -60% capacitor need, -80% cycle time, +50% range.
+    assert_close(stats(2).capacitor_per_second, 45.0 / 6.0, "focused cap");
+    assert_close(stats(2).optimal, 37_500.0, "focused range");
+
+    // pyfa's +3.6 and 4km+2km: 9 GJ drained every 2.5 s.
+    let nosferatu = stats(3);
+    assert_close(nosferatu.capacitor_per_second, -3.6, "nosferatu cap");
+    assert_close(nosferatu.optimal, 4_000.0, "nosferatu optimal");
+    assert_close(nosferatu.falloff, 2_000.0, "nosferatu falloff");
+}

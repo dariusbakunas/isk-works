@@ -66,6 +66,18 @@ describe("Fittings › fit view", () => {
     expect(dcu).toHaveTextContent("—");
   });
 
+  test("capacitor per second reads as pyfa's: a drain negative, a nosferatu's gain positive", async () => {
+    const view = statsView();
+    view.items[1] = { ...view.items[1]!, capacitorPerSecond: 3.75 };
+    view.items[3] = { ...view.items[3]!, capacitorPerSecond: -3.6 };
+    stubFetch({ statsView: view });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    expect(await within(table).findByRole("row", { name: /Microwarpdrive/ })).toHaveTextContent("−3.75");
+    expect(within(table).getByRole("row", { name: /200mm AutoCannon II/ })).toHaveTextContent("+3.6");
+  });
+
   test("each module shows the state it reached, and why when it's lower than asked", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);

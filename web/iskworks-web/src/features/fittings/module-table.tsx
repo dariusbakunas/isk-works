@@ -277,7 +277,11 @@ function ModuleRow({
           stats && (stats.optimal || stats.falloff)
             ? `${formatDistance(stats.optimal)} + ${formatDistance(stats.falloff)}`
             : dash,
-        cap: stats && stats.capacitorPerSecond ? `−${formatStat(stats.capacitorPerSecond, 1)}` : dash,
+        // Positive drains the capacitor; negative (a nosferatu) fills it.
+        cap:
+          stats && stats.capacitorPerSecond
+            ? `${stats.capacitorPerSecond > 0 ? "−" : "+"}${formatStat(Math.abs(stats.capacitorPerSecond), 2)}`
+            : dash,
         effect: stats ? formatHeadline(stats.headline) : dash,
         price: <PriceCell quantity={item.quantity} unitPrice={unitPrice} />,
       }}
