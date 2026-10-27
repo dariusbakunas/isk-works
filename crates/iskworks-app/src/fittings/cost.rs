@@ -4,9 +4,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use iskworks_core::fitting::{
-    asset_coverage, fit_cost, fit_needs, CostLine, FitCost, FitId, LocationCoverage, Shortfall,
-};
+use iskworks_core::fitting::{fit_cost, fit_needs, AssetHolding, CostLine, FitCost, FitId};
 use iskworks_core::{summarize_scoped_orders, InventoryError, MarketScope, Money, WorkspaceId};
 use serde::Serialize;
 
@@ -38,30 +36,12 @@ pub struct FitCostView {
     pub observed_at: Option<DateTime<Utc>>,
 }
 
-/// A shortfall with its type's name.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FitShortfall {
-    #[serde(flatten)]
-    pub shortfall: Shortfall,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FitLocationCoverage {
-    #[serde(flatten)]
-    pub coverage: LocationCoverage,
-    pub short: Vec<FitShortfall>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FitAssetsView {
-    /// Units the fit is made of (hull, items and stacks).
-    pub needed: u32,
-    /// Best covered first, at most ten.
-    pub locations: Vec<FitLocationCoverage>,
+    /// Every holding of the fit's types (hull, items, stacks; not loaded
+    /// charges), fitted or packaged alike: by type, the most held first.
+    pub holdings: Vec<AssetHolding>,
 }
 
 impl FittingService {
@@ -137,27 +117,17 @@ impl FittingService {
             .holdings
             .as_ref()
             .ok_or_else(|| InventoryError::Persistence("Asset data is unavailable.".to_string()))?;
-        let needed = fit_needs(&fit.input());
-        let type_ids: Vec<i64> = needed.keys().copied().collect();
-        let holdings = holdings_source
+        let type_ids: Vec<i64> = fit_needs(&fit.input()).into_keys().collect();
+        let mut holdings = holdings_source
             .type_holdings(workspace_id, &type_ids)
             .await?;
-        let references = self.references(&[(fit.ship_type_id, &fit.items)]).await?;
-        Ok(Some(FitAssetsView {
-            needed: needed.values().sum(),
-            locations: asset_coverage(&needed, &holdings)
-                .into_iter()
-                .map(|mut coverage| {
-                    let short = std::mem::take(&mut coverage.short)
-                        .into_iter()
-                        .map(|shortfall| FitShortfall {
-                            name: fit_type(&references, shortfall.type_id).name,
-                            shortfall,
-                        })
-                        .collect();
-                    FitLocationCoverage { coverage, short }
-                })
-                .collect(),
-        }))
+        holdings.sort_by(|a, b| {
+            a.type_id
+                .cmp(&b.type_id)
+                .then_with(|| b.quantity.cmp(&a.quantity))
+                .then_with(|| a.character_name.cmp(&b.character_name))
+                .then_with(|| a.location_name.cmp(&b.location_name))
+        });
+        Ok(Some(FitAssetsView { holdings }))
     }
 }

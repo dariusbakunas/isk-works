@@ -6,10 +6,10 @@ import { renderPage } from "./render";
 
 afterEach(() => vi.restoreAllMocks());
 
-// Price is the table's last column.
-const priceCell = (row: HTMLElement) => [...row.querySelectorAll("td")].at(-1);
+// Price is the column before Held.
+const priceCell = (row: HTMLElement) => [...row.querySelectorAll("td")].at(-2);
 
-describe("Fittings › price and assets", () => {
+describe("Fittings › price and holdings", () => {
   test("the rail prices the fit at the workspace market, unpriced types left out", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);
@@ -60,36 +60,59 @@ describe("Fittings › price and assets", () => {
     expect(within(rail).getByText("Stats unavailable")).toBeInTheDocument();
   });
 
-  test("assets list where each character holds the fit, expandable to what's short", async () => {
+  test("each row shows how many you hold, and the magnifier where", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);
 
-    const panel = (await screen.findByRole("heading", { name: "Assets" })).closest("section")!;
-    expect(await within(panel).findByText("10 / 110 items")).toBeInTheDocument();
-    expect(within(panel).getByText("1 / 110 items")).toBeInTheDocument();
-    fireEvent.click(
-      within(panel).getByRole("button", { name: /What's short at Amarr VIII .* for Aura/ }),
-    );
-    const short = within(panel).getByRole("list", { name: /Short at Amarr VIII/ });
-    expect(within(short).getByText("Bustard")).toBeInTheDocument();
-    expect(within(short).getByText("0 / 100")).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const gun = await within(table).findByRole("row", { name: /200mm AutoCannon II/ });
+    const heldCell = (row: HTMLElement) => [...row.querySelectorAll("td")].at(-1)!;
+    await waitFor(() => expect(heldCell(gun)).toHaveTextContent("6"));
+    // Nothing held: a dash and no magnifier, so there's no need to look.
+    const dcu = within(table).getByRole("row", { name: /Damage Control II/ });
+    expect(heldCell(dcu)).toHaveTextContent("—");
+    expect(within(dcu).queryByRole("button", { name: /Where you have/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(gun).getByRole("button", { name: "Where you have 200mm AutoCannon II" }));
+    const dialog = await screen.findByRole("dialog", { name: "200mm AutoCannon II" });
+    const rows = within(dialog).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("Mira");
+    expect(rows[1]).toHaveTextContent("Jita IV - Moon 4 - Caldari Navy Assembly Plant");
+    expect(rows[1]).toHaveTextContent("3");
+    expect(rows[3]).toHaveTextContent("Aura");
+    expect(within(dialog).getByRole("row", { name: /Total/ })).toHaveTextContent("6");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  test("no holdings say so", async () => {
-    stubFetch({ assets: { ...assets(), locations: [] } });
+  test("the hull says whether you hold one", async () => {
+    stubFetch();
     renderPage(`/fittings/${FIT_ID}`);
-
-    expect(await screen.findByText("None of your characters hold any of this fit.")).toBeInTheDocument();
+    const header = await screen.findByTestId("fit-header");
+    expect(await within(header).findByText("· none held")).toBeInTheDocument();
+    expect(within(header).queryByRole("button", { name: /Where you have/ })).not.toBeInTheDocument();
   });
 
-  test("a fully covered location has nothing to expand", async () => {
-    const full = assets();
-    full.locations = [{ ...full.locations[0], covered: 110, short: [] }];
-    stubFetch({ assets: full, cost: cost() });
+  test("a held hull opens where, without starting to edit", async () => {
+    const held = assets();
+    held.holdings.push({ ...held.holdings[0], typeId: 12731, quantity: 2 });
+    stubFetch({ assets: held });
     renderPage(`/fittings/${FIT_ID}`);
 
-    const panel = (await screen.findByRole("heading", { name: "Assets" })).closest("section")!;
-    expect(await within(panel).findByText("110 / 110 items")).toBeInTheDocument();
-    expect(within(panel).queryByRole("button", { name: /What's short/ })).not.toBeInTheDocument();
+    const header = await screen.findByTestId("fit-header");
+    expect(await within(header).findByText("· 2 held")).toBeInTheDocument();
+    fireEvent.click(within(header).getByRole("button", { name: "Where you have Bustard" }));
+    const dialog = await screen.findByRole("dialog", { name: "Bustard" });
+    expect(within(dialog).getByRole("row", { name: /Total/ })).toHaveTextContent("2");
+    expect(screen.queryByRole("complementary", { name: "Module browser" })).toBeNull();
+  });
+
+  test("there's no assets section any more", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    await screen.findByRole("table", { name: "Modules" });
+    expect(screen.queryByRole("heading", { name: "Assets" })).not.toBeInTheDocument();
   });
 });

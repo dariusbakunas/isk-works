@@ -278,32 +278,21 @@ export function cost(): FitCostView {
   };
 }
 
-/** Mira has all but the paste in Jita; Aura one gun in Amarr. */
+/** Mira holds the gun in two places and Aura one; nobody holds the rest. */
 export function assets(): FitAssetsView {
+  const holding = (connectionId: string, characterName: string, locationId: number, locationName: string, typeId: number, quantity: number) => ({
+    connectionId,
+    characterName,
+    locationId,
+    locationName,
+    typeId,
+    quantity,
+  });
   return {
-    needed: 110,
-    locations: [
-      {
-        connectionId: MIRA,
-        characterName: "Mira",
-        locationId: 60003760,
-        locationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
-        covered: 10,
-        needed: 110,
-        short: [{ typeId: 28668, needed: 100, have: 0, name: "Nanite Repair Paste" }],
-      },
-      {
-        connectionId: AURA,
-        characterName: "Aura",
-        locationId: 60008494,
-        locationName: "Amarr VIII (Oris) - Emperor Family Academy",
-        covered: 1,
-        needed: 110,
-        short: [
-          { typeId: 12731, needed: 1, have: 0, name: "Bustard" },
-          { typeId: 28668, needed: 100, have: 0, name: "Nanite Repair Paste" },
-        ],
-      },
+    holdings: [
+      holding(MIRA, "Mira", 60003760, "Jita IV - Moon 4 - Caldari Navy Assembly Plant", 2873, 3),
+      holding(MIRA, "Mira", 1022734985679, "Structure 1022734985679", 2873, 2),
+      holding(AURA, "Aura", 60008494, "Amarr VIII (Oris) - Emperor Family Academy", 2873, 1),
     ],
   };
 }
