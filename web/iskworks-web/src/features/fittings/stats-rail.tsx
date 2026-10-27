@@ -22,6 +22,7 @@ const WHY = {
   cpu: { title: "CPU output", attribute: "cpuOutput" },
   powergrid: { title: "Powergrid output", attribute: "powerOutput" },
   calibration: { title: "Calibration", attribute: "upgradeCapacity" },
+  droneBandwidth: { title: "Drone bandwidth", attribute: "droneBandwidth" },
   capacitor: { title: "Capacitor capacity", attribute: "capacitorCapacity" },
   recharge: { title: "Capacitor recharge time", attribute: "rechargeRate" },
   shieldHp: { title: "Shield HP", attribute: "shieldCapacity" },
@@ -213,7 +214,7 @@ function Meter({
         value={
           <>
             <span className={over ? "text-danger" : undefined}>{`${formatStat(usage.used, 1)} / ${formatStat(usage.total, 1)} ${unit}`}</span>
-            <Delta digits={1} higherIsGood={false} testId={`delta-${label.toLowerCase()}`} value={delta} />
+            <Delta digits={1} higherIsGood={false} testId={`delta-${label.toLowerCase().replaceAll(" ", "-")}`} value={delta} />
           </>
         }
         why={why}
@@ -320,7 +321,7 @@ export function StatsRail({
         <Line fitId={fitId} label="Launchers" value={`${resources.launcherHardpoints.used} / ${resources.launcherHardpoints.total}`} />
         {resources.droneBay.total > 0 ? (
           <>
-            <Line fitId={fitId} label="Drone bandwidth" value={`${formatStat(resources.droneBandwidth.used)} / ${formatStat(resources.droneBandwidth.total)} Mbit/s`} />
+            <Meter delta={delta((stats) => stats.resources.droneBandwidth.used)} fitId={fitId} label="Drone bandwidth" unit="Mbit/s" usage={resources.droneBandwidth} why={WHY.droneBandwidth} />
             <Line fitId={fitId} label="Drone bay" value={`${formatStat(resources.droneBay.used)} / ${formatStat(resources.droneBay.total)} m³`} />
           </>
         ) : null}
@@ -399,7 +400,15 @@ export function StatsRail({
         <Line fitId={fitId} label="Mass" value={`${formatStat(navigation.mass / 1000)} t`} />
         <Line fitId={fitId} label="Warp speed" value={`${formatStat(navigation.warpSpeed, 2)} AU/s`} why={WHY.warp} />
         {drones.maxActive > 0 && resources.droneBay.total > 0 ? (
-          <Line fitId={fitId} label="Drones" value={`${formatStat(drones.active)} / ${formatStat(drones.maxActive)} active`} />
+          <Line
+            fitId={fitId}
+            label="Drones"
+            value={
+              <span className={drones.active > drones.maxActive ? "text-danger" : undefined}>
+                {`${formatStat(drones.active)} / ${formatStat(drones.maxActive)} active`}
+              </span>
+            }
+          />
         ) : null}
       </Section>
     </aside>

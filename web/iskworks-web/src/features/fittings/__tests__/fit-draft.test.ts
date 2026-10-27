@@ -14,6 +14,7 @@ import {
   setCharge,
   setQuantity,
   setState,
+  toggleDrones,
   toggleState,
   toFitDraft,
 } from "../fit-draft";
@@ -85,6 +86,13 @@ describe("the fit draft", () => {
 
     const draft = setState(draftFrom(fitDetail()), 0, "offline");
     expect(draft.items[0].state).toBe("offline");
+  });
+
+  test("drones launch or go back to the bay, whatever the click", () => {
+    expect(toggleDrones("active")).toBe("offline");
+    expect(toggleDrones("offline")).toBe("active");
+    // Online means nothing to a drone: it's in the bay.
+    expect(toggleDrones("online")).toBe("active");
   });
 
   test("shift overheats a module that can, and alt takes it offline", () => {

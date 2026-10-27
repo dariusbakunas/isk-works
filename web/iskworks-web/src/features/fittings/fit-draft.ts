@@ -101,6 +101,12 @@ export function toggleState(state: ModuleState, maxState: ModuleState, toggle: S
   return rank(state) >= rank(on) ? off : on;
 }
 
+/** A drone stack is launched (active) or in the bay (offline); shift or
+ * alt mean nothing to it. */
+export function toggleDrones(state: ModuleState): ModuleState {
+  return state === "active" ? "offline" : "active";
+}
+
 export function setCharge(draft: Draft, position: number, charge: PickedType | null): Draft {
   return update(draft, position, (item) => ({
     ...item,
