@@ -16,6 +16,7 @@ import {
   type OperationalColumn,
 } from "../../components/operational-table";
 import { formatDistance, formatHeadline, formatStat, rackLabel, stateLabel } from "./fittings-format";
+import { DRAG_TYPE, type DraggedType } from "./module-browser";
 
 const COLUMNS: OperationalColumn[] = [
   { key: "state", label: "", width: "28px" },
@@ -105,6 +106,11 @@ function Chip({ children, tone }: { children: string; tone: "danger" | "muted" }
 /** What the table offers while the fit is being edited. */
 export interface ModuleTableEditor {
   onCycleState: (index: number) => void;
+  /** The row picked (for its charges in the browser). */
+  selectedIndex: number | null;
+  onSelect: (index: number) => void;
+  /** A browser module dropped on a slot (a module's or an empty one). */
+  onDrop: (type: DraggedType, kind: SlotKind, slotIndex: number) => void;
 }
 
 function ModuleRow({
@@ -168,7 +174,7 @@ function ModuleRow({
         cap: stats && stats.capacitorPerSecond ? `−${formatStat(stats.capacitorPerSecond, 1)}` : dash,
         effect: stats ? formatHeadline(stats.headline) : dash,
       }}
-      interactive={false}
+      interactive={Boolean(editor)}
       rowKey={`item-${index}`}
     />
   );
@@ -264,9 +270,40 @@ export function ModuleTable({
     );
   });
 
+  // Rows can't take drag handlers, so the wrapper finds the row dropped on.
+  const dropTarget = (target: EventTarget): { kind: SlotKind; slotIndex: number } | null => {
+    const key = (target as Element).closest?.("tr[data-row-key]")?.getAttribute("data-row-key") ?? "";
+    const empty = /^empty-([a-z_]+)-(\d+)$/.exec(key);
+    if (empty) return { kind: empty[1] as SlotKind, slotIndex: Number(empty[2]) };
+    const filled = /^item-(\d+)$/.exec(key);
+    const item = filled ? items[Number(filled[1])] : undefined;
+    return item && item.slotIndex !== null ? { kind: item.slotKind, slotIndex: item.slotIndex } : null;
+  };
+
   return (
-    <div className="iw-panel">
-      <OperationalTable ariaLabel="Modules" columns={COLUMNS} onSelectRow={() => undefined} selectedRowKey={null}>
+    <div
+      className="iw-panel"
+      onDragOver={(event) => {
+        if (editor && [...event.dataTransfer.types].includes(DRAG_TYPE)) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!editor) return;
+        const raw = event.dataTransfer.getData(DRAG_TYPE);
+        const target = dropTarget(event.target);
+        if (!raw || !target) return;
+        event.preventDefault();
+        editor.onDrop(JSON.parse(raw) as DraggedType, target.kind, target.slotIndex);
+      }}
+    >
+      <OperationalTable
+        ariaLabel="Modules"
+        columns={COLUMNS}
+        onSelectRow={(key) => {
+          const match = /^item-(\d+)$/.exec(key);
+          if (match && editor) editor.onSelect(Number(match[1]));
+        }}
+        selectedRowKey={editor && editor.selectedIndex !== null ? `item-${editor.selectedIndex}` : null}
+      >
         {rackGroups}
         {otherGroups}
       </OperationalTable>

@@ -2,13 +2,34 @@ import { ChevronLeft, CircleCheck, CircleHelp, CircleX, Copy, CopyPlus, Pencil, 
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { createFit, deleteFit, exportFitText, type FitDetail, type FitPilot, type FitStatsView, type FlyabilityStatus } from "../../api/fittings";
+import {
+  createFit,
+  deleteFit,
+  exportFitText,
+  type CatalogueItem,
+  type FitDetail,
+  type FitPilot,
+  type FitStatsView,
+  type FlyabilityStatus,
+  type SlotKind,
+} from "../../api/fittings";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { ConfirmDialog, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
-import { capacitorLabel, formatPercent, formatStat } from "./fittings-format";
-import { cycleState, draftFrom, setState, toFitDraft } from "./fit-draft";
+import { capacitorLabel, formatPercent, formatStat, rackLabel } from "./fittings-format";
+import {
+  addStack,
+  addToFreeSlot,
+  cycleState,
+  draftFrom,
+  placeAt,
+  setCharge,
+  setState,
+  toFitDraft,
+  type RackSizes,
+} from "./fit-draft";
+import { ModuleBrowser, type DraggedType } from "./module-browser";
 import { ModuleTable } from "./module-table";
 import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
@@ -130,7 +151,7 @@ function Header({
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {editing ? null : (
-            <button className="iw-button-primary gap-1.5" onClick={onEdit} type="button">
+            <button className="iw-button-primary gap-1.5" disabled={!engineAvailable} onClick={onEdit} type="button">
               <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
               Edit
             </button>
@@ -274,7 +295,36 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
     },
   });
 
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const items = editor.draft?.items ?? fit.items;
+  const racks: RackSizes | null = statsView
+    ? {
+        high: statsView.stats.resources.highSlots.total,
+        med: statsView.stats.resources.medSlots.total,
+        low: statsView.stats.resources.lowSlots.total,
+        rig: statsView.stats.resources.rigSlots.total,
+      }
+    : null;
+
+  const addModule = (entry: CatalogueItem) => {
+    if (!editor.draft || !entry.slot || !racks) return;
+    const result = addToFreeSlot(editor.draft, entry, entry.slot, racks);
+    if (result.placed) {
+      editor.setDraft(() => result.draft);
+      setMessage(null);
+    } else {
+      setMessage(`No free ${rackLabel(entry.slot).replace(/ slots$/, "").toLowerCase()} slot — drop it on a slot to replace one.`);
+    }
+  };
+  const drop = (type: DraggedType, kind: SlotKind, slotIndex: number) => {
+    if (type.slot !== kind) {
+      setMessage(`${type.name} doesn't go in ${rackLabel(kind).toLowerCase()}.`);
+      return;
+    }
+    editor.setDraft((draft) => placeAt(draft, type, kind, slotIndex));
+    setMessage(null);
+  };
   // While the draft differs, rows show its calculation only once it is
   // current; the rail keeps the last one, against the saved fit's.
   const tableStats = editor.differs ? editor.current : statsView;
@@ -294,12 +344,30 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
       {engineAvailable ? null : <EngineUnavailableHint />}
       {stats.error ? <InlineAlert title="Couldn't calculate the fit">{stats.error.message}</InlineAlert> : null}
       {railStats ? <SummaryStrip view={railStats} /> : null}
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div
+        className={`grid gap-3 ${editor.editing ? "xl:grid-cols-[260px_minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)_320px]"}`}
+      >
+        {editor.editing ? (
+          <ModuleBrowser
+            message={message}
+            onAddModule={addModule}
+            onAddStack={(type, kind) => editor.setDraft((draft) => addStack(draft, type, kind, 1))}
+            onLoadCharge={(charge) => {
+              if (selectedIndex !== null) editor.setDraft((draft) => setCharge(draft, selectedIndex, charge));
+            }}
+            pilot={pilot}
+            selected={selectedIndex !== null ? (items[selectedIndex] ?? null) : null}
+            shipTypeId={fit.ship.typeId}
+          />
+        ) : null}
         <div className="min-w-0 space-y-3">
           <ModuleTable
             editor={
               editor.editing
                 ? {
+                    selectedIndex,
+                    onSelect: setSelectedIndex,
+                    onDrop: drop,
                     onCycleState: (index) =>
                       editor.setDraft((draft) =>
                         setState(

@@ -3,6 +3,8 @@ import { vi } from "vitest";
 import type { CharacterRosterEntry } from "../../../api/characters";
 import type {
   AttributeView,
+  CatalogueItem,
+  CatalogueView,
   FitDetail,
   FitItemView,
   FitPilot,
@@ -257,6 +259,58 @@ export function editedStatsView(): FitStatsView {
   return statsView({ stats: edited });
 }
 
+const catalogueItem = (typeId: number, name: string, overrides: Partial<CatalogueItem> = {}): CatalogueItem => ({
+  typeId,
+  name,
+  kind: "module",
+  slot: "low",
+  cpu: 30,
+  powergrid: 1,
+  calibration: 0,
+  hardpoint: null,
+  rigSize: null,
+  chargeSize: null,
+  marketPath: ["Ship Equipment", "Hull & Armor", "Damage Controls"],
+  canUse: null,
+  ...overrides,
+});
+
+/** What the module browser's catalogue searches answer, by kind. */
+export function catalogueFor(url: string): CatalogueView {
+  const params = new URL(url, "http://localhost").searchParams;
+  const pilot = params.get("pilot");
+  const canUse = (value: boolean) => (pilot && pilot !== "allV" && pilot !== "allZero" ? value : null);
+  switch (params.get("kind")) {
+    case "charges":
+      return {
+        entries: [
+          catalogueItem(186, "Phased Plasma S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
+          catalogueItem(185, "EMP S", { kind: "charge", slot: null, marketPath: ["Ammunition", "Projectile"] }),
+        ],
+        truncated: false,
+      };
+    case "drones":
+      return {
+        entries: [catalogueItem(2456, "Hobgoblin II", { kind: "drone", slot: null, marketPath: ["Drones", "Combat Drones"] })],
+        truncated: false,
+      };
+    default:
+      return {
+        entries: [
+          catalogueItem(2048, "Damage Control II", { canUse: canUse(true) }),
+          catalogueItem(11640, "Warp Core Stabilizer II", { canUse: canUse(false) }),
+          catalogueItem(2873, "200mm AutoCannon II", {
+            slot: "high",
+            hardpoint: "turret",
+            marketPath: ["Ship Equipment", "Turrets", "Projectile"],
+            canUse: canUse(true),
+          }),
+        ],
+        truncated: false,
+      };
+  }
+}
+
 /** Answers every Fittings request from the fixtures, recording the calls. */
 export function stubFetch(options: StubOptions = {}) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -266,7 +320,10 @@ export function stubFetch(options: StubOptions = {}) {
       new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     if (url.endsWith("/api/fittings/meta")) return json(options.meta ?? meta());
     if (url.includes("/api/fittings/calculate")) return json(options.calculateView ?? editedStatsView());
-    if (url.includes("/api/fittings/catalogue")) return json(options.catalogue ?? { entries: [], truncated: false });
+    if (url.includes("/api/fittings/catalogue")) return json(options.catalogue ?? catalogueFor(url));
+    if (url.includes("/api/types/search")) {
+      return json([{ typeId: 34, typeName: "Tritanium", groupName: "Mineral", published: true }]);
+    }
     if (url.includes(`/api/fittings/`) && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}"));
       return json({ ...fitDetail(), name: body.name });
