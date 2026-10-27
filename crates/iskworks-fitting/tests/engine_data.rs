@@ -713,3 +713,48 @@ fn a_nosferatu_gains_capacitor_and_ranges_read_as_pyfa_shows_them() {
     assert_close(nosferatu.optimal, 4_000.0, "nosferatu optimal");
     assert_close(nosferatu.falloff, 2_000.0, "nosferatu falloff");
 }
+
+/// pyfa's "GSF - TigersClaw - Support" Devoter, rigs and all.
+const SUPPORT_DEVOTER: &str = "[Devoter, Support]
+Reactive Armor Hardener
+Imperial Navy 1600mm Steel Plates
+Damage Control II
+Imperial Navy 1600mm Steel Plates
+Multispectrum Energized Membrane II
+Thermal Armor Hardener II
+Corpii A-Type EM Coating
+
+50MN Quad LiF Restrained Microwarpdrive
+Small Capacitor Booster II
+Sensor Booster II
+
+Warp Disruption Field Generator II
+125mm Gatling AutoCannon II
+Small Ghoul Compact Energy Nosferatu
+Small Ghoul Compact Energy Nosferatu
+Cynosural Field Generator I
+Warp Disruption Field Generator II
+
+Medium Trimark Armor Pump II
+Medium Trimark Armor Pump II
+";
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn the_reactive_hardener_adapts_to_uniform_damage_as_pyfa_does() {
+    let fit = engine().parse_eft(SUPPORT_DEVOTER).unwrap().fit;
+    let defense = calculate(&fit, &Pilot::AllV).stats.defense;
+    let armor = defense.armor.resists;
+    // pyfa: 86.9% / 86.7% / 86.6% / 89.8%, the hardener shifted to
+    // 12% / 16.5% / 31.5% / 0%.
+    for (actual, expected, what) in [
+        (armor.em, 0.869, "em"),
+        (armor.thermal, 0.867, "thermal"),
+        (armor.kinetic, 0.866, "kinetic"),
+        (armor.explosive, 0.898, "explosive"),
+    ] {
+        assert!((actual - expected).abs() < 0.0005, "armor {what}: {actual}");
+    }
+    // pyfa's 194k: 2.83k shield, 186k armor, 5.6k hull.
+    assert!((defense.ehp - 194_199.0).abs() < 1.0, "{}", defense.ehp);
+}
