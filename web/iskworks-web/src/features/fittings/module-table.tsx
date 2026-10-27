@@ -16,6 +16,7 @@ import {
   OperationalTableRow,
   type OperationalColumn,
 } from "../../components/operational-table";
+import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { formatDistance, formatHeadline, formatStat, rackLabel, stateLabel } from "./fittings-format";
 import { DRAG_TYPE, type DraggedType } from "./module-browser";
 
@@ -28,6 +29,7 @@ const COLUMNS: OperationalColumn[] = [
   { key: "range", label: "Optimal + falloff", width: "128px", align: "right", hideBelow: "desktop" },
   { key: "cap", label: "Cap/s", width: "64px", align: "right", numeric: true, hideBelow: "desktop" },
   { key: "effect", label: "Effect", width: "128px", align: "right", hideBelow: "tablet" },
+  { key: "price", label: "Price", width: "72px", align: "right", numeric: true, hideBelow: "tablet" },
 ];
 
 /** Racks with positions, shown with their empty slots up to the ship's count. */
@@ -119,10 +121,18 @@ export interface ModuleTableEditor {
   onQuantity: (index: number, quantity: number) => void;
 }
 
+/** A row's price: its unit price times how many. */
+function PriceCell({ unitPrice, quantity }: { unitPrice: string | undefined; quantity: number }) {
+  if (unitPrice === undefined) return <span className="text-muted">—</span>;
+  const total = (Number(unitPrice) * quantity).toFixed(2);
+  return <span title={formatIskSummary(total)}>{formatIskCompact(total)}</span>;
+}
+
 function ModuleRow({
   index,
   item,
   stats,
+  unitPrice,
   blocked,
   unknown,
   violations,
@@ -131,6 +141,8 @@ function ModuleRow({
   index: number;
   item: FitItemView;
   stats: ItemStats | null;
+  /** Lowest sell per unit; `undefined` when unpriced or not loaded. */
+  unitPrice: string | undefined;
   blocked: boolean;
   unknown: boolean;
   violations: FitViolation[];
@@ -219,6 +231,7 @@ function ModuleRow({
             : dash,
         cap: stats && stats.capacitorPerSecond ? `−${formatStat(stats.capacitorPerSecond, 1)}` : dash,
         effect: stats ? formatHeadline(stats.headline) : dash,
+        price: <PriceCell quantity={item.quantity} unitPrice={unitPrice} />,
       }}
       interactive={Boolean(editor)}
       rowKey={`item-${index}`}
@@ -232,6 +245,7 @@ export function ModuleTable({
   items,
   stats,
   rackStats = null,
+  prices = null,
   editor,
 }: {
   items: FitItemView[];
@@ -239,6 +253,8 @@ export function ModuleTable({
   stats: FitStatsView | null;
   /** Rack sizes to use while `stats` is out of date (the saved fit's). */
   rackStats?: FitStatsView["stats"] | null;
+  /** Lowest sell per unit, by type; types without one are left out. */
+  prices?: ReadonlyMap<number, string> | null;
   editor?: ModuleTableEditor;
 }) {
   const indexed = items.map((item, index) => ({ item, index }));
@@ -256,6 +272,7 @@ export function ModuleTable({
       item={item}
       key={`item-${index}`}
       stats={stats?.items[index] ?? null}
+      unitPrice={prices?.get(item.typeId)}
       unknown={unknown.has(index)}
       violations={violationsOf(index)}
     />

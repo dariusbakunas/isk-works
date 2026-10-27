@@ -5,6 +5,9 @@ import type {
   AttributeView,
   CatalogueItem,
   CatalogueView,
+  FitAssetsView,
+  FitCostLine,
+  FitCostView,
   FitDetail,
   FitItemView,
   FitPilot,
@@ -242,6 +245,68 @@ export function explanation(): AttributeView {
   };
 }
 
+/** The fixture fit at Jita: the hull 95M, the guns 1.2M each; the paste
+ * has no sell order. */
+export function cost(): FitCostView {
+  const line = (typeId: number, name: string, section: FitCostLine["section"], quantity: number, unitPrice: string | null) => ({
+    typeId,
+    name,
+    section,
+    quantity,
+    unitPrice,
+    total: unitPrice === null ? null : String(Number(unitPrice) * quantity),
+  });
+  return {
+    scope: { regionId: 10000002, locationId: 60003760 },
+    lines: [
+      line(12731, "Bustard", "hull", 1, "95000000"),
+      line(2048, "Damage Control II", "fittings", 1, "450000"),
+      line(5975, "50MN Y-T8 Compact Microwarpdrive", "fittings", 1, "2100000"),
+      line(12058, "10MN Afterburner II", "fittings", 1, "1300000"),
+      line(2873, "200mm AutoCannon II", "fittings", 1, "1200000"),
+      line(2456, "Hobgoblin II", "drones", 5, "310000"),
+      line(28668, "Nanite Repair Paste", "cargo", 100, null),
+    ],
+    hull: "95000000",
+    fittings: "5050000",
+    drones: "1550000",
+    cargo: "0",
+    total: "101600000",
+    missing: [28668],
+    observedAt: "2026-10-27T10:00:00Z",
+  };
+}
+
+/** Mira has all but the paste in Jita; Aura one gun in Amarr. */
+export function assets(): FitAssetsView {
+  return {
+    needed: 110,
+    locations: [
+      {
+        connectionId: MIRA,
+        characterName: "Mira",
+        locationId: 60003760,
+        locationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant",
+        covered: 10,
+        needed: 110,
+        short: [{ typeId: 28668, needed: 100, have: 0, name: "Nanite Repair Paste" }],
+      },
+      {
+        connectionId: AURA,
+        characterName: "Aura",
+        locationId: 60008494,
+        locationName: "Amarr VIII (Oris) - Emperor Family Academy",
+        covered: 1,
+        needed: 110,
+        short: [
+          { typeId: 12731, needed: 1, have: 0, name: "Bustard" },
+          { typeId: 28668, needed: 100, have: 0, name: "Nanite Repair Paste" },
+        ],
+      },
+    ],
+  };
+}
+
 export interface StubOptions {
   meta?: FittingsMeta;
   fits?: FitSummary[];
@@ -250,6 +315,8 @@ export interface StubOptions {
   /** What a draft calculation answers; by default 1,000 more EHP than saved. */
   calculateView?: FitStatsView;
   catalogue?: unknown;
+  cost?: FitCostView;
+  assets?: FitAssetsView;
 }
 
 /** The saved fit's stats with 1,000 more EHP: what an edit calculates. */
@@ -350,6 +417,12 @@ export function stubFetch(options: StubOptions = {}) {
     if (url.includes("/api/fittings/parse")) return json(options.preview ?? preview());
     if (url.includes("/api/fittings/import")) return json({ ...fitDetail(), id: "new-fit-id" }, 201);
     if (url.includes("/stats")) return json(options.statsView ?? statsView());
+    if (url.endsWith("/cost")) return json(options.cost ?? cost());
+    if (url.endsWith("/assets")) return json(options.assets ?? assets());
+    if (url.endsWith("/api/market/regions")) return json([{ regionId: 10000002, regionName: "The Forge" }]);
+    if (url.endsWith("/api/market/regions/10000002/locations")) {
+      return json([{ locationId: 60003760, locationName: "Jita IV - Moon 4 - Caldari Navy Assembly Plant" }]);
+    }
     if (url.includes("/pilots")) return json(pilots());
     if (url.includes("/explain")) return json(explanation());
     if (url.includes("/skill-plan")) return json({ id: "plan-1", name: "Fit: Null Transport", description: "", entries: [] }, 201);
