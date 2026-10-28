@@ -4,6 +4,9 @@ import { useEffect, useId } from "react";
 import type { FitHolding } from "../../api/fittings";
 import { CharacterName } from "../../observability/private";
 
+/** 1,729 as 1.7K and 12,341 as 12K: a count has to fit beside the magnifier. */
+const compactCount = new Intl.NumberFormat("en-US", { notation: "compact" });
+
 /** How many of a type the workspace's characters hold, with the magnifier
  * that lists where (as on Inventory rows); a dash when they hold none, and
  * nothing while that isn't known. */
@@ -18,7 +21,9 @@ export function HeldCell({ name, held, onOpen }: { name: string; held: number | 
   }
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="font-mono">{held.toLocaleString("en-US")}</span>
+      <span className="font-mono text-xs" title={held.toLocaleString("en-US")}>
+        {compactCount.format(held)}
+      </span>
       <HoldingsButton name={name} onClick={onOpen} />
     </span>
   );
