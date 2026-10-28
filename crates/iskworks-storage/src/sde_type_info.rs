@@ -428,12 +428,15 @@ impl PgSdeRepository {
                        AND v.attribute_id = $3) charge_size
                 ), members AS (
                   SELECT t.import_id, t.type_id
-                  FROM sde_types t, active, module
-                  WHERE t.import_id = active.id AND t.group_id = ANY(module.charge_groups)
-                    AND (module.charge_size IS NULL OR NOT EXISTS (
-                      SELECT 1 FROM sde_type_attributes size
-                      WHERE size.import_id = t.import_id AND size.type_id = t.type_id
-                        AND size.attribute_id = $3 AND size.value <> module.charge_size))
+                  FROM active
+                  CROSS JOIN module
+                  JOIN sde_types t
+                    ON t.import_id = active.id AND t.group_id = ANY(module.charge_groups)
+                  LEFT JOIN sde_type_attributes size
+                    ON size.import_id = t.import_id AND size.type_id = t.type_id
+                   AND size.attribute_id = $3
+                  WHERE module.charge_size IS NULL OR size.value IS NULL
+                     OR size.value = module.charge_size
                 )
                 "#,
             )
@@ -451,13 +454,16 @@ impl PgSdeRepository {
                   WHERE t.import_id = active.id AND t.type_id = $1
                 ), members AS (
                   SELECT DISTINCT v.import_id, v.type_id
-                  FROM sde_type_attributes v, active, charge
-                  WHERE v.import_id = active.id AND v.attribute_id = ANY($2)
-                    AND v.value = charge.group_id
-                    AND (charge.charge_size IS NULL OR NOT EXISTS (
-                      SELECT 1 FROM sde_type_attributes size
-                      WHERE size.import_id = v.import_id AND size.type_id = v.type_id
-                        AND size.attribute_id = $3 AND size.value <> charge.charge_size))
+                  FROM active
+                  CROSS JOIN charge
+                  JOIN sde_type_attributes v
+                    ON v.import_id = active.id AND v.attribute_id = ANY($2)
+                   AND v.value = charge.group_id
+                  LEFT JOIN sde_type_attributes size
+                    ON size.import_id = v.import_id AND size.type_id = v.type_id
+                   AND size.attribute_id = $3
+                  WHERE charge.charge_size IS NULL OR size.value IS NULL
+                     OR size.value = charge.charge_size
                 )
                 "#,
             )
