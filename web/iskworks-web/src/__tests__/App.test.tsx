@@ -653,6 +653,28 @@ describe("App routes", () => {
     expect(logoLink).toHaveAttribute("href", "/characters");
   });
 
+  test.each(
+    flatNavItems(true).flatMap((item) => [item.path, ...(item.children ?? []).map((child) => child.path)]),
+  )("the navigation entry %s resolves to a page", async (path) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/session")) return mockResponse({ ...authenticatedSession, isAdmin: true });
+        if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+        if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+        // Page data never arrives: every page stays in its loading state, so
+        // only routing decides whether "Page not found" renders.
+        return new Promise<Response>(() => {});
+      }),
+    );
+
+    renderApp(path);
+
+    expect(await screen.findByRole("navigation", { name: "Primary navigation" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
+  });
+
   test("legacy /orders/:id still redirects to the Board epic deep link", async () => {
     vi.stubGlobal(
       "fetch",
