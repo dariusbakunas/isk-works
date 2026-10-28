@@ -54,7 +54,7 @@ export function AssetsWorkspacePage() {
   async function handleSync() { setSyncing(true); try { const outcomes = await syncAssets(connectionIds); const failed = outcomes.filter(({ succeeded }) => !succeeded); setMessage(failed.length ? `${outcomes.length - failed.length} synchronized; ${failed.length} failed.` : `Synchronized ${outcomes.length} character${outcomes.length === 1 ? "" : "s"}.`); assets.refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Asset synchronization failed."); } finally { setSyncing(false); } }
   async function handleExport() { const blob = await exportAssets(query, columns.filter(({ key }) => visible.has(key)).map(({ key }) => key)); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "isk-works-assets.csv"; anchor.click(); URL.revokeObjectURL(url); }
   return (
-    <section className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-2.75rem-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4" data-assets-workspace ref={workspace}>
+    <section className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-var(--iw-header-h)-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4" data-assets-workspace ref={workspace}>
       <header className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-3"><h1 className="text-sm font-semibold">Assets</h1><span className="text-muted">Real synchronized EVE holdings</span></header>
       {page ? <Summary page={page} /> : <div className="h-[3.75rem] border-b border-border bg-panel" />}
       <div className="flex min-h-0 flex-1">

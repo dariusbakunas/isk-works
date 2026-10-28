@@ -21,7 +21,7 @@ const tabClass = ({ isActive }: { isActive: boolean }) =>
 // bookmarks to them land on Transactions.
 export function FinanceWorkspace() {
   return (
-    <section className="finance-workspace -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-2.75rem-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-hidden sm:-mx-4 sm:-my-4">
+    <section className="finance-workspace -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-var(--iw-header-h)-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-hidden sm:-mx-4 sm:-my-4">
       <header className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-3">
         <WalletCards className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
         <h1 className="text-sm font-semibold">Finance</h1>
