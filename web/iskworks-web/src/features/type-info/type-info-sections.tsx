@@ -49,9 +49,19 @@ export function DescriptionSection({ info, onOpen }: { info: TypeInfo; onOpen: O
   );
 }
 
+/** Two decimals, or three significant digits for a value that would round
+ * to 0 (Antimatter Charge S is 0.0025 m³), like the API's attributes. */
+function amount(value: string): string {
+  const number = Number(value);
+  if (number !== 0 && Math.abs(number) < 0.005) {
+    return number.toLocaleString("en-US", { maximumSignificantDigits: 3 });
+  }
+  return number.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 function volume(value: string | null): string | null {
   if (value === null) return null;
-  return `${Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 })} m³`;
+  return `${amount(value)} m³`;
 }
 
 function KeyValue({ label, children }: { label: string; children: ReactNode }) {
@@ -64,17 +74,22 @@ function KeyValue({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function hasBasics(info: TypeInfo): boolean {
-  const { volumeM3, packagedVolumeM3, massKg, capacityM3 } = info.basics;
-  return [volumeM3, packagedVolumeM3, massKg, capacityM3].some((value) => value !== null && Number(value) !== 0);
+  const { volumeM3, packagedVolumeM3, massKg, capacityM3, portionSize } = info.basics;
+  return (
+    [volumeM3, packagedVolumeM3, massKg, capacityM3].some((value) => value !== null && Number(value) !== 0) ||
+    (portionSize ?? 1) > 1
+  );
 }
 
 export function AttributesSection({ info, onOpen }: { info: TypeInfo; onOpen: OpenType }) {
-  const { volumeM3, packagedVolumeM3, massKg, capacityM3 } = info.basics;
+  const { volumeM3, packagedVolumeM3, massKg, capacityM3, portionSize } = info.basics;
   const basics: [string, string | null][] = [
     ["Volume", volume(volumeM3)],
     ["Packaged volume", packagedVolumeM3 !== volumeM3 ? volume(packagedVolumeM3) : null],
-    ["Mass", massKg !== null ? `${Number(massKg).toLocaleString("en-US", { maximumFractionDigits: 2 })} kg` : null],
+    ["Mass", massKg !== null ? `${amount(massKg)} kg` : null],
     ["Capacity", capacityM3 !== null && Number(capacityM3) !== 0 ? volume(capacityM3) : null],
+    // How many reprocess (or stack into a portion) at once: 100 for ammo.
+    ["Units to reprocess", portionSize !== null && portionSize > 1 ? portionSize.toLocaleString("en-US") : null],
   ];
   const shownBasics = basics.filter((row): row is [string, string] => row[1] !== null);
   return (

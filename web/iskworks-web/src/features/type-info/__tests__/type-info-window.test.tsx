@@ -8,7 +8,7 @@ import { ToolWindowLayer } from "../../../components/tool-windows/tool-window-la
 import { ToolWindowsProvider, useToolWindows } from "../../../components/tool-windows/tool-windows-context";
 import { WindowDock } from "../../../components/tool-windows/window-dock";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
-import { formatTrainingTime } from "../type-info-sections";
+import { formatTrainingTime, hasBasics } from "../type-info-sections";
 import { typeInfoKind } from "../type-info-kind";
 import { visibleTabs } from "../type-info-window";
 
@@ -428,4 +428,34 @@ test("a reaction product plans a reaction build; an item nothing makes has no Pl
   expect(await screen.findByRole("dialog", { name: "Tritanium" })).toBeInTheDocument();
   await within(screen.getByRole("dialog")).findByRole("tablist");
   expect(screen.queryByRole("link", { name: "Plan a build" })).not.toBeInTheDocument();
+});
+
+test("basics keep tiny volumes readable and show the reprocessing batch", async () => {
+  api.getTypeInfo.mockResolvedValue(
+    info({
+      typeId: 230,
+      name: "Antimatter Charge S",
+      basics: { volumeM3: "0.0025", packagedVolumeM3: "0.0025", massKg: "0.01", capacityM3: null, portionSize: 100 },
+    }),
+  );
+  render(
+    <MemoryRouter>
+      <ToolWindowsProvider kinds={[typeInfoKind]}>
+        <TypeInfoButton alwaysVisible name="Antimatter Charge S" typeId={230} />
+        <ToolWindowLayer />
+      </ToolWindowsProvider>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Antimatter Charge S" }));
+  const dialog = await screen.findByRole("dialog", { name: "Antimatter Charge S" });
+  const panel = await within(dialog).findByRole("tabpanel");
+  // The client: "Volume 0.0025 m3", "Units to Reprocess 100".
+  expect(within(panel).getByText("0.0025 m³")).toBeInTheDocument();
+  expect(within(panel).getByText("Units to reprocess")).toBeInTheDocument();
+  expect(within(panel).getByText("100")).toBeInTheDocument();
+});
+
+test("a portion of one isn't worth a row", () => {
+  expect(hasBasics(info({ basics: { volumeM3: null, packagedVolumeM3: null, massKg: null, capacityM3: null, portionSize: 1 } }))).toBe(false);
+  expect(hasBasics(info({ basics: { volumeM3: null, packagedVolumeM3: null, massKg: null, capacityM3: null, portionSize: 100 } }))).toBe(true);
 });
