@@ -2,7 +2,8 @@
 //! `SdeReadRepository` impl delegates here.
 
 use iskworks_sde::{
-    RecipeLine, TypeAttributeValue, TypeBonusLine, TypeBonusSource, TypeInfoBase, TypeInfoCounts,
+    CandidateRecipeKind, RecipeLine, TypeAttributeValue, TypeBonusLine, TypeBonusSource,
+    TypeInfoBase, TypeInfoCounts, TypeListEntry, TypeUsage, UsedWithKind,
 };
 use rust_decimal::Decimal;
 
@@ -52,6 +53,65 @@ struct TypeBonusRow {
     unit_id: Option<i64>,
     unit_display_name: Option<String>,
     text_en: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct TypeListRow {
+    type_id: i64,
+    name_en: String,
+    meta_group_id: i64,
+    meta_group_name: String,
+    meta_level: Option<i64>,
+}
+
+impl From<TypeListRow> for TypeListEntry {
+    fn from(row: TypeListRow) -> Self {
+        Self {
+            type_id: row.type_id,
+            name: row.name_en,
+            meta_group_id: row.meta_group_id,
+            meta_group_name: row.meta_group_name,
+            meta_level: row.meta_level,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct TypeUsageRow {
+    kind: String,
+    recipe_type_id: i64,
+    recipe_name: String,
+    product_type_id: i64,
+    product_name: String,
+    quantity: i64,
+}
+
+/// `chargeGroup1..5`: the charge groups a module loads.
+const CHARGE_GROUP_ATTRIBUTES: [i64; 5] = [604, 605, 606, 609, 610];
+const CHARGE_SIZE_ATTRIBUTE: i64 = 128;
+
+/// Lists the published types of a `members (import_id, type_id)` CTE that
+/// `with` defines, as list entries: a type without a meta group is Tech I,
+/// as in the client; by meta group, meta level (`metaLevelOld`), name.
+fn list_entries_sql(with: &str) -> String {
+    format!(
+        r#"
+        {with}
+        SELECT t.type_id, t.name_en,
+               coalesce(t.meta_group_id, 1) meta_group_id,
+               coalesce(mg.name_en, 'Tech I') meta_group_name,
+               level.value::bigint meta_level
+        FROM members
+        JOIN sde_types t ON t.import_id = members.import_id AND t.type_id = members.type_id
+        LEFT JOIN sde_meta_groups mg
+          ON mg.import_id = t.import_id AND mg.meta_group_id = coalesce(t.meta_group_id, 1)
+        LEFT JOIN sde_type_attributes level
+          ON level.import_id = t.import_id AND level.type_id = t.type_id
+         AND level.attribute_id = 633
+        WHERE t.published
+        ORDER BY 3, 5 NULLS FIRST, t.name_en, t.type_id
+        "#
+    )
 }
 
 impl PgSdeRepository {
@@ -300,5 +360,196 @@ impl PgSdeRepository {
         .await
         .map_err(map_sde_sqlx_error)?;
         Ok(rows.into_iter().collect())
+    }
+
+    pub(super) async fn read_type_variations(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<TypeListEntry>, SdeError> {
+        let sql = list_entries_sql(
+            r#"
+            WITH active AS (
+              SELECT id FROM sde_imports WHERE active = true
+            ), root AS (
+              SELECT coalesce(
+                (SELECT d.variation_parent_type_id FROM sde_type_details d, active
+                 WHERE d.import_id = active.id AND d.type_id = $1),
+                $1
+              ) type_id
+            ), members AS (
+              SELECT active.id import_id, root.type_id FROM active, root
+              UNION
+              SELECT d.import_id, d.type_id
+              FROM sde_type_details d, active, root
+              WHERE d.import_id = active.id AND d.variation_parent_type_id = root.type_id
+            )
+            "#,
+        );
+        let rows = sqlx::query_as::<_, TypeListRow>(&sql)
+            .bind(type_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sde_sqlx_error)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    pub(super) async fn read_types_used_with(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError> {
+        // A module: the charges in its charge groups.
+        let is_module = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM sde_imports import
+              JOIN sde_type_attributes v ON v.import_id = import.id
+              WHERE import.active = true AND v.type_id = $1 AND v.attribute_id = ANY($2)
+            )
+            "#,
+        )
+        .bind(type_id)
+        .bind(&CHARGE_GROUP_ATTRIBUTES[..])
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        // The other side's charge size must match ours when both have one.
+        let sql = if is_module {
+            list_entries_sql(
+                r#"
+                WITH active AS (
+                  SELECT id FROM sde_imports WHERE active = true
+                ), module AS (
+                  SELECT
+                    (SELECT array_agg(v.value::bigint) FROM sde_type_attributes v, active
+                     WHERE v.import_id = active.id AND v.type_id = $1
+                       AND v.attribute_id = ANY($2)) charge_groups,
+                    (SELECT v.value FROM sde_type_attributes v, active
+                     WHERE v.import_id = active.id AND v.type_id = $1
+                       AND v.attribute_id = $3) charge_size
+                ), members AS (
+                  SELECT t.import_id, t.type_id
+                  FROM sde_types t, active, module
+                  WHERE t.import_id = active.id AND t.group_id = ANY(module.charge_groups)
+                    AND (module.charge_size IS NULL OR NOT EXISTS (
+                      SELECT 1 FROM sde_type_attributes size
+                      WHERE size.import_id = t.import_id AND size.type_id = t.type_id
+                        AND size.attribute_id = $3 AND size.value <> module.charge_size))
+                )
+                "#,
+            )
+        } else {
+            list_entries_sql(
+                r#"
+                WITH active AS (
+                  SELECT id FROM sde_imports WHERE active = true
+                ), charge AS (
+                  SELECT t.group_id,
+                    (SELECT v.value FROM sde_type_attributes v
+                     WHERE v.import_id = t.import_id AND v.type_id = t.type_id
+                       AND v.attribute_id = $3) charge_size
+                  FROM sde_types t, active
+                  WHERE t.import_id = active.id AND t.type_id = $1
+                ), members AS (
+                  SELECT DISTINCT v.import_id, v.type_id
+                  FROM sde_type_attributes v, active, charge
+                  WHERE v.import_id = active.id AND v.attribute_id = ANY($2)
+                    AND v.value = charge.group_id
+                    AND (charge.charge_size IS NULL OR NOT EXISTS (
+                      SELECT 1 FROM sde_type_attributes size
+                      WHERE size.import_id = v.import_id AND size.type_id = v.type_id
+                        AND size.attribute_id = $3 AND size.value <> charge.charge_size))
+                )
+                "#,
+            )
+        };
+        let rows = sqlx::query_as::<_, TypeListRow>(&sql)
+            .bind(type_id)
+            .bind(&CHARGE_GROUP_ATTRIBUTES[..])
+            .bind(CHARGE_SIZE_ATTRIBUTE)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sde_sqlx_error)?;
+        let entries: Vec<TypeListEntry> = rows.into_iter().map(Into::into).collect();
+        Ok(if is_module {
+            Some((UsedWithKind::Charges, entries))
+        } else if entries.is_empty() {
+            None
+        } else {
+            Some((UsedWithKind::Modules, entries))
+        })
+    }
+
+    pub(super) async fn read_type_usages(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<TypeUsage>, i64), SdeError> {
+        // Each recipe's first product names it.
+        const USAGES: &str = r#"
+            WITH active AS (
+              SELECT id FROM sde_imports WHERE active = true
+            ), usages AS (
+              SELECT 'manufacturing' kind, m.blueprint_type_id recipe_type_id,
+                     recipe.name_en recipe_name, p.product_type_id,
+                     product.name_en product_name, m.quantity
+              FROM sde_blueprint_materials m
+              JOIN active ON m.import_id = active.id
+              JOIN sde_blueprints recipe
+                ON recipe.import_id = m.import_id AND recipe.blueprint_type_id = m.blueprint_type_id
+              JOIN sde_blueprint_products p
+                ON p.import_id = m.import_id AND p.blueprint_type_id = m.blueprint_type_id
+               AND p.position = 0
+              JOIN sde_types product
+                ON product.import_id = p.import_id AND product.type_id = p.product_type_id
+              WHERE m.material_type_id = $1
+              UNION ALL
+              SELECT 'reaction', m.reaction_formula_type_id, recipe.name_en, p.product_type_id,
+                     product.name_en, m.quantity
+              FROM sde_reaction_formula_materials m
+              JOIN active ON m.import_id = active.id
+              JOIN sde_reaction_formulas recipe
+                ON recipe.import_id = m.import_id
+               AND recipe.reaction_formula_type_id = m.reaction_formula_type_id
+              JOIN sde_reaction_formula_products p
+                ON p.import_id = m.import_id
+               AND p.reaction_formula_type_id = m.reaction_formula_type_id
+               AND p.position = 0
+              JOIN sde_types product
+                ON product.import_id = p.import_id AND product.type_id = p.product_type_id
+              WHERE m.material_type_id = $1
+            )
+        "#;
+        let rows = sqlx::query_as::<_, TypeUsageRow>(&format!(
+            "{USAGES} SELECT * FROM usages \
+             ORDER BY product_name, recipe_type_id LIMIT $2 OFFSET $3"
+        ))
+        .bind(type_id)
+        .bind(i64::from(limit))
+        .bind(i64::from(offset))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        let total = sqlx::query_scalar::<_, i64>(&format!("{USAGES} SELECT count(*) FROM usages"))
+            .bind(type_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_sde_sqlx_error)?;
+        let usages = rows
+            .into_iter()
+            .map(|row| TypeUsage {
+                kind: if row.kind == "reaction" {
+                    CandidateRecipeKind::Reaction
+                } else {
+                    CandidateRecipeKind::Manufacturing
+                },
+                recipe_type_id: row.recipe_type_id,
+                recipe_name: row.recipe_name,
+                product_type_id: row.product_type_id,
+                product_name: row.product_name,
+                quantity: row.quantity,
+            })
+            .collect();
+        Ok((usages, total))
     }
 }

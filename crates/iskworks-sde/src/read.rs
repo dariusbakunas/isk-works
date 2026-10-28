@@ -290,6 +290,39 @@ pub struct TypeReference {
     pub packaged_volume_m3: Option<Decimal>,
 }
 
+/// One type in a Type Info list (variations, used with). A type with no
+/// meta group is Tech I, as in the client.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TypeListEntry {
+    pub type_id: i64,
+    pub name: String,
+    pub meta_group_id: i64,
+    pub meta_group_name: String,
+    pub meta_level: Option<i64>,
+}
+
+/// Which way a "used with" list points.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UsedWithKind {
+    /// The type is a module; these are the charges it loads.
+    Charges,
+    /// The type is a charge; these are the modules that load it.
+    Modules,
+}
+
+/// A recipe that consumes a type.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TypeUsage {
+    pub kind: CandidateRecipeKind,
+    pub recipe_type_id: i64,
+    pub recipe_name: String,
+    pub product_type_id: i64,
+    pub product_name: String,
+    /// Of the type, per run.
+    pub quantity: i64,
+}
+
 /// One type as the Type Info window's header and basics show it.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct TypeInfoBase {
@@ -808,6 +841,34 @@ pub trait SdeReadRepository: Send + Sync {
     async fn type_info_counts(&self, type_id: i64) -> Result<TypeInfoCounts, SdeError> {
         let _ = type_id;
         Ok(TypeInfoCounts::default())
+    }
+    /// The published types of `type_id`'s variation family (itself
+    /// included), by meta group id, then meta level, then name.
+    async fn type_variations(&self, type_id: i64) -> Result<Vec<TypeListEntry>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+    /// For a module, the published charges it loads (its charge groups,
+    /// matching charge size when both have one); for a charge, the
+    /// published modules that load it. `None` for neither. Ordered like
+    /// [`Self::type_variations`].
+    async fn types_used_with(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError> {
+        let _ = type_id;
+        Ok(None)
+    }
+    /// Recipes consuming `type_id`, by product name, `limit` from
+    /// `offset`, with the total.
+    async fn type_usages(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<TypeUsage>, i64), SdeError> {
+        let _ = (type_id, limit, offset);
+        Ok((Vec::new(), 0))
     }
     /// Group names by group id; unknown ids yield no entry.
     async fn group_names(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
