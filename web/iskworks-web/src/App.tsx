@@ -9,7 +9,7 @@ import { identifyViewer, trackEvent } from "./observability/logrocket";
 import { CharacterName } from "./observability/private";
 import { AppFooter } from "./components/app-footer";
 import { HELP_PATH, LEGAL_PATH } from "./components/community-links";
-import { EsiDowntimeBadge } from "./components/esi-downtime-badge";
+import { EsiDowntimeBadge } from "./components/esi-status";
 import { flatNavItems, isNavPathActive } from "./components/navigation/registry";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";

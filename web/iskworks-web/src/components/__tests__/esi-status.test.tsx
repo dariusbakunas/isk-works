@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { EsiDowntimeBadge } from "../esi-downtime-badge";
+import { EsiStatusItem } from "../esi-status";
 
 function mockStatuses(...bodies: unknown[]) {
   const responses = [...bodies];
@@ -16,44 +16,52 @@ function mockStatuses(...bodies: unknown[]) {
   return fetchMock;
 }
 
-describe("EsiDowntimeBadge", () => {
+describe("EsiStatusItem", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  test("shows a downtime badge while ESI is paused", async () => {
+  test("reports paused data while ESI is down", async () => {
     mockStatuses({ downtime: true, retryAfterSeconds: 30 });
 
-    render(<EsiDowntimeBadge />);
+    render(<EsiStatusItem expanded />);
 
-    const badge = await screen.findByRole("status");
-    expect(badge).toHaveTextContent(/eve downtime/i);
-    expect(badge).toHaveAttribute("title", expect.stringMatching(/servers are down/i));
+    const status = screen.getByRole("status");
+    await waitFor(() => expect(status).toHaveTextContent("ESI data paused"));
+    expect(status).toHaveAttribute("title", expect.stringMatching(/servers are down/i));
   });
 
-  test("renders nothing while ESI is up", async () => {
+  test("reports a connected ESI while it is up", async () => {
     const fetchMock = mockStatuses({ downtime: false, retryAfterSeconds: null });
 
-    const { container } = render(<EsiDowntimeBadge />);
+    render(<EsiStatusItem expanded />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/esi/status", expect.anything()));
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("status")).toHaveTextContent("ESI connected");
   });
 
-  test("disappears on its own once ESI is back", async () => {
+  test("keeps the label for screen readers when collapsed", async () => {
+    mockStatuses({ downtime: false, retryAfterSeconds: null });
+
+    render(<EsiStatusItem expanded={false} />);
+
+    expect(screen.getByText("ESI connected")).toHaveClass("sr-only");
+  });
+
+  test("recovers on its own once ESI is back", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockStatuses(
       { downtime: true, retryAfterSeconds: 30 },
       { downtime: false, retryAfterSeconds: null },
     );
 
-    render(<EsiDowntimeBadge />);
-    expect(await screen.findByRole("status")).toBeInTheDocument();
+    render(<EsiStatusItem expanded />);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("ESI data paused"));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("ESI connected"));
   });
 });
