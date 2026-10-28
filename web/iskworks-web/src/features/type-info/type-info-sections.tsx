@@ -163,17 +163,13 @@ function PilotPicker({
   characters,
   onPilot,
 }: {
-  pilot: string;
+  pilot: string | undefined;
   characters: CharacterRosterEntry[];
   onPilot: (pilot: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const options = [
-    { value: "allV", label: "All V" },
-    { value: "allZero", label: "All 0" },
-    ...characters.map((character) => ({ value: character.connectionId, label: character.characterName })),
-  ];
+  const options = characters.map((character) => ({ value: character.connectionId, label: character.characterName }));
   const current = options.find((option) => option.value === pilot) ?? options[0];
 
   useEffect(() => {
@@ -220,6 +216,19 @@ function PilotPicker({
   );
 }
 
+/** "Caldari Frigate V", indented by depth; the name opens the skill. */
+function SkillLabel({ node, depth, onOpen }: { node: SkillNode; depth: number; onOpen: OpenType }) {
+  const name = node.name ?? `Skill ${node.skillTypeId}`;
+  return (
+    <span className="truncate text-foreground" style={{ paddingLeft: depth * 14 }}>
+      <TypeLink name={name} onOpen={onOpen} typeId={node.skillTypeId}>
+        <span className="text-foreground">{name}</span>
+      </TypeLink>{" "}
+      <b>{ROMAN[node.level]}</b>
+    </span>
+  );
+}
+
 export function RequirementsSection({
   info,
   pilot,
@@ -228,42 +237,56 @@ export function RequirementsSection({
   onOpen,
 }: {
   info: TypeInfo;
-  pilot: string;
-  characters: CharacterRosterEntry[];
+  /** The character checked against, if any. */
+  pilot: string | undefined;
+  /** Characters with synced skills; `null` while loading. */
+  characters: CharacterRosterEntry[] | null;
   onPilot: (pilot: string) => void;
   onOpen: OpenType;
 }) {
   const rows = flatten(info.requirements);
+  // Levels are checked only against a character (spec: no All V / All 0 here).
+  const checked = Boolean(pilot && characters?.some((character) => character.connectionId === pilot) && info.missing);
   const missing = info.missing;
-  const allMet = rows.every(({ node }) => node.trainedLevel >= node.level);
-  const summary = missing
-    ? missing.missingSkills === 0
-      ? null
-      : `Missing ${missing.missingSkills} ${missing.missingSkills === 1 ? "skill" : "skills"}${
-          missing.remainingSeconds ? ` · ${formatTrainingTime(missing.remainingSeconds)} to train` : ""
-        }`
-    : allMet
-      ? null
-      : "Not all requirements met";
+  const summary =
+    checked && missing
+      ? missing.missingSkills === 0
+        ? null
+        : `Missing ${missing.missingSkills} ${missing.missingSkills === 1 ? "skill" : "skills"}${
+            missing.remainingSeconds ? ` · ${formatTrainingTime(missing.remainingSeconds)} to train` : ""
+          }`
+      : null;
   return (
     <div className="p-3">
       <div className="flex items-center gap-2">
-        <PilotPicker characters={characters} onPilot={onPilot} pilot={pilot} />
-        <span className={`ml-auto text-[9px] ${summary ? "text-warning" : ""}`} style={summary ? undefined : { color: GREEN }}>
-          {summary ?? "All requirements met"}
-        </span>
+        {characters?.length ? <PilotPicker characters={characters} onPilot={onPilot} pilot={pilot} /> : null}
+        {characters && characters.length === 0 ? (
+          <span className="text-[9px] text-subtle">No character with synced skills to check against</span>
+        ) : checked ? (
+          <span className={`ml-auto text-[9px] ${summary ? "text-warning" : ""}`} style={summary ? undefined : { color: GREEN }}>
+            {summary ?? "All requirements met"}
+          </span>
+        ) : null}
       </div>
       <ul className="mt-3">
         {rows.map(({ node, depth }, index) => {
           const met = node.trainedLevel >= node.level;
+          if (!checked) {
+            return (
+              <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
+                <SkillLabel depth={depth} node={node} onOpen={onOpen} />
+                <span aria-label={`Requires level ${node.level}`} className="flex gap-1" role="img">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <i className={`block h-2 w-2 border border-primary ${level <= node.level ? "bg-primary/40" : ""}`} key={level} />
+                  ))}
+                </span>
+                <span />
+              </li>
+            );
+          }
           return (
             <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
-              <span className="truncate text-foreground" style={{ paddingLeft: depth * 14 }}>
-                <TypeLink name={node.name ?? `Skill ${node.skillTypeId}`} onOpen={onOpen} typeId={node.skillTypeId}>
-                  <span className="text-foreground">{node.name ?? `Skill ${node.skillTypeId}`}</span>
-                </TypeLink>{" "}
-                <b>{ROMAN[node.level]}</b>
-              </span>
+              <SkillLabel depth={depth} node={node} onOpen={onOpen} />
               <span aria-label={`Trained ${node.trainedLevel} of ${node.level}`} className="flex gap-1" role="img">
                 {[1, 2, 3, 4, 5].map((level) => {
                   const trained = level <= node.trainedLevel;
