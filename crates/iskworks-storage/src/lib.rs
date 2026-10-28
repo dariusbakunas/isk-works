@@ -64,6 +64,7 @@ mod fits;
 mod sde_categories;
 mod sde_import;
 mod sde_read;
+mod sde_type_info;
 mod skill_plans;
 mod wallet_recording;
 mod workspace;
