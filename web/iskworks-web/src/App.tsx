@@ -1,5 +1,5 @@
 import { CircleHelp, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentProps } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 
 import { getSession, logout } from "./api/auth";
@@ -15,7 +15,8 @@ import type { PaletteEntry } from "./components/navigation/palette-search";
 import { useNavPinned } from "./components/navigation/use-nav-pinned";
 import { useNavRecents } from "./components/navigation/use-nav-recents";
 import { ToolWindowLayer } from "./components/tool-windows/tool-window-layer";
-import { ToolWindowsProvider } from "./components/tool-windows/tool-windows-context";
+import { toolWindowPaletteActions } from "./components/tool-windows/palette-actions";
+import { ToolWindowsProvider, useToolWindows } from "./components/tool-windows/tool-windows-context";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";
 import {
@@ -498,12 +499,18 @@ function AppShell({
         </div>
       </div>
       {paletteOpen ? (
-        <CommandPalette actions={paletteActions} isAdmin={isAdmin} onClose={() => setPaletteOpen(false)} recents={recents} />
+        <WindowAwarePalette actions={paletteActions} isAdmin={isAdmin} onClose={() => setPaletteOpen(false)} recents={recents} />
       ) : null}
       <ToolWindowLayer />
     </div>
     </ToolWindowsProvider>
   );
+}
+
+/** The ⌘K palette plus an action per tool window; inside the provider, unlike AppShell itself. */
+function WindowAwarePalette({ actions, ...props }: ComponentProps<typeof CommandPalette>) {
+  const windows = useToolWindows();
+  return <CommandPalette {...props} actions={[...actions, ...toolWindowPaletteActions(windows)]} />;
 }
 
 // Publishes the footer's rendered height as --iw-footer-h, so viewport-height
