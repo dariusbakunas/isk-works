@@ -11,6 +11,7 @@ import {
 } from "../../../components/operational-table";
 import { hasEsiDiscrepancy } from "./inventory-filters";
 import { sumDecimalStrings } from "../shared/decimal";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 const INVENTORY_COLUMNS: OperationalColumn[] = [
   { key: "item", label: "Item", width: "minmax(220px,1fr)", sticky: true },
@@ -90,6 +91,7 @@ function InventoryRow({
       <span className="flex min-w-0 items-center gap-2">
         <EveTypeImage size={24} typeId={item.balance.key.typeId} typeName={item.balance.typeName} />
         <span className="min-w-0 truncate font-medium">{item.balance.typeName}</span>
+        <TypeInfoButton name={item.balance.typeName} typeId={item.balance.key.typeId} />
       </span>
     ),
     owned: <Quantity value={item.balance.quantity} />,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, expect, test, vi } from "vitest";
 
@@ -9,6 +9,7 @@ import {
 } from "../../../api/assets";
 import { AssetsWorkspacePage } from "../assets-workspace-page";
 import type { LoadedAssetPage } from "../use-assets-query";
+import { WithToolWindows } from "../../../test/tool-windows";
 
 vi.mock("../../../api/assets", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../api/assets")>(),
@@ -218,4 +219,14 @@ test("supports selecting none and all item groups", async () => {
   await waitFor(() => expect(queryAssets).toHaveBeenLastCalledWith(
     expect.objectContaining({ groupIds: [] }),
   ));
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>, { wrapper: WithToolWindows });
+  const table = await screen.findByRole("table", { name: "Synchronized assets" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });
