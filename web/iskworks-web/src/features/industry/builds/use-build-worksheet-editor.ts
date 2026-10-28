@@ -304,6 +304,29 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   useEffect(() => {
     if (initialBuild || !sdeReady || routeBlueprintLoaded.current) return;
     routeBlueprintLoaded.current = true;
+    // `?reactionFormulaTypeId=` (the Type Info window's "Plan a build" for a
+    // reaction product) starts a reaction build the same way.
+    const reactionFormulaTypeId = Number(searchParams.get("reactionFormulaTypeId"));
+    if (Number.isSafeInteger(reactionFormulaTypeId) && reactionFormulaTypeId > 0) {
+      planReaction(reactionFormulaTypeId, 1)
+        .then((loadedRecipe) => {
+          const product = loadedRecipe.products[0];
+          if (!product) {
+            setSearchParams({}, { replace: true });
+            return;
+          }
+          return selectProduct("reaction", {
+            reactionFormulaTypeId: loadedRecipe.reactionFormulaTypeId,
+            reactionFormulaName: loadedRecipe.reactionFormulaName,
+            productTypeId: product.typeId,
+            productName: product.typeName,
+            groupName: null,
+            published: true,
+          });
+        })
+        .catch(() => setSearchParams({}, { replace: true }));
+      return;
+    }
     const blueprintTypeId = Number(searchParams.get("blueprintTypeId"));
     if (!Number.isSafeInteger(blueprintTypeId) || blueprintTypeId <= 0) return;
     const observationId = searchParams.get("observationId") ?? "";
@@ -395,6 +418,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       setSearchParams({ blueprintTypeId: String(entry.result.blueprintTypeId) }, { replace: true });
       void selectProduct("manufacturing", entry.result);
     } else {
+      setSearchParams({ reactionFormulaTypeId: String(entry.result.reactionFormulaTypeId) }, { replace: true });
       void selectProduct("reaction", entry.result);
     }
   }
@@ -807,8 +831,12 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     );
   }
 
-  const routeBlueprintTypeId = Number(searchParams.get("blueprintTypeId"));
-  const hasRouteBlueprint = Number.isSafeInteger(routeBlueprintTypeId) && routeBlueprintTypeId > 0;
+  // A recipe in the URL (`?blueprintTypeId=` or `?reactionFormulaTypeId=`)
+  // keeps the product picker closed while it loads.
+  const hasRouteBlueprint = ["blueprintTypeId", "reactionFormulaTypeId"].some((key) => {
+    const typeId = Number(searchParams.get(key));
+    return Number.isSafeInteger(typeId) && typeId > 0;
+  });
   const selectedName = selected
     ? (selected.kind === "manufacturing" ? selected.result.blueprintName : selected.result.reactionFormulaName)
     : null;

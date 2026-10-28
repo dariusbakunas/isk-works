@@ -4,13 +4,14 @@ import { Link } from "react-router";
 import type { FlatAssetRow } from "../../api/assets";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { formatAssetDecimal } from "./asset-format";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 export function AssetInspector({ asset, onClose }: { asset: FlatAssetRow; onClose: () => void }) {
   return (
     <aside aria-label="Selected asset" className="absolute inset-y-0 right-0 z-40 w-72 overflow-y-auto border-l border-border bg-panel shadow-2xl">
       <header className="flex items-start gap-2 px-3 py-3">
         <EveTypeImage size={40} typeId={asset.typeId} typeName={asset.typeName ?? "Unknown item"} variation={asset.blueprint?.kind === "copy" ? "bpc" : asset.blueprint ? "bp" : "icon"} />
-        <div className="min-w-0 flex-1"><span className="text-[0.625rem] font-semibold uppercase text-muted">Selected asset</span><h2 className="truncate text-sm font-semibold" title={asset.typeName ?? undefined}>{asset.typeName ?? "—"}</h2></div>
+        <div className="min-w-0 flex-1"><span className="text-[0.625rem] font-semibold uppercase text-muted">Selected asset</span><div className="flex min-w-0 items-center gap-1"><h2 className="truncate text-sm font-semibold" title={asset.typeName ?? undefined}>{asset.typeName ?? "—"}</h2>{asset.typeName ? <TypeInfoButton alwaysVisible name={asset.typeName} typeId={asset.typeId} /> : null}</div></div>
         <button aria-label="Close asset details" className="p-1 text-muted hover:text-foreground" onClick={onClose} type="button"><X className="h-4 w-4" /></button>
       </header>
       <InspectorSection title="Holdings">

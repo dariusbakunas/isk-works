@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { BlueprintLibraryRow } from "../../../api/industry";
 import { EveTypeImage } from "../../../components/eve-type-image";
 import { formatRuns, kindLabel, planBuildHref } from "./blueprint-format";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 export function BlueprintInspector({ blueprint, onClose }: { blueprint: BlueprintLibraryRow; onClose: () => void }) {
   const href = planBuildHref(blueprint);
@@ -22,7 +23,10 @@ export function BlueprintInspector({ blueprint, onClose }: { blueprint: Blueprin
         />
         <div className="min-w-0 flex-1">
           <span className="text-[0.625rem] font-semibold uppercase text-muted">Selected blueprint</span>
-          <h2 className="truncate text-sm font-semibold" title={blueprint.blueprintName}>{blueprint.blueprintName}</h2>
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="truncate text-sm font-semibold" title={blueprint.blueprintName}>{blueprint.blueprintName}</h2>
+            <TypeInfoButton alwaysVisible name={blueprint.blueprintName} typeId={blueprint.blueprintTypeId} />
+          </div>
         </div>
         <button aria-label="Close blueprint details" className="p-1 text-muted hover:text-foreground" onClick={onClose} type="button">
           <X className="h-4 w-4" />
@@ -49,7 +53,15 @@ export function BlueprintInspector({ blueprint, onClose }: { blueprint: Blueprin
         <Value label="Activity" value={blueprint.activity === "reaction" ? "Reaction" : "Manufacturing"} />
       </Section>
       <Section title="Product">
-        <Value label="Item" value={blueprint.productName ?? "Unknown"} />
+        <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-2">
+          <dt className="text-muted">Item</dt>
+          <dd className="flex min-w-0 items-center justify-end gap-1 text-right font-mono tabular-nums text-foreground">
+            <span className="break-words">{blueprint.productName ?? "Unknown"}</span>
+            {blueprint.productTypeId !== null && blueprint.productName ? (
+              <TypeInfoButton alwaysVisible name={blueprint.productName} typeId={blueprint.productTypeId} />
+            ) : null}
+          </dd>
+        </div>
         <Value label="Group" value={blueprint.productGroupName ?? "—"} />
         <Value label="Category" value={blueprint.productCategoryName ?? "—"} />
       </Section>

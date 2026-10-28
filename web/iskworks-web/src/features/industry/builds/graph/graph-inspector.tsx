@@ -35,6 +35,7 @@ import {
   type ProductionEnrichment,
 } from "./graph-inspector-enrichment";
 import type { BuildGraphNode } from "./to-react-flow";
+import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 
 const NUMBER = new Intl.NumberFormat("en-US");
 
@@ -210,7 +211,10 @@ function PlanSummary({
       <div className="flex items-center gap-2 px-3 py-2">
         <EveTypeImage size={40} typeId={root.typeId} typeName={root.typeName} variation="render" />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{root.typeName}</div>
+          <div className="flex min-w-0 items-center gap-1">
+            <div className="truncate text-sm font-semibold">{root.typeName}</div>
+            <TypeInfoButton alwaysVisible name={root.typeName} typeId={root.typeId} />
+          </div>
           <div className="text-[11px] text-muted">{recipeKindLabel(root.kind)}</div>
         </div>
       </div>
