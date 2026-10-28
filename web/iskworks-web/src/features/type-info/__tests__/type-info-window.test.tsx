@@ -214,6 +214,11 @@ describe("Type Info window", () => {
       "href",
       "/market?typeId=40334&name=Missile+Range+Disruption+Script",
     );
+    // Made from a blueprint: Plan a build starts one.
+    expect(within(dialog).getByRole("link", { name: "Plan a build" })).toHaveAttribute(
+      "href",
+      "/builds/new?blueprintTypeId=40336",
+    );
     const tabs = within(dialog).getAllByRole("tab").map((tab) => tab.textContent);
     expect(tabs).toEqual(["Description", "Attributes", "Used with", "Industry"]);
     expect(within(dialog).getByRole("tab", { name: "Description" })).toHaveAttribute("aria-selected", "true");
@@ -388,4 +393,39 @@ test("windows stay open across page navigation", async () => {
   fireEvent.click(screen.getByRole("link", { name: "Page two" }));
   expect(screen.getByText("Second page")).toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "Tritanium" })).toBeInTheDocument();
+});
+
+test("a reaction product plans a reaction build; an item nothing makes has no Plan a build", async () => {
+  api.getTypeInfo.mockImplementation(async (typeId: number) =>
+    typeId === TRITANIUM
+      ? tritanium
+      : info({
+          typeId: 30306,
+          name: "Methanofullerene",
+          description: [{ kind: "text", text: "A composite.", bold: false }],
+          industry: {
+            producedBy: [{ kind: "reaction", typeId: 46157, name: "Methanofullerene Reaction Formula" }],
+            reprocessesInto: [],
+            usedInCount: 0,
+          },
+        }),
+  );
+  render(
+    <MemoryRouter>
+      <ToolWindowsProvider kinds={[typeInfoKind]}>
+        <TypeInfoButton alwaysVisible name="Methanofullerene" typeId={30306} />
+        <TypeInfoButton alwaysVisible name="Tritanium" typeId={TRITANIUM} />
+        <ToolWindowLayer />
+      </ToolWindowsProvider>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Methanofullerene" }));
+  expect(await screen.findByRole("link", { name: "Plan a build" })).toHaveAttribute(
+    "href",
+    "/builds/new?reactionFormulaTypeId=46157",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Tritanium" }));
+  expect(await screen.findByRole("dialog", { name: "Tritanium" })).toBeInTheDocument();
+  await within(screen.getByRole("dialog")).findByRole("tablist");
+  expect(screen.queryByRole("link", { name: "Plan a build" })).not.toBeInTheDocument();
 });

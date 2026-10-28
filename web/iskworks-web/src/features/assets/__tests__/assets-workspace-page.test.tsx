@@ -230,3 +230,12 @@ test("items open in Type Info from the table", async () => {
   fireEvent.click(buttons[0]);
   expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });
+
+test("the selected asset's inspector opens its item in Type Info", async () => {
+  window.localStorage.clear();
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>, { wrapper: WithToolWindows });
+  fireEvent.click(await screen.findByText("Tritanium"));
+  const inspector = await screen.findByRole("complementary", { name: "Selected asset" });
+  fireEvent.click(within(inspector).getByRole("button", { name: "Show info: Tritanium" }));
+  expect(screen.getByRole("dialog", { name: "Tritanium" })).toHaveTextContent("Type 34");
+});

@@ -11,6 +11,7 @@ import {
 } from "../../../../api/industry";
 import { BlueprintsPage } from "../blueprints-page";
 import { WithToolWindows } from "../../../../test/tool-windows";
+import { BlueprintInspector } from "../blueprint-inspector";
 
 vi.mock("../../../../api/industry", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../../api/industry")>(),
@@ -251,4 +252,20 @@ test("items open in Type Info from the table", async () => {
   const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
   fireEvent.click(buttons[0]);
   expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
+});
+
+test("the inspector opens the blueprint and its product in Type Info", () => {
+  window.localStorage.clear();
+  render(<BlueprintInspector blueprint={row({})} onClose={() => {}} />, {
+    wrapper: ({ children }) => (
+      <MemoryRouter>
+        <WithToolWindows>{children}</WithToolWindows>
+      </MemoryRouter>
+    ),
+  });
+  const inspector = screen.getByRole("complementary");
+  fireEvent.click(within(inspector).getByRole("button", { name: "Show info: Rifter Blueprint" }));
+  expect(screen.getByRole("dialog", { name: "Rifter Blueprint" })).toHaveTextContent("Type 691");
+  fireEvent.click(within(inspector).getByRole("button", { name: "Show info: Rifter" }));
+  expect(screen.getByRole("dialog", { name: "Rifter" })).toHaveTextContent("Type 587");
 });
