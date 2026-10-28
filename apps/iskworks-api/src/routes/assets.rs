@@ -28,11 +28,11 @@ pub(crate) fn router() -> Router<AppState> {
         )
 }
 
+/// Read from the same query string as `AssetHttpQuery` by a second `Query`
+/// extractor rather than flattened into it: `serde(flatten)` hands every
+/// urlencoded value over as a string, so `limit=100` failed to parse as `u16`.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AssetExportQuery {
-    #[serde(flatten)]
-    query: AssetHttpQuery,
+struct AssetExportColumns {
     columns: Option<String>,
 }
 
@@ -90,11 +90,12 @@ enum AssetColumn {
 
 async fn export_flat_assets(
     State(state): State<AppState>,
-    Query(request): Query<AssetExportQuery>,
+    Query(query): Query<AssetHttpQuery>,
+    Query(export): Query<AssetExportColumns>,
 ) -> Result<Response<Body>, ApiError> {
     let (workspace_id, _) = workspace_context(&state).await?;
-    let columns = parse_columns(request.columns.as_deref())?;
-    let query = request.query.into_core()?.validate()?;
+    let columns = parse_columns(export.columns.as_deref())?;
+    let query = query.into_core()?.validate()?;
     let rows = state
         .asset_browser_repository()?
         .all_flat_assets(workspace_id, &query)
