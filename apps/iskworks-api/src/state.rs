@@ -796,6 +796,17 @@ impl AppState {
         ))
     }
 
+    pub(crate) fn type_info_service(&self) -> iskworks_app::TypeInfoService {
+        let mut service = iskworks_app::TypeInfoService::new(self.sde_repository.clone());
+        if let Some(characters) = self.skills_characters.clone() {
+            service = service.with_characters(characters);
+        }
+        if let Some(market) = self.market_repository.clone() {
+            service = service.with_market(market);
+        }
+        service
+    }
+
     pub(crate) fn fitting_service(&self) -> Result<iskworks_app::FittingService, ApiError> {
         let mut service = iskworks_app::FittingService::new(
             self.fit_repository.clone().ok_or_else(|| {

@@ -209,7 +209,7 @@ fn bad_request(message: String) -> ApiError {
 }
 
 /// `allV` (the default), `allZero`, or a character's connection id.
-fn parse_pilot(pilot: Option<&str>) -> Result<PilotChoice, ApiError> {
+pub(crate) fn parse_pilot(pilot: Option<&str>) -> Result<PilotChoice, ApiError> {
     match pilot.unwrap_or("allV") {
         "allV" => Ok(PilotChoice::AllV),
         "allZero" => Ok(PilotChoice::AllZero),
@@ -334,23 +334,23 @@ async fn fit_cost(
         .cost(workspace_id, FitId(fit_id), scope)
         .await?
         .ok_or(ApiError::NotFound)?;
-    register_price_coverage(&state, workspace_id, scope, &cost);
-    Ok(Json(cost))
-}
-
-/// Fire-and-forget, like Planetary's: a slow or failing ESI fetch must not
-/// hold the page.
-fn register_price_coverage(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-    scope: MarketScope,
-    cost: &FitCostView,
-) {
-    let items: BTreeMap<i64, String> = cost
+    let items = cost
         .lines
         .iter()
         .filter_map(|line| Some((line.line.type_id, line.name.clone()?)))
         .collect();
+    register_price_coverage(&state, workspace_id, scope, items);
+    Ok(Json(cost))
+}
+
+/// Asks the market to keep `items` priced in `scope`. Fire-and-forget,
+/// like Planetary's: a slow or failing ESI fetch must not hold the page.
+pub(crate) fn register_price_coverage(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    scope: MarketScope,
+    items: BTreeMap<i64, String>,
+) {
     if items.is_empty() {
         return;
     }
@@ -366,7 +366,7 @@ fn register_price_coverage(
         {
             Ok(source_id) => source_id,
             Err(error) => {
-                tracing::warn!(%error, "fit market coverage registration failed");
+                tracing::warn!(%error, "market coverage registration failed");
                 return;
             }
         };
@@ -378,7 +378,7 @@ fn register_price_coverage(
             .register_and_refresh(workspace_id, source_id, coverage)
             .await
         {
-            tracing::warn!(%error, "fit market coverage refresh failed");
+            tracing::warn!(%error, "market coverage refresh failed");
         }
     });
 }

@@ -395,6 +395,11 @@ async fn curated_domain_errors_pass_through_without_a_correlation_id() {
             "unauthenticated",
         ),
         (ApiError::Forbidden, StatusCode::FORBIDDEN, "forbidden"),
+        (
+            ApiError::TypeNotFound,
+            StatusCode::NOT_FOUND,
+            "type_not_found",
+        ),
         (ApiError::NotFound, StatusCode::NOT_FOUND, "not_found"),
         (ApiError::Conflict("no"), StatusCode::CONFLICT, "conflict"),
     ];

@@ -22,6 +22,7 @@ pub(crate) mod orders;
 pub(crate) mod planetary;
 pub(crate) mod sde;
 pub(crate) mod skills;
+pub(crate) mod types;
 pub(crate) mod workspace;
 
 /// Hard ceiling on any SDE / reference / search `limit`. These endpoints

@@ -68,6 +68,8 @@ pub enum ApiError {
     Forbidden,
     /// A generic 404 for admin-addressed records that do not exist.
     NotFound,
+    /// The Type Info window asked for a type the active SDE import lacks.
+    TypeNotFound,
     /// The fitting engine's data did not load (missing or stale `sde.dat`),
     /// so fit text and stats are unavailable; saved fits still work.
     FittingEngineUnavailable,
@@ -772,6 +774,16 @@ impl IntoResponse for ApiError {
                     message: "Fit stats and fit import/export are unavailable: the server has no \
                               fitting engine data."
                         .to_string(),
+                    fields: None,
+                    retryable: false,
+                    correlation_id: None,
+                },
+            ),
+            Self::TypeNotFound => (
+                StatusCode::NOT_FOUND,
+                ErrorBody {
+                    code: "type_not_found",
+                    message: "That item isn't in the current static data.".to_string(),
                     fields: None,
                     retryable: false,
                     correlation_id: None,

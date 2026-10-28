@@ -247,6 +247,30 @@ fn snapshot(character: &SkillsCharacter) -> Option<CharacterSkillsSnapshot> {
         .and_then(parse_skills_summary)
 }
 
+/// A workspace character's synced skills, for a pilot choice that names
+/// it; an error when it isn't in the workspace or has no synced skills.
+pub(crate) async fn character_snapshot(
+    characters: Option<&Arc<dyn SkillsCharacterSource>>,
+    workspace_id: WorkspaceId,
+    connection_id: ConnectedCharacterId,
+) -> Result<CharacterSkillsSnapshot, InventoryError> {
+    let character = match characters {
+        Some(characters) => {
+            characters
+                .skills_character(workspace_id, connection_id)
+                .await?
+        }
+        None => None,
+    }
+    .ok_or_else(|| InventoryError::Validation("no such character in the workspace".to_string()))?;
+    snapshot(&character).ok_or_else(|| {
+        InventoryError::Validation(format!(
+            "{} has no synced skills to calculate with",
+            character.name
+        ))
+    })
+}
+
 /// The levels a character can use: active, so an Alpha's cap applies.
 fn pilot_skills(snapshot: &CharacterSkillsSnapshot) -> Result<Pilot, InventoryError> {
     let levels = snapshot
@@ -390,23 +414,9 @@ impl FittingService {
             PilotChoice::AllV => Ok((Pilot::AllV, None)),
             PilotChoice::AllZero => Ok((Pilot::AllZero, None)),
             PilotChoice::Character(connection_id) => {
-                let character = match &self.characters {
-                    Some(characters) => {
-                        characters
-                            .skills_character(workspace_id, connection_id)
-                            .await?
-                    }
-                    None => None,
-                }
-                .ok_or_else(|| {
-                    InventoryError::Validation("no such character in the workspace".to_string())
-                })?;
-                let snapshot = snapshot(&character).ok_or_else(|| {
-                    InventoryError::Validation(format!(
-                        "{} has no synced skills to calculate with",
-                        character.name
-                    ))
-                })?;
+                let snapshot =
+                    character_snapshot(self.characters.as_ref(), workspace_id, connection_id)
+                        .await?;
                 Ok((pilot_skills(&snapshot)?, Some(snapshot)))
             }
         }
