@@ -23,6 +23,9 @@ const SPACESHIP_COMMAND: i64 = 3_327;
 const CALDARI_FRIGATE: i64 = 3_330;
 const ASSAULT_FRIGATES: i64 = 12_095;
 const MISSILE_GUIDANCE_COMPUTER: i64 = 1_396;
+const GUNNERY: i64 = 3_300;
+const PERCEPTION: i64 = 167;
+const WILLPOWER: i64 = 168;
 
 /// The Harpy and the Missile Range Disruption Script, as PR 1 stores them.
 struct FakeSde;
@@ -120,11 +123,21 @@ impl SdeReadRepository for FakeSde {
         Ok(match type_id {
             HARPY => Some(harpy()),
             SCRIPT => Some(script()),
+            GUNNERY => Some(TypeInfoBase {
+                type_id: GUNNERY,
+                name: "Gunnery".into(),
+                published: true,
+                ..TypeInfoBase::default()
+            }),
             _ => None,
         })
     }
     async fn type_attributes(&self, type_id: i64) -> Result<Vec<TypeAttributeValue>, SdeError> {
         Ok(match type_id {
+            GUNNERY => vec![
+                attribute(180, "Primary attribute", (119, "attributeID"), PERCEPTION),
+                attribute(181, "Secondary attribute", (119, "attributeID"), WILLPOWER),
+            ],
             SCRIPT => vec![
                 attribute(128, "Charge size", (117, "1=small 2=medium 3=l"), 1),
                 attribute(137, "Used with (Launcher Group)", (115, "groupID"), 1_396),
@@ -268,6 +281,17 @@ impl SdeReadRepository for FakeSde {
             .iter()
             .filter(|id| **id == MISSILE_GUIDANCE_COMPUTER)
             .map(|id| (*id, "Missile Guidance Computer".to_string()))
+            .collect())
+    }
+    async fn attribute_names(
+        &self,
+        attribute_ids: &[i64],
+    ) -> Result<BTreeMap<i64, String>, SdeError> {
+        let known = [(PERCEPTION, "Perception"), (WILLPOWER, "Willpower")];
+        Ok(known
+            .into_iter()
+            .filter(|(id, _)| attribute_ids.contains(id))
+            .map(|(id, name)| (id, name.to_string()))
             .collect())
     }
     async fn required_skills(
@@ -496,6 +520,24 @@ async fn the_scripts_attributes_read_like_the_client() {
     assert!(view.industry.produced_by.is_empty());
     assert_eq!(view.industry.used_in_count, 3);
     assert!(view.description.is_empty());
+}
+
+#[tokio::test]
+async fn a_skill_books_training_attributes_are_named() {
+    let view = info(GUNNERY, PilotChoice::AllV).await.unwrap().unwrap();
+
+    let rows: Vec<(&str, &str)> = view.attributes[0]
+        .rows
+        .iter()
+        .map(|row| (row.label.as_str(), row.display.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("Primary attribute", "Perception"),
+            ("Secondary attribute", "Willpower"),
+        ]
+    );
 }
 
 #[tokio::test]

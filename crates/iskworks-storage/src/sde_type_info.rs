@@ -362,6 +362,30 @@ impl PgSdeRepository {
         Ok(rows.into_iter().collect())
     }
 
+    pub(super) async fn read_attribute_names(
+        &self,
+        attribute_ids: &[i64],
+    ) -> Result<BTreeMap<i64, String>, SdeError> {
+        if attribute_ids.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let rows = sqlx::query_as::<_, (i64, String)>(
+            r#"
+            SELECT a.attribute_id, a.display_name_en
+            FROM sde_imports import
+            JOIN sde_dogma_attributes a ON a.import_id = import.id
+            WHERE import.active = true
+              AND a.attribute_id = ANY($1)
+              AND a.display_name_en <> ''
+            "#,
+        )
+        .bind(attribute_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows.into_iter().collect())
+    }
+
     pub(super) async fn read_type_variations(
         &self,
         type_id: i64,

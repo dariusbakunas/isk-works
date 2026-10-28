@@ -280,7 +280,7 @@ impl TypeInfoService {
             .remove(&type_id)
             .unwrap_or_default();
 
-        // Everything the view names by id, in two lookups.
+        // Everything the view names by id, in three lookups.
         let id_value = |value: &iskworks_sde::TypeAttributeValue, unit: i64| {
             (value.unit_id == Some(unit) && value.value.fract().is_zero())
                 .then(|| value.value.try_into().ok())
@@ -306,12 +306,19 @@ impl TypeInfoService {
             .type_names(&type_ids.into_iter().collect::<Vec<_>>())
             .await
             .map_err(sde_error)?;
+        // Values naming another attribute (a skill book's primary and
+        // secondary attribute) point outside this type's own rows.
+        let attribute_ids: Vec<i64> = values
+            .iter()
+            .filter_map(|value| id_value(value, 119))
+            .collect();
         let names = NameMaps {
             groups: self.sde.group_names(&group_ids).await.map_err(sde_error)?,
-            attributes: values
-                .iter()
-                .map(|value| (value.attribute_id, value.display_name.clone()))
-                .collect(),
+            attributes: self
+                .sde
+                .attribute_names(&attribute_ids)
+                .await
+                .map_err(sde_error)?,
             types: type_names.clone(),
         };
 
