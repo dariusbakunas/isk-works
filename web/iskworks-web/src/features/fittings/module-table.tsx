@@ -28,13 +28,13 @@ const COLUMNS: OperationalColumn[] = [
   { key: "state", label: "", width: "28px" },
   { key: "module", label: "Module", width: "minmax(220px, 3fr)" },
   { key: "charge", label: "Charge", width: "minmax(112px, 1fr)", hideBelow: "tablet" },
-  { key: "cpu", label: "CPU", width: "56px", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "cpu", label: "CPU", width: "52px", align: "right", numeric: true, hideBelow: "tablet" },
   { key: "pg", label: "PG", width: "60px", align: "right", numeric: true, hideBelow: "tablet" },
   { key: "range", label: "Optimal + falloff", width: "128px", align: "right", hideBelow: "desktop" },
   { key: "cap", label: "Cap/s", width: "64px", align: "right", numeric: true, hideBelow: "desktop" },
-  { key: "effect", label: "Effect", width: "112px", align: "right", hideBelow: "tablet" },
+  { key: "effect", label: "Effect", width: "104px", align: "right", hideBelow: "tablet" },
   { key: "price", label: "Price", width: "64px", align: "right", numeric: true, hideBelow: "tablet" },
-  { key: "held", label: "Held", width: "52px", align: "right" },
+  { key: "held", label: "Held", width: "64px", align: "right" },
 ];
 
 /** Racks with positions, shown with their empty slots up to the ship's count. */

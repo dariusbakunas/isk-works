@@ -86,6 +86,18 @@ describe("Fittings › price and holdings", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  test("a large count shows compact, exact on hover", async () => {
+    const many = assets();
+    many.holdings[0] = { ...many.holdings[0], quantity: 12_338 };
+    stubFetch({ assets: many });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const table = await screen.findByRole("table", { name: "Modules" });
+    const gun = await within(table).findByRole("row", { name: /200mm AutoCannon II/ });
+    const count = await within(gun).findByText("12K");
+    expect(count).toHaveAttribute("title", "12,341");
+  });
+
   test("the hull says whether you hold one", async () => {
     stubFetch();
     renderPage(`/fittings/${FIT_ID}`);
