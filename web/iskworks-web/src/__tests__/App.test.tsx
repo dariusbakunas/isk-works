@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { App } from "../App";
+import { flatNavItems } from "../components/navigation/registry";
 
 // About section contents: sections start expanded here (see the double).
 vi.mock("../features/industry/inspector/inspector-collapse", async () => {
@@ -501,6 +502,18 @@ describe("App routes", () => {
     expect(navLabels).not.toContain("Sales");
   });
 
+  test("the primary nav follows the navigation registry's grouped order", async () => {
+    mockFetchSequence([configuredWorkspace, []]);
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    const navLabels = within(screen.getByRole("navigation", { name: "Primary navigation" }))
+      .getAllByRole("link")
+      .map((link) => link.textContent?.trim());
+    expect(navLabels).toEqual(flatNavItems(false).map((item) => item.label));
+  });
+
   test("the Admin nav link appears only for admin sessions", async () => {
     const withSession = (session: unknown) =>
       vi.stubGlobal(
@@ -638,6 +651,28 @@ describe("App routes", () => {
     const header = screen.getByRole("navigation", { name: "Primary navigation" }).closest("header");
     const logoLink = within(header as HTMLElement).getByRole("link", { name: /ISK Works/ });
     expect(logoLink).toHaveAttribute("href", "/characters");
+  });
+
+  test.each(
+    flatNavItems(true).flatMap((item) => [item.path, ...(item.children ?? []).map((child) => child.path)]),
+  )("the navigation entry %s resolves to a page", async (path) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/session")) return mockResponse({ ...authenticatedSession, isAdmin: true });
+        if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+        if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+        // Page data never arrives: every page stays in its loading state, so
+        // only routing decides whether "Page not found" renders.
+        return new Promise<Response>(() => {});
+      }),
+    );
+
+    renderApp(path);
+
+    expect(await screen.findByRole("navigation", { name: "Primary navigation" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
   });
 
   test("legacy /orders/:id still redirects to the Board epic deep link", async () => {
