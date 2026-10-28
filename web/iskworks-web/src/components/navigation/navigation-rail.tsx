@@ -6,6 +6,7 @@ import mascotHead from "../../assets/mascot-head.png";
 import { HELP_PATH } from "../community-links";
 import { EsiStatusItem } from "../esi-status";
 import { adminNavItem, isNavPathActive, navGroups } from "./registry";
+import { modKey } from "./shortcut-keys";
 
 export const RAIL_COLLAPSED_WIDTH = 52;
 export const RAIL_EXPANDED_WIDTH = 220;
@@ -79,7 +80,7 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
             </RailLabel>
             {expanded ? (
               <kbd aria-hidden="true" className="ml-auto mr-2 rounded-[2px] border border-border bg-background px-1 font-mono text-[8px] text-subtle">
-                ⌘K
+                {modKey()}K
               </kbd>
             ) : null}
           </button>

@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router";
 
 import { pageEntries, searchPalette, type PaletteEntry, type PaletteMatch } from "./palette-search";
 import { resolveNavEntry } from "./registry";
+import { modKey } from "./shortcut-keys";
 
 interface Section {
   heading: string;
@@ -52,7 +53,7 @@ function Highlighted({ label, matched }: { label: string; matched: number[] }) {
 const headingClass = "flex h-6 items-center px-3 text-[8px] uppercase tracking-[.12em] text-subtle";
 
 /**
- * ⌘K: jump to any page or run an action by typing. Empty, it lists recent
+ * ⌘K / Ctrl K: jump to any page or run an action by typing. Empty, it lists recent
  * pages, actions and every page by group, so it doubles as a sitemap.
  */
 export function CommandPalette({
@@ -215,7 +216,7 @@ export function CommandPalette({
           )}
         </div>
         <div className="flex h-8 shrink-0 items-center border-t border-border px-3 font-mono text-[8px] text-subtle">
-          ↑↓ navigate · ↵ open · ⌘↵ new tab · esc close
+          ↑↓ navigate · ↵ open · {modKey()}↵ new tab · esc close
         </div>
       </div>
     </div>,
