@@ -15,7 +15,7 @@ use iskworks_core::{
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
     SdeReadRepository, SkillAttribute, SkillDefinition, TypeBonusLine, TypeBonusSource,
-    TypeInfoBase, TypeSearchResult,
+    TypeInfoBase, TypeListEntry, TypeSearchResult, TypeUsage, UsedWithKind,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -27,6 +27,8 @@ use support::workspace::configured_workspace;
 
 const HARPY: i64 = 11_381;
 const CALDARI_FRIGATE: i64 = 3_330;
+const SCRIPT: i64 = 40_334;
+const TRITANIUM: i64 = 34;
 
 struct FakeSde;
 
@@ -101,6 +103,74 @@ impl SdeReadRepository for FakeSde {
                 )
             })
             .collect())
+    }
+    async fn type_variations(&self, type_id: i64) -> Result<Vec<TypeListEntry>, SdeError> {
+        Ok(if type_id == HARPY {
+            vec![
+                TypeListEntry {
+                    type_id: 603,
+                    name: "Merlin".into(),
+                    meta_group_id: 1,
+                    meta_group_name: "Tech I".into(),
+                    meta_level: Some(0),
+                },
+                TypeListEntry {
+                    type_id: HARPY,
+                    name: "Harpy".into(),
+                    meta_group_id: 2,
+                    meta_group_name: "Tech II".into(),
+                    meta_level: Some(5),
+                },
+            ]
+        } else {
+            Vec::new()
+        })
+    }
+    async fn types_used_with(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError> {
+        Ok((type_id == SCRIPT).then(|| {
+            (
+                UsedWithKind::Modules,
+                vec![TypeListEntry {
+                    type_id: 37_543,
+                    name: "Guidance Disruptor I".into(),
+                    meta_group_id: 1,
+                    meta_group_name: "Tech I".into(),
+                    meta_level: Some(0),
+                }],
+            )
+        }))
+    }
+    async fn type_usages(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<TypeUsage>, i64), SdeError> {
+        let all: Vec<TypeUsage> = if type_id == TRITANIUM {
+            (0..120)
+                .map(|index| TypeUsage {
+                    kind: iskworks_sde::CandidateRecipeKind::Manufacturing,
+                    recipe_type_id: 1_000 + index,
+                    recipe_name: format!("Thing {index:03} Blueprint"),
+                    product_type_id: 2_000 + index,
+                    product_name: format!("Thing {index:03}"),
+                    quantity: 314,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let total = all.len() as i64;
+        Ok((
+            all.into_iter()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .collect(),
+            total,
+        ))
     }
     async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError> {
         Ok(vec![SkillDefinition {
@@ -303,6 +373,7 @@ async fn type_info_has_the_windows_shape() {
         json!({ "producedBy": [], "reprocessesInto": [], "usedInCount": 0 })
     );
     assert_eq!(body["variationCount"], 0);
+    assert_eq!(body["usedWith"], Value::Null);
     // The lowest sell at the workspace's market (Jita 4-4 by default).
     assert_eq!(body["price"]["bestSell"], "36800000");
     assert_eq!(body["price"]["scope"]["locationId"], 60_003_760);
@@ -342,4 +413,73 @@ async fn an_unknown_type_is_not_found() {
     let (status, body) = get(&app(false), "/api/types/77777/info").await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["error"]["code"], "type_not_found");
+}
+
+#[tokio::test]
+async fn variations_come_grouped_by_meta_group() {
+    let (status, body) = get(&app(false), &format!("/api/types/{HARPY}/variations")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        json!([
+            { "metaGroupId": 1, "metaGroupName": "Tech I",
+              "items": [{ "typeId": 603, "name": "Merlin", "metaLevel": 0 }] },
+            { "metaGroupId": 2, "metaGroupName": "Tech II",
+              "items": [{ "typeId": HARPY, "name": "Harpy", "metaLevel": 5 }] },
+        ])
+    );
+}
+
+#[tokio::test]
+async fn used_with_says_which_way_it_points() {
+    let (status, body) = get(&app(false), &format!("/api/types/{SCRIPT}/used-with")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["kind"], "modules");
+    assert_eq!(
+        body["groups"][0]["items"][0]["name"],
+        "Guidance Disruptor I"
+    );
+
+    let (_, none) = get(&app(false), &format!("/api/types/{HARPY}/used-with")).await;
+    assert_eq!(none, json!({ "kind": null, "groups": [] }));
+}
+
+#[tokio::test]
+async fn used_in_pages_fifty_at_a_time_by_default() {
+    let (status, body) = get(&app(false), &format!("/api/types/{TRITANIUM}/used-in")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 120);
+    assert_eq!(body["limit"], 50);
+    assert_eq!(body["items"].as_array().unwrap().len(), 50);
+    assert_eq!(body["nextOffset"], 50);
+    assert_eq!(
+        body["items"][0],
+        json!({
+            "kind": "manufacturing",
+            "recipeTypeId": 1_000,
+            "recipeName": "Thing 000 Blueprint",
+            "productTypeId": 2_000,
+            "productName": "Thing 000",
+            "quantity": 314,
+        })
+    );
+
+    let (_, last) = get(
+        &app(false),
+        &format!("/api/types/{TRITANIUM}/used-in?limit=500&offset=100"),
+    )
+    .await;
+    assert_eq!(last["limit"], 100, "capped");
+    assert_eq!(last["items"].as_array().unwrap().len(), 20);
+    assert_eq!(last["nextOffset"], Value::Null);
+}
+
+#[tokio::test]
+async fn a_bad_page_query_is_a_bad_request() {
+    let (status, _) = get(
+        &app(false),
+        &format!("/api/types/{TRITANIUM}/used-in?limit=-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

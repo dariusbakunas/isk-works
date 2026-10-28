@@ -1206,6 +1206,30 @@ impl SdeReadRepository for PgSdeRepository {
         self.read_group_names(group_ids).await
     }
 
+    async fn type_variations(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::TypeListEntry>, SdeError> {
+        self.read_type_variations(type_id).await
+    }
+
+    async fn types_used_with(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<(iskworks_sde::UsedWithKind, Vec<iskworks_sde::TypeListEntry>)>, SdeError>
+    {
+        self.read_types_used_with(type_id).await
+    }
+
+    async fn type_usages(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<iskworks_sde::TypeUsage>, i64), SdeError> {
+        self.read_type_usages(type_id, limit, offset).await
+    }
+
     async fn planet_references(
         &self,
         planet_ids: &[i64],

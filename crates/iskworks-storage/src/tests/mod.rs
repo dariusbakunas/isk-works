@@ -15,6 +15,7 @@ mod sde_market_catalog;
 mod sde_recipes;
 mod sde_skills;
 mod sde_type_info;
+mod sde_type_lists;
 mod skill_plans;
 mod workspace;
 
