@@ -157,10 +157,23 @@ function Tabs({
   );
 }
 
+const actionClass = "flex h-6 items-center border border-border px-2 text-[8px] text-muted hover:bg-hover hover:text-foreground";
+
+/** New build of this item from its blueprint (or else its reaction formula); `null` when nothing makes it. */
+export function planBuildPath(info: TypeInfo): string | null {
+  const { producedBy } = info.industry;
+  const producer = producedBy.find((entry) => entry.kind === "manufacturing") ?? producedBy[0];
+  if (!producer) return null;
+  return producer.kind === "manufacturing"
+    ? `/builds/new?blueprintTypeId=${producer.typeId}`
+    : `/builds/new?reactionFormulaTypeId=${producer.typeId}`;
+}
+
 function Header({ info }: { info: TypeInfo }) {
   const [copied, setCopied] = useState(false);
   const classification = [info.group?.name, info.category?.name].filter(Boolean).join(" · ");
   const ship = info.category?.id === SHIP_CATEGORY;
+  const plan = planBuildPath(info);
   return (
     <div className="flex shrink-0 gap-3 border-b border-border p-3">
       <TypeIcon metaGroupId={info.metaGroup?.id} name={info.name} size={64} typeId={info.typeId} variation={ship ? "render" : "icon"} />
@@ -185,14 +198,18 @@ function Header({ info }: { info: TypeInfo }) {
             {formatIskCompact(info.price.bestSell)} ISK
           </p>
         ) : null}
-        {info.published ? (
+        {info.published || plan ? (
           <div className="mt-2 flex gap-1">
-            <Link
-              className="flex h-6 items-center border border-border px-2 text-[8px] text-muted hover:bg-hover hover:text-foreground"
-              to={`/market?${new URLSearchParams({ typeId: String(info.typeId), name: info.name })}`}
-            >
-              Open in Market
-            </Link>
+            {info.published ? (
+              <Link className={actionClass} to={`/market?${new URLSearchParams({ typeId: String(info.typeId), name: info.name })}`}>
+                Open in Market
+              </Link>
+            ) : null}
+            {plan ? (
+              <Link className={actionClass} to={plan}>
+                Plan a build
+              </Link>
+            ) : null}
           </div>
         ) : null}
       </div>
