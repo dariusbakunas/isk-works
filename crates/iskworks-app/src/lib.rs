@@ -30,6 +30,7 @@ mod skill_plans;
 mod skills_catalogue;
 mod sync_metrics;
 mod ticket_jobs;
+mod type_info;
 
 pub use build_graph::{BuildGraphCoordinator, BuildGraphError};
 pub use build_materials::{BuildMaterialsCoordinator, BuildMaterialsError, BuildMaterialsSummary};
@@ -80,3 +81,7 @@ pub use skills_catalogue::{
 };
 pub use sync_metrics::init_metrics as init_sync_metrics;
 pub use ticket_jobs::{IndustryJobsSynced, TicketJobError, TicketJobService};
+pub use type_info::{
+    NamedId, TypeBasics, TypeIndustry, TypeInfoService, TypeInfoView, TypePrice, TypeProducer,
+    TypeQuantity,
+};

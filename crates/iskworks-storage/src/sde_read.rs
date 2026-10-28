@@ -1164,6 +1164,48 @@ impl SdeReadRepository for PgSdeRepository {
         Ok(required)
     }
 
+    async fn type_info_base(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<iskworks_sde::TypeInfoBase>, SdeError> {
+        self.read_type_info_base(type_id).await
+    }
+
+    async fn type_attributes(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::TypeAttributeValue>, SdeError> {
+        self.read_type_attributes(type_id).await
+    }
+
+    async fn type_bonuses(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::TypeBonusLine>, SdeError> {
+        self.read_type_bonuses(type_id).await
+    }
+
+    async fn type_materials(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::RecipeLine>, SdeError> {
+        self.read_type_materials(type_id).await
+    }
+
+    async fn type_info_counts(
+        &self,
+        type_id: i64,
+    ) -> Result<iskworks_sde::TypeInfoCounts, SdeError> {
+        self.read_type_info_counts(type_id).await
+    }
+
+    async fn group_names(
+        &self,
+        group_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError> {
+        self.read_group_names(group_ids).await
+    }
+
     async fn planet_references(
         &self,
         planet_ids: &[i64],

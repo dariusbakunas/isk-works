@@ -290,6 +290,64 @@ pub struct TypeReference {
     pub packaged_volume_m3: Option<Decimal>,
 }
 
+/// One type as the Type Info window's header and basics show it.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct TypeInfoBase {
+    pub type_id: i64,
+    pub name: String,
+    pub published: bool,
+    pub group_id: Option<i64>,
+    pub group_name: Option<String>,
+    pub category_id: Option<i64>,
+    pub category_name: Option<String>,
+    pub meta_group_id: Option<i64>,
+    pub meta_group_name: Option<String>,
+    /// Market group names from the root down to the type's own group.
+    pub market_group_path: Vec<String>,
+    pub packaged_volume_m3: Option<Decimal>,
+    /// English, with CCP's markup kept.
+    pub description: Option<String>,
+    pub volume_m3: Option<Decimal>,
+    pub mass_kg: Option<Decimal>,
+    pub capacity_m3: Option<Decimal>,
+    pub portion_size: Option<i32>,
+    pub variation_parent_type_id: Option<i64>,
+}
+
+/// One of a type's displayable attribute values, with what the client
+/// needs to show it.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TypeAttributeValue {
+    pub attribute_id: i64,
+    pub display_name: String,
+    pub unit_id: Option<i64>,
+    pub unit_display_name: Option<String>,
+    pub category_id: Option<i64>,
+    pub category_name: Option<String>,
+    pub display_when_zero: bool,
+    pub high_is_good: bool,
+    pub value: Decimal,
+}
+
+/// One ship bonus line, in the type's bonus order.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TypeBonusLine {
+    pub source: crate::TypeBonusSource,
+    pub bonus: Option<Decimal>,
+    pub unit_id: Option<i64>,
+    pub unit_display_name: Option<String>,
+    /// English, with CCP's markup kept.
+    pub text: String,
+}
+
+/// How many types share a type's variation family (itself included) and
+/// how many recipes consume it.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub struct TypeInfoCounts {
+    pub variations: i64,
+    pub used_in: i64,
+}
+
 /// A PI factory schematic: one cycle of `cycle_time_seconds` consumes
 /// `inputs` and yields `outputs` (in practice exactly one output line).
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -723,6 +781,37 @@ pub trait SdeReadRepository: Send + Sync {
         type_ids: &[i64],
     ) -> Result<BTreeMap<i64, Vec<RequiredSkill>>, SdeError> {
         let _ = type_ids;
+        Ok(BTreeMap::new())
+    }
+    /// The Type Info header and basics; `None` for a type the active
+    /// import doesn't have.
+    async fn type_info_base(&self, type_id: i64) -> Result<Option<TypeInfoBase>, SdeError> {
+        let _ = type_id;
+        Ok(None)
+    }
+    /// A type's displayable attribute values, by attribute id. Empty when
+    /// the import predates type info.
+    async fn type_attributes(&self, type_id: i64) -> Result<Vec<TypeAttributeValue>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+    /// A type's ship bonuses: skill, then role, then misc.
+    async fn type_bonuses(&self, type_id: i64) -> Result<Vec<TypeBonusLine>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+    /// What one portion of a type reprocesses into, by material name.
+    async fn type_materials(&self, type_id: i64) -> Result<Vec<RecipeLine>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+    async fn type_info_counts(&self, type_id: i64) -> Result<TypeInfoCounts, SdeError> {
+        let _ = type_id;
+        Ok(TypeInfoCounts::default())
+    }
+    /// Group names by group id; unknown ids yield no entry.
+    async fn group_names(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
+        let _ = group_ids;
         Ok(BTreeMap::new())
     }
     /// Planet names and systems by planet id; unknown ids yield no entry.

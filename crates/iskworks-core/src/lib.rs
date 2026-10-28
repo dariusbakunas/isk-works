@@ -43,6 +43,7 @@ mod production_stage;
 pub mod skill_plans;
 pub mod skills;
 pub mod training;
+pub mod type_info;
 mod worksheet;
 mod workspace;
 

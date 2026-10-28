@@ -289,3 +289,152 @@ async fn a_newer_import_keeps_the_superseded_type_info(pool: PgPool) {
     .unwrap();
     assert_eq!(per_import, vec![(2,), (2,)]);
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn type_info_reads_come_from_the_active_import(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    import_active(&repository, &type_info_fixture("checksum-type-info-reads")).await;
+
+    let rifter = repository.type_info_base(5_876).await.unwrap().unwrap();
+    assert_eq!(
+        rifter,
+        iskworks_sde::TypeInfoBase {
+            type_id: 5_876,
+            name: "Rifter".into(),
+            published: true,
+            group_id: Some(25),
+            group_name: Some("Frigate".into()),
+            category_id: Some(6),
+            category_name: Some("Ship".into()),
+            meta_group_id: Some(1),
+            meta_group_name: Some("Tech I".into()),
+            market_group_path: vec!["Ships".into(), "Frigates".into()],
+            packaged_volume_m3: None,
+            description: Some("A <a href=showinfo:34>fast</a> frigate.".into()),
+            volume_m3: Some(Decimal::new(27_289, 0)),
+            mass_kg: Some(Decimal::new(1_067_000, 0)),
+            capacity_m3: Some(Decimal::new(140, 0)),
+            portion_size: Some(1),
+            variation_parent_type_id: Some(587),
+        }
+    );
+    // A type without details or a market group.
+    let tritanium = repository.type_info_base(34).await.unwrap().unwrap();
+    assert_eq!(tritanium.description, None);
+    assert_eq!(tritanium.packaged_volume_m3, Some(Decimal::new(1, 2)));
+    assert!(repository.type_info_base(999_999).await.unwrap().is_none());
+
+    assert_eq!(
+        repository.type_attributes(5_876).await.unwrap(),
+        vec![
+            iskworks_sde::TypeAttributeValue {
+                attribute_id: 12,
+                display_name: "Low Slots".into(),
+                unit_id: Some(122),
+                unit_display_name: None,
+                category_id: None,
+                category_name: None,
+                display_when_zero: true,
+                high_is_good: true,
+                value: Decimal::new(4, 0),
+            },
+            iskworks_sde::TypeAttributeValue {
+                attribute_id: 2023,
+                display_name: "Modification of Explosion Radius Bonus".into(),
+                unit_id: Some(105),
+                unit_display_name: Some("%".into()),
+                category_id: Some(7),
+                category_name: Some("Miscellaneous".into()),
+                display_when_zero: false,
+                high_is_good: false,
+                value: Decimal::new(-125, 1),
+            },
+        ]
+    );
+
+    assert_eq!(
+        repository.type_bonuses(5_876).await.unwrap(),
+        vec![
+            iskworks_sde::TypeBonusLine {
+                source: TypeBonusSource::Skill(3_329),
+                bonus: Some(Decimal::new(5, 0)),
+                unit_id: Some(105),
+                unit_display_name: Some("%".into()),
+                text: "bonus to Small Projectile Turret damage".into(),
+            },
+            iskworks_sde::TypeBonusLine {
+                source: TypeBonusSource::Role,
+                bonus: None,
+                unit_id: None,
+                unit_display_name: None,
+                text: "Can fit <a href=showinfo:47254>Assault Damage Controls</a>".into(),
+            },
+        ]
+    );
+
+    assert_eq!(
+        repository.type_materials(5_876).await.unwrap(),
+        vec![iskworks_sde::RecipeLine {
+            type_id: 34,
+            type_name: "Tritanium".into(),
+            quantity: 14_000,
+        }]
+    );
+
+    // Tritanium goes into the Rifter Blueprint and a reaction formula.
+    assert_eq!(
+        repository.type_info_counts(34).await.unwrap(),
+        iskworks_sde::TypeInfoCounts {
+            variations: 1,
+            used_in: 2,
+        }
+    );
+    assert_eq!(
+        repository.type_info_counts(5_876).await.unwrap(),
+        iskworks_sde::TypeInfoCounts {
+            variations: 1,
+            used_in: 0,
+        }
+    );
+
+    assert_eq!(
+        repository.group_names(&[25, 999_999]).await.unwrap(),
+        std::collections::BTreeMap::from([(25, "Frigate".to_string())])
+    );
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn variations_count_the_whole_family(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    let mut dataset = type_info_fixture("checksum-type-info-family");
+    // Make the Rifter the family's parent and the Tritanium... a variation
+    // of it, just to have two members.
+    dataset.type_info.details[0].variation_parent_type_id = None;
+    dataset.type_info.details.insert(
+        0,
+        ImportTypeDetails {
+            type_id: 34,
+            description: None,
+            volume_m3: None,
+            mass_kg: None,
+            capacity_m3: None,
+            portion_size: None,
+            variation_parent_type_id: Some(5_876),
+        },
+    );
+    import_active(&repository, &dataset).await;
+
+    for type_id in [34, 5_876] {
+        assert_eq!(
+            repository
+                .type_info_counts(type_id)
+                .await
+                .unwrap()
+                .variations,
+            2,
+            "type {type_id}"
+        );
+    }
+}

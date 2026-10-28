@@ -189,6 +189,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::planetary::router())
         .merge(routes::skills::router())
         .merge(routes::fittings::router())
+        .merge(routes::types::router())
         .merge(admin_router(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
