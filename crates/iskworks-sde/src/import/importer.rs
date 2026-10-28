@@ -88,6 +88,7 @@ pub struct SdeDatasetRequirements {
     pub planetary_data: bool,
     pub stargates: bool,
     pub skill_dogma: bool,
+    pub type_info: bool,
 }
 
 #[async_trait]
@@ -146,6 +147,7 @@ impl<'a> SdeImporter<'a> {
                         planetary_data: source.has_planetary_data(),
                         stargates: source.has_stargates(),
                         skill_dogma: source.has_skill_dogma(),
+                        type_info: source.has_type_info(),
                     },
                 )
                 .await?
