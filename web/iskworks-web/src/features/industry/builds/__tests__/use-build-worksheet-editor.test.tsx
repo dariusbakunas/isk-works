@@ -516,3 +516,67 @@ describe("useBuildWorksheetEditor -- active linked-build lifecycle", () => {
     expect(industryApi.createLinkedBuild).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("useBuildWorksheetEditor -- a recipe picked by the URL", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sdeApi.getSdeStatus.mockResolvedValue({ active: true });
+    sdeApi.planBuild.mockResolvedValue({
+      blueprintTypeId: 691,
+      blueprintName: "Rifter Blueprint",
+      runs: 1,
+      durationSeconds: 300,
+      materials: [{ typeId: 34, typeName: "Tritanium", quantityPerRun: 100, totalQuantity: 100 }],
+      products: [{ typeId: 587, typeName: "Rifter", quantityPerRun: 1, totalQuantity: 1 }],
+    });
+    sdeApi.planReaction.mockResolvedValue({
+      reactionFormulaTypeId: 46157,
+      reactionFormulaName: "Methanofullerene Reaction Formula",
+      runs: 1,
+      durationSeconds: 10800,
+      materials: [{ typeId: 37, typeName: "Isogen", quantityPerRun: 300, totalQuantity: 300 }],
+      products: [{ typeId: 30306, typeName: "Methanofullerene", quantityPerRun: 160, totalQuantity: 160 }],
+    });
+    industryApi.listPriceSources.mockResolvedValue([]);
+    industryApi.listFacilities.mockResolvedValue([]);
+    industryApi.listBlueprintObservations.mockResolvedValue([]);
+    industryApi.getBlueprintAutomaticEiv.mockResolvedValue({ value: null, observedAt: null });
+    industryApi.previewCreateBuildCandidate.mockResolvedValue(previewFixture("route"));
+  });
+
+  function renderAt(path: string) {
+    return renderHook(() => useBuildWorksheetEditor(null), {
+      wrapper: ({ children }) => <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>,
+    });
+  }
+
+  test("a blueprint type id starts a manufacturing build of its product", async () => {
+    const { result } = renderAt("/builds/new?blueprintTypeId=691");
+    expect(result.current.hasRouteBlueprint).toBe(true);
+    await waitFor(() => expect(result.current.selected?.kind).toBe("manufacturing"));
+    expect(result.current.selected?.result.productName).toBe("Rifter");
+    expect(result.current.name).toBe("Rifter build");
+  });
+
+  test("a reaction formula type id starts a reaction build of its product", async () => {
+    const { result } = renderAt("/builds/new?reactionFormulaTypeId=46157");
+    // The product picker stays closed while the formula loads.
+    expect(result.current.hasRouteBlueprint).toBe(true);
+    await waitFor(() => expect(result.current.selected?.kind).toBe("reaction"));
+    expect(sdeApi.planReaction).toHaveBeenCalledWith(46157, 1);
+    expect(result.current.selected?.result).toMatchObject({
+      reactionFormulaTypeId: 46157,
+      reactionFormulaName: "Methanofullerene Reaction Formula",
+      productTypeId: 30306,
+      productName: "Methanofullerene",
+    });
+    expect(result.current.name).toBe("Methanofullerene build");
+  });
+
+  test("an unknown formula falls back to the product picker", async () => {
+    sdeApi.planReaction.mockRejectedValue(new Error("not found"));
+    const { result } = renderAt("/builds/new?reactionFormulaTypeId=999");
+    await waitFor(() => expect(result.current.hasRouteBlueprint).toBe(false));
+    expect(result.current.selected).toBeNull();
+  });
+});
