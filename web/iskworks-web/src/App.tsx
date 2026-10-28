@@ -1,23 +1,4 @@
-import {
-  ArrowLeftRight,
-  BarChart2,
-  Boxes,
-  Building2,
-  CalendarDays,
-  CircleHelp,
-  Factory,
-  Globe2,
-  GraduationCap,
-  Rocket,
-  Hammer,
-  Kanban,
-  Landmark,
-  Shield,
-  Store,
-  Tags,
-  Users,
-  Warehouse,
-} from "lucide-react";
+import { CircleHelp } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 
@@ -29,6 +10,7 @@ import { CharacterName } from "./observability/private";
 import { AppFooter } from "./components/app-footer";
 import { HELP_PATH, LEGAL_PATH } from "./components/community-links";
 import { EsiDowntimeBadge } from "./components/esi-downtime-badge";
+import { flatNavItems, isNavPathActive } from "./components/navigation/registry";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";
 import {
@@ -82,31 +64,6 @@ type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string; code: string }
   | { status: "ready"; data: WorkspaceStateResponse };
-
-// Characters is the intentional alpha home surface (`/` redirects here);
-// it leads the nav. Board stays first-class but is a work-management
-// surface, not Home. Overview (static placeholder) and Sales (unbuilt) are
-// deliberately absent for the alpha.
-const navItems = [
-  { label: "Characters", path: "/characters", icon: Users },
-  { label: "Skills", path: "/skills", icon: GraduationCap },
-  { label: "Fittings", path: "/fittings", icon: Rocket },
-  { label: "Builds", path: "/builds", icon: Factory },
-  { label: "Board", path: "/board", icon: Kanban },
-  { label: "Jobs", path: "/jobs", icon: Hammer },
-  { label: "Calendar", path: "/calendar", icon: CalendarDays },
-  { label: "Inventory", path: "/inventory", icon: Boxes },
-  { label: "Assets", path: "/assets", icon: Warehouse },
-  { label: "Market", path: "/market", icon: Store },
-  { label: "Market Orders", path: "/market-orders", icon: ArrowLeftRight },
-  { label: "Price Overrides", path: "/prices", icon: Tags },
-  { label: "Facilities", path: "/facilities", icon: Building2 },
-  { label: "Planetary", path: "/planetary", icon: Globe2 },
-  { label: "Finance", path: "/finance", icon: Landmark },
-  { label: "Opportunities", path: "/opportunities", icon: BarChart2 },
-];
-
-const adminNavItem = { label: "Admin", path: "/admin", icon: Shield };
 
 type AuthGateState =
   | { status: "checking" }
@@ -464,12 +421,9 @@ function AppShell({
           </span>
         </Link>
         <nav className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto" aria-label="Primary navigation">
-          {(isAdmin ? [...navItems, adminNavItem] : navItems).map((item) => {
+          {flatNavItems(isAdmin).map((item) => {
             const Icon = item.icon;
-            // Whole path segments only: "/market" must not light up on "/market-orders".
-            const active =
-              location.pathname === item.path ||
-              (item.path !== "/" && location.pathname.startsWith(`${item.path}/`));
+            const active = isNavPathActive(location.pathname, item.path);
             return (
               <Link
                 key={item.path}

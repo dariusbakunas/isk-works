@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { App } from "../App";
+import { flatNavItems } from "../components/navigation/registry";
 
 // About section contents: sections start expanded here (see the double).
 vi.mock("../features/industry/inspector/inspector-collapse", async () => {
@@ -499,6 +500,18 @@ describe("App routes", () => {
     expect(navLabels).toContain("Planetary");
     expect(navLabels).not.toContain("Overview");
     expect(navLabels).not.toContain("Sales");
+  });
+
+  test("the primary nav follows the navigation registry's grouped order", async () => {
+    mockFetchSequence([configuredWorkspace, []]);
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    const navLabels = within(screen.getByRole("navigation", { name: "Primary navigation" }))
+      .getAllByRole("link")
+      .map((link) => link.textContent?.trim());
+    expect(navLabels).toEqual(flatNavItems(false).map((item) => item.label));
   });
 
   test("the Admin nav link appears only for admin sessions", async () => {
