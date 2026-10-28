@@ -1206,6 +1206,13 @@ impl SdeReadRepository for PgSdeRepository {
         self.read_group_names(group_ids).await
     }
 
+    async fn attribute_names(
+        &self,
+        attribute_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError> {
+        self.read_attribute_names(attribute_ids).await
+    }
+
     async fn type_variations(
         &self,
         type_id: i64,

@@ -875,6 +875,15 @@ pub trait SdeReadRepository: Send + Sync {
         let _ = group_ids;
         Ok(BTreeMap::new())
     }
+    /// Dogma attribute display names by attribute id; unknown ids yield no
+    /// entry.
+    async fn attribute_names(
+        &self,
+        attribute_ids: &[i64],
+    ) -> Result<BTreeMap<i64, String>, SdeError> {
+        let _ = attribute_ids;
+        Ok(BTreeMap::new())
+    }
     /// Planet names and systems by planet id; unknown ids yield no entry.
     async fn planet_references(
         &self,
