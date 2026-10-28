@@ -1,4 +1,4 @@
-import { Cloud, ServerOff } from "lucide-react";
+import { Cloud } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getEsiStatus } from "../api/health";
@@ -66,24 +66,5 @@ export function EsiStatusItem({ expanded }: { expanded: boolean }) {
       </span>
       <span className={expanded ? `truncate text-[10px] ${downtime ? "text-warning" : "text-foreground"}` : "sr-only"}>{label}</span>
     </div>
-  );
-}
-
-/** Header badge shown while ESI is paused; replaced by the rail's ESI row. */
-export function EsiDowntimeBadge() {
-  const downtime = useEsiDowntime();
-
-  if (!downtime) return null;
-
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1 rounded border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-warning"
-      role="status"
-      title={DOWNTIME_TITLE}
-    >
-      <ServerOff aria-hidden="true" className="h-3.5 w-3.5" />
-      <span className="hidden sm:inline">EVE downtime</span>
-      <span className="sm:hidden">DT</span>
-    </span>
   );
 }

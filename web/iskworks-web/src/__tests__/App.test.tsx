@@ -436,7 +436,8 @@ describe("EVE SSO login gate", () => {
     expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
     expect(screen.getByText(authenticatedSession.characterName)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /Account/ }));
+    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
   });
 
   test("EVE SSO not being configured falls back to the legacy workspace gate", async () => {
@@ -461,12 +462,12 @@ describe("EVE SSO login gate", () => {
 
     expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Account/ })).not.toBeInTheDocument();
   });
 });
 
 describe("App routes", () => {
-  test("shows the running API version in the header", async () => {
+  test("shows the running API version in the navigation", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
@@ -526,21 +527,19 @@ describe("App routes", () => {
           throw new Error(`unexpected fetch: ${url}`);
         }),
       );
-    const navLabels = () =>
-      within(screen.getByRole("navigation", { name: "Primary navigation" }))
-        .getAllByRole("link")
-        .map((link) => link.textContent?.trim());
+    const adminLink = () =>
+      within(screen.getByRole("navigation", { name: "Account and help" })).queryByRole("link", { name: "Admin" });
 
     withSession({ ...authenticatedSession, isAdmin: true });
     const admin = renderApp("/");
     expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
-    expect(navLabels()).toContain("Admin");
+    expect(adminLink()).toBeInTheDocument();
     admin.unmount();
 
     withSession(authenticatedSession);
     renderApp("/");
     expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
-    expect(navLabels()).not.toContain("Admin");
+    expect(adminLink()).not.toBeInTheDocument();
   });
 
   test("navigation routes still render", async () => {
@@ -561,7 +560,7 @@ describe("App routes", () => {
     expect(await screen.findByRole("heading", { name: "Price Overrides" })).toBeInTheDocument();
 
     const primaryNav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(primaryNav.closest("header")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "App navigation" })).toContainElement(primaryNav);
     expect(within(primaryNav).getByRole("link", { name: /^Board$/ })).toBeInTheDocument();
     expect(within(primaryNav).queryByRole("link", { name: /^Sales$/ })).not.toBeInTheDocument();
     await user.click(within(primaryNav).getByRole("link", { name: /^Characters$/ }));
@@ -642,14 +641,14 @@ describe("App routes", () => {
     expect(await screen.findByText("Paste a fit from the game or pyfa")).toBeInTheDocument();
   });
 
-  test("the header logo links to the Characters home", async () => {
+  test("the rail logo links to the Characters home", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
     await screen.findByRole("heading", { name: "Characters" });
 
-    const header = screen.getByRole("navigation", { name: "Primary navigation" }).closest("header");
-    const logoLink = within(header as HTMLElement).getByRole("link", { name: /ISK Works/ });
+    const rail = screen.getByRole("complementary", { name: "App navigation" });
+    const logoLink = within(rail).getByRole("link", { name: /ISK Works/ });
     expect(logoLink).toHaveAttribute("href", "/characters");
   });
 
