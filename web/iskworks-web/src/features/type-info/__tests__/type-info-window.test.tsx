@@ -368,3 +368,24 @@ test("training time reads in days and hours, or hours and minutes", () => {
   expect(formatTrainingTime(5)).toBe("1m");
   act(() => undefined);
 });
+
+test("windows stay open across page navigation", async () => {
+  const { Link, Route, Routes } = await import("react-router");
+  window.localStorage.clear();
+  render(
+    <MemoryRouter initialEntries={["/one"]}>
+      <ToolWindowsProvider kinds={[typeInfoKind]}>
+        <Routes>
+          <Route element={<><TypeInfoButton alwaysVisible name="Tritanium" typeId={TRITANIUM} /><Link to="/two">Page two</Link></>} path="/one" />
+          <Route element={<p>Second page</p>} path="/two" />
+        </Routes>
+        <ToolWindowLayer />
+      </ToolWindowsProvider>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Tritanium" }));
+  await screen.findByRole("dialog", { name: "Tritanium" });
+  fireEvent.click(screen.getByRole("link", { name: "Page two" }));
+  expect(screen.getByText("Second page")).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Tritanium" })).toBeInTheDocument();
+});

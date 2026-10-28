@@ -13,6 +13,7 @@ import { ChargePicker } from "./charge-picker";
 import type { StateToggle } from "./fit-draft";
 import { DropdownMenu } from "../../components/dropdown-menu";
 import { EveTypeImage } from "../../components/eve-type-image";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 import {
   OperationalTable,
   OperationalTableGroup,
@@ -232,6 +233,7 @@ function ModuleRow({
             ) : (
               <span className="truncate">{stack ? `${item.quantity.toLocaleString("en-US")} × ${name}` : name}</span>
             )}
+            <TypeInfoButton name={name} typeId={item.typeId} />
             {blocked ? (
               <span aria-label="This pilot can't use it" className="text-warning" role="img" title="This pilot can't use it">
                 <Lock aria-hidden="true" className="h-3 w-3" />
@@ -267,16 +269,22 @@ function ModuleRow({
         ),
         charge:
           charges && item.loadsCharges && !stack ? (
-            <ChargePicker
-              chargeName={item.chargeName}
-              chargeTypeId={item.chargeTypeId}
-              moduleName={name}
-              moduleTypeId={item.typeId}
-              onPick={(charge) => charges.onPick(index, charge)}
-              pilot={charges.pilot}
-            />
+            <span className="flex min-w-0 items-center gap-1">
+              <ChargePicker
+                chargeName={item.chargeName}
+                chargeTypeId={item.chargeTypeId}
+                moduleName={name}
+                moduleTypeId={item.typeId}
+                onPick={(charge) => charges.onPick(index, charge)}
+                pilot={charges.pilot}
+              />
+              {item.chargeTypeId !== null && item.chargeName ? <TypeInfoButton name={item.chargeName} typeId={item.chargeTypeId} /> : null}
+            </span>
           ) : item.chargeName ? (
-            <span className="truncate text-muted">{item.chargeName}</span>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="truncate text-muted">{item.chargeName}</span>
+              {item.chargeTypeId !== null ? <TypeInfoButton name={item.chargeName} typeId={item.chargeTypeId} /> : null}
+            </span>
           ) : null,
         cpu: stats && stats.cpu ? formatStat(stats.cpu, 1) : dash,
         pg: stats && stats.powergrid ? formatStat(stats.powergrid, 1) : dash,
