@@ -282,3 +282,42 @@ fn bonus_amounts_read_like_ship_traits() {
     assert_eq!(format_bonus(dec("2.0"), Some(144), Some("AU/s")), "2 AU/s");
     assert_eq!(format_bonus(dec("3"), None, None), "3");
 }
+
+#[test]
+fn the_null_category_counts_as_uncategorised() {
+    // dogmaAttributeCategories 9 is literally named "NULL": "attributes
+    // already checked and not going into a category".
+    let values = [
+        value(
+            1544,
+            "Max Modules Of This Group Allowed",
+            None,
+            Some((9, "NULL")),
+            "1",
+        ),
+        value(500, "No category", None, None, "2"),
+        value(
+            422,
+            "Tech Level",
+            Some((140, "Level")),
+            Some((7, "Miscellaneous")),
+            "2",
+        ),
+    ];
+
+    let groups = attribute_groups(&values, &names());
+
+    let layout: Vec<(&str, Vec<i64>)> = groups
+        .iter()
+        .map(|group| {
+            (
+                group.category.as_str(),
+                group.rows.iter().map(|row| row.attribute_id).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        layout,
+        [("Miscellaneous", vec![422]), ("Other", vec![500, 1544])]
+    );
+}
