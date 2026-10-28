@@ -128,6 +128,17 @@ fn plain_units_follow_the_number() {
 }
 
 #[test]
+fn small_values_keep_their_significant_digits() {
+    // Antimatter Charge S: the client shows 0.0025 m3.
+    assert_eq!(shown("0.0025", Some(9), Some("m3")), "0.0025 m3");
+    assert_eq!(shown("0.000123456", None, None), "0.000123");
+    assert_eq!(shown("-0.004", None, None), "-0.004");
+    // Two decimals as before once there is something to show.
+    assert_eq!(shown("0.125", Some(3), Some("sec")), "0.13 sec");
+    assert_eq!(shown("0", None, None), "0");
+}
+
+#[test]
 fn values_without_a_unit_are_bare_numbers() {
     assert_eq!(shown("12345.678", None, None), "12,345.68");
     // A unit the formatter doesn't know, with no display name.
@@ -154,9 +165,11 @@ fn percentages_by_kind() {
     // A resonance of 0.75 is a 25 % resistance. Checked on the dev SDE: the
     // Harpy's resonances come out as the T2 Caldari profile (shield
     // 0/80/70/50 %, hull 33 %), and Damage Control II's as 12.5/15/40 %.
-    // TODO(golden): pin 109 (e.g. Antimatter Charge S range bonus 0.5),
-    // 111 (Gyrostabilizer II rate of fire 0.895) and 127 (a ship's cargo
-    // scan resistance) against in-game screenshots.
+    // 109 and 111 are pinned against the client below (Antimatter Charge S,
+    // Gyrostabilizer II). 127 has no client counterpart to compare: the
+    // Attributes tab doesn't list Cargo Scan Resistance; a blockade
+    // runner's 1.0 ("Immune to all Cargo Scanners" in its role bonus)
+    // reads as 100 %.
     assert_eq!(shown("0.75", Some(108), Some("%")), "25 %");
     assert_eq!(shown("1.1", Some(109), Some("%")), "10 %");
     assert_eq!(shown("0.9", Some(109), Some("%")), "-10 %");
@@ -506,4 +519,69 @@ fn the_tracking_computer_reads_like_the_client() {
             "{label}"
         );
     }
+}
+
+/// Gyrostabilizer II and Antimatter Charge S as stored by SDE 3482594,
+/// against their in-game Attributes tabs (2026-10-28): units 104, 109, 111.
+#[test]
+fn the_gyrostabilizer_and_antimatter_read_like_the_client() {
+    let misc = Some((7, "Miscellaneous"));
+    let mut names = names();
+    names.groups.insert(74, "Hybrid Weapon".to_string());
+    let values = [
+        value(64, "Damage Modifier", Some((104, "x")), misc, "1.1"),
+        value(204, "Rate of Fire Bonus", Some((111, "%")), misc, "0.895"),
+        value(120, "Range bonus", Some((109, "%")), misc, "0.5"),
+        value(
+            137,
+            "Used with (Launcher Group)",
+            Some((115, "groupID")),
+            misc,
+            "74.0",
+        ),
+        value(
+            117,
+            "Kinetic damage",
+            Some((113, "HP")),
+            Some((29, "Turrets")),
+            "7.0",
+        ),
+        value(
+            118,
+            "Thermal damage",
+            Some((113, "HP")),
+            Some((29, "Turrets")),
+            "5.0",
+        ),
+        value(
+            114,
+            "EM damage",
+            Some((113, "HP")),
+            Some((29, "Turrets")),
+            "0",
+        ),
+    ];
+
+    let shown: BTreeMap<String, String> = attribute_groups(&values, &names)
+        .into_iter()
+        .flat_map(|group| group.rows)
+        .map(|row| (row.label, row.display))
+        .collect();
+
+    assert_eq!(
+        shown,
+        BTreeMap::from(
+            [
+                ("Damage Modifier", "1.1 x"),
+                // The client writes "10.50 %".
+                ("Rate of Fire Bonus", "10.5 %"),
+                ("Range bonus", "-50 %"),
+                ("Used with (Launcher Group)", "Hybrid Weapon"),
+                ("Kinetic damage", "7 HP"),
+                ("Thermal damage", "5 HP"),
+                // Zero EM damage is hidden; the client draws a dash.
+            ]
+            .map(|(label, display)| (label.to_string(), display.to_string()))
+        )
+    );
 }

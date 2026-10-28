@@ -118,9 +118,15 @@ pub fn format_attribute(
     // An id nothing names stays a bare id: no thousands separators.
     let raw_id = || id.map_or_else(|| number_text(value), |id| id.to_string());
     match unit_id {
-        Some(unit::MILLISECONDS) => {
-            plain(format!("{} s", number_text(value / Decimal::ONE_THOUSAND)))
-        }
+        // Rounded first: a 0.01 ms reload is "0 s" (the client's "0.0s"),
+        // not a tiny value worth significant digits.
+        Some(unit::MILLISECONDS) => plain(format!(
+            "{} s",
+            number_text(
+                (value / Decimal::ONE_THOUSAND)
+                    .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
+            )
+        )),
         Some(unit::MULTIPLIER) => plain(format!("{} x", number_text(value))),
         Some(
             unit::PERCENTAGE
@@ -169,11 +175,17 @@ pub fn format_attribute(
     }
 }
 
-/// Grouped thousands and at most two decimals, trailing zeros dropped.
+/// Grouped thousands and at most two decimals, trailing zeros dropped. A
+/// value two decimals would round to 0 keeps three significant digits
+/// instead (Antimatter Charge S is 0.0025 m3).
 fn number_text(value: Decimal) -> String {
-    let rounded = value
-        .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
-        .normalize();
+    let two_decimals = value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero);
+    let rounded = if two_decimals.is_zero() && !value.is_zero() {
+        value.round_sf(3).unwrap_or(value)
+    } else {
+        two_decimals
+    }
+    .normalize();
     let text = rounded.abs().to_string();
     let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
     let mut grouped = String::with_capacity(text.len() + whole.len() / 3);
