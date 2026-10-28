@@ -151,8 +151,10 @@ fn percentages_by_kind() {
     assert_eq!(shown("12.5", Some(121), Some("%")), "12.5 %");
     assert_eq!(shown("-15", Some(124), Some("%")), "-15 %");
     assert_eq!(shown("-15", Some(205), Some("%")), "-15 %");
-    // TODO(golden): pin 108/109/111/127 against in-game screenshots.
-    // A resonance of 0.75 is a 25 % resistance.
+    // A resonance of 0.75 is a 25 % resistance. Checked on the dev SDE: the
+    // Harpy's resonances come out as the T2 Caldari profile (shield
+    // 0/80/70/50 %, hull 33 %).
+    // TODO(golden): pin 109/111/127 against in-game screenshots.
     assert_eq!(shown("0.75", Some(108), Some("%")), "25 %");
     assert_eq!(shown("1.1", Some(109), Some("%")), "10 %");
     assert_eq!(shown("0.9", Some(109), Some("%")), "-10 %");
