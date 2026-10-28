@@ -674,6 +674,38 @@ describe("App routes", () => {
     expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
   });
 
+  test("⌘K opens the command palette and Enter goes to the chosen page", async () => {
+    mockFetchSequence([configuredWorkspace, []]);
+    const user = userEvent.setup();
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    await user.type(screen.getByRole("combobox", { name: "Go to page or run a command" }), "orders{Enter}");
+
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/market-orders"));
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+  });
+
+  test("Ctrl+K toggles the palette, and the rail's search button opens it", async () => {
+    mockFetchSequence([configuredWorkspace, []]);
+    const user = userEvent.setup();
+
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+
+    const rail = screen.getByRole("complementary", { name: "App navigation" });
+    await user.click(within(rail).getByRole("button", { name: /Search/ }));
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+  });
+
   test("legacy /orders/:id still redirects to the Board epic deep link", async () => {
     vi.stubGlobal(
       "fetch",
