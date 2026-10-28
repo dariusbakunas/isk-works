@@ -241,6 +241,22 @@ pub trait ProductionRepository: Send + Sync {
         }
         Ok(reserved)
     }
+    /// The part of `reserved_quantities` already sitting in an industry
+    /// job, keyed by `type_id`; a type with none may be absent (read it as
+    /// 0). Counts an active allocation when the ticket that consumes it (the
+    /// ticket executing its requirement's operation) has a linked ESI job:
+    /// EVE takes the materials out of the hangar when the job is installed,
+    /// while the ledger keeps them until the ticket's recording consumes the
+    /// allocation. The Inventory ESI check adds this back to what ESI
+    /// observes. Defaults to nothing in jobs.
+    async fn in_job_quantities(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+        _type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, u64>, ProductionError> {
+        Ok(std::collections::BTreeMap::new())
+    }
     /// Every currently-active `inventory_allocations` row for this
     /// `(workspace_id, owner_id, type_id)`, each resolved to its owning
     /// Order or Ticket -- the Inventory page's Reservations tab. Ordered

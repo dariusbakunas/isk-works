@@ -335,6 +335,63 @@ impl ProductionRepository for PgProductionRepository {
         Self::active_reserved_with(&self.pool, workspace_id, owner_id, type_ids).await
     }
 
+    /// Active allocations whose consuming ticket has a linked ESI job. A
+    /// ticket's operations are its `order_operation_ticket_claims`, or its
+    /// own `(order_id, occurrence_key)` when it holds no claim (the same
+    /// rule `order::reservations::ticket_operations` applies when a
+    /// recording draws its own reservations). A link row means the job was
+    /// installed: links whose job vanished early are deleted, delivered
+    /// ones are kept until the ticket records and consumes the allocation.
+    async fn in_job_quantities(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, u64>, ProductionError> {
+        if type_ids.is_empty() {
+            return Ok(std::collections::BTreeMap::new());
+        }
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "WITH linked AS ( \
+                 SELECT DISTINCT t.id, t.order_id, t.occurrence_key \
+                 FROM ticket_industry_jobs j \
+                 JOIN tickets t ON t.id = j.ticket_id \
+                 WHERE j.workspace_id = $1 AND t.status <> 'canceled' \
+             ), operations AS ( \
+                 SELECT c.order_id, c.occurrence_key \
+                 FROM order_operation_ticket_claims c JOIN linked l ON l.id = c.ticket_id \
+                 UNION \
+                 SELECT l.order_id, l.occurrence_key FROM linked l \
+                 WHERE l.order_id IS NOT NULL AND l.occurrence_key IS NOT NULL \
+                   AND NOT EXISTS (SELECT 1 FROM order_operation_ticket_claims c \
+                                   WHERE c.ticket_id = l.id) \
+             ) \
+             SELECT a.type_id, SUM(a.quantity)::bigint \
+             FROM inventory_allocations a \
+             JOIN order_requirements r ON r.id = a.order_requirement_id \
+             JOIN operations op \
+               ON op.order_id = r.order_id AND op.occurrence_key = r.operation_occurrence_key \
+             WHERE a.workspace_id = $1 AND a.owner_id = $2 AND a.type_id = ANY($3) \
+               AND a.released_at IS NULL AND a.consumed_at IS NULL \
+             GROUP BY a.type_id",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        rows.into_iter()
+            .map(|(type_id, quantity)| {
+                u64::try_from(quantity)
+                    .map(|quantity| (type_id, quantity))
+                    .map_err(|_| {
+                        ProductionError::Persistence("negative in-job quantity".to_string())
+                    })
+            })
+            .collect()
+    }
+
     /// Every active `inventory_allocations` row for this type, each
     /// resolved to its owning Order or Ticket in one query -- an
     /// `order_requirement_id` allocation joins straight through to its

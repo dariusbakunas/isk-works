@@ -111,8 +111,13 @@ struct InventoryItemResponse {
     ignored_esi_quantity: Option<u64>,
     included_esi_quantity: Option<u64>,
     esi_observed_at: Option<chrono::DateTime<chrono::Utc>>,
-    /// `esi_observed_quantity - balance.quantity`. Present only alongside
-    /// an actual observation, for the same reason as above.
+    /// The part of `reserved_quantity` already in an industry job (see
+    /// `ProductionRepository::in_job_quantities`): gone from ESI's view, but
+    /// still owned until the ticket records.
+    in_jobs_quantity: u64,
+    /// `included_esi_quantity + in_jobs_quantity - balance.quantity`.
+    /// Present only alongside an actual observation, for the same reason
+    /// as above.
     reconciliation_difference: Option<i64>,
     warnings: Vec<String>,
 }
@@ -203,6 +208,9 @@ async fn list_tracked_inventory(
     let reserved_by_type = state
         .reserved_quantities(workspace_id, owner_id, &type_ids)
         .await?;
+    let in_jobs_by_type = state
+        .in_job_quantities(workspace_id, owner_id, &type_ids)
+        .await?;
     let market_previews = inventory_market_previews(state, workspace_id, source, &balances).await?;
     let mut response = Vec::with_capacity(balances.len());
     for (balance, market_preview) in balances.into_iter().zip(market_previews) {
@@ -213,13 +221,17 @@ async fn list_tracked_inventory(
             .get(&balance.key.type_id)
             .copied()
             .unwrap_or(0);
+        let in_jobs = in_jobs_by_type
+            .get(&balance.key.type_id)
+            .copied()
+            .unwrap_or(0);
         let market_coverage = coverage_by_type.get(&balance.key.type_id);
         let metadata = type_metadata.get(&balance.key.type_id);
         let observation = observations.get(&balance.key.type_id).copied();
         response.push(inventory_item_response(
             balance,
             events,
-            reserved,
+            ReservedStock { reserved, in_jobs },
             InventoryEnrichment {
                 source,
                 market_preview: market_preview.as_ref(),
@@ -287,7 +299,7 @@ async fn list_untracked_inventory(
         response.push(inventory_item_response(
             balance,
             &[],
-            0,
+            ReservedStock::default(),
             InventoryEnrichment {
                 source,
                 market_preview: market_preview.as_ref(),
@@ -358,9 +370,17 @@ async fn get_inventory_item(
         item: inventory_item_response(
             history.balance,
             &history.events,
-            state
-                .reserved_quantity(workspace_id, owner_id, type_id)
-                .await?,
+            ReservedStock {
+                reserved: state
+                    .reserved_quantity(workspace_id, owner_id, type_id)
+                    .await?,
+                in_jobs: state
+                    .in_job_quantities(workspace_id, owner_id, &[type_id])
+                    .await?
+                    .get(&type_id)
+                    .copied()
+                    .unwrap_or(0),
+            },
             InventoryEnrichment {
                 source: &source,
                 market_preview: market_preview.as_ref(),
@@ -912,12 +932,24 @@ struct InventoryEnrichment<'a> {
     observation: Option<EsiObservation>,
 }
 
+/// A type's active reservations, and how much of them is already in an
+/// industry job.
+#[derive(Default)]
+struct ReservedStock {
+    reserved: u64,
+    in_jobs: u64,
+}
+
 fn inventory_item_response(
     balance: InventoryBalance,
     events: &[InventoryEvent],
-    reserved_quantity: u64,
+    reserved: ReservedStock,
     enrichment: InventoryEnrichment<'_>,
 ) -> Result<InventoryItemResponse, ApiError> {
+    let ReservedStock {
+        reserved: reserved_quantity,
+        in_jobs: in_jobs_quantity,
+    } = reserved;
     let InventoryEnrichment {
         source,
         market_preview,
@@ -1046,8 +1078,9 @@ fn inventory_item_response(
             "No market orders are available for this item in the default market scope.".to_string(),
         );
     }
-    let reconciliation_difference = observation
-        .map(|observation| observation.included_quantity as i64 - balance.quantity as i64);
+    let reconciliation_difference = observation.map(|observation| {
+        observation.included_quantity as i64 + in_jobs_quantity as i64 - balance.quantity as i64
+    });
     Ok(InventoryItemResponse {
         available_quantity: iskworks_core::order::reporting_available_quantity(
             balance.quantity,
@@ -1089,6 +1122,7 @@ fn inventory_item_response(
         ignored_esi_quantity: observation.map(|observation| observation.ignored_quantity),
         included_esi_quantity: observation.map(|observation| observation.included_quantity),
         esi_observed_at: observation.map(|observation| observation.observed_at),
+        in_jobs_quantity,
         reconciliation_difference,
         warnings,
     })

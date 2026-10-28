@@ -102,7 +102,12 @@ async fn prerequisite_epic_round_trips(pool: PgPool) {
     assert_eq!(reloaded, vec![(34, Some(order.id)), (35, None)]);
 }
 
-async fn claim(pool: &PgPool, order_id: OrderId, occurrence_key: &str, ticket_id: TicketId) {
+pub(super) async fn claim(
+    pool: &PgPool,
+    order_id: OrderId,
+    occurrence_key: &str,
+    ticket_id: TicketId,
+) {
     sqlx::query(
         "INSERT INTO order_operation_ticket_claims (order_id, occurrence_key, ticket_id, claimed_at) \
          VALUES ($1, $2, $3, now())",
@@ -212,7 +217,7 @@ async fn ticket_operations_come_from_claims_with_an_unclaimed_fallback(pool: PgP
 /// An Epic with one 100-unit requirement of `type_id` for its `hexite`
 /// operation, holding a 100-unit reservation for it. Returns the Epic and
 /// the reservation id.
-async fn epic_holding(
+pub(super) async fn epic_holding(
     pool: &PgPool,
     repository: &PgOrderRepository,
     workspace_id: WorkspaceId,

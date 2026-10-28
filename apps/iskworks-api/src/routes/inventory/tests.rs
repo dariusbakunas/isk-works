@@ -51,7 +51,7 @@ fn warnings(source: &InventoryPricingSource, coverage: &MarketCoverageItem) -> V
     let response = inventory_item_response(
         balance,
         &[],
-        0,
+        ReservedStock::default(),
         InventoryEnrichment {
             source,
             market_preview: None,

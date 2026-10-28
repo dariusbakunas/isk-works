@@ -147,6 +147,7 @@ export function InventoryInspector({
                 <EqRow label="ESI observed" value={item.esiObservedQuantity.toLocaleString()} />
                 {(item.ignoredEsiQuantity ?? 0) > 0 ? <EqRow label="Ignored" value={(item.ignoredEsiQuantity ?? 0).toLocaleString()} /> : null}
                 <EqRow label="Included" value={(item.includedEsiQuantity ?? item.esiObservedQuantity).toLocaleString()} />
+                {(item.inJobsQuantity ?? 0) > 0 ? <EqRow label="In jobs" value={`+${(item.inJobsQuantity ?? 0).toLocaleString()}`} /> : null}
                 <EqRow label="Accounting owned" value={item.balance.quantity.toLocaleString()} />
                 <EqRow
                   emphasis
