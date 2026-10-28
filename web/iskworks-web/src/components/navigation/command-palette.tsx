@@ -1,9 +1,10 @@
 import { Search } from "lucide-react";
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { pageEntries, searchPalette, type PaletteEntry, type PaletteMatch } from "./palette-search";
+import { resolveNavEntry } from "./registry";
 
 interface Section {
   heading: string;
@@ -16,9 +17,10 @@ interface Section {
 
 const plain = (entry: PaletteEntry): PaletteMatch => ({ entry, score: 0, matched: [], viaKeyword: false });
 
-function emptySections(pages: PaletteEntry[], recents: string[], actions: PaletteEntry[]): Section[] {
+function emptySections(pages: PaletteEntry[], recents: string[], actions: PaletteEntry[], currentPath?: string): Section[] {
   const byPath = new Map(pages.map((entry) => [entry.path, entry]));
-  const recent = recents.flatMap((path) => byPath.get(path) ?? []);
+  // The page you're on is never somewhere to go back to.
+  const recent = recents.filter((path) => path !== currentPath).flatMap((path) => byPath.get(path) ?? []);
   // The sitemap lists top-level pages; sub-pages are a search away.
   const topLevel = pages.filter((entry) => !entry.label.includes(" › "));
   const groups = [...new Set(topLevel.map((entry) => entry.group))];
@@ -65,6 +67,7 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const currentPath = resolveNavEntry(useLocation().pathname)?.path;
   const listId = useId();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -72,11 +75,11 @@ export function CommandPalette({
 
   const pages = useMemo(() => pageEntries(isAdmin), [isAdmin]);
   const sections = useMemo<Section[]>(() => {
-    if (!query.trim()) return emptySections(pages, recents, actions);
+    if (!query.trim()) return emptySections(pages, recents, actions, currentPath);
     const matches = searchPalette([...pages, ...actions], query);
     if (!matches.length) return [];
     return [{ heading: matches.every((match) => match.entry.kind === "action") ? "Actions" : "Results", matches }];
-  }, [actions, pages, query, recents]);
+  }, [actions, currentPath, pages, query, recents]);
   const flat = sections.flatMap((section) => section.matches);
 
   // Give focus back to whatever opened the palette (a button, or the page for ⌘K).

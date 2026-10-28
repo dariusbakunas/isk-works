@@ -45,6 +45,11 @@ describe("CommandPalette", () => {
     expect(activeOption()).toBe(options()[0]);
   });
 
+  test("recents leave out the page you're on", () => {
+    renderPalette({ recents: ["/inventory", "/board"] });
+    expect(options()[0]).toHaveTextContent("Board");
+  });
+
   test("typing ranks results and the arrows move the selection, wrapping", async () => {
     const user = userEvent.setup();
     renderPalette();
