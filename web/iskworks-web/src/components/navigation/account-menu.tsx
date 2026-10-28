@@ -54,7 +54,7 @@ export function AccountMenu({
       <button
         aria-expanded={open}
         aria-haspopup="menu"
-        className={`flex h-10 w-full items-center overflow-hidden text-left hover:bg-hover ${rowFocus}`}
+        className={`flex h-9 w-full items-center overflow-hidden text-left hover:bg-hover ${rowFocus}`}
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
@@ -104,7 +104,7 @@ export function AccountMenu({
 /** The API version for sessions without a character (the legacy workspace gate). */
 export function ApiVersionLine({ apiVersion, expanded }: { apiVersion: string; expanded: boolean }) {
   return (
-    <div className="flex h-9 w-full items-center text-muted">
+    <div className="flex h-8 w-full items-center text-muted">
       <span className="grid w-[51px] shrink-0 place-items-center">
         <Info aria-hidden="true" className="h-4 w-4" />
       </span>

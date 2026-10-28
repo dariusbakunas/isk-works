@@ -59,7 +59,7 @@ export function EsiStatusItem({ expanded }: { expanded: boolean }) {
   const label = downtime ? "ESI data paused" : "ESI connected";
 
   return (
-    <div className="flex h-9 w-full items-center" role="status" title={downtime ? DOWNTIME_TITLE : label}>
+    <div className="flex h-8 w-full items-center" role="status" title={downtime ? DOWNTIME_TITLE : label}>
       <span className="relative grid w-[51px] shrink-0 place-items-center text-muted">
         <Cloud aria-hidden="true" className="h-4 w-4" />
         {downtime ? <i aria-hidden="true" className="absolute right-[15px] top-[1px] h-1.5 w-1.5 rounded-full bg-warning" /> : null}

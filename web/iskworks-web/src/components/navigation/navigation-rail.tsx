@@ -21,7 +21,7 @@ function RailLink({ to, label, icon: Icon, expanded, active }: { to: string; lab
   return (
     <Link
       aria-current={active ? "page" : undefined}
-      className={`relative flex h-9 w-full items-center hover:bg-hover hover:text-foreground ${rowFocus} ${
+      className={`relative flex h-8 w-full items-center hover:bg-hover hover:text-foreground ${rowFocus} ${
         active ? "bg-hover text-primary" : "text-muted"
       }`}
       to={to}
@@ -88,7 +88,7 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
 
       <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {navGroups.map((group, index) => (
-          <div className={expanded ? "pb-1" : "py-1"} key={group.id}>
+          <div className={expanded ? undefined : "py-1"} key={group.id}>
             {expanded ? (
               <div className="flex h-5 items-center px-[14px] text-[8px] font-semibold uppercase tracking-[.14em] text-subtle">{group.label}</div>
             ) : index > 0 ? (
@@ -124,7 +124,7 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
         {pin ? (
           <button
             aria-pressed={pin.pinned}
-            className={`flex h-9 w-full items-center text-muted hover:bg-hover hover:text-foreground ${rowFocus}`}
+            className={`flex h-8 w-full items-center text-muted hover:bg-hover hover:text-foreground ${rowFocus}`}
             onClick={pin.onToggle}
             title={`${pin.pinned ? "Unpin" : "Pin"} navigation  [`}
             type="button"
