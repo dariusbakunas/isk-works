@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { SkillCatalogue } from "../../../api/skills";
 import { SkillsPage } from "../skills-page";
 import { AURA, catalogue, characterDetail, MIRA, roster } from "./fixtures";
+import { WithToolWindows } from "../../../test/tool-windows";
 
 const NOW = new Date("2026-10-25T12:00:00Z");
 
@@ -25,13 +26,14 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}{location.search}</div>;
 }
 
-function renderPage(path = "/skills") {
+function renderPage(path = "/skills", wrapper?: typeof WithToolWindows) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route element={<><SkillsPage /><LocationProbe /></>} path="/skills/*" />
       </Routes>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -153,4 +155,15 @@ describe("Skills › Catalogue", () => {
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Skills" })).toBeInTheDocument();
   });
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  stubFetch();
+  renderPage("/skills", WithToolWindows);
+  const table = await screen.findByRole("table", { name: "Skills" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });

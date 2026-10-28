@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -10,6 +10,7 @@ import {
   type BlueprintLibraryRow,
 } from "../../../../api/industry";
 import { BlueprintsPage } from "../blueprints-page";
+import { WithToolWindows } from "../../../../test/tool-windows";
 
 vi.mock("../../../../api/industry", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../../api/industry")>(),
@@ -75,7 +76,7 @@ function LocationProbe() {
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
 }
 
-function renderPage(entry = "/builds/blueprints") {
+function renderPage(entry = "/builds/blueprints", wrapper?: typeof WithToolWindows) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
@@ -84,6 +85,7 @@ function renderPage(entry = "/builds/blueprints") {
       </Routes>
       <LocationProbe />
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -239,4 +241,14 @@ describe("Blueprints page", () => {
     expect(await screen.findByText("Mystery Blueprint")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  renderPage("/builds/blueprints", WithToolWindows);
+  const table = await screen.findByRole("table", { name: "Owned blueprints" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });

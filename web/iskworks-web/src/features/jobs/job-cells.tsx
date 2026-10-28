@@ -6,6 +6,7 @@ import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { Badge } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
 import { activityAbbr, activityColor, activityLabel, initials, jobTitle, researchNote, statusLabel, statusTone } from "./jobs-format";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 export function StatusChip({ status }: { status: JobStatus }) {
   return <Badge square tone={statusTone(status)}>{statusLabel(status)}</Badge>;
@@ -31,8 +32,16 @@ export function JobTitle({ job }: { job: JobView }) {
   const note = researchNote(job);
   return (
     <span className="flex min-w-0 flex-col leading-tight">
-      <span className="truncate text-xs font-semibold text-foreground">{blueprint}</span>
-      {product ? <span className="truncate text-[0.625rem] text-muted">→ {product}</span> : null}
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate text-xs font-semibold text-foreground">{blueprint}</span>
+        <TypeInfoButton name={blueprint} typeId={job.blueprintTypeId} />
+      </span>
+      {product ? (
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-[0.625rem] text-muted">→ {product}</span>
+          {job.productTypeId !== null ? <TypeInfoButton name={product} typeId={job.productTypeId} /> : null}
+        </span>
+      ) : null}
       {note ? <span className="font-mono text-[0.625rem] text-muted">{note}</span> : null}
     </span>
   );

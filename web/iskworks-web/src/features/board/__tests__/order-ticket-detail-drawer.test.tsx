@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +6,7 @@ import type { IndustryJob } from "../../../api/characters";
 import { OrderTicketDetailDrawer } from "../order-ticket-detail-drawer";
 import { facilityProfile } from "../../industry/builds/graph/__tests__/fixtures";
 import { ticketFixture } from "./fixtures";
+import { WithToolWindows } from "../../../test/tool-windows";
 
 const industryApi = vi.hoisted(() => ({
   updateTicketStatus: vi.fn(),
@@ -948,4 +949,17 @@ describe("OrderTicketDetailDrawer combined tickets", () => {
     await userEvent.click(screen.getByRole("button", { name: "ISK-1300" }));
     expect(onOpenTicket).toHaveBeenCalledWith("combined-1");
   });
+});
+
+it("a ticket's item opens in Type Info; generic tickets have none", () => {
+  window.localStorage.clear();
+  const { unmount } = render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture()} />, { wrapper: WithToolWindows });
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Tritanium" }));
+  expect(screen.getByRole("dialog", { name: "Tritanium" })).toHaveTextContent("Type 34");
+  unmount();
+
+  render(<OrderTicketDetailDrawer onClose={() => {}} ticket={ticketFixture({ kind: "generic", typeId: null, capturedName: "Haul stuff" })} />, {
+    wrapper: WithToolWindows,
+  });
+  expect(screen.queryByRole("button", { name: /^Show info: / })).not.toBeInTheDocument();
 });

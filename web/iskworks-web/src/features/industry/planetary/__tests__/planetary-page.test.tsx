@@ -1,10 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Planet, PlanetaryCharacter, PlanetaryOverview } from "../../../../api/planetary";
 import { PlanetaryPage } from "../planetary-page";
+import { WithToolWindows } from "../../../../test/tool-windows";
 
 const api = vi.hoisted(() => ({
   getPlanetary: vi.fn(),
@@ -130,7 +131,7 @@ function LocationProbe() {
   return <output data-testid="location">{location.search}</output>;
 }
 
-function renderPage(entry = "/planetary") {
+function renderPage(entry = "/planetary", wrapper?: typeof WithToolWindows) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
@@ -145,6 +146,7 @@ function renderPage(entry = "/planetary") {
         />
       </Routes>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -337,4 +339,14 @@ describe("PlanetaryPage", () => {
 
     expect(await screen.findByText("Stale 2h ago")).toBeInTheDocument();
   });
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  renderPage("/planetary", WithToolWindows);
+  const table = await screen.findByRole("table", { name: "Planetary colonies" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });

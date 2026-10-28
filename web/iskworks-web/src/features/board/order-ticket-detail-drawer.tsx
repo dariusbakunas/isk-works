@@ -23,6 +23,7 @@ import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
 import { recordingTerms } from "./recording/recording-meta";
 import { RecordingSection } from "./recording/recording-section";
 import { TicketJobsSection } from "./ticket-jobs-section";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted">{children}</h3>;
@@ -256,6 +257,9 @@ export function OrderTicketDetailDrawer({
           <Badge square tone={kindMeta.tone}>
             {kindMeta.label}
           </Badge>
+          {ticket.typeId !== null && ticket.kind !== "generic" ? (
+            <TypeInfoButton alwaysVisible className="ml-auto" name={ticket.capturedName} typeId={ticket.typeId} />
+          ) : null}
         </div>
 
         {error ? <InlineAlert title="Action did not finish">{error}</InlineAlert> : null}

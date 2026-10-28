@@ -1,10 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { InventoryItem } from "../../../../api/inventory";
 import { InventoryOperationalTable } from "../inventory-operational-table";
+import { WithToolWindows } from "../../../../test/tool-windows";
 
 function inventoryItem({
   typeId,
@@ -306,4 +307,24 @@ describe("InventoryOperationalTable", () => {
     const row = screen.getByRole("row", { name: /Tritanium/ });
     expect(within(row).queryByRole("button", { name: "View ESI holdings" })).not.toBeInTheDocument();
   });
+});
+
+test("an item opens in Type Info without selecting its row", () => {
+  window.localStorage.clear();
+  const onSelectItem = vi.fn();
+  render(
+    <WithToolWindows>
+      <ControlledTable
+        initialExpanded={[]}
+        items={[inventoryItem({ typeId: 34, typeName: "Tritanium", groupName: null })]}
+        onSelectItem={onSelectItem}
+        onViewEsiHoldings={vi.fn()}
+        selectedTypeId={null}
+      />
+    </WithToolWindows>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Expand Other" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Tritanium" }));
+  expect(screen.getByRole("dialog", { name: "Tritanium" })).toHaveTextContent("Type 34");
+  expect(onSelectItem).not.toHaveBeenCalled();
 });

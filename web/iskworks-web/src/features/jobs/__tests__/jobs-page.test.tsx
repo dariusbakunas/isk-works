@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ActiveJobs, JobHistory } from "../../../api/jobs";
 import { JobsPage } from "../jobs-page";
 import { activeJobs, jobHistory, NOW, TICKET } from "./fixtures";
+import { WithToolWindows } from "../../../test/tool-windows";
 
 function stubFetch(active: ActiveJobs = activeJobs(), history: JobHistory = jobHistory()) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -19,13 +20,14 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}{location.search}</div>;
 }
 
-function renderPage(path = "/jobs") {
+function renderPage(path = "/jobs", wrapper?: typeof WithToolWindows) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route element={<><JobsPage /><LocationProbe /></>} path="/jobs/*" />
       </Routes>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -187,4 +189,15 @@ describe("Jobs › History", () => {
     renderPage("/jobs/history");
     expect(await screen.findByText("No history yet")).toBeInTheDocument();
   });
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  stubFetch();
+  renderPage("/jobs", WithToolWindows);
+  const table = await screen.findByRole("table", { name: "Active jobs" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });

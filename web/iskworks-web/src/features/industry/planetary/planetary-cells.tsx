@@ -15,6 +15,7 @@ import {
   toneText,
   type Tone,
 } from "./planetary-format";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 // One sub-line per import/export so the Exports, Excl and ISK/mo columns
 // line up row-for-row (fixed sub-line height).
@@ -110,6 +111,7 @@ export function ProductionCell({ planet }: { planet: Planet }) {
           title={`${production.factoryCount} ${production.factoryCount === 1 ? "factory" : "factories"}`}
         >
           {production.name}
+          <TypeInfoButton className="ml-1" name={production.name} typeId={production.outputTypeId} />
         </span>
       ))}
     </div>
@@ -126,6 +128,7 @@ export function ImportsCell({ planet }: { planet: Planet }) {
         return (
           <div className={SUB_LINE} key={item.typeId}>
             <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
+            <TypeInfoButton name={item.name} typeId={item.typeId} />
             <span className="shrink-0 font-mono text-[0.65rem] tabular-nums text-muted">
               {formatQuantity(Number(item.qtyPerHour))}/h
             </span>
@@ -149,6 +152,7 @@ export function ExportsCell({ planet }: { planet: Planet }) {
       {planet.exports.map((item) => (
         <div className={SUB_LINE} key={item.typeId}>
           <span className="min-w-0 flex-1 truncate text-xs">{item.name}</span>
+          <TypeInfoButton name={item.name} typeId={item.typeId} />
           <span className="shrink-0 font-mono text-[0.65rem] tabular-nums text-muted">
             {formatQuantity(Number(item.unitsPerHour))}/h
           </span>
@@ -275,7 +279,10 @@ function StorageBar({ storage }: { storage: PlanetStorage }) {
               <span className="text-right text-muted">Value</span>
               {storage.contents.map((item) => (
                 <div className="contents" key={item.typeId}>
-                  <span className="truncate">{item.name}</span>
+                  <span className="flex min-w-0 items-center gap-0.5">
+                    <span className="truncate">{item.name}</span>
+                    <TypeInfoButton name={item.name} typeId={item.typeId} />
+                  </span>
                   <span className="text-right font-mono tabular-nums">{item.quantity.toLocaleString("en-US")}</span>
                   <span className="text-right font-mono tabular-nums text-muted">
                     {Number(item.volumeM3).toLocaleString("en-US", { maximumFractionDigits: 0 })}
