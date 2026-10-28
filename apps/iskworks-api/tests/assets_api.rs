@@ -40,3 +40,18 @@ async fn flat_asset_query_accepts_comma_delimited_multi_select_filters() {
 
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
+
+#[tokio::test]
+async fn asset_export_accepts_numeric_limit_alongside_columns() {
+    let app = build_router(AppState::new(Arc::new(configured_workspace("Assets Test"))));
+    let response = app
+        .oneshot(
+            Request::get("/api/assets/export?limit=100&columns=item%2Cquantity")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
