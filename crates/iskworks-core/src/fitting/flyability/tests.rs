@@ -353,3 +353,55 @@ fn a_fit_skill_plan_is_the_closure_or_what_a_pilot_still_has_to_train() {
         ]
     );
 }
+
+#[test]
+fn a_required_prerequisite_with_a_higher_id_still_lists_the_missing_skills() {
+    // Like Propulsion Jamming (3435) needing Navigation (3449) II, which the
+    // fit also requires at II: by skill id the prerequisite sorts after it.
+    const PROPULSION_JAMMING: i64 = 99;
+    let mut definitions = definitions();
+    definitions.push(definition(
+        PROPULSION_JAMMING,
+        "Propulsion Jamming",
+        3,
+        vec![(SHIELD_UPGRADES, 2)],
+    ));
+    let needs = vec![
+        PlanEntry {
+            skill_type_id: PROPULSION_JAMMING,
+            level: 2,
+        },
+        PlanEntry {
+            skill_type_id: SHIELD_UPGRADES,
+            level: 2,
+        },
+    ];
+    let requirements = FitRequirements {
+        hull: needs.clone(),
+        all: needs,
+        by_item: BTreeMap::new(),
+    };
+
+    let flyability =
+        evaluate_flyability(&requirements, &definitions, &character(Vec::new()), now());
+    assert_eq!(flyability.status, FlyabilityStatus::Cannot);
+    let missing: Vec<(i64, i16)> = flyability
+        .missing
+        .iter()
+        .map(|missing| (missing.skill_type_id, missing.required_level))
+        .collect();
+    assert_eq!(missing, [(SHIELD_UPGRADES, 2), (PROPULSION_JAMMING, 2)]);
+    assert_eq!(
+        requirement_plan(&requirements, &definitions, None).unwrap(),
+        [
+            (SHIELD_UPGRADES, 1),
+            (SHIELD_UPGRADES, 2),
+            (PROPULSION_JAMMING, 1),
+            (PROPULSION_JAMMING, 2),
+        ]
+        .map(|(skill_type_id, level)| PlanEntry {
+            skill_type_id,
+            level
+        })
+    );
+}

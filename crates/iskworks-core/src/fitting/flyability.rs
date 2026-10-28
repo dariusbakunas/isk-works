@@ -6,7 +6,7 @@
 //! anything. Training times come from the skill plan evaluation over the
 //! requirements' prerequisite closure.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use iskworks_sde::{RequiredSkill, SkillDefinition};
@@ -14,7 +14,7 @@ use serde::Serialize;
 
 use super::{FitInput, SlotKind};
 use crate::skill_plans::{
-    evaluate_plan, normalize_plan, PlanEntry, PlanEntryStatus, SkillGraph, SkillPlanError,
+    evaluate_plan, prerequisite_closure, PlanEntry, PlanEntryStatus, SkillGraph, SkillPlanError,
 };
 use crate::skills::CharacterSkillsSnapshot;
 
@@ -226,13 +226,27 @@ fn closure(
     let graph = SkillGraph::new(definitions);
     // Skills the SDE no longer lists can't be planned; leave them out
     // rather than fail the whole fit.
-    let known: Vec<PlanEntry> = requirements
+    let known = requirements
         .all
         .iter()
         .copied()
-        .filter(|entry| graph.skill(entry.skill_type_id).is_some())
-        .collect();
-    Ok(normalize_plan(&known, &graph)?.entries)
+        .filter(|entry| graph.skill(entry.skill_type_id).is_some());
+    // Not `normalize_plan`: requirements come by skill id, so one can be
+    // another's prerequisite further down (Navigation II for Propulsion
+    // Jamming), which it refuses as an order violation.
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for entry in known {
+        for needed in prerequisite_closure(&graph, entry)?
+            .into_iter()
+            .chain([entry])
+        {
+            if seen.insert(needed) {
+                out.push(needed);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A skill plan for the fit: the whole closure, or, for `character`, only
