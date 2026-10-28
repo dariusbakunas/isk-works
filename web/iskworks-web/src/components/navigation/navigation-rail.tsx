@@ -42,14 +42,14 @@ export interface RailContentProps {
   isAdmin: boolean;
   workspaceName: string;
   /** Rendered between Help and the pin toggle (the account menu, or the API version). */
-  account?: ReactNode;
+  renderAccount?: (expanded: boolean) => ReactNode;
   onOpenSearch?: () => void;
   /** Omitted in the mobile drawer, which can't be pinned. */
   pin?: { pinned: boolean; onToggle: () => void };
 }
 
 /** The rail's contents, shared by the desktop rail and the mobile drawer. */
-export function RailContent({ expanded, isAdmin, workspaceName, account, onOpenSearch, pin }: RailContentProps) {
+export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, onOpenSearch, pin }: RailContentProps) {
   const { pathname } = useLocation();
 
   return (
@@ -120,7 +120,7 @@ export function RailContent({ expanded, isAdmin, workspaceName, account, onOpenS
         ) : null}
         <EsiStatusItem expanded={expanded} />
         <RailLink active={false} expanded={expanded} icon={CircleHelp} label="Help" to={HELP_PATH} />
-        {account}
+        {renderAccount?.(expanded)}
         {pin ? (
           <button
             aria-pressed={pin.pinned}
@@ -147,7 +147,7 @@ export interface NavigationRailProps {
   onTogglePinned: () => void;
   isAdmin: boolean;
   workspaceName: string;
-  account?: ReactNode;
+  renderAccount?: (expanded: boolean) => ReactNode;
   onOpenSearch?: () => void;
 }
 
@@ -168,7 +168,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * Collapsed, hovering or focusing it "peeks": the rail widens over the page
  * without moving it, because the slot div is what the layout sees.
  */
-export function NavigationRail({ pinned, onTogglePinned, isAdmin, workspaceName, account, onOpenSearch }: NavigationRailProps) {
+export function NavigationRail({ pinned, onTogglePinned, isAdmin, workspaceName, renderAccount, onOpenSearch }: NavigationRailProps) {
   const { pathname } = useLocation();
   const [peek, setPeek] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -225,7 +225,7 @@ export function NavigationRail({ pinned, onTogglePinned, isAdmin, workspaceName,
         style={{ width: expanded ? RAIL_EXPANDED_WIDTH : RAIL_COLLAPSED_WIDTH }}
       >
         <RailContent
-          account={account}
+          renderAccount={renderAccount}
           expanded={expanded}
           isAdmin={isAdmin}
           onOpenSearch={onOpenSearch}
