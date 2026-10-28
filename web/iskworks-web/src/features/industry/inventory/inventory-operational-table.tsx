@@ -119,13 +119,13 @@ function EsiBadge({ item, onViewHoldings }: { item: InventoryItem; onViewHolding
   return (
     <span className="flex items-center justify-end gap-1">
       {isMatch ? (
-        <span className="flex text-positive" title="ESI observation matches accounting inventory">
+        <span className="flex text-positive" title={esiMatchTitle(item)}>
           <Check aria-hidden="true" className="h-4 w-4" />
         </span>
       ) : (
         <span
           className="whitespace-nowrap font-mono text-xs font-semibold text-warning"
-          title={`ESI observed ${item.esiObservedQuantity.toLocaleString()}, accounting owns ${item.balance.quantity.toLocaleString()}`}
+          title={esiDifferenceTitle(item, item.esiObservedQuantity)}
         >
           {difference > 0 ? "+" : ""}
           {difference.toLocaleString()}
@@ -142,6 +142,18 @@ function EsiBadge({ item, onViewHoldings }: { item: InventoryItem; onViewHolding
       </button>
     </span>
   );
+}
+
+function esiMatchTitle(item: InventoryItem): string {
+  const inJobs = item.inJobsQuantity ?? 0;
+  if (inJobs === 0) return "ESI observation matches accounting inventory";
+  return `ESI observed ${(item.esiObservedQuantity ?? 0).toLocaleString()} + ${inJobs.toLocaleString()} in jobs matches accounting inventory`;
+}
+
+function esiDifferenceTitle(item: InventoryItem, observed: number): string {
+  const inJobs = item.inJobsQuantity ?? 0;
+  const jobs = inJobs > 0 ? ` (+${inJobs.toLocaleString()} in jobs)` : "";
+  return `ESI observed ${observed.toLocaleString()}${jobs}, accounting owns ${item.balance.quantity.toLocaleString()}`;
 }
 
 function InventoryGroupSummary({ group }: { group: InventoryGroup }) {

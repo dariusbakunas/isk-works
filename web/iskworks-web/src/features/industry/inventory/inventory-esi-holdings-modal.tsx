@@ -72,6 +72,7 @@ export function InventoryEsiHoldingsModal({ item: initialItem, onClose, onChange
   }
 
   const difference = item.reconciliationDifference;
+  const inJobs = item.inJobsQuantity ?? 0;
   return (
     <dialog aria-labelledby="esi-holdings-title" className="iw-dialog iw-dialog-frame m-auto w-[min(720px,calc(100vw-2rem))] p-5 text-foreground backdrop:bg-black/70" onCancel={(event) => { event.preventDefault(); onClose(); }} ref={dialogRef}>
       <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
@@ -80,11 +81,12 @@ export function InventoryEsiHoldingsModal({ item: initialItem, onClose, onChange
       </div>
       {view === "holdings" ? <>
         <div className="iw-dialog-body">
-          <dl className="mb-4 grid grid-cols-2 gap-3 rounded-md border border-border bg-background p-3 text-sm sm:grid-cols-5">
+          <dl className={`mb-4 grid grid-cols-2 gap-3 rounded-md border border-border bg-background p-3 text-sm ${inJobs > 0 ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             <Metric label="Accounting inventory" value={item.balance.quantity.toLocaleString()} />
             <Metric label="ESI observed" value={state.status === "ready" ? state.holdings.observedQuantity.toLocaleString() : "—"} />
             <Metric label="Ignored" value={state.status === "ready" ? (state.holdings.ignoredQuantity ?? 0).toLocaleString() : "—"} />
             <Metric label="Included" value={state.status === "ready" ? (state.holdings.includedQuantity ?? state.holdings.observedQuantity).toLocaleString() : "—"} />
+            {inJobs > 0 ? <Metric label="In jobs" value={`+${inJobs.toLocaleString()}`} /> : null}
             <Metric label="Difference" value={difference == null ? "—" : difference === 0 ? "Match" : `${difference > 0 ? "+" : ""}${difference.toLocaleString()}`} />
           </dl>
           {state.status === "loading" ? <p className="flex items-center justify-center gap-2 py-8 text-sm text-muted" role="status"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />Loading ESI holdings...</p> : null}

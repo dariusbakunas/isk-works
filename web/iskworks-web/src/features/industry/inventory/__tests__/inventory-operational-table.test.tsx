@@ -17,6 +17,7 @@ function inventoryItem({
   esiObservedQuantity = null,
   esiObservedAt = null,
   reconciliationDifference = null,
+  inJobsQuantity,
 }: {
   typeId: number;
   typeName: string;
@@ -28,6 +29,7 @@ function inventoryItem({
   esiObservedQuantity?: number | null;
   esiObservedAt?: string | null;
   reconciliationDifference?: number | null;
+  inJobsQuantity?: number;
 }): InventoryItem {
   return {
     balance: {
@@ -57,8 +59,13 @@ function inventoryItem({
     esiObservedQuantity,
     esiObservedAt,
     reconciliationDifference,
+    inJobsQuantity,
     warnings: [],
   };
+}
+
+function titles(element: HTMLElement): (string | null)[] {
+  return [...element.querySelectorAll("[title]")].map((node) => node.getAttribute("title"));
 }
 
 /** Controlled-expand-state wrapper mirroring how InventoryPage drives the table. */
@@ -251,6 +258,24 @@ describe("InventoryOperationalTable", () => {
 
     expect(screen.getByRole("row", { name: /Zydrine/ })).toHaveTextContent("-600");
     expect(rowStatus(/Zydrine/)).toBe("warning");
+  });
+
+  test("the ESI tooltip counts materials in jobs alongside what ESI observed", async () => {
+    const user = userEvent.setup();
+    renderTable([
+      inventoryItem({ typeId: 34, typeName: "Tritanium", groupName: "Mineral", quantity: 1_321, esiObservedQuantity: 245, inJobsQuantity: 1_076, reconciliationDifference: 0 }),
+      inventoryItem({ typeId: 35, typeName: "Pyerite", groupName: "Mineral", quantity: 1_477, esiObservedQuantity: 107, inJobsQuantity: 1_000, reconciliationDifference: -370 }),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Expand Mineral" }));
+
+    const tritaniumRow = screen.getByRole("row", { name: /Tritanium/ });
+    expect(titles(tritaniumRow)).toContain("ESI observed 245 + 1,076 in jobs matches accounting inventory");
+    expect(rowStatus(/Tritanium/)).toBe("neutral");
+
+    const pyeriteRow = screen.getByRole("row", { name: /Pyerite/ });
+    expect(pyeriteRow).toHaveTextContent("-370");
+    expect(titles(pyeriteRow)).toContain("ESI observed 107 (+1,000 in jobs), accounting owns 1,477");
   });
 
   test("the View ESI holdings affordance appears for both Match and discrepancy rows, and never triggers row selection", async () => {

@@ -211,11 +211,13 @@ export function InventoryReviewDiscrepancyPanel({
 }
 
 function ReconciliationSummary({ item }: { item: InventoryItem }) {
+  const inJobs = item.inJobsQuantity ?? 0;
   return (
-    <dl className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+    <dl className={`mt-2 grid grid-cols-2 gap-2 text-xs ${inJobs > 0 ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
       <div><dt className="text-muted">Observed</dt><dd className="font-mono">{item.esiObservedQuantity?.toLocaleString() ?? "—"}</dd></div>
       <div><dt className="text-muted">Ignored</dt><dd className="font-mono">{(item.ignoredEsiQuantity ?? 0).toLocaleString()}</dd></div>
       <div><dt className="text-muted">Included</dt><dd className="font-mono">{(item.includedEsiQuantity ?? item.esiObservedQuantity ?? 0).toLocaleString()}</dd></div>
+      {inJobs > 0 ? <div><dt className="text-muted">In jobs</dt><dd className="font-mono">+{inJobs.toLocaleString()}</dd></div> : null}
       <div><dt className="text-muted">Accounting</dt><dd className="font-mono">{item.balance.quantity.toLocaleString()}</dd></div>
       <div><dt className="text-muted">Adjustment</dt><dd className="font-mono">{item.reconciliationDifference == null ? "—" : `${item.reconciliationDifference > 0 ? "+" : ""}${item.reconciliationDifference.toLocaleString()}`}</dd></div>
     </dl>

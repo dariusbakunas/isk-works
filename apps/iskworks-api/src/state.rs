@@ -645,6 +645,20 @@ impl AppState {
         }
     }
 
+    pub(crate) async fn in_job_quantities(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: iskworks_core::OwnerId,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, u64>, ApiError> {
+        match &self.production_repository {
+            Some(repository) => Ok(repository
+                .in_job_quantities(workspace_id, owner_id, type_ids)
+                .await?),
+            None => Ok(std::collections::BTreeMap::new()),
+        }
+    }
+
     pub(crate) async fn list_reservations(
         &self,
         workspace_id: WorkspaceId,

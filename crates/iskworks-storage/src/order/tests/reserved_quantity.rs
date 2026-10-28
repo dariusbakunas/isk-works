@@ -615,3 +615,95 @@ async fn build_coverage_counts_other_epics_reservations_as_unavailable(pool: PgP
     assert!(!coverage.complete_quantity_coverage);
     assert!(!coverage.complete_cost_coverage);
 }
+
+/// Links ESI job `job_id` to `ticket_id`, as `TicketJobService` does once
+/// the job is installed.
+async fn link_job(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    connection_id: ConnectedCharacterId,
+    ticket_id: TicketId,
+    job_id: i64,
+) {
+    sqlx::query(
+        "INSERT INTO ticket_industry_jobs \
+         (workspace_id, job_id, ticket_id, connection_id, activity_id, blueprint_type_id, \
+          product_type_id, facility_id, runs, status, start_date, end_date, linked_at, last_seen_at) \
+         VALUES ($1, $2, $3, $4, 11, 1000, 16658, 1, 1, 'active', now(), now() + interval '1 hour', \
+                 now(), now())",
+    )
+    .bind(workspace_id.0)
+    .bind(job_id)
+    .bind(ticket_id.0)
+    .bind(connection_id.0)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// Only reservations of a ticket with a linked job are in jobs: through a
+/// claim or a ticket's own unclaimed operation, and only while active.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn in_job_quantities_count_reservations_of_tickets_with_a_linked_job(pool: PgPool) {
+    use super::combine_tickets::{claim, epic_holding};
+
+    let (workspace_id, owner_id, import_id) = fixture_workspace(&pool).await;
+    let build_id = fixture_build(&pool, workspace_id, owner_id, import_id).await;
+    let character = fixture_character(&pool, workspace_id, owner_id, "Builder").await;
+    let repository = PgOrderRepository::new(pool.clone());
+    let mut epics = Vec::new();
+    for _ in 0..3 {
+        epics.push(epic_holding(&pool, &repository, workspace_id, owner_id, build_id, 34).await);
+    }
+    let hexite_ticket = |order_id: Option<OrderId>| {
+        let mut ticket = mfg_ticket(
+            workspace_id,
+            owner_id,
+            TicketKind::Reaction,
+            16_658,
+            "Hexite",
+            build_id,
+            Vec::new(),
+            Some(1),
+        );
+        ticket.order_id = order_id;
+        ticket.occurrence_key = order_id.map(|_| "hexite".to_string());
+        ticket
+    };
+    // Epic 0: claimed by a ticket running a job.
+    let (running, _) = repository.create_ticket(hexite_ticket(None)).await.unwrap();
+    claim(&pool, epics[0].0, "hexite", running.id).await;
+    link_job(&pool, workspace_id, character, running.id, 900).await;
+    // Epic 1: claimed by a ticket with no job yet.
+    let (waiting, _) = repository.create_ticket(hexite_ticket(None)).await.unwrap();
+    claim(&pool, epics[1].0, "hexite", waiting.id).await;
+    // Epic 2: its own unclaimed step ticket, running a job.
+    let (unclaimed, _) = repository
+        .create_ticket(hexite_ticket(Some(epics[2].0)))
+        .await
+        .unwrap();
+    link_job(&pool, workspace_id, character, unclaimed.id, 901).await;
+
+    let production = crate::PgProductionRepository::new(pool.clone());
+    assert_eq!(
+        production
+            .in_job_quantities(workspace_id, owner_id, &[34, 35])
+            .await
+            .unwrap(),
+        std::collections::BTreeMap::from([(34, 200)])
+    );
+
+    sqlx::query("UPDATE inventory_allocations SET released_at = now() WHERE id = $1")
+        .bind(epics[0].1)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        production
+            .in_job_quantities(workspace_id, owner_id, &[34])
+            .await
+            .unwrap(),
+        std::collections::BTreeMap::from([(34, 100)])
+    );
+}

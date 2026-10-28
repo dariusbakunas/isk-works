@@ -60,7 +60,13 @@ export interface InventoryItem {
   esiObservedQuantity: number | null;
   ignoredEsiQuantity?: number | null;
   includedEsiQuantity?: number | null;
+  /**
+   * Reserved units already in an installed industry job: gone from ESI's
+   * view, but still owned until the ticket records its production.
+   */
+  inJobsQuantity?: number;
   esiObservedAt: string | null;
+  /** `includedEsiQuantity + inJobsQuantity - balance.quantity`. */
   reconciliationDifference: number | null;
   warnings: string[];
 }

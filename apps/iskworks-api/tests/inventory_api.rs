@@ -679,6 +679,7 @@ struct FixtureProductionRepository {
     reservations: Vec<iskworks_core::InventoryReservation>,
     observations: BTreeMap<i64, iskworks_core::EsiObservation>,
     holdings: BTreeMap<i64, iskworks_core::EsiHoldings>,
+    in_jobs: BTreeMap<i64, u64>,
     /// Calls to the per-type `reserved_quantity` read.
     reserved_calls: Arc<std::sync::atomic::AtomicUsize>,
 }
@@ -714,6 +715,20 @@ impl iskworks_core::ProductionRepository for FixtureProductionRepository {
         Ok(type_ids
             .iter()
             .map(|type_id| (*type_id, reserved))
+            .collect())
+    }
+
+    async fn in_job_quantities(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+        type_ids: &[i64],
+    ) -> Result<BTreeMap<i64, u64>, iskworks_core::ProductionError> {
+        Ok(self
+            .in_jobs
+            .iter()
+            .filter(|(type_id, _)| type_ids.contains(type_id))
+            .map(|(type_id, quantity)| (*type_id, *quantity))
             .collect())
     }
 
@@ -910,6 +925,59 @@ async fn esi_observation_surfaces_a_positive_discrepancy_on_an_existing_item() {
     assert_eq!(body["includedEsiQuantity"], 140);
     assert_eq!(body["reconciliationDifference"], 40);
     assert_eq!(body["esiObservedAt"], observed_at);
+}
+
+/// Materials in an installed job are gone from ESI's view but still owned
+/// until the ticket records, so they count toward the ESI check.
+#[tokio::test]
+async fn materials_in_jobs_count_toward_the_esi_check() {
+    let repository = StatefulInventoryRepository::default();
+    let app = build_router(
+        AppState::new(Arc::new(configured_workspace("Industry")))
+            .with_sde_repository(Arc::new(RecordingSdeRepository::default()))
+            .with_inventory_repository(Arc::new(repository.clone()))
+            .with_production_repository(Arc::new(FixtureProductionRepository {
+                observations: BTreeMap::from([(
+                    34,
+                    iskworks_core::EsiObservation {
+                        quantity: 245,
+                        ignored_quantity: 0,
+                        included_quantity: 245,
+                        observed_at: "2026-08-23T12:00:00Z".parse().unwrap(),
+                    },
+                )]),
+                in_jobs: BTreeMap::from([(34, 1_076)]),
+                ..Default::default()
+            })),
+    );
+    repository.seed(InventoryBalance {
+        key: InventoryItemKey {
+            workspace_id: WorkspaceId(Uuid::nil()),
+            owner_id: OwnerId(Uuid::nil()),
+            type_id: 34,
+        },
+        type_name: "Tritanium".to_string(),
+        quantity: 1_321,
+        total_historical_cost: money("1321.0000"),
+        average_unit_cost: Some(money("1.0000")),
+        revision: 1,
+        last_activity_at: None,
+    });
+
+    for uri in ["/api/inventory", "/api/inventory/34"] {
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        let item = if body.is_array() { &body[0] } else { &body };
+        assert_eq!(item["inJobsQuantity"], 1_076, "{uri}");
+        assert_eq!(item["reconciliationDifference"], 0, "{uri}");
+    }
 }
 
 #[tokio::test]
@@ -1959,6 +2027,7 @@ const INVENTORY_LIST_GOLDEN: &str = r#"[
     "historicalComparisonComplete": true,
     "historicalDifference": "200.0000",
     "ignoredEsiQuantity": null,
+    "inJobsQuantity": 0,
     "includedEsiQuantity": null,
     "marketLocationId": 60003760,
     "marketRegionId": 10000002,
@@ -1997,6 +2066,7 @@ const INVENTORY_LIST_GOLDEN: &str = r#"[
     "historicalComparisonComplete": true,
     "historicalDifference": "685.0000",
     "ignoredEsiQuantity": 0,
+    "inJobsQuantity": 0,
     "includedEsiQuantity": 140,
     "marketLocationId": 60003760,
     "marketRegionId": 10000002,
@@ -2037,6 +2107,7 @@ const INVENTORY_LIST_GOLDEN: &str = r#"[
     "historicalComparisonComplete": true,
     "historicalDifference": null,
     "ignoredEsiQuantity": null,
+    "inJobsQuantity": 0,
     "includedEsiQuantity": null,
     "marketLocationId": 60003760,
     "marketRegionId": 10000002,
