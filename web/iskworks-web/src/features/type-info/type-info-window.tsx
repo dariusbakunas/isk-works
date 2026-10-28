@@ -221,11 +221,13 @@ function Header({ info }: { info: TypeInfo }) {
 export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps<TypeInfoWindowState>) {
   const windows = useToolWindows();
   const entry = currentEntry(state);
-  const pilot = state.pilot ?? "allV";
+  // Requirements check against a character; windows saved when All V / All 0
+  // were options count as none.
+  const pilot = state.pilot && state.pilot !== "allV" && state.pilot !== "allZero" ? state.pilot : undefined;
   const latest = useRef(state);
   latest.current = state;
 
-  const info = useLoad(`${entry.typeId}:${pilot}`, (signal) => getTypeInfo(entry.typeId, pilot, signal));
+  const info = useLoad(`${entry.typeId}:${pilot ?? "none"}`, (signal) => getTypeInfo(entry.typeId, pilot, signal));
   const loaded = info?.status === "ready" ? info.value : null;
 
   // Name the window (and its dock entry) once the type has loaded.
@@ -253,6 +255,14 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
   useEffect(() => setUsedIn(firstUsedIn?.status === "ready" ? firstUsedIn.value : null), [firstUsedIn]);
 
   const characters = useLoad<CharacterRosterEntry[]>(active === "Requirements" ? "characters" : null, () => listCharacters());
+  // Only characters whose skills have synced can be checked against.
+  const skilled = characters?.status === "ready" ? characters.value.filter((character) => character.totalSp !== null) : null;
+
+  // Check against the first such character until one is picked.
+  useEffect(() => {
+    if (!skilled?.length || skilled.some((character) => character.connectionId === pilot)) return;
+    setState(withPilot(latest.current, skilled[0].connectionId));
+  }, [pilot, setState, skilled]);
 
   const onOpen: OpenType = (typeId, name, newWindow) => {
     if (newWindow) windows?.open(TYPE_INFO_KIND, newTypeInfoState(typeId, name), { newWindow: true });
@@ -289,7 +299,7 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
     case "Requirements":
       section = (
         <RequirementsSection
-          characters={characters?.status === "ready" ? characters.value : []}
+          characters={skilled}
           info={value}
           onOpen={onOpen}
           onPilot={(next) => setState(withPilot(latest.current, next))}

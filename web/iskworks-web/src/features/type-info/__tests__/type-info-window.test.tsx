@@ -153,7 +153,12 @@ beforeEach(() => {
   api.getTypeInfo.mockImplementation(async (typeId: number, pilot?: string) => {
     if (typeId === SCRIPT) return script;
     if (typeId === TRITANIUM) return tritanium;
-    if (typeId === HARPY) return pilot && pilot !== "allV" ? harpy({ missingSkills: 2, remainingSeconds: 274_000 }) : harpy();
+    // Aura (c1) lacks two skills; Mira (c2) has them all.
+    if (typeId === HARPY) {
+      if (pilot === "c1") return harpy({ missingSkills: 2, remainingSeconds: 274_000 });
+      if (pilot === "c2") return harpy({ missingSkills: 0, remainingSeconds: 0 });
+      return harpy();
+    }
     throw new ApiError(404, { code: "type_not_found", message: "That item isn't in the current static data." });
   });
   api.getTypeVariations.mockResolvedValue([
@@ -167,7 +172,11 @@ beforeEach(() => {
   api.getTypeUsedIn.mockImplementation(async (_typeId: number, options: { limit?: number; offset?: number }) =>
     usedInPage(options.offset ?? 0, Math.min(options.limit ?? 50, 10 - (options.offset ?? 0))),
   );
-  api.listCharacters.mockResolvedValue([{ connectionId: "c1", characterName: "Aura Starfall" }]);
+  api.listCharacters.mockResolvedValue([
+    { connectionId: "c3", characterName: "Scout", totalSp: null },
+    { connectionId: "c1", characterName: "Aura Starfall", totalSp: 1_000_000 },
+    { connectionId: "c2", characterName: "Mira", totalSp: 50_000_000 },
+  ]);
 });
 
 function Narrow() {
@@ -264,18 +273,51 @@ describe("Type Info window", () => {
     expect(within(dialog).getByText("4%")).toBeInTheDocument();
   });
 
-  test("requirements check against the picked pilot and say what's missing", async () => {
+  test("requirements check against the first character with synced skills, and say what's missing", async () => {
     const dialog = await openInfo("Harpy");
     fireEvent.click(within(dialog).getByRole("tab", { name: "Requirements" }));
-    expect(within(dialog).getByText("All requirements met")).toBeInTheDocument();
-    expect(within(dialog).getByText("Spaceship Command").closest("span[style]")).toHaveStyle({ paddingLeft: "14px" });
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Pilot: All V" }));
-    fireEvent.click(await within(dialog).findByRole("option", { name: "Aura Starfall" }));
 
     expect(await within(dialog).findByText("Missing 2 skills · 3d 4h to train")).toBeInTheDocument();
     expect(api.getTypeInfo).toHaveBeenLastCalledWith(HARPY, "c1", expect.anything());
+    expect(within(dialog).getByText("Spaceship Command").closest("span[style]")).toHaveStyle({ paddingLeft: "14px" });
     expect(within(dialog).getAllByLabelText("Missing")).toHaveLength(1);
+
+    // Only characters: no All V / All 0, and none without synced skills.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Pilot: Aura Starfall" }));
+    const options = within(dialog).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["Aura Starfall", "Mira"]);
+
+    fireEvent.click(within(dialog).getByRole("option", { name: "Mira" }));
+    expect(await within(dialog).findByText("All requirements met")).toBeInTheDocument();
+    expect(api.getTypeInfo).toHaveBeenLastCalledWith(HARPY, "c2", expect.anything());
+  });
+
+  test("without a character to check against, requirements list the levels unchecked", async () => {
+    api.listCharacters.mockResolvedValue([{ connectionId: "c3", characterName: "Scout", totalSp: null }]);
+    const dialog = await openInfo("Harpy");
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Requirements" }));
+
+    expect(await within(dialog).findByText("No character with synced skills to check against")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /^Pilot:/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Met")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Missing")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Caldari Frigate")).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: "Requires level 5" })).toBeInTheDocument();
+    expect(api.getTypeInfo).toHaveBeenLastCalledWith(HARPY, undefined, expect.anything());
+  });
+
+  test("a window saved with All V or All 0 picks a character instead", async () => {
+    window.localStorage.setItem(
+      "iskworks:tool-windows",
+      JSON.stringify({
+        windows: [{ id: "w1", kind: "type-info", state: { history: [{ typeId: HARPY, name: "Harpy" }], index: 0, tab: "Requirements", pilot: "allZero" }, x: 100, y: 100, w: 480, h: 560, minimized: false }],
+        nextId: 2,
+      }),
+    );
+    renderApp();
+    const dialog = await screen.findByRole("dialog", { name: "Harpy" });
+    expect(await within(dialog).findByText("Missing 2 skills · 3d 4h to train")).toBeInTheDocument();
+    expect(api.getTypeInfo).not.toHaveBeenCalledWith(HARPY, "allZero", expect.anything());
   });
 
   test("variations highlight the item itself", async () => {
