@@ -1,5 +1,6 @@
+import { CircleHelp, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Navigate, Route, Routes, useNavigate, useParams } from "react-router";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
 
 import { getSession, logout } from "./api/auth";
 import { ApiError, createWorkspace, getWorkspaceState, type WorkspaceStateResponse } from "./api/workspace";
@@ -7,9 +8,12 @@ import { identifyViewer, trackEvent } from "./observability/logrocket";
 import { AppFooter } from "./components/app-footer";
 import { HELP_PATH, LEGAL_PATH } from "./components/community-links";
 import { AccountMenu, ApiVersionLine } from "./components/navigation/account-menu";
+import { CommandPalette } from "./components/navigation/command-palette";
 import { MobileNav } from "./components/navigation/mobile-nav";
 import { NavigationRail } from "./components/navigation/navigation-rail";
+import type { PaletteEntry } from "./components/navigation/palette-search";
 import { useNavPinned } from "./components/navigation/use-nav-pinned";
+import { useNavRecents } from "./components/navigation/use-nav-recents";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";
 import {
@@ -396,7 +400,24 @@ function AppShell({
 }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [pinned, togglePinned] = useNavPinned();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const { recents, recordVisit } = useNavRecents();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const footerRef = useFooterHeightVariable();
+
+  useEffect(() => recordVisit(pathname), [pathname, recordVisit]);
+
+  // ⌘K / Ctrl K, from anywhere, inputs included; again to close.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      setPaletteOpen((open) => !open);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function signOut() {
     setLoggingOut(true);
@@ -408,6 +429,31 @@ function AppShell({
       window.location.assign("/");
     }
   }
+
+  const paletteActions: PaletteEntry[] = [
+    {
+      id: "action:pin",
+      kind: "action",
+      label: pinned ? "Unpin navigation" : "Pin navigation",
+      group: "Actions",
+      icon: pinned ? PanelLeftClose : PanelLeftOpen,
+      keywords: ["sidebar", "rail"],
+      run: togglePinned,
+    },
+    {
+      id: "action:help",
+      kind: "action",
+      label: "Open help",
+      group: "Actions",
+      icon: CircleHelp,
+      keywords: ["docs"],
+      run: () => navigate(HELP_PATH),
+    },
+    ...(characterName
+      ? [{ id: "action:sign-out", kind: "action" as const, label: "Sign out", group: "Actions", icon: LogOut, keywords: ["logout"], run: signOut }]
+      : []),
+  ];
+  const openPalette = () => setPaletteOpen(true);
 
   const renderAccount = (expanded: boolean) =>
     characterName ? (
@@ -427,6 +473,7 @@ function AppShell({
       <div className="sticky top-[var(--iw-banner-h,0px)] z-30 hidden h-[var(--iw-viewport-h)] shrink-0 md:block">
         <NavigationRail
           isAdmin={isAdmin}
+          onOpenSearch={openPalette}
           onTogglePinned={togglePinned}
           pinned={pinned}
           renderAccount={renderAccount}
@@ -434,7 +481,7 @@ function AppShell({
         />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileNav isAdmin={isAdmin} renderAccount={renderAccount} workspaceName={workspaceName} />
+        <MobileNav isAdmin={isAdmin} onOpenSearch={openPalette} renderAccount={renderAccount} workspaceName={workspaceName} />
         <div className="iw-app-layout flex-1 lg:grid">
           <main className="iw-page-container min-w-0">{children}</main>
           <aside data-testid="app-right-rail" id="app-right-rail" />
@@ -443,6 +490,9 @@ function AppShell({
           <AppFooter className="border-t border-border" />
         </div>
       </div>
+      {paletteOpen ? (
+        <CommandPalette actions={paletteActions} isAdmin={isAdmin} onClose={() => setPaletteOpen(false)} recents={recents} />
+      ) : null}
     </div>
   );
 }
