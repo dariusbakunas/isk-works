@@ -215,16 +215,20 @@ pub fn attribute_groups(
             value.unit_display_name.as_deref(),
             names,
         );
-        // Uncategorised sorts after every category.
-        let key = (value.category_id.is_none(), value.category_id.unwrap_or(0));
+        // CCP's category 9 is literally named "NULL" ("not going into a
+        // category"); it joins the uncategorised, which sort last.
+        let category = value
+            .category_id
+            .zip(value.category_name.as_deref())
+            .filter(|(_, name)| {
+                !name.trim().is_empty() && !name.trim().eq_ignore_ascii_case("null")
+            });
+        let key = (category.is_none(), category.map_or(0, |(id, _)| id));
         groups
             .entry(key)
             .or_insert_with(|| AttributeGroup {
-                category: value
-                    .category_name
-                    .clone()
-                    .filter(|_| value.category_id.is_some())
-                    .unwrap_or_else(|| "Other".to_string()),
+                category: category
+                    .map_or_else(|| "Other".to_string(), |(_, name)| name.to_string()),
                 rows: Vec::new(),
             })
             .rows

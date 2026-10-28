@@ -1,5 +1,6 @@
 import { Search, Upload, Building2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import {
   listMarketCategories,
@@ -50,6 +51,16 @@ export function MarketBrowserPage() {
   // auto-selection, since there's no paginated item list to pick a
   // "first row" from in the first place.
   const [selectedItem, setSelectedItem] = useState<{ typeId: number; typeName: string } | null>(null);
+  // `/market?typeId=&name=` (the Type Info window's "Open in Market") opens
+  // on that item, also when already on the page.
+  const [searchParams] = useSearchParams();
+  const linkedTypeId = Number(searchParams.get("typeId"));
+  const linkedName = searchParams.get("name");
+  useEffect(() => {
+    if (Number.isInteger(linkedTypeId) && linkedTypeId > 0 && linkedName) {
+      setSelectedItem({ typeId: linkedTypeId, typeName: linkedName });
+    }
+  }, [linkedName, linkedTypeId]);
   const [importOpen, setImportOpen] = useState(false);
   const [addStructureOpen, setAddStructureOpen] = useState(false);
   // Forces the detail panel to remount and reload -- an import or a newly

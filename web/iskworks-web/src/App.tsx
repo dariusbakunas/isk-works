@@ -14,6 +14,8 @@ import { NavigationRail } from "./components/navigation/navigation-rail";
 import type { PaletteEntry } from "./components/navigation/palette-search";
 import { useNavPinned } from "./components/navigation/use-nav-pinned";
 import { useNavRecents } from "./components/navigation/use-nav-recents";
+import { ToolWindowLayer } from "./components/tool-windows/tool-window-layer";
+import { ToolWindowsProvider } from "./components/tool-windows/tool-windows-context";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";
 import {
@@ -62,6 +64,7 @@ import { SkillsPage } from "./features/skills/skills-page";
 import { EveCallbackPage } from "./features/esi/eve-callback-page";
 import { HelpPage } from "./features/help/help-page";
 import { LegalPage } from "./features/legal/legal-page";
+import { typeInfoKind } from "./features/type-info/type-info-kind";
 
 type LoadState =
   | { status: "loading" }
@@ -385,6 +388,9 @@ function OrderDeepLinkRedirect() {
   return <Navigate replace to={`/board?epic=${orderId}`} />;
 }
 
+/** Every tool window kind (spec 2026-10-28-type-info §4). */
+const TOOL_WINDOW_KINDS = [typeInfoKind];
+
 function AppShell({
   apiVersion,
   workspaceName,
@@ -469,6 +475,7 @@ function AppShell({
     );
 
   return (
+    <ToolWindowsProvider kinds={TOOL_WINDOW_KINDS}>
     <div className="flex min-h-[var(--iw-viewport-h)] text-foreground">
       <div className="sticky top-[var(--iw-banner-h,0px)] z-30 hidden h-[var(--iw-viewport-h)] shrink-0 md:block">
         <NavigationRail
@@ -493,7 +500,9 @@ function AppShell({
       {paletteOpen ? (
         <CommandPalette actions={paletteActions} isAdmin={isAdmin} onClose={() => setPaletteOpen(false)} recents={recents} />
       ) : null}
+      <ToolWindowLayer />
     </div>
+    </ToolWindowsProvider>
   );
 }
 

@@ -1,9 +1,18 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { MarketCategoryNode, MarketItemOrders, MarketItemPage } from "../../../../api/industry";
 import { MarketBrowserPage } from "../market-browser-page";
+
+function renderPage(path = "/market") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <MarketBrowserPage />
+    </MemoryRouter>,
+  );
+}
 
 const api = vi.hoisted(() => ({
   listMarketCategories: vi.fn(),
@@ -118,7 +127,7 @@ describe("MarketBrowserPage", () => {
   });
 
   test("the initial page shows the category tree and an empty right pane, with no middle item table", async () => {
-    render(<MarketBrowserPage />);
+    renderPage();
 
     await screen.findByRole("button", { name: "Ships 2" });
     expect(screen.getByText("Select an item from the market tree.")).toBeInTheDocument();
@@ -127,7 +136,7 @@ describe("MarketBrowserPage", () => {
 
   test("clicking a tree leaf selects that item and renders its detail in the right pane", async () => {
     const user = userEvent.setup();
-    render(<MarketBrowserPage />);
+    renderPage();
     await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
     await user.click(await screen.findByRole("button", { name: /Rifter/ }));
 
@@ -135,9 +144,16 @@ describe("MarketBrowserPage", () => {
     expect(screen.getByText("Rifter", { selector: "strong" })).toBeInTheDocument();
   });
 
+  test("a link with a type id and name opens on that item", async () => {
+    renderPage("/market?typeId=587&name=Rifter");
+
+    expect(await screen.findByRole("table", { name: "Sell orders" })).toBeInTheDocument();
+    expect(screen.getByText("Rifter", { selector: "strong" })).toBeInTheDocument();
+  });
+
   test("selecting another leaf replaces the right-pane item without navigating away", async () => {
     const user = userEvent.setup();
-    render(<MarketBrowserPage />);
+    renderPage();
     await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
     await user.click(await screen.findByRole("button", { name: /Rifter/ }));
     await screen.findByText("Rifter", { selector: "strong" });
@@ -150,7 +166,7 @@ describe("MarketBrowserPage", () => {
 
   test("the selected tree leaf is visibly selected", async () => {
     const user = userEvent.setup();
-    render(<MarketBrowserPage />);
+    renderPage();
     await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
     const rifterButton = await screen.findByRole("button", { name: /Rifter/ });
 
@@ -161,7 +177,7 @@ describe("MarketBrowserPage", () => {
 
   test("the old MarketItemTable is not rendered anywhere in browse mode", async () => {
     const user = userEvent.setup();
-    render(<MarketBrowserPage />);
+    renderPage();
     await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
     await user.click(await screen.findByRole("button", { name: /Rifter/ }));
     await screen.findByRole("table", { name: "Sell orders" });
@@ -172,7 +188,7 @@ describe("MarketBrowserPage", () => {
 
   describe("catalog-wide search", () => {
     test("an empty query shows the category tree, not search results", async () => {
-      render(<MarketBrowserPage />);
+      renderPage();
 
       await screen.findByRole("button", { name: "Ships 2" });
       expect(screen.queryByText("No items match this search.")).not.toBeInTheDocument();
@@ -180,7 +196,7 @@ describe("MarketBrowserPage", () => {
 
     test("entering a valid query switches the left pane to catalog-wide search results", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await screen.findByRole("button", { name: "Ships 2" });
 
       await user.type(screen.getByRole("textbox", { name: "Search market items" }), "ret");
@@ -193,7 +209,7 @@ describe("MarketBrowserPage", () => {
 
     test("a catalog search does not scope to the currently browsed category", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await user.click(await screen.findByRole("button", { name: "Ships 2" }));
 
       await user.type(screen.getByRole("textbox", { name: "Search market items" }), "ret");
@@ -205,7 +221,7 @@ describe("MarketBrowserPage", () => {
 
     test("a one-character query does not search -- the tree stays put", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await screen.findByRole("button", { name: "Ships 2" });
       const callsBefore = api.listMarketItems.mock.calls.length;
 
@@ -217,7 +233,7 @@ describe("MarketBrowserPage", () => {
 
     test("typing several characters within the debounce window issues only one search request", async () => {
       vi.useFakeTimers();
-      render(<MarketBrowserPage />);
+      renderPage();
       await act(() => vi.advanceTimersByTimeAsync(0));
       const input = screen.getByRole("textbox", { name: "Search market items" });
 
@@ -247,7 +263,7 @@ describe("MarketBrowserPage", () => {
         if (!query.search) return Promise.resolve(treeItemsPage);
         return query.search === "ab" ? first : second;
       });
-      render(<MarketBrowserPage />);
+      renderPage();
       await act(() => vi.advanceTimersByTimeAsync(0));
       const input = screen.getByRole("textbox", { name: "Search market items" });
 
@@ -270,7 +286,7 @@ describe("MarketBrowserPage", () => {
 
     test("clicking a search result selects the correct item and updates the existing detail pane", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await screen.findByRole("button", { name: "Ships 2" });
 
       await user.type(screen.getByRole("textbox", { name: "Search market items" }), "ret");
@@ -283,7 +299,7 @@ describe("MarketBrowserPage", () => {
 
     test("the selected item stays selected when the search query is cleared", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       const input = screen.getByRole("textbox", { name: "Search market items" });
       await user.type(input, "ret");
       await user.click(await screen.findByRole("button", { name: /Retribution/ }));
@@ -297,7 +313,7 @@ describe("MarketBrowserPage", () => {
 
     test("clearing the search query restores the category tree", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       const input = screen.getByRole("textbox", { name: "Search market items" });
       await user.type(input, "ret");
       await screen.findByRole("button", { name: /Retribution/ });
@@ -310,7 +326,7 @@ describe("MarketBrowserPage", () => {
 
     test("tree expansion and its lazy-loaded item cache survive a search/clear round trip", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
       await screen.findByRole("button", { name: /Rifter/ });
       const treeCallsBefore = api.listMarketItems.mock.calls.filter((call) => !call[0].search).length;
@@ -330,7 +346,7 @@ describe("MarketBrowserPage", () => {
       api.listMarketItems.mockImplementation((query: { search?: string }) =>
         Promise.resolve(query.search ? pageWith([]) : treeItemsPage),
       );
-      render(<MarketBrowserPage />);
+      renderPage();
       await screen.findByRole("button", { name: "Ships 2" });
 
       await user.type(screen.getByRole("textbox", { name: "Search market items" }), "zzznomatch");
@@ -340,7 +356,7 @@ describe("MarketBrowserPage", () => {
 
     test("a search request failure is localized to the search results and does not clear the selected item's detail", async () => {
       const user = userEvent.setup();
-      render(<MarketBrowserPage />);
+      renderPage();
       await user.click(await screen.findByRole("button", { name: "Expand Ships" }));
       await user.click(await screen.findByRole("button", { name: /Rifter/ }));
       await screen.findByText("Rifter", { selector: "strong" });
@@ -360,7 +376,7 @@ describe("MarketBrowserPage", () => {
       api.listMarketItems.mockImplementation((query: { search?: string }) =>
         Promise.resolve(query.search ? pageWith([{ typeId: 11_393, typeName: "Retribution" }], 5) : treeItemsPage),
       );
-      render(<MarketBrowserPage />);
+      renderPage();
       await screen.findByRole("button", { name: "Ships 2" });
 
       await user.type(screen.getByRole("textbox", { name: "Search market items" }), "ret");

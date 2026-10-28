@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router";
 import mascotHead from "../../assets/mascot-head.png";
 import { HELP_PATH } from "../community-links";
 import { EsiStatusItem } from "../esi-status";
+import { WindowDock } from "../tool-windows/window-dock";
 import { adminNavItem, isNavPathActive, navGroups } from "./registry";
 import { modKey } from "./shortcut-keys";
 
@@ -108,6 +109,8 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
           </div>
         ))}
       </nav>
+
+      <WindowDock expanded={expanded} />
 
       <nav aria-label="Account and help" className="shrink-0 border-t border-border">
         {isAdmin ? (

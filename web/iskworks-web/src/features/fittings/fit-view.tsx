@@ -14,6 +14,7 @@ import {
   type SlotKind,
 } from "../../api/fittings";
 import { EveTypeImage } from "../../components/eve-type-image";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 import { ConfirmDialog, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
@@ -151,6 +152,7 @@ function Header({
         <div className="min-w-0">
           <p className="flex items-center gap-1 text-[0.6875rem] text-muted">
             {shipName}
+            <TypeInfoButton alwaysVisible name={shipName} typeId={fit.ship.typeId} />
             {held === 0 ? <span>· none held</span> : null}
             {held ? (
               <>

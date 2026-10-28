@@ -15,7 +15,8 @@ export function EveTypeImage({
   typeId: number;
   typeName: string;
   variation?: EveTypeImageVariation;
-  size?: 24 | 32 | 40 | 48 | 64 | 128 | 256;
+  /** Any pixel size; the image server is asked for the next size up. */
+  size?: number;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);

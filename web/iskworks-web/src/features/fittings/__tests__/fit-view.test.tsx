@@ -10,6 +10,21 @@ const statsCalls = (fetchSpy: ReturnType<typeof stubFetch>) =>
   fetchSpy.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/stats"));
 
 describe("Fittings › fit view", () => {
+  test("the ship, its modules and their loaded charges open in Type Info", async () => {
+    stubFetch();
+    window.localStorage.clear();
+    renderPage(`/fittings/${FIT_ID}`, { toolWindows: true });
+
+    await screen.findByRole("table", { name: "Modules" });
+    for (const name of ["Bustard", "200mm AutoCannon II", "EMP S", "Hobgoblin II"]) {
+      expect(screen.getAllByRole("button", { name: `Show info: ${name}` }).length).toBeGreaterThan(0);
+    }
+    fireEvent.click(screen.getAllByRole("button", { name: "Show info: EMP S" })[0]);
+    expect(screen.getByRole("dialog", { name: "EMP S" })).toHaveTextContent("Type 185");
+    // Opening info doesn't select the row (no inspector change, no navigation).
+    expect(location()).toBe(`/fittings/${FIT_ID}`);
+  });
+
   test("the header names the fit and its ship, with All V chosen by default", async () => {
     const fetchSpy = stubFetch();
     renderPage(`/fittings/${FIT_ID}`);

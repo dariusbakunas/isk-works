@@ -5,6 +5,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import type { BuildWorksheetProjection } from "../../../../../api/industry";
 import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor";
+import { WithToolWindows } from "../../../../../test/tool-windows";
 import { BuildWorksheetTable } from "../build-worksheet-table";
 import { BuildWorksheetView } from "../build-worksheet-view";
 
@@ -53,6 +54,21 @@ test("renders the final read-only columns, produced and buy values, and no addit
   expect(screen.getAllByText("Unpriced").length).toBeGreaterThan(0);
   expect(screen.getAllByText("0").length).toBeGreaterThan(0);
   expect(screen.queryByText(/Grand Total/i)).not.toBeInTheDocument();
+});
+
+test("each row's item opens in Type Info without selecting the row", async () => {
+  window.localStorage.clear();
+  const onSelectRow = vi.fn();
+  render(
+    <WithToolWindows>
+      <BuildWorksheetTable onSelectRow={onSelectRow} worksheet={worksheet} />
+    </WithToolWindows>,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: "Show info: Reinforced Carbon Fiber" }));
+  expect(screen.getByRole("dialog", { name: "Reinforced Carbon Fiber" })).toHaveTextContent("Type 1");
+  expect(onSelectRow).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Show info: Muninn" })).toBeInTheDocument();
 });
 
 test("only inspectable and output rows advertise and perform actions", async () => {

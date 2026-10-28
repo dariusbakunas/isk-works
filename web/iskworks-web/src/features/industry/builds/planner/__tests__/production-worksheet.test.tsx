@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Build, FacilityProfile, ProductionWorksheet as Worksheet, WorksheetItem } from "../../../../../api/industry";
+import { WithToolWindows } from "../../../../../test/tool-windows";
 import { PlannerContextPanel } from "../planner-context-panel";
 import { ProductionWorksheet, rowKey } from "../production-worksheet";
 
@@ -239,6 +240,20 @@ describe("ProductionWorksheet", () => {
     // configuration now happens in Stages, never here.
     expect(industryApi.setBuildBlueprintSelection).not.toHaveBeenCalled();
     expect(onBlueprintSelectionChange).not.toHaveBeenCalled();
+  });
+
+  test("an item opens in Type Info without selecting its row", async () => {
+    window.localStorage.clear();
+    const onSelectRow = vi.fn();
+    render(
+      <WithToolWindows>
+        <ProductionWorksheet onSelectRow={onSelectRow} selectedRowKey={null} worksheet={worksheet} />
+      </WithToolWindows>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Show info: Tritanium" }));
+    expect(screen.getByRole("dialog", { name: "Tritanium" })).toHaveTextContent("Type 34");
+    expect(onSelectRow).not.toHaveBeenCalled();
   });
 
   test("selects a role-aware item row", async () => {

@@ -8,6 +8,7 @@ import {
   OperationalTableRow,
 } from "../../../../components/operational-table";
 import { EveTypeImage } from "../../../../components/eve-type-image";
+import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
 import { effectiveUnitCost } from "../../shared/decimal";
 import { PRODUCTION_WORKSHEET_COLUMNS } from "./worksheet-columns";
@@ -76,6 +77,7 @@ function WorksheetRow({ item }: { item: WorksheetItem }) {
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot(status)}`} aria-hidden="true" />
         <EveTypeImage size={24} typeId={item.typeId} typeName={item.typeName} />
         <span className="min-w-0 truncate font-medium">{item.typeName}</span>
+        <TypeInfoButton name={item.typeName} typeId={item.typeId} />
         <span className="sr-only">{statusLabel(status)}</span>
       </span>
     ),

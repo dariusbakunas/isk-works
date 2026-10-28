@@ -1,5 +1,6 @@
 import type { BuildWorksheetProjection, BuildWorksheetRow, MarketPricingPolicy, WorksheetPricingEvidence } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
+import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
 import { OperationalTable, OperationalTableGroup, OperationalTableRow } from "../../../../components/operational-table";
 import { WORKSHEET_COLUMNS } from "./worksheet-columns";
@@ -58,6 +59,7 @@ function ItemCell({ status, typeId, typeName }: { status: "neutral" | "positive"
     <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot(status)}`} data-row-status-dot={status} />
     <EveTypeImage size={24} typeId={typeId} typeName={typeName} />
     <span className="min-w-0 truncate font-medium">{typeName}</span>
+    <TypeInfoButton name={typeName} typeId={typeId} />
     <span className="sr-only">{statusLabel(status)}</span>
   </span>;
 }
