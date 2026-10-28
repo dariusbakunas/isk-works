@@ -153,8 +153,10 @@ fn percentages_by_kind() {
     assert_eq!(shown("-15", Some(205), Some("%")), "-15 %");
     // A resonance of 0.75 is a 25 % resistance. Checked on the dev SDE: the
     // Harpy's resonances come out as the T2 Caldari profile (shield
-    // 0/80/70/50 %, hull 33 %).
-    // TODO(golden): pin 109/111/127 against in-game screenshots.
+    // 0/80/70/50 %, hull 33 %), and Damage Control II's as 12.5/15/40 %.
+    // TODO(golden): pin 109 (e.g. Antimatter Charge S range bonus 0.5),
+    // 111 (Gyrostabilizer II rate of fire 0.895) and 127 (a ship's cargo
+    // scan resistance) against in-game screenshots.
     assert_eq!(shown("0.75", Some(108), Some("%")), "25 %");
     assert_eq!(shown("1.1", Some(109), Some("%")), "10 %");
     assert_eq!(shown("0.9", Some(109), Some("%")), "-10 %");
@@ -320,4 +322,188 @@ fn the_null_category_counts_as_uncategorised() {
         layout,
         [("Miscellaneous", vec![422]), ("Other", vec![500, 1544])]
     );
+}
+
+/// Multispectrum Shield Hardener II as stored by SDE 3482594, against its
+/// in-game Attributes tab (2026-10-28). The client also shows Overload
+/// hardening bonus as 40 % in green: green is the viewing character's
+/// skills applied; the SDE base, which we show, is 20 %.
+#[test]
+fn the_multispectrum_shield_hardener_reads_like_the_client() {
+    let misc = Some((7, "Miscellaneous"));
+    let values = [
+        value(
+            6,
+            "Activation Cost",
+            Some((114, "GJ")),
+            Some((5, "Capacitor")),
+            "32.0",
+        ),
+        value(
+            9,
+            "Structure Hitpoints",
+            Some((113, "HP")),
+            Some((4, "Structure")),
+            "40.0",
+        ),
+        value(
+            73,
+            "Activation time / duration",
+            Some((101, "s")),
+            misc,
+            "10000.0",
+        ),
+        value(422, "Tech Level", Some((140, "Level")), misc, "2.0"),
+        value(633, "Meta Level", Some((140, "Level")), misc, "5.0"),
+        value(
+            984,
+            "EM Damage Resistance Bonus",
+            Some((124, "%")),
+            misc,
+            "-32.5",
+        ),
+        value(
+            985,
+            "Explosive Damage Resistance Bonus",
+            Some((124, "%")),
+            misc,
+            "-32.5",
+        ),
+        value(
+            986,
+            "Kinetic Damage Resistance Bonus",
+            Some((105, "%")),
+            misc,
+            "-32.5",
+        ),
+        value(
+            987,
+            "Thermal Damage Resistance Bonus",
+            Some((124, "%")),
+            misc,
+            "-32.5",
+        ),
+        value(
+            1208,
+            "Overload hardening bonus",
+            Some((105, "%")),
+            misc,
+            "20.0",
+        ),
+        value(
+            1212,
+            "Required Thermodynamics Level",
+            Some((140, "Level")),
+            misc,
+            "1.0",
+        ),
+        value(
+            1211,
+            "Heat Damage",
+            Some((113, "HP")),
+            Some((52, "Heat")),
+            "3.4",
+        ),
+    ];
+
+    let shown: BTreeMap<String, String> = attribute_groups(&values, &names())
+        .into_iter()
+        .flat_map(|group| group.rows)
+        .map(|row| (row.label, row.display))
+        .collect();
+
+    for (label, display) in [
+        ("Activation Cost", "32 GJ"),
+        ("Structure Hitpoints", "40 HP"),
+        ("Activation time / duration", "10 s"),
+        ("Tech Level", "Level 2"),
+        ("Meta Level", "Level 5"),
+        ("EM Damage Resistance Bonus", "-32.5 %"),
+        ("Explosive Damage Resistance Bonus", "-32.5 %"),
+        ("Kinetic Damage Resistance Bonus", "-32.5 %"),
+        ("Thermal Damage Resistance Bonus", "-32.5 %"),
+        ("Overload hardening bonus", "20 %"),
+        ("Required Thermodynamics Level", "Level 1"),
+        ("Heat Damage", "3.4 HP"),
+    ] {
+        assert_eq!(
+            shown.get(label).map(String::as_str),
+            Some(display),
+            "{label}"
+        );
+    }
+}
+
+/// Tracking Computer II as stored by SDE 3482594, against its in-game
+/// Attributes tab (2026-10-28).
+#[test]
+fn the_tracking_computer_reads_like_the_client() {
+    let misc = Some((7, "Miscellaneous"));
+    let bonuses = Some((37, "Bonuses"));
+    let mut names = names();
+    names.groups.insert(907, "Tracking Script".to_string());
+    let values = [
+        value(
+            128,
+            "Charge size",
+            Some((117, "1=small 2=medium 3=l")),
+            misc,
+            "1.0",
+        ),
+        value(1795, "Reload Time", Some((101, "s")), misc, "0.01"),
+        value(
+            6,
+            "Activation Cost",
+            Some((114, "GJ")),
+            Some((5, "Capacitor")),
+            "10.0",
+        ),
+        value(
+            1935,
+            "Overload Effectiveness Bonus",
+            Some((105, "%")),
+            misc,
+            "15.0",
+        ),
+        value(
+            604,
+            "Used with (Charge Group)",
+            Some((115, "groupID")),
+            misc,
+            "907.0",
+        ),
+        value(349, "Falloff Bonus", Some((105, "%")), bonuses, "15.0"),
+        value(351, "Optimal Range Bonus", Some((105, "%")), bonuses, "7.5"),
+        value(
+            767,
+            "Tracking Speed Bonus",
+            Some((105, "%")),
+            bonuses,
+            "15.0",
+        ),
+    ];
+
+    let shown: BTreeMap<String, String> = attribute_groups(&values, &names)
+        .into_iter()
+        .flat_map(|group| group.rows)
+        .map(|row| (row.label, row.display))
+        .collect();
+
+    for (label, display) in [
+        ("Charge size", "Small"),
+        // The client rounds this to "0.0s".
+        ("Reload Time", "0 s"),
+        ("Activation Cost", "10 GJ"),
+        ("Overload Effectiveness Bonus", "15 %"),
+        ("Used with (Charge Group)", "Tracking Script"),
+        ("Falloff Bonus", "15 %"),
+        ("Optimal Range Bonus", "7.5 %"),
+        ("Tracking Speed Bonus", "15 %"),
+    ] {
+        assert_eq!(
+            shown.get(label).map(String::as_str),
+            Some(display),
+            "{label}"
+        );
+    }
 }
