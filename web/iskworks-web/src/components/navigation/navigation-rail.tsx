@@ -1,5 +1,5 @@
 import { CircleHelp, PanelLeftClose, PanelLeftOpen, Search, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import mascotHead from "../../assets/mascot-head.png";
@@ -151,23 +151,82 @@ export interface NavigationRailProps {
   onOpenSearch?: () => void;
 }
 
+const PEEK_OPEN_DELAY_MS = 150;
+const PEEK_CLOSE_DELAY_MS = 200;
+
+function canHover(): boolean {
+  return window.matchMedia?.("(hover: none)").matches !== true;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+
 /**
  * The desktop navigation: a 52px icon rail that can be pinned open at 220px.
- * The slot div is what the page layout sees; the rail itself fills it.
+ * Collapsed, hovering or focusing it "peeks": the rail widens over the page
+ * without moving it, because the slot div is what the layout sees.
  */
 export function NavigationRail({ pinned, onTogglePinned, isAdmin, workspaceName, account, onOpenSearch }: NavigationRailProps) {
-  const width = pinned ? RAIL_EXPANDED_WIDTH : RAIL_COLLAPSED_WIDTH;
+  const { pathname } = useLocation();
+  const [peek, setPeek] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const peeking = peek && !pinned;
+  const expanded = pinned || peeking;
+
+  function schedulePeek(next: boolean, delay: number) {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setPeek(next), delay);
+  }
+
+  function handleFocus() {
+    clearTimeout(timer.current);
+    setPeek(true);
+  }
+
+  function handleBlur(event: FocusEvent<HTMLElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    clearTimeout(timer.current);
+    setPeek(false);
+  }
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  // A navigation closes the peek; the rail shouldn't sit over the new page.
+  useEffect(() => {
+    clearTimeout(timer.current);
+    setPeek(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "[" || event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
+      onTogglePinned();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onTogglePinned]);
 
   return (
-    <div className="relative h-full shrink-0" data-testid="nav-rail-slot" style={{ width }}>
+    <div className="relative h-full shrink-0" data-testid="nav-rail-slot" style={{ width: pinned ? RAIL_EXPANDED_WIDTH : RAIL_COLLAPSED_WIDTH }}>
       <aside
         aria-label="App navigation"
-        className="flex h-full flex-col border-r border-border bg-sidebar transition-[width] duration-[140ms] ease-out"
-        style={{ width }}
+        className={`flex h-full flex-col border-r border-border bg-sidebar transition-[width] duration-[140ms] ease-out ${
+          peeking ? "absolute inset-y-0 left-0 z-30 shadow-[14px_0_24px_rgba(0,0,0,.32)]" : ""
+        }`}
+        data-peek={peeking}
+        onBlur={handleBlur}
+        onFocus={handleFocus}
+        onMouseEnter={() => {
+          if (!pinned && canHover()) schedulePeek(true, PEEK_OPEN_DELAY_MS);
+        }}
+        onMouseLeave={() => schedulePeek(false, PEEK_CLOSE_DELAY_MS)}
+        style={{ width: expanded ? RAIL_EXPANDED_WIDTH : RAIL_COLLAPSED_WIDTH }}
       >
         <RailContent
           account={account}
-          expanded={pinned}
+          expanded={expanded}
           isAdmin={isAdmin}
           onOpenSearch={onOpenSearch}
           pin={{ pinned, onToggle: onTogglePinned }}
