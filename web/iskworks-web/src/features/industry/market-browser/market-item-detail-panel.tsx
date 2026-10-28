@@ -17,6 +17,7 @@ import {
   type OperationalColumn,
 } from "../../../components/operational-table";
 import { apiMessage, formatAge, formatExpiresIn, MoneyCell } from "./shared";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 // Column order/set matches the EVE-style reference this was checked
 // against exactly -- Range and Min Volume are buy-order-only concepts (a
@@ -151,7 +152,10 @@ export function MarketItemDetailPanel({
           <div className="flex min-w-0 items-center gap-2">
             <EveTypeImage size={32} typeId={typeId} typeName={typeName} />
             <div className="min-w-0">
-              <strong className="block truncate">{typeName}</strong>
+              <span className="flex min-w-0 items-center gap-1">
+                <strong className="block truncate">{typeName}</strong>
+                <TypeInfoButton alwaysVisible name={typeName} typeId={typeId} />
+              </span>
               {breadcrumb ? <span className="iw-muted block truncate text-xs">{breadcrumb}</span> : null}
             </div>
           </div>

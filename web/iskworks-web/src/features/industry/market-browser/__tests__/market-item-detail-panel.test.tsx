@@ -1,8 +1,9 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { MarketItemOrders, MarketOrderRow } from "../../../../api/industry";
 import { MarketItemDetailPanel } from "../market-item-detail-panel";
+import { WithToolWindows } from "../../../../test/tool-windows";
 
 const api = vi.hoisted(() => ({
   getMarketItemOrders: vi.fn(),
@@ -94,9 +95,10 @@ const confirmedEmpty: MarketItemOrders = {
   buyOrders: [],
 };
 
-function renderPanel(overrides: Partial<Parameters<typeof MarketItemDetailPanel>[0]> = {}) {
+function renderPanel(overrides: Partial<Parameters<typeof MarketItemDetailPanel>[0]> = {}, wrapper?: typeof WithToolWindows) {
   return render(
     <MarketItemDetailPanel locationId={60_003_760} regionId={10_000_002} typeId={35} typeName="Pyerite" {...overrides} />,
+    { wrapper },
   );
 }
 
@@ -356,4 +358,11 @@ describe("MarketItemDetailPanel", () => {
       expect(screen.queryByText("No buy orders at this market scope.")).not.toBeInTheDocument();
     });
   });
+});
+
+test("the item header opens in Type Info", () => {
+  window.localStorage.clear();
+  renderPanel({}, WithToolWindows);
+  fireEvent.click(screen.getByRole("button", { name: "Show info: Pyerite" }));
+  expect(screen.getByRole("dialog", { name: "Pyerite" })).toHaveTextContent("Type 35");
 });

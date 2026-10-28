@@ -8,6 +8,7 @@ import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { Badge, ProgressBar } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
 import { countdown, expiresIn, formatPrice, isNegative, LIKELY_FILLED_HINT, percentLabel, statusLabel, statusTone } from "./market-orders-format";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 const muted = <span className="text-muted">—</span>;
 
@@ -39,7 +40,10 @@ export function ItemCell({ row }: { row: MarketOrderRow }) {
     <span className="flex min-w-0 items-center gap-2">
       <EveTypeImage size={24} typeId={row.typeId} typeName={name} />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate text-xs font-semibold text-foreground">{name}</span>
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-xs font-semibold text-foreground">{name}</span>
+          <TypeInfoButton name={name} typeId={row.typeId} />
+        </span>
         <span className="flex items-center gap-1 text-[0.625rem] text-muted">
           <SideChip side={row.side} />
           <CharacterName className="truncate" name={row.characterName} />

@@ -31,6 +31,7 @@ import {
   type BlueprintLibraryView,
 } from "./blueprint-library-url-state";
 import { useBlueprintLibrary } from "./use-blueprint-library";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
   { key: "blueprint", label: "Blueprint", width: "minmax(240px,1fr)", sort: "blueprint" },
@@ -201,7 +202,10 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
       <span className="flex min-w-0 items-center gap-2">
         <EveTypeImage size={32} typeId={row.blueprintTypeId} typeName={row.blueprintName} variation={row.kind === "copy" ? "bpc" : "bp"} />
         <span className="min-w-0">
-          <span className="block truncate font-medium text-foreground" title={row.blueprintName}>{row.blueprintName}</span>
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="block truncate font-medium text-foreground" title={row.blueprintName}>{row.blueprintName}</span>
+            <TypeInfoButton name={row.blueprintName} typeId={row.blueprintTypeId} />
+          </span>
           {row.usedByBuilds.length > 0 ? (
             <span className="block text-[0.625rem] text-muted">
               Used by {row.usedByBuilds.length} build{row.usedByBuilds.length === 1 ? "" : "s"}
@@ -210,7 +214,12 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
         </span>
       </span>
     ),
-    product: <span className="block truncate" title={row.productGroupName ?? undefined}>{row.productName ?? "—"}</span>,
+    product: (
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="block truncate" title={row.productGroupName ?? undefined}>{row.productName ?? "—"}</span>
+        {row.productTypeId !== null && row.productName ? <TypeInfoButton name={row.productName} typeId={row.productTypeId} /> : null}
+      </span>
+    ),
     kind: row.activity === "reaction" ? (
       <span title="Reaction formula">
         <Badge square tone="reaction">Reaction</Badge>

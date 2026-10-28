@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MarketOrdersOverview } from "../../../api/market-orders";
 import { MarketOrdersPage } from "../market-orders-page";
 import { character, ILSA, location, megacyteBuy, NOW, outbidIshtar, overview } from "./fixtures";
+import { WithToolWindows } from "../../../test/tool-windows";
 
 function stubFetch(body: MarketOrdersOverview = overview()) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -20,13 +21,14 @@ function LocationProbe() {
   return <div data-testid="location">{current.pathname}{current.search}</div>;
 }
 
-function renderPage(path = "/market-orders") {
+function renderPage(path = "/market-orders", wrapper?: typeof WithToolWindows) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route element={<><MarketOrdersPage /><LocationProbe /></>} path="/market-orders" />
       </Routes>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -199,4 +201,15 @@ describe("Market Orders", () => {
 
     expect(await screen.findByText("No active market orders")).toBeInTheDocument();
   });
+});
+
+test("items open in Type Info from the table", async () => {
+  window.localStorage.clear();
+  stubFetch();
+  renderPage("/market-orders", WithToolWindows);
+  const table = await screen.findByRole("table", { name: "Market orders" });
+  const buttons = await within(table).findAllByRole("button", { name: /^Show info: / });
+  const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
+  fireEvent.click(buttons[0]);
+  expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
 });
