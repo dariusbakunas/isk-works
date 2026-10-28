@@ -41,7 +41,6 @@ impl EsfFittingEngine {
         } = self.engine_items(fit);
 
         let [em, thermal, kinetic, explosive] = profile.normalized();
-        let uniform = profile.normalized() == DamageProfile::uniform().normalized();
         let engine_fit = Fit {
             name: None,
             ship: Ship {
@@ -60,11 +59,7 @@ impl EsfFittingEngine {
                     kinetic,
                     thermal,
                 },
-                reactive_armor: if uniform {
-                    ReactiveArmor::DoNotAdapt
-                } else {
-                    ReactiveArmor::DamageProfile
-                },
+                reactive_armor: ReactiveArmor::DamageProfile,
                 ..Default::default()
             },
             incoming: Default::default(),
