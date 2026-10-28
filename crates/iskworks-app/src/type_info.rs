@@ -14,7 +14,7 @@ use iskworks_core::type_info::{
 use iskworks_core::{
     summarize_scoped_orders, InventoryError, MarketRepository, MarketScope, Money, WorkspaceId,
 };
-use iskworks_sde::{CandidateRecipeKind, SdeReadRepository};
+use iskworks_sde::{CandidateRecipeKind, SdeReadRepository, TypeListEntry, UsedWithKind};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -98,6 +98,91 @@ pub struct TypeInfoView {
     pub industry: TypeIndustry,
     /// Types in its variation family, itself included.
     pub variation_count: i64,
+    /// Whether a Used with list exists, and how long it is.
+    pub used_with: Option<UsedWithSummary>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedWithSummary {
+    pub kind: UsedWithKind,
+    pub count: usize,
+}
+
+/// One type in a Variations or Used with list.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeListItem {
+    pub type_id: i64,
+    pub name: String,
+    pub meta_level: Option<i64>,
+}
+
+/// List items under one meta group (Tech I, Tech II, Faction, …).
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaGroupList {
+    pub meta_group_id: i64,
+    pub meta_group_name: String,
+    pub items: Vec<TypeListItem>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedWithView {
+    /// `None` when the type is neither a module that loads charges nor a
+    /// charge something loads.
+    pub kind: Option<UsedWithKind>,
+    pub groups: Vec<MetaGroupList>,
+}
+
+/// One recipe consuming the type.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedInItem {
+    pub kind: CandidateRecipeKind,
+    pub recipe_type_id: i64,
+    pub recipe_name: String,
+    pub product_type_id: i64,
+    pub product_name: String,
+    /// Of the type, per run.
+    pub quantity: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsedInPage {
+    pub items: Vec<UsedInItem>,
+    pub total: i64,
+    pub offset: u32,
+    pub limit: u32,
+    /// Where the next page starts; `None` on the last page.
+    pub next_offset: Option<u32>,
+}
+
+/// The most recipes one Used in page lists.
+pub const MAX_USED_IN_LIMIT: u32 = 100;
+
+/// Groups list entries (already in meta group order) under their meta
+/// groups.
+fn meta_groups(entries: Vec<TypeListEntry>) -> Vec<MetaGroupList> {
+    let mut groups: Vec<MetaGroupList> = Vec::new();
+    for entry in entries {
+        let item = TypeListItem {
+            type_id: entry.type_id,
+            name: entry.name,
+            meta_level: entry.meta_level,
+        };
+        match groups.last_mut() {
+            Some(group) if group.meta_group_id == entry.meta_group_id => group.items.push(item),
+            _ => groups.push(MetaGroupList {
+                meta_group_id: entry.meta_group_id,
+                meta_group_name: entry.meta_group_name,
+                items: vec![item],
+            }),
+        }
+    }
+    groups
 }
 
 #[derive(Clone)]
@@ -171,6 +256,15 @@ impl TypeInfoService {
             .type_info_counts(type_id)
             .await
             .map_err(sde_error)?;
+        let used_with = self
+            .sde
+            .types_used_with(type_id)
+            .await
+            .map_err(sde_error)?
+            .map(|(kind, entries)| UsedWithSummary {
+                kind,
+                count: entries.len(),
+            });
         let recipes = self
             .sde
             .production_recipes_for_products(&[type_id])
@@ -302,7 +396,67 @@ impl TypeInfoService {
                 used_in_count: counts.used_in,
             },
             variation_count: counts.variations,
+            used_with,
         }))
+    }
+
+    /// `type_id`'s variation family by meta group; empty for a type the
+    /// import doesn't have.
+    pub async fn variations(&self, type_id: i64) -> Result<Vec<MetaGroupList>, InventoryError> {
+        let entries = self.sde.type_variations(type_id).await.map_err(sde_error)?;
+        Ok(meta_groups(entries))
+    }
+
+    /// What `type_id` loads, or what loads it, by meta group.
+    pub async fn used_with(&self, type_id: i64) -> Result<UsedWithView, InventoryError> {
+        Ok(
+            match self.sde.types_used_with(type_id).await.map_err(sde_error)? {
+                Some((kind, entries)) => UsedWithView {
+                    kind: Some(kind),
+                    groups: meta_groups(entries),
+                },
+                None => UsedWithView {
+                    kind: None,
+                    groups: Vec::new(),
+                },
+            },
+        )
+    }
+
+    /// One page of the recipes consuming `type_id`; `limit` is capped at
+    /// [`MAX_USED_IN_LIMIT`].
+    pub async fn used_in(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<UsedInPage, InventoryError> {
+        let limit = limit.clamp(1, MAX_USED_IN_LIMIT);
+        let (usages, total) = self
+            .sde
+            .type_usages(type_id, limit, offset)
+            .await
+            .map_err(sde_error)?;
+        let end = i64::from(offset) + usages.len() as i64;
+        Ok(UsedInPage {
+            next_offset: (end < total && !usages.is_empty())
+                .then(|| u32::try_from(end).ok())
+                .flatten(),
+            items: usages
+                .into_iter()
+                .map(|usage| UsedInItem {
+                    kind: usage.kind,
+                    recipe_type_id: usage.recipe_type_id,
+                    recipe_name: usage.recipe_name,
+                    product_type_id: usage.product_type_id,
+                    product_name: usage.product_name,
+                    quantity: usage.quantity,
+                })
+                .collect(),
+            total,
+            offset,
+            limit,
+        })
     }
 
     /// The lowest sell in `scope`. A missing or failing market leaves the

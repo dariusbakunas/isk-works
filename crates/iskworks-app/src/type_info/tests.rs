@@ -6,7 +6,8 @@ use iskworks_core::{ConnectedCharacterId, InventoryError};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, ProductRecipeRefs, RecipeLine,
     RequiredSkill, SdeError, SkillAttribute, SkillDefinition, TypeAttributeValue, TypeBonusLine,
-    TypeBonusSource, TypeInfoBase, TypeInfoCounts, TypeSearchResult,
+    TypeBonusSource, TypeInfoBase, TypeInfoCounts, TypeListEntry, TypeSearchResult, TypeUsage,
+    UsedWithKind,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -64,6 +65,23 @@ fn script() -> TypeInfoBase {
         mass_kg: Some(Decimal::ONE),
         ..TypeInfoBase::default()
     }
+}
+
+/// Not the real Harpy family; enough for grouping.
+fn harpy_family() -> Vec<TypeListEntry> {
+    let entry = |type_id, name: &str, meta: (i64, &str), meta_level| TypeListEntry {
+        type_id,
+        name: name.into(),
+        meta_group_id: meta.0,
+        meta_group_name: meta.1.into(),
+        meta_level,
+    };
+    vec![
+        entry(603, "Merlin", (1, "Tech I"), Some(0)),
+        entry(HARPY, "Harpy", (2, "Tech II"), Some(5)),
+        entry(11_379, "Hawk", (2, "Tech II"), Some(5)),
+        entry(17_619, "Caldari Navy Hookbill", (4, "Faction"), None),
+    ]
 }
 
 fn attribute(attribute_id: i64, label: &str, unit: (i64, &str), value: i64) -> TypeAttributeValue {
@@ -172,6 +190,48 @@ impl SdeReadRepository for FakeSde {
                 used_in: 3,
             },
         })
+    }
+    async fn type_variations(&self, type_id: i64) -> Result<Vec<TypeListEntry>, SdeError> {
+        Ok(if type_id == HARPY {
+            harpy_family()
+        } else {
+            Vec::new()
+        })
+    }
+    async fn types_used_with(
+        &self,
+        type_id: i64,
+    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError> {
+        Ok((type_id == SCRIPT).then(|| (UsedWithKind::Modules, harpy_family())))
+    }
+    async fn type_usages(
+        &self,
+        type_id: i64,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<TypeUsage>, i64), SdeError> {
+        let all: Vec<TypeUsage> = if type_id == TRITANIUM {
+            (0..3)
+                .map(|index| TypeUsage {
+                    kind: CandidateRecipeKind::Manufacturing,
+                    recipe_type_id: 100 + index,
+                    recipe_name: format!("Thing {index} Blueprint"),
+                    product_type_id: 200 + index,
+                    product_name: format!("Thing {index}"),
+                    quantity: 10 * (index + 1),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let total = all.len() as i64;
+        Ok((
+            all.into_iter()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .collect(),
+            total,
+        ))
     }
     async fn production_recipes_for_products(
         &self,
@@ -486,4 +546,74 @@ async fn an_unknown_character_is_a_validation_error() {
 #[tokio::test]
 async fn a_type_the_import_lacks_has_no_info() {
     assert_eq!(info(77_777, PilotChoice::AllV).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn info_says_whether_there_is_a_used_with_list() {
+    let script_view = info(SCRIPT, PilotChoice::AllV).await.unwrap().unwrap();
+    assert_eq!(
+        script_view.used_with,
+        Some(UsedWithSummary {
+            kind: UsedWithKind::Modules,
+            count: 4,
+        })
+    );
+    let harpy_view = info(HARPY, PilotChoice::AllV).await.unwrap().unwrap();
+    assert_eq!(harpy_view.used_with, None);
+}
+
+#[tokio::test]
+async fn variations_are_grouped_by_meta_group() {
+    let groups = service().variations(HARPY).await.unwrap();
+
+    let layout: Vec<(&str, Vec<&str>)> = groups
+        .iter()
+        .map(|group| {
+            (
+                group.meta_group_name.as_str(),
+                group.items.iter().map(|item| item.name.as_str()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        layout,
+        [
+            ("Tech I", vec!["Merlin"]),
+            ("Tech II", vec!["Harpy", "Hawk"]),
+            ("Faction", vec!["Caldari Navy Hookbill"]),
+        ]
+    );
+    assert_eq!(groups[1].meta_group_id, 2);
+    assert_eq!(groups[1].items[0].meta_level, Some(5));
+    assert!(service().variations(SCRIPT).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn used_with_is_grouped_too_and_empty_for_neither() {
+    let view = service().used_with(SCRIPT).await.unwrap();
+    assert_eq!(view.kind, Some(UsedWithKind::Modules));
+    assert_eq!(view.groups.len(), 3);
+
+    let none = service().used_with(HARPY).await.unwrap();
+    assert_eq!(none.kind, None);
+    assert!(none.groups.is_empty());
+}
+
+#[tokio::test]
+async fn used_in_pages_with_a_next_offset() {
+    let first = service().used_in(TRITANIUM, 2, 0).await.unwrap();
+    assert_eq!(first.total, 3);
+    assert_eq!(first.items.len(), 2);
+    assert_eq!(first.next_offset, Some(2));
+    assert_eq!(first.items[0].recipe_name, "Thing 0 Blueprint");
+
+    let last = service().used_in(TRITANIUM, 2, 2).await.unwrap();
+    assert_eq!(last.items.len(), 1);
+    assert_eq!(last.next_offset, None);
+}
+
+#[tokio::test]
+async fn used_in_caps_the_page_size() {
+    let page = service().used_in(TRITANIUM, 10_000, 0).await.unwrap();
+    assert_eq!(page.limit, MAX_USED_IN_LIMIT);
 }
