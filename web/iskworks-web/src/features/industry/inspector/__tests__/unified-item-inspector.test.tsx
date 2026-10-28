@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { WithToolWindows } from "../../../../test/tool-windows";
 import { InspectorCollapseProvider } from "../inspector-collapse";
 import type { InspectorActions, InspectorModel } from "../inspector-model";
 import { UnifiedItemInspector } from "../unified-item-inspector";
@@ -22,15 +23,27 @@ function baseModel(overrides: Partial<InspectorModel> = {}): InspectorModel {
   };
 }
 
-function renderInspector(model: InspectorModel, actions: InspectorActions = {}) {
+function renderInspector(model: InspectorModel, actions: InspectorActions = {}, wrapper?: typeof WithToolWindows) {
   return render(
     <InspectorCollapseProvider>
       <UnifiedItemInspector actions={actions} model={model} />
     </InspectorCollapseProvider>,
+    { wrapper },
   );
 }
 
 describe("UnifiedItemInspector", () => {
+  it("the header opens its item in Type Info; an identity without a type has no button", () => {
+    window.localStorage.clear();
+    const { unmount } = renderInspector(baseModel(), {}, WithToolWindows);
+    fireEvent.click(screen.getByRole("button", { name: "Show info: Widget" }));
+    expect(screen.getByRole("dialog", { name: "Widget" })).toHaveTextContent("Type 900");
+    unmount();
+
+    renderInspector(baseModel({ identity: { ...baseModel().identity, typeId: null } }), {}, WithToolWindows);
+    expect(screen.queryByRole("button", { name: /^Show info: / })).not.toBeInTheDocument();
+  });
+
   it("renders only the sections the model provides -- no empty sections", () => {
     renderInspector(
       baseModel({

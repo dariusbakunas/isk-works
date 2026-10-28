@@ -30,6 +30,7 @@ import {
   InspectorRow,
   InspectorSection,
 } from "./inspector-section";
+import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 /**
  * The single presentation component for a selected planning object. Both the
@@ -190,7 +191,10 @@ function IdentityHeader({ model, onClose }: { model: InspectorModel; onClose?: (
         <span className="block text-[10px] font-semibold uppercase tracking-wide text-muted">
           {identity.kindLabel}
         </span>
-        <div className="truncate text-sm font-semibold">{identity.name}</div>
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="truncate text-sm font-semibold">{identity.name}</div>
+          {identity.typeId != null ? <TypeInfoButton alwaysVisible name={identity.name} typeId={identity.typeId} /> : null}
+        </div>
         {identity.subtitle ? (
           <div className="truncate text-[11px] text-muted">{identity.subtitle}</div>
         ) : null}
