@@ -15,6 +15,7 @@ import { CharacterName } from "../../observability/private";
 import { AttributeTags, CatalogueLevelBlocks, SkillStateChip } from "./skill-cells";
 import { SkillInspector } from "./skill-inspector";
 import { filterSkills, requiredForIndex, SKILL_FILTERS, timeLabel, type SkillFilter } from "./skills-catalogue";
+import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 const COLUMNS: OperationalColumn[] = [
   { key: "level", label: "Level", width: "4.5rem" },
@@ -142,6 +143,7 @@ function SkillName({ skill }: { skill: CatalogueSkill }) {
     <span className={`flex min-w-0 items-center gap-1.5 ${dim ? "opacity-50" : ""}`}>
       {state === "locked" ? <Lock aria-label="Locked" className="h-3 w-3 shrink-0 text-muted" /> : null}
       <span className="truncate">{skill.name}</span>
+      <TypeInfoButton name={skill.name} typeId={skill.typeId} />
     </span>
   );
 }
