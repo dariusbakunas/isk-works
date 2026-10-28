@@ -18,6 +18,11 @@ pub(crate) const INDUSTRY_MODIFIER_SOURCES_FILE: &str = "industryModifierSources
 pub(crate) const PLANET_SCHEMATICS_FILE: &str = "planetSchematics.jsonl";
 pub(crate) const MAP_PLANETS_FILE: &str = "mapPlanets.jsonl";
 pub(crate) const STARGATES_FILE: &str = "mapStargates.jsonl";
+pub(crate) const DOGMA_ATTRIBUTES_FILE: &str = "dogmaAttributes.jsonl";
+pub(crate) const DOGMA_UNITS_FILE: &str = "dogmaUnits.jsonl";
+pub(crate) const DOGMA_ATTRIBUTE_CATEGORIES_FILE: &str = "dogmaAttributeCategories.jsonl";
+pub(crate) const TYPE_MATERIALS_FILE: &str = "typeMaterials.jsonl";
+pub(crate) const TYPE_BONUS_FILE: &str = "typeBonus.jsonl";
 
 #[derive(Debug, Error)]
 pub enum SdeError {
@@ -133,6 +138,11 @@ impl SdeSource {
             PLANET_SCHEMATICS_FILE,
             MAP_PLANETS_FILE,
             STARGATES_FILE,
+            DOGMA_ATTRIBUTES_FILE,
+            DOGMA_UNITS_FILE,
+            DOGMA_ATTRIBUTE_CATEGORIES_FILE,
+            TYPE_MATERIALS_FILE,
+            TYPE_BONUS_FILE,
         ] {
             match read_archive_file(&mut archive, name) {
                 Ok(contents) => {
@@ -238,6 +248,15 @@ impl SdeSource {
     #[must_use]
     pub fn has_stargates(&self) -> bool {
         self.files.contains_key(STARGATES_FILE)
+    }
+
+    /// The Type Info attributes: dogma attribute metadata plus the per-type
+    /// values in `typeDogma`.
+    #[must_use]
+    pub fn has_type_info(&self) -> bool {
+        [DOGMA_ATTRIBUTES_FILE, TYPE_DOGMA_FILE]
+            .iter()
+            .all(|name| self.files.contains_key(name))
     }
 
     pub(super) fn file(&self, name: &'static str) -> Result<&str, SdeError> {

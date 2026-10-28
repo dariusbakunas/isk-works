@@ -44,6 +44,7 @@ impl SdeImportStore for PgSdeRepository {
             planetary_data: requires_planetary_data,
             stargates: requires_stargates,
             skill_dogma: requires_skill_dogma,
+            type_info: requires_type_info,
         } = requires;
         let row = sqlx::query_as::<_, ImportIdentityRow>(
             r#"
@@ -136,6 +137,14 @@ impl SdeImportStore for PgSdeRepository {
                   WHERE skills.import_id = sde_imports.id
                 )
               )
+              AND (
+                $11 = false
+                OR EXISTS (
+                  SELECT 1
+                  FROM sde_dogma_attributes attributes
+                  WHERE attributes.import_id = sde_imports.id
+                )
+              )
             "#,
         )
         .bind(checksum)
@@ -148,6 +157,7 @@ impl SdeImportStore for PgSdeRepository {
         .bind(requires_planetary_data)
         .bind(requires_stargates)
         .bind(requires_skill_dogma)
+        .bind(requires_type_info)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
@@ -755,6 +765,7 @@ impl SdeImportStore for PgSdeRepository {
                 .map_err(map_sde_sqlx_error)?;
         }
 
+        self.write_type_info(import_id, &dataset.type_info).await?;
         self.rebuild_type_categories(import_id).await?;
         Ok(())
     }
@@ -837,6 +848,140 @@ impl SdeImportStore for PgSdeRepository {
         .execute(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
+        Ok(())
+    }
+}
+
+impl PgSdeRepository {
+    async fn write_type_info(
+        &self,
+        import_id: Uuid,
+        info: &iskworks_sde::ImportTypeInfo,
+    ) -> Result<(), SdeError> {
+        const BATCH_SIZE: usize = 1_000;
+
+        for batch in info.details.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_type_details \
+                 (import_id, type_id, description_en, volume_m3, mass_kg, capacity_m3, \
+                  portion_size, variation_parent_type_id) ",
+            );
+            query.push_values(batch, |mut row, details| {
+                row.push_bind(import_id)
+                    .push_bind(details.type_id)
+                    .push_bind(&details.description)
+                    .push_bind(details.volume_m3)
+                    .push_bind(details.mass_kg)
+                    .push_bind(details.capacity_m3)
+                    .push_bind(details.portion_size)
+                    .push_bind(details.variation_parent_type_id);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in info.dogma_units.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_dogma_units (import_id, unit_id, name, display_name) ",
+            );
+            query.push_values(batch, |mut row, unit| {
+                row.push_bind(import_id)
+                    .push_bind(unit.unit_id)
+                    .push_bind(&unit.name)
+                    .push_bind(&unit.display_name);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in info.dogma_attributes.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_dogma_attributes \
+                 (import_id, attribute_id, name, display_name_en, unit_id, category_id, \
+                  category_name, display_when_zero, high_is_good) ",
+            );
+            query.push_values(batch, |mut row, attribute| {
+                row.push_bind(import_id)
+                    .push_bind(attribute.attribute_id)
+                    .push_bind(&attribute.name)
+                    .push_bind(&attribute.display_name)
+                    .push_bind(attribute.unit_id)
+                    .push_bind(attribute.category_id)
+                    .push_bind(&attribute.category_name)
+                    .push_bind(attribute.display_when_zero)
+                    .push_bind(attribute.high_is_good);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in info.type_attributes.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_type_attributes (import_id, type_id, attribute_id, value) ",
+            );
+            query.push_values(batch, |mut row, value| {
+                row.push_bind(import_id)
+                    .push_bind(value.type_id)
+                    .push_bind(value.attribute_id)
+                    .push_bind(value.value);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in info.type_materials.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_type_materials (import_id, type_id, material_type_id, quantity) ",
+            );
+            query.push_values(batch, |mut row, material| {
+                row.push_bind(import_id)
+                    .push_bind(material.type_id)
+                    .push_bind(material.material_type_id)
+                    .push_bind(material.quantity);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+
+        for batch in info.type_bonuses.chunks(BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_type_bonuses \
+                 (import_id, type_id, ordinal, source_kind, skill_type_id, bonus, unit_id, \
+                  text_en, importance, is_positive) ",
+            );
+            query.push_values(batch, |mut row, bonus| {
+                row.push_bind(import_id)
+                    .push_bind(bonus.type_id)
+                    .push_bind(bonus.ordinal)
+                    .push_bind(bonus.source.kind())
+                    .push_bind(bonus.source.skill_type_id())
+                    .push_bind(bonus.bonus)
+                    .push_bind(bonus.unit_id)
+                    .push_bind(&bonus.text)
+                    .push_bind(bonus.importance)
+                    .push_bind(bonus.is_positive);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
         Ok(())
     }
 }

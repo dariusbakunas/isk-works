@@ -95,6 +95,8 @@ pub(super) fn normalize_market_groups(
 
 #[cfg(test)]
 mod market_group_ordering_tests;
+mod type_info;
+use type_info::{normalize_type_info, type_details};
 
 pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let raw_groups: Vec<RawGroup> = parse_jsonl("groups.jsonl", source.file("groups.jsonl")?)?;
@@ -133,6 +135,14 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         parse_optional_jsonl(source, PLANET_SCHEMATICS_FILE)?;
     let raw_planets: Vec<RawPlanet> = parse_optional_jsonl(source, MAP_PLANETS_FILE)?;
     let raw_stargates: Vec<RawStargate> = parse_optional_jsonl(source, STARGATES_FILE)?;
+    let raw_dogma_attributes: Vec<RawDogmaAttribute> =
+        parse_optional_jsonl(source, DOGMA_ATTRIBUTES_FILE)?;
+    let raw_dogma_units: Vec<RawDogmaUnit> = parse_optional_jsonl(source, DOGMA_UNITS_FILE)?;
+    let raw_dogma_categories: Vec<RawDogmaAttributeCategory> =
+        parse_optional_jsonl(source, DOGMA_ATTRIBUTE_CATEGORIES_FILE)?;
+    let raw_type_materials: Vec<RawTypeMaterials> =
+        parse_optional_jsonl(source, TYPE_MATERIALS_FILE)?;
+    let raw_type_bonuses: Vec<RawTypeBonus> = parse_optional_jsonl(source, TYPE_BONUS_FILE)?;
     let rig_filter_ids: HashMap<i64, RigFilterIds> = raw_industry_modifier_sources
         .into_iter()
         .map(|source| {
@@ -310,12 +320,13 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let (structure_modifiers, rig_modifiers, reaction_rig_modifiers) =
         normalize_facility_dogma(&raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
 
-    let mut types = raw_types_by_id
+    let (mut types, details): (Vec<_>, Vec<_>) = raw_types_by_id
         .into_values()
         .filter(|item| item.published || referenced_type_ids.contains(&item.key))
         .filter_map(|item| {
+            let details = type_details(&item);
             let name = item.name.en?;
-            Some(ImportType {
+            let item = ImportType {
                 type_id: item.key,
                 name,
                 group_id: item.group_id,
@@ -335,11 +346,22 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                             .filter(|volume| *volume >= Decimal::ZERO)
                     }),
                 published: item.published,
-            })
+            };
+            Some((item, details))
         })
-        .collect::<Vec<_>>();
+        .unzip();
 
     types.sort_by_key(|item| item.type_id);
+    let type_info = normalize_type_info(
+        &types,
+        details.into_iter().flatten().collect(),
+        &raw_type_dogma,
+        raw_dogma_attributes,
+        raw_dogma_units,
+        raw_dogma_categories,
+        raw_type_materials,
+        raw_type_bonuses,
+    )?;
     let (skills, required_skills) = normalize_skill_dogma(&raw_type_dogma, &types, &groups);
     if source.has_classification_metadata() {
         let meta_ids = meta_groups
@@ -468,6 +490,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         stargates,
         skills,
         required_skills,
+        type_info,
         skipped_blueprints,
         skipped_reaction_formulas,
     })

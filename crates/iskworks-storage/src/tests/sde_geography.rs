@@ -742,6 +742,7 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -848,6 +849,7 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -955,6 +957,7 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

@@ -177,6 +177,7 @@ fn market_items_fixture() -> iskworks_sde::NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }
@@ -345,6 +346,7 @@ fn market_group_subtree_fixture() -> iskworks_sde::NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

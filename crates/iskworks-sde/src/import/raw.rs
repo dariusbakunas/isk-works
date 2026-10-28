@@ -88,6 +88,13 @@ pub(crate) struct RawType {
     pub(crate) volume: Option<serde_json::Number>,
     #[serde(default)]
     pub(crate) published: bool,
+    pub(crate) description: Option<LocalizedString>,
+    pub(crate) mass: Option<serde_json::Number>,
+    pub(crate) capacity: Option<serde_json::Number>,
+    #[serde(rename = "portionSize")]
+    pub(crate) portion_size: Option<i32>,
+    #[serde(rename = "variationParentTypeID")]
+    pub(crate) variation_parent_type_id: Option<i64>,
 }
 
 pub(crate) fn json_number_decimal(value: serde_json::Number) -> Option<Decimal> {
@@ -350,4 +357,92 @@ pub(crate) struct RawTypeQuantity {
     #[serde(rename = "typeID")]
     pub(crate) type_id: i64,
     pub(crate) quantity: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawDogmaAttribute {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    pub(crate) name: String,
+    #[serde(rename = "displayName")]
+    pub(crate) display_name: Option<LocalizedString>,
+    #[serde(rename = "unitID")]
+    pub(crate) unit_id: Option<i64>,
+    #[serde(rename = "attributeCategoryID")]
+    pub(crate) category_id: Option<i64>,
+    #[serde(default)]
+    pub(crate) published: bool,
+    #[serde(default, rename = "displayWhenZero")]
+    pub(crate) display_when_zero: bool,
+    #[serde(default, rename = "highIsGood")]
+    pub(crate) high_is_good: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawDogmaUnit {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    pub(crate) name: String,
+    #[serde(rename = "displayName")]
+    pub(crate) display_name: Option<LocalizedString>,
+}
+
+/// `dogmaAttributeCategories.jsonl`: unlike most SDE names, `name` is a
+/// plain string.
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawDogmaAttributeCategory {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    pub(crate) name: String,
+}
+
+/// `typeMaterials.jsonl`. A handful of types only have
+/// `randomizedMaterials` (min/max quantities), which aren't kept.
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawTypeMaterials {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    #[serde(default)]
+    pub(crate) materials: Vec<RawTypeMaterial>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawTypeMaterial {
+    #[serde(rename = "materialTypeID")]
+    pub(crate) material_type_id: i64,
+    pub(crate) quantity: i64,
+}
+
+/// `typeBonus.jsonl`: a ship's per-skill bonuses (`types`, keyed by skill
+/// type id), role bonuses and misc bonuses.
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawTypeBonus {
+    #[serde(rename = "_key")]
+    pub(crate) key: i64,
+    #[serde(default)]
+    pub(crate) types: Vec<RawSkillBonuses>,
+    #[serde(default, rename = "roleBonuses")]
+    pub(crate) role_bonuses: Vec<RawBonus>,
+    #[serde(default, rename = "miscBonuses")]
+    pub(crate) misc_bonuses: Vec<RawBonus>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawSkillBonuses {
+    #[serde(rename = "_key")]
+    pub(crate) skill_type_id: i64,
+    #[serde(default, rename = "_value")]
+    pub(crate) bonuses: Vec<RawBonus>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawBonus {
+    pub(crate) bonus: Option<serde_json::Number>,
+    #[serde(rename = "bonusText")]
+    pub(crate) text: LocalizedString,
+    pub(crate) importance: Option<i32>,
+    #[serde(rename = "isPositive")]
+    pub(crate) is_positive: Option<bool>,
+    #[serde(rename = "unitID")]
+    pub(crate) unit_id: Option<i64>,
 }

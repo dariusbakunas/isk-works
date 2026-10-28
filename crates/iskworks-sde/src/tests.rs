@@ -151,6 +151,11 @@ fn normalizes_structure_and_security_adjusted_rig_inputs() {
                 packaged_volume: None,
                 volume: None,
                 published: true,
+                description: None,
+                mass: None,
+                capacity: None,
+                portion_size: None,
+                variation_parent_type_id: None,
             },
         ),
         (
@@ -166,6 +171,11 @@ fn normalizes_structure_and_security_adjusted_rig_inputs() {
                 packaged_volume: None,
                 volume: None,
                 published: true,
+                description: None,
+                mass: None,
+                capacity: None,
+                portion_size: None,
+                variation_parent_type_id: None,
             },
         ),
     ]);
@@ -268,6 +278,11 @@ fn normalizes_reaction_rig_inputs_and_skips_structure_level_reaction_bonus() {
                 packaged_volume: None,
                 volume: None,
                 published: true,
+                description: None,
+                mass: None,
+                capacity: None,
+                portion_size: None,
+                variation_parent_type_id: None,
             },
         ),
         (
@@ -283,6 +298,11 @@ fn normalizes_reaction_rig_inputs_and_skips_structure_level_reaction_bonus() {
                 packaged_volume: None,
                 volume: None,
                 published: true,
+                description: None,
+                mass: None,
+                capacity: None,
+                portion_size: None,
+                variation_parent_type_id: None,
             },
         ),
     ]);
@@ -1019,4 +1039,291 @@ fn parses_authoritative_classification_metadata() {
 /// 46157, Methanofullerene Reaction Formula).
 fn reaction_blueprint_fixture() -> &'static str {
     r#"{"_key":46157,"activities":{"reaction":{"time":10800,"materials":[{"typeID":34,"quantity":100}],"products":[{"typeID":5876,"quantity":160}],"skills":[{"typeID":45746,"level":3}]}}}"#
+}
+
+/// Shapes copied from SDE 3482594: the Missile Range Disruption Script
+/// (40334) and the Harpy (11381), with descriptions trimmed.
+fn type_info_source(with_type_info_files: bool) -> SdeSource {
+    let extra_types = concat!(
+        r#"{"_key":40334,"groupID":1400,"metaGroupID":1,"name":{"en":"Missile Range Disruption Script"},"published":true,"description":{"de":"Dieses Skript","en":"This script can be loaded into a <a href=showinfo:37>guidance disruptor</a>."},"volume":1.0,"mass":1.0,"capacity":0.0,"portionSize":1}"#,
+        "\n",
+        r#"{"_key":11381,"groupID":324,"metaGroupID":1,"name":{"en":"Harpy"},"published":true,"description":{"en":"A powerful railgun platform."},"volume":28600.0,"packagedVolume":2500.0,"mass":1155000.0,"capacity":165.0,"portionSize":1,"variationParentTypeID":603}"#,
+        "\n",
+        r#"{"_key":3330,"groupID":257,"name":{"en":"Caldari Frigate"},"published":true}"#
+    );
+    let mut extra_files = Vec::new();
+    if with_type_info_files {
+        extra_files.extend([
+            (
+                "dogmaUnits.jsonl",
+                concat!(
+                    r#"{"_key":105,"description":{"en":"Percentage"},"displayName":{"en":"%"},"name":"Percentage"}"#,
+                    "\n",
+                    r#"{"_key":117,"description":{"en":"1=small 2=medium 3=l"},"displayName":{"en":"1=small 2=medium 3=l"},"name":"Sizeclass"}"#,
+                    "\n",
+                    r#"{"_key":122,"name":"Fitting slots"}"#
+                ),
+            ),
+            (
+                "dogmaAttributeCategories.jsonl",
+                r#"{"_key":7,"description":"Misc. attributes","name":"Miscellaneous"}"#,
+            ),
+            (
+                "dogmaAttributes.jsonl",
+                concat!(
+                    r#"{"_key":128,"attributeCategoryID":7,"dataType":4,"defaultValue":0.0,"displayName":{"en":"Charge size"},"displayWhenZero":false,"highIsGood":true,"name":"chargeSize","published":true,"stackable":true,"unitID":117}"#,
+                    "\n",
+                    r#"{"_key":2023,"attributeCategoryID":7,"dataType":4,"defaultValue":0.0,"displayName":{"en":"Modification of Explosion Radius Bonus"},"displayWhenZero":false,"highIsGood":false,"name":"aoeCloudSizeBonusBonus","published":true,"stackable":true,"unitID":105}"#,
+                    "\n",
+                    // Unpublished: never shown in game.
+                    r#"{"_key":124,"attributeCategoryID":9,"dataType":4,"defaultValue":0.0,"displayWhenZero":false,"highIsGood":true,"name":"mainColor","published":false,"stackable":true}"#,
+                    "\n",
+                    // Published but nameless: nothing to label it with.
+                    r#"{"_key":9999,"dataType":4,"defaultValue":0.0,"displayWhenZero":true,"highIsGood":true,"name":"nameless","published":true,"stackable":true}"#,
+                    "\n",
+                    // No category: kept, the category is unknown.
+                    r#"{"_key":12,"dataType":4,"defaultValue":0.0,"displayName":{"en":"Low Slots"},"displayWhenZero":true,"highIsGood":true,"name":"lowSlots","published":true,"stackable":true,"unitID":122}"#
+                ),
+            ),
+            (
+                "typeDogma.jsonl",
+                concat!(
+                    r#"{"_key":40334,"dogmaAttributes":[{"attributeID":124,"value":11646664.0},{"attributeID":128,"value":1.0},{"attributeID":2023,"value":-100.0}]}"#,
+                    "\n",
+                    r#"{"_key":11381,"dogmaAttributes":[{"attributeID":12,"value":4.0},{"attributeID":9999,"value":1.0}]}"#,
+                    "\n",
+                    // A type that isn't imported.
+                    r#"{"_key":77777,"dogmaAttributes":[{"attributeID":128,"value":1.0}]}"#
+                ),
+            ),
+            (
+                "typeMaterials.jsonl",
+                concat!(
+                    r#"{"_key":11381,"materials":[{"materialTypeID":34,"quantity":45},{"materialTypeID":88888,"quantity":5}]}"#,
+                    "\n",
+                    // Randomised (compressed ore style): no fixed quantities.
+                    r#"{"_key":40334,"randomizedMaterials":[{"materialTypeID":34,"quantityMax":9,"quantityMin":3}]}"#,
+                    "\n",
+                    r#"{"_key":77777,"materials":[{"materialTypeID":34,"quantity":1}]}"#
+                ),
+            ),
+            (
+                "typeBonus.jsonl",
+                concat!(
+                    r#"{"_key":11381,"iconID":1,"types":[{"_key":3330,"_value":[{"bonus":4.0,"bonusText":{"de":"Bonus","en":"bonus to all shield resistances"},"importance":1,"unitID":105},{"bonus":10.0,"bonusText":{"en":"bonus to Small Hybrid Turret optimal range"},"importance":2,"unitID":105}]}],"roleBonuses":[{"bonusText":{"en":"Can fit <a href=showinfo:47254>Assault Damage Controls</a>"},"importance":2}],"miscBonuses":[{"bonus":50.0,"bonusText":{"en":"reduction in CONCORD bounties"},"importance":1,"isPositive":false,"unitID":105}]}"#,
+                    "\n",
+                    r#"{"_key":77777,"roleBonuses":[{"bonusText":{"en":"Not imported"},"importance":1}]}"#
+                ),
+            ),
+        ]);
+    }
+    fixture_source_inner(blueprints_fixture(), None, Some(extra_types), &extra_files).unwrap()
+}
+
+#[test]
+fn keeps_type_details_for_imported_types() {
+    let dataset = parse(&type_info_source(true)).unwrap();
+    let details = &dataset.type_info.details;
+
+    let script = details.iter().find(|row| row.type_id == 40_334).unwrap();
+    assert_eq!(
+        script,
+        &ImportTypeDetails {
+            type_id: 40_334,
+            description: Some(
+                "This script can be loaded into a <a href=showinfo:37>guidance disruptor</a>."
+                    .into()
+            ),
+            volume_m3: Some(Decimal::ONE),
+            mass_kg: Some(Decimal::ONE),
+            capacity_m3: Some(Decimal::ZERO),
+            portion_size: Some(1),
+            variation_parent_type_id: None,
+        }
+    );
+    let harpy = details.iter().find(|row| row.type_id == 11_381).unwrap();
+    assert_eq!(harpy.volume_m3, Some(Decimal::new(28_600, 0)));
+    assert_eq!(harpy.variation_parent_type_id, Some(603));
+    // The Rifter fixture has a volume but no description: still a row.
+    assert!(details.iter().any(|row| row.type_id == 5_876));
+    // Nothing to say about the Rifter Blueprint: no row.
+    assert!(!details.iter().any(|row| row.type_id == 6_830));
+    // Sorted by type.
+    assert!(details
+        .windows(2)
+        .all(|pair| pair[0].type_id < pair[1].type_id));
+}
+
+#[test]
+fn keeps_published_named_attributes_and_their_values() {
+    let source = type_info_source(true);
+    assert!(source.has_type_info());
+    let info = parse(&source).unwrap().type_info;
+
+    assert_eq!(
+        info.dogma_attributes,
+        vec![
+            ImportDogmaAttribute {
+                attribute_id: 12,
+                name: "lowSlots".into(),
+                display_name: "Low Slots".into(),
+                unit_id: Some(122),
+                category_id: None,
+                category_name: None,
+                display_when_zero: true,
+                high_is_good: true,
+            },
+            ImportDogmaAttribute {
+                attribute_id: 128,
+                name: "chargeSize".into(),
+                display_name: "Charge size".into(),
+                unit_id: Some(117),
+                category_id: Some(7),
+                category_name: Some("Miscellaneous".into()),
+                display_when_zero: false,
+                high_is_good: true,
+            },
+            ImportDogmaAttribute {
+                attribute_id: 2023,
+                name: "aoeCloudSizeBonusBonus".into(),
+                display_name: "Modification of Explosion Radius Bonus".into(),
+                unit_id: Some(105),
+                category_id: Some(7),
+                category_name: Some("Miscellaneous".into()),
+                display_when_zero: false,
+                high_is_good: false,
+            },
+        ]
+    );
+    assert_eq!(
+        info.dogma_units,
+        vec![
+            ImportDogmaUnit {
+                unit_id: 105,
+                name: "Percentage".into(),
+                display_name: Some("%".into()),
+            },
+            ImportDogmaUnit {
+                unit_id: 117,
+                name: "Sizeclass".into(),
+                display_name: Some("1=small 2=medium 3=l".into()),
+            },
+            ImportDogmaUnit {
+                unit_id: 122,
+                name: "Fitting slots".into(),
+                display_name: None,
+            },
+        ]
+    );
+    assert_eq!(
+        info.type_attributes,
+        vec![
+            ImportTypeAttribute {
+                type_id: 11_381,
+                attribute_id: 12,
+                value: Decimal::new(4, 0),
+            },
+            ImportTypeAttribute {
+                type_id: 40_334,
+                attribute_id: 128,
+                value: Decimal::ONE,
+            },
+            ImportTypeAttribute {
+                type_id: 40_334,
+                attribute_id: 2023,
+                value: Decimal::new(-100, 0),
+            },
+        ]
+    );
+}
+
+#[test]
+fn keeps_fixed_reprocessing_materials_of_imported_types() {
+    let info = parse(&type_info_source(true)).unwrap().type_info;
+
+    // The unknown material and the randomised entry are dropped.
+    assert_eq!(
+        info.type_materials,
+        vec![ImportTypeMaterial {
+            type_id: 11_381,
+            material_type_id: 34,
+            quantity: 45,
+        }]
+    );
+}
+
+#[test]
+fn keeps_ship_bonuses_in_skill_role_misc_order() {
+    let info = parse(&type_info_source(true)).unwrap().type_info;
+
+    assert_eq!(
+        info.type_bonuses,
+        vec![
+            ImportTypeBonus {
+                type_id: 11_381,
+                ordinal: 1,
+                source: TypeBonusSource::Skill(3_330),
+                bonus: Some(Decimal::new(4, 0)),
+                unit_id: Some(105),
+                text: "bonus to all shield resistances".into(),
+                importance: Some(1),
+                is_positive: None,
+            },
+            ImportTypeBonus {
+                type_id: 11_381,
+                ordinal: 2,
+                source: TypeBonusSource::Skill(3_330),
+                bonus: Some(Decimal::new(10, 0)),
+                unit_id: Some(105),
+                text: "bonus to Small Hybrid Turret optimal range".into(),
+                importance: Some(2),
+                is_positive: None,
+            },
+            ImportTypeBonus {
+                type_id: 11_381,
+                ordinal: 3,
+                source: TypeBonusSource::Role,
+                bonus: None,
+                unit_id: None,
+                text: "Can fit <a href=showinfo:47254>Assault Damage Controls</a>".into(),
+                importance: Some(2),
+                is_positive: None,
+            },
+            ImportTypeBonus {
+                type_id: 11_381,
+                ordinal: 4,
+                source: TypeBonusSource::Misc,
+                bonus: Some(Decimal::new(50, 0)),
+                unit_id: Some(105),
+                text: "reduction in CONCORD bounties".into(),
+                importance: Some(1),
+                is_positive: Some(false),
+            },
+        ]
+    );
+}
+
+#[test]
+fn type_info_is_empty_but_details_remain_when_the_sde_lacks_its_files() {
+    let source = type_info_source(false);
+    assert!(!source.has_type_info());
+
+    let info = parse(&source).unwrap().type_info;
+
+    assert!(info.dogma_units.is_empty());
+    assert!(info.dogma_attributes.is_empty());
+    assert!(info.type_attributes.is_empty());
+    assert!(info.type_materials.is_empty());
+    assert!(info.type_bonuses.is_empty());
+    // Descriptions and volumes come from the required types file.
+    assert!(info.details.iter().any(|row| row.type_id == 40_334));
+}
+
+#[test]
+fn type_bonus_source_names_its_kind() {
+    assert_eq!(TypeBonusSource::Skill(3_330).kind(), "skill");
+    assert_eq!(TypeBonusSource::Skill(3_330).skill_type_id(), Some(3_330));
+    assert_eq!(TypeBonusSource::Role.kind(), "role");
+    assert_eq!(TypeBonusSource::Misc.kind(), "misc");
+    assert_eq!(TypeBonusSource::Misc.skill_type_id(), None);
 }

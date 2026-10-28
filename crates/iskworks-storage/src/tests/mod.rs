@@ -14,6 +14,7 @@ mod sde_geography;
 mod sde_market_catalog;
 mod sde_recipes;
 mod sde_skills;
+mod sde_type_info;
 mod skill_plans;
 mod workspace;
 
@@ -289,6 +290,7 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         stargates: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
+        type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         skipped_reaction_formulas: 0,
     }

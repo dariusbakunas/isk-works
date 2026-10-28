@@ -36,6 +36,9 @@ pub struct NormalizedSde {
     pub skills: Vec<ImportSkill>,
     /// `requiredSkill1..6` of any imported type (skills, ships, modules).
     pub required_skills: Vec<ImportRequiredSkill>,
+    /// What the Type Info window shows: descriptions, attributes,
+    /// reprocessing and ship bonuses.
+    pub type_info: ImportTypeInfo,
     pub skipped_blueprints: u64,
     pub skipped_reaction_formulas: u64,
 }
@@ -214,6 +217,112 @@ pub struct ImportRequiredSkill {
     pub ordinal: i16,
     pub skill_type_id: i64,
     pub level: i16,
+}
+
+/// The Type Info data. Everything but `details` is empty when the SDE lacks
+/// the dogma attribute, `typeMaterials` or `typeBonus` files.
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
+pub struct ImportTypeInfo {
+    pub details: Vec<ImportTypeDetails>,
+    pub dogma_units: Vec<ImportDogmaUnit>,
+    /// Published attributes with an English display name: what the game's
+    /// Attributes tab can show.
+    pub dogma_attributes: Vec<ImportDogmaAttribute>,
+    /// Imported types' values of the kept attributes.
+    pub type_attributes: Vec<ImportTypeAttribute>,
+    pub type_materials: Vec<ImportTypeMaterial>,
+    pub type_bonuses: Vec<ImportTypeBonus>,
+}
+
+/// `types.jsonl` fields only the Type Info window needs. A type with none of
+/// them has no row.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportTypeDetails {
+    pub type_id: i64,
+    /// English, with CCP's markup (`<a href=showinfo:ID>`, `<br>`, ...) kept.
+    pub description: Option<String>,
+    /// The assembled volume; `ImportType::packaged_volume_m3` is the packaged one.
+    pub volume_m3: Option<Decimal>,
+    pub mass_kg: Option<Decimal>,
+    pub capacity_m3: Option<Decimal>,
+    pub portion_size: Option<i32>,
+    pub variation_parent_type_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportDogmaUnit {
+    pub unit_id: i64,
+    pub name: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportDogmaAttribute {
+    pub attribute_id: i64,
+    pub name: String,
+    pub display_name: String,
+    pub unit_id: Option<i64>,
+    pub category_id: Option<i64>,
+    pub category_name: Option<String>,
+    pub display_when_zero: bool,
+    pub high_is_good: bool,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportTypeAttribute {
+    pub type_id: i64,
+    pub attribute_id: i64,
+    pub value: Decimal,
+}
+
+/// One fixed reprocessing output (`typeMaterials` `materials`, per portion).
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportTypeMaterial {
+    pub type_id: i64,
+    pub material_type_id: i64,
+    pub quantity: i64,
+}
+
+/// One ship (or subsystem, structure) bonus line from `typeBonus`.
+/// `ordinal` runs across the type's skill, then role, then misc bonuses.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportTypeBonus {
+    pub type_id: i64,
+    pub ordinal: i32,
+    pub source: TypeBonusSource,
+    pub bonus: Option<Decimal>,
+    pub unit_id: Option<i64>,
+    /// English, with CCP's markup kept.
+    pub text: String,
+    pub importance: Option<i32>,
+    pub is_positive: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TypeBonusSource {
+    /// Per level of this skill.
+    Skill(i64),
+    Role,
+    Misc,
+}
+
+impl TypeBonusSource {
+    #[must_use]
+    pub const fn kind(self) -> &'static str {
+        match self {
+            Self::Skill(_) => "skill",
+            Self::Role => "role",
+            Self::Misc => "misc",
+        }
+    }
+
+    #[must_use]
+    pub const fn skill_type_id(self) -> Option<i64> {
+        match self {
+            Self::Skill(id) => Some(id),
+            Self::Role | Self::Misc => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
