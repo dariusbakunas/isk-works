@@ -1,16 +1,15 @@
-import { CircleHelp } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router";
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router";
 
 import { getSession, logout } from "./api/auth";
-import mascotHead from "./assets/mascot-head.png";
 import { ApiError, createWorkspace, getWorkspaceState, type WorkspaceStateResponse } from "./api/workspace";
 import { identifyViewer, trackEvent } from "./observability/logrocket";
-import { CharacterName } from "./observability/private";
 import { AppFooter } from "./components/app-footer";
 import { HELP_PATH, LEGAL_PATH } from "./components/community-links";
-import { EsiDowntimeBadge } from "./components/esi-downtime-badge";
-import { flatNavItems, isNavPathActive } from "./components/navigation/registry";
+import { AccountMenu, ApiVersionLine } from "./components/navigation/account-menu";
+import { MobileNav } from "./components/navigation/mobile-nav";
+import { NavigationRail } from "./components/navigation/navigation-rail";
+import { useNavPinned } from "./components/navigation/use-nav-pinned";
 import { AdminPage } from "./features/admin/admin-page";
 import { LoginPage } from "./features/auth/login-page";
 import {
@@ -395,8 +394,8 @@ function AppShell({
   isAdmin: boolean;
   children: React.ReactNode;
 }) {
-  const location = useLocation();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [pinned, togglePinned] = useNavPinned();
   const footerRef = useFooterHeightVariable();
 
   async function signOut() {
@@ -410,71 +409,39 @@ function AppShell({
     }
   }
 
+  const renderAccount = (expanded: boolean) =>
+    characterName ? (
+      <AccountMenu
+        apiVersion={apiVersion}
+        characterName={characterName}
+        expanded={expanded}
+        onSignOut={signOut}
+        signingOut={loggingOut}
+      />
+    ) : (
+      <ApiVersionLine apiVersion={apiVersion} expanded={expanded} />
+    );
+
   return (
-    <div className="flex min-h-[var(--iw-viewport-h)] flex-col text-foreground">
-      <header className="flex min-h-11 items-center gap-3 border-b border-border bg-panel px-2">
-        <Link className="flex shrink-0 items-center gap-2 pr-2" to="/characters">
-          <img className="h-7 w-7" src={mascotHead} alt="" aria-hidden="true" />
-          <span className="hidden sm:block">
-            <strong className="block text-xs leading-tight">ISK Works</strong>
-            <small className="block max-w-32 truncate text-[10px] text-muted">{workspaceName}</small>
-          </span>
-        </Link>
-        <nav className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto" aria-label="Primary navigation">
-          {flatNavItems(isAdmin).map((item) => {
-            const Icon = item.icon;
-            const active = isNavPathActive(location.pathname, item.path);
-            return (
-              <Link
-                key={item.path}
-                className={`flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${
-                  active
-                    ? "border-primary bg-panel-strong text-foreground"
-                    : "border-transparent text-muted hover:bg-panel-strong hover:text-foreground"
-                }`}
-                to={item.path}
-                aria-current={active ? "page" : undefined}
-              >
-                <Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <EsiDowntimeBadge />
-        <Link
-          aria-label="Help"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-panel-strong hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          title="Help"
-          to={HELP_PATH}
-        >
-          <CircleHelp className="h-4 w-4" aria-hidden="true" />
-        </Link>
-        <span className="hidden shrink-0 font-mono text-[10px] text-muted sm:block" title={`API ${apiVersion}`}>
-          {apiVersion}
-        </span>
-        {characterName ? (
-          <div className="flex shrink-0 items-center gap-2 pl-2">
-            <CharacterName className="hidden text-xs text-muted sm:block" name={characterName} />
-
-            <button
-              className="iw-button-secondary shrink-0 px-2 py-1 text-xs"
-              disabled={loggingOut}
-              onClick={signOut}
-              type="button"
-            >
-              {loggingOut ? "Signing out..." : "Sign out"}
-            </button>
-          </div>
-        ) : null}
-      </header>
-
-      <div className="iw-app-layout flex-1 lg:grid">
-        <main className="iw-page-container min-w-0">{children}</main>
-        <aside data-testid="app-right-rail" id="app-right-rail" />
+    <div className="flex min-h-[var(--iw-viewport-h)] text-foreground">
+      <div className="sticky top-[var(--iw-banner-h,0px)] z-30 hidden h-[var(--iw-viewport-h)] shrink-0 md:block">
+        <NavigationRail
+          isAdmin={isAdmin}
+          onTogglePinned={togglePinned}
+          pinned={pinned}
+          renderAccount={renderAccount}
+          workspaceName={workspaceName}
+        />
       </div>
-      <div ref={footerRef}>
-        <AppFooter className="border-t border-border" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileNav isAdmin={isAdmin} renderAccount={renderAccount} workspaceName={workspaceName} />
+        <div className="iw-app-layout flex-1 lg:grid">
+          <main className="iw-page-container min-w-0">{children}</main>
+          <aside data-testid="app-right-rail" id="app-right-rail" />
+        </div>
+        <div ref={footerRef}>
+          <AppFooter className="border-t border-border" />
+        </div>
       </div>
     </div>
   );

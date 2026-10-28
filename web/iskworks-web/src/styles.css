@@ -37,6 +37,13 @@
      distinct from ticket status colors; primary/warning/positive already
      cover ACQ/MFG/ASM, this is the one genuinely missing hue. */
   --color-reaction: oklch(0.6 0.16 310);
+  /* Navigation rail (spec 2026-10-27-navigation-rail §9): the prototype's
+     sidebar, hover, bright and faint tones. "subtle" because Finance already
+     owns --color-faint with a dimmer value. */
+  --color-sidebar: #080b10;
+  --color-hover: #171e27;
+  --color-bright: #e4e9f0;
+  --color-subtle: #596779;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --text-xs: 0.6875rem;
   --text-xs--line-height: 1rem;
@@ -564,6 +571,14 @@ body {
    the shell and publishes its height as --iw-banner-h (unset on production).
    Full-height layouts use this instead of 100vh so the footer stays in view. */
 :root { --iw-viewport-h: calc(100vh - var(--iw-banner-h, 0px)); }
+
+/* Height of the app's top bar: the mobile navigation bar (h-11) below md; from
+   md up the navigation is a left rail and there is no top bar. Full-height
+   workspaces subtract this instead of a hardcoded header height. */
+:root { --iw-header-h: 2.75rem; }
+@media (min-width: 48rem) {
+  :root { --iw-header-h: 0px; }
+}
 
 /* Non-production environment marker (see components/environment-banner.tsx):
    hazard stripes so it can't be mistaken for ordinary chrome. */

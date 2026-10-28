@@ -93,7 +93,7 @@ export function BlueprintsPage() {
 
   return (
     <section
-      className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-2.75rem-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4"
+      className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-var(--iw-header-h)-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4"
       data-blueprints-workspace
     >
       <header className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-3">
