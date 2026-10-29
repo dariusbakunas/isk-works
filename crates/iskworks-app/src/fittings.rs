@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use iskworks_core::fitting::{
-    evaluate_flyability, fit_requirements, requirement_plan, AssetHoldingsRepository,
-    CapacitorState, CatalogueEntry, CatalogueKind, DamageProfile, EftError, EftLine, ExplainTarget,
-    Fit, FitCalculation, FitCatalogue, FitDraft, FitId, FitInput, FitItem, FitRepository,
-    FitRequirements, FittingEngine, FittingError, FlyabilityStatus, Hardpoint, Pilot,
-    PilotFlyability, PilotSkills, SlotKind, SourceRef,
+    canonical_tag_casing, canonical_tags, evaluate_flyability, fit_requirements, requirement_plan,
+    AssetHoldingsRepository, CapacitorState, CatalogueEntry, CatalogueKind, DamageProfile,
+    EftError, EftLine, ExplainTarget, Fit, FitCalculation, FitCatalogue, FitDraft, FitId, FitInput,
+    FitItem, FitRepository, FitRequirements, FitTagEdit, FittingEngine, FittingError,
+    FlyabilityStatus, Hardpoint, Pilot, PilotFlyability, PilotSkills, SlotKind, SourceRef,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::skills::{parse_skills_summary, CharacterSkillsSnapshot};
@@ -44,6 +44,8 @@ pub struct FitSummary {
     pub name: String,
     pub ship: FitType,
     pub item_count: usize,
+    /// By name.
+    pub tags: Vec<String>,
     pub updated_at: DateTime<Utc>,
     /// Every workspace character and whether it can fly the fit.
     pub pilots: Vec<FitListPilot>,
@@ -198,6 +200,8 @@ pub struct FitDetail {
     pub description: String,
     pub ship: FitType,
     pub items: Vec<FitItemView>,
+    /// By name.
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -819,6 +823,7 @@ impl FittingService {
                     name: fit.name.clone(),
                     ship: fit_type(&references, fit.ship_type_id),
                     item_count: fit.items.len(),
+                    tags: fit.tags.clone(),
                     updated_at: fit.updated_at,
                     pilots: snapshots
                         .iter()
@@ -878,6 +883,36 @@ impl FittingService {
         id: FitId,
     ) -> Result<bool, InventoryError> {
         self.fits.delete_fit(workspace_id, id).await
+    }
+
+    /// Replaces the fit's tags, in the casing the workspace already uses.
+    /// `None` when the fit isn't in the workspace.
+    pub async fn set_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+        tags: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError> {
+        let in_use = self.fits.fit_tags_in_use(workspace_id).await?;
+        let tags = canonical_tags(tags, &in_use).map_err(InventoryError::Validation)?;
+        self.fits.replace_fit_tags(workspace_id, id, &tags).await
+    }
+
+    /// Adds and removes tags on many fits; fits not in the workspace are
+    /// skipped.
+    pub async fn edit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        edit: &FitTagEdit,
+    ) -> Result<(), InventoryError> {
+        let edit = edit.validate().map_err(InventoryError::Validation)?;
+        let in_use = self.fits.fit_tags_in_use(workspace_id).await?;
+        // Casing only: an edit can add more than a fit may hold, and the
+        // per-fit limit is the single-fit form's to keep.
+        let add = canonical_tag_casing(&edit.add, &in_use);
+        self.fits
+            .edit_fit_tags(workspace_id, &edit.fit_ids, &add, &edit.remove)
+            .await
     }
 
     /// What importing `text` would make; nothing is saved.
@@ -986,6 +1021,7 @@ impl FittingService {
             items: item_views(&references, self.catalogue.as_deref(), &fit.items),
             name: fit.name,
             description: fit.description,
+            tags: fit.tags,
             created_at: fit.created_at,
             updated_at: fit.updated_at,
         })
