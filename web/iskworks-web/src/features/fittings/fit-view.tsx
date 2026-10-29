@@ -6,6 +6,7 @@ import {
   createFit,
   deleteFit,
   exportFitText,
+  setFitTags,
   type CatalogueItem,
   type FitDetail,
   type FitPilot,
@@ -37,6 +38,7 @@ import {
   type RackSizes,
 } from "./fit-draft";
 import { PriceSection, unitPrices } from "./fit-cost";
+import { FitTagsEditor } from "./fit-tags";
 import { HoldingsButton, HoldingsDialog } from "./holdings-dialog";
 import { ModuleBrowser, type DraggedType } from "./module-browser";
 import { VariationsDialog } from "./variations-dialog";
@@ -45,7 +47,7 @@ import { PilotsPanel } from "./pilots-panel";
 import { StatsRail } from "./stats-rail";
 import { useFitEditor } from "./use-fit-editor";
 import { useQuickChanges } from "./use-quick-changes";
-import { useFit, useFitAssets, useFitCost, useFitParams, useFitPilots, useFitStats } from "./use-fittings";
+import { useFit, useFitAssets, useFitCost, useFitParams, useFitPilots, useFitStats, useWorkspaceTags } from "./use-fittings";
 
 const STATUS: Record<FlyabilityStatus | "unknown", { label: string; icon: LucideIcon; className: string }> = {
   canUseAll: { label: "can use all", icon: CircleCheck, className: "text-positive" },
@@ -131,6 +133,7 @@ function Header({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const shipName = fit.ship.name ?? `Type ${fit.ship.typeId}`;
+  const workspaceTags = useWorkspaceTags(fit.id);
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -175,6 +178,9 @@ function Header({
             <h1 {...PRIVATE_ATTR} className="iw-title">{fit.name}</h1>
           )}
           <p className="text-[0.625rem] uppercase tracking-wide text-muted">{fit.ship.groupName}</p>
+          <div className="mt-1">
+            <FitTagsEditor fitId={fit.id} initial={fit.tags} onChanged={onChanged} suggestions={workspaceTags} />
+          </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {editing ? null : (
@@ -204,6 +210,7 @@ function Header({
             onClick={() =>
               void run(async () => {
                 const copy = await createFit({ ...toFitDraft(draftFrom(fit), fit.ship.typeId), name: `${fit.name} (copy)` });
+                if (fit.tags.length) await setFitTags(copy.id, fit.tags);
                 onChanged();
                 navigate(`/fittings/${copy.id}`);
               })

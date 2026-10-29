@@ -9,6 +9,14 @@ afterEach(() => vi.restoreAllMocks());
 const statsCalls = (fetchSpy: ReturnType<typeof stubFetch>) =>
   fetchSpy.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/stats"));
 
+const tagWrites = (fetchSpy: ReturnType<typeof stubFetch>) =>
+  fetchSpy.mock.calls
+    .filter(([input, init]) => String(input).endsWith("/tags") && (init as RequestInit | undefined)?.method === "PUT")
+    .map(([input, init]) => ({
+      url: new URL(String(input), "http://localhost").pathname,
+      tags: JSON.parse((init as RequestInit).body as string).tags,
+    }));
+
 describe("Fittings › fit view", () => {
   test("the ship, its modules and their loaded charges open in Type Info", async () => {
     stubFetch();
@@ -161,6 +169,44 @@ describe("Fittings › fit view", () => {
     expect(body.name).toBe("Null Transport (copy)");
     expect(body.items).toHaveLength(6);
     expect(body.items[0]).not.toHaveProperty("name");
+    // The copy keeps the fit's tags.
+    await waitFor(() => expect(tagWrites(fetchSpy)).toEqual([{ url: "/api/fittings/copy-id/tags", tags: ["Hauling"] }]));
+  });
+
+  test("tags are added from the header with suggestions, and removed, saving each change at once", async () => {
+    const fetchSpy = stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    const tags = await screen.findByRole("list", { name: "Tags" });
+    expect(within(tags).getByText("Hauling")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = screen.getByRole("combobox", { name: "New tag" });
+    // The workspace's other tags are offered.
+    await waitFor(() =>
+      expect([...document.querySelectorAll("datalist option")].map((option) => option.getAttribute("value"))).toEqual(["Lowsec"]),
+    );
+    fireEvent.change(input, { target: { value: " Cyno " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await within(tags).findByText("Cyno")).toBeInTheDocument();
+    expect(tagWrites(fetchSpy)).toEqual([{ url: `/api/fittings/${FIT_ID}/tags`, tags: ["Hauling", "Cyno"] }]);
+
+    fireEvent.click(within(tags).getByRole("button", { name: "Remove tag Hauling" }));
+    await waitFor(() => expect(within(tags).queryByText("Hauling")).not.toBeInTheDocument());
+    expect(tagWrites(fetchSpy).at(-1)).toEqual({ url: `/api/fittings/${FIT_ID}/tags`, tags: ["Cyno"] });
+  });
+
+  test("Escape closes the new tag field without saving", async () => {
+    const fetchSpy = stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add tag" }));
+    const input = screen.getByRole("combobox", { name: "New tag" });
+    fireEvent.change(input, { target: { value: "Cyno" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("combobox", { name: "New tag" })).not.toBeInTheDocument();
+    expect(tagWrites(fetchSpy)).toEqual([]);
   });
 
   test("Delete asks first, then removes the fit and goes back to the list", async () => {
