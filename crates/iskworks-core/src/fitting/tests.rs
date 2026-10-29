@@ -269,3 +269,66 @@ fn a_stored_fit_is_calculated_from_its_ship_and_items() {
         }
     );
 }
+
+fn tags(names: &[&str]) -> Vec<String> {
+    names.iter().map(ToString::to_string).collect()
+}
+
+#[test]
+fn a_tag_is_trimmed_with_its_inner_whitespace_collapsed() {
+    assert_eq!(
+        normalize_tag("  Cyno \t alts "),
+        Ok("Cyno alts".to_string())
+    );
+}
+
+#[test]
+fn a_tag_is_one_to_forty_characters() {
+    assert!(normalize_tag("   ").is_err());
+    assert!(normalize_tag(&"x".repeat(41)).is_err());
+    assert_eq!(normalize_tag(&"é".repeat(40)), Ok("é".repeat(40)));
+}
+
+#[test]
+fn a_fit_holds_a_tag_once_whatever_its_case_and_lists_them_by_name() {
+    assert_eq!(
+        canonical_tags(&tags(&["ratting", "Cyno", "cyno", "Abyss"]), &[]),
+        Ok(tags(&["Abyss", "Cyno", "ratting"]))
+    );
+}
+
+#[test]
+fn a_tag_takes_the_casing_the_workspace_already_uses() {
+    assert_eq!(
+        canonical_tags(&tags(&["cyno", "new one"]), &tags(&["CYNO", "Ratting"])),
+        Ok(tags(&["CYNO", "new one"]))
+    );
+}
+
+#[test]
+fn a_fit_holds_at_most_twenty_tags() {
+    let many: Vec<String> = (0..21).map(|index| format!("tag {index}")).collect();
+    assert!(canonical_tags(&many, &[]).unwrap_err().contains("20"));
+    assert_eq!(
+        canonical_tags(&many[..20], &[]).map(|tags| tags.len()),
+        Ok(20)
+    );
+}
+
+#[test]
+fn a_bulk_tag_edit_names_fits_and_something_to_change() {
+    let fit = FitId(uuid::Uuid::nil());
+    let edit = |fit_ids: Vec<FitId>, add: &[&str], remove: &[&str]| FitTagEdit {
+        fit_ids,
+        add: tags(add),
+        remove: tags(remove),
+    };
+    assert!(edit(vec![], &["Cyno"], &[]).validate().is_err());
+    assert!(edit(vec![fit], &[], &[]).validate().is_err());
+    assert!(edit(vec![fit; 501], &["Cyno"], &[]).validate().is_err());
+    assert!(edit(vec![fit], &[""], &[]).validate().is_err());
+    assert_eq!(
+        edit(vec![fit], &[" Cyno "], &["ratting  alts"]).validate(),
+        Ok(edit(vec![fit], &["Cyno"], &["ratting alts"]))
+    );
+}
