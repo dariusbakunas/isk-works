@@ -117,20 +117,21 @@ export interface TreeGroup {
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 
-/** Fits as the "Hulls & Fits" tree: ship group → ship → fits, by name. */
-export function fitTree(fits: FitSummary[]): TreeGroup[] {
+/** Fits grouped by `groupsOf` (a fit can be in several), then by ship, all by name; `fallback` goes last. */
+function groupedTree(fits: FitSummary[], groupsOf: (fit: FitSummary) => string[], fallback: string): TreeGroup[] {
   const groups = new Map<string, Map<number, TreeShip>>();
   for (const fit of fits) {
-    const groupName = fit.ship.groupName || "Unknown group";
-    const ships = groups.get(groupName) ?? new Map<number, TreeShip>();
-    groups.set(groupName, ships);
-    const ship = ships.get(fit.ship.typeId) ?? {
-      typeId: fit.ship.typeId,
-      name: fit.ship.name || `Type ${fit.ship.typeId}`,
-      fits: [],
-    };
-    ship.fits.push(fit);
-    ships.set(fit.ship.typeId, ship);
+    for (const groupName of groupsOf(fit)) {
+      const ships = groups.get(groupName) ?? new Map<number, TreeShip>();
+      groups.set(groupName, ships);
+      const ship = ships.get(fit.ship.typeId) ?? {
+        typeId: fit.ship.typeId,
+        name: fit.ship.name || `Type ${fit.ship.typeId}`,
+        fits: [],
+      };
+      ship.fits.push(fit);
+      ships.set(fit.ship.typeId, ship);
+    }
   }
   return [...groups.entries()]
     .map(([name, ships]) => {
@@ -139,12 +140,23 @@ export function fitTree(fits: FitSummary[]): TreeGroup[] {
       return { name, fitCount: sorted.reduce((sum, ship) => sum + ship.fits.length, 0), ships: sorted };
     })
     .sort((a, b) => {
-      // The fallback group goes last.
-      if (a.name === "Unknown group") return 1;
-      if (b.name === "Unknown group") return -1;
-      return a.name.localeCompare(b.name);
+      if (a.name === fallback) return 1;
+      if (b.name === fallback) return -1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
 }
+
+/** Fits as the "Hulls & Fits" tree: ship group → ship → fits, by name. */
+export function fitTree(fits: FitSummary[]): TreeGroup[] {
+  return groupedTree(fits, (fit) => [fit.ship.groupName || "Unknown group"], "Unknown group");
+}
+
+/** Fits by tag: tag → ship → fits. A fit shows under each of its tags; untagged ones come last. */
+export function fitTagTree(fits: FitSummary[]): TreeGroup[] {
+  return groupedTree(fits, (fit) => (fit.tags.length ? fit.tags : [UNTAGGED]), UNTAGGED);
+}
+
+export const UNTAGGED = "Untagged";
 
 /** A fit's characters split for its flyability chips; unknown ones are left out. */
 export function pilotsByStatus(pilots: FitListPilot[]) {

@@ -20,6 +20,8 @@ import {
 } from "../../api/fittings";
 import { useLoad, type Loaded } from "../../hooks/use-load";
 
+import { workspaceTags } from "./fit-tags";
+
 export function useFittingsMeta(): Loaded<FittingsMeta> {
   return useLoad((signal) => getFittingsMeta(signal), "meta");
 }
@@ -27,6 +29,12 @@ export function useFittingsMeta(): Loaded<FittingsMeta> {
 /** `revision` refetches after an import, a copy or a delete. */
 export function useFits(revision: number): Loaded<FitSummary[]> {
   return useLoad((signal) => listFits(signal), `fits:${revision}`);
+}
+
+/** Every tag in the workspace, for suggestions; refetches when `version` changes. */
+export function useWorkspaceTags(version: string): string[] {
+  const fits = useLoad((signal) => listFits(signal), `fit-tags:${version}`);
+  return workspaceTags(fits.data ?? []);
 }
 
 export function useFit(id: string): Loaded<FitDetail> {

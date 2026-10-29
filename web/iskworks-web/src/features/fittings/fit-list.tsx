@@ -2,18 +2,20 @@ import { ChevronDown, ClipboardPaste, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
-import type { FitSummary } from "../../api/fittings";
+import { editFitTags, type FitSummary } from "../../api/fittings";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { OperationalTable, OperationalTableRow, type OperationalColumn } from "../../components/operational-table";
 import { EmptyState, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
-import { fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
+import { TagChips, TagInput, workspaceTags } from "./fit-tags";
+import { fitTagTree, fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
 import { ImportDialog } from "./import-dialog";
 import { NewFitDialog } from "./new-fit-dialog";
 import { useFits } from "./use-fittings";
 
 const COLUMNS: OperationalColumn[] = [
+  { key: "select", label: "", width: "32px" },
   { key: "fit", label: "Fit", width: "minmax(220px, 2fr)" },
   { key: "flyability", label: "Flyability", width: "minmax(200px, 1fr)", hideBelow: "tablet" },
 ];
@@ -47,6 +49,52 @@ export function FlyabilityChips({ fit }: { fit: FitSummary }) {
         </span>
       ) : null}
     </span>
+  );
+}
+
+type TreeMode = "hulls" | "tags";
+const TREE_MODE_KEY = "iskworks:fittings-tree";
+
+function readTreeMode(): TreeMode {
+  try {
+    return window.localStorage.getItem(TREE_MODE_KEY) === "tags" ? "tags" : "hulls";
+  } catch {
+    return "hulls";
+  }
+}
+
+/** Which tree the browser shows, remembered per browser. */
+function useTreeMode(): [TreeMode, (mode: TreeMode) => void] {
+  const [mode, setMode] = useState(readTreeMode);
+  const choose = (next: TreeMode) => {
+    setMode(next);
+    try {
+      window.localStorage.setItem(TREE_MODE_KEY, next);
+    } catch {
+      // Storage off: it just won't be remembered.
+    }
+  };
+  return [mode, choose];
+}
+
+function TreeModeToggle({ mode, onChange }: { mode: TreeMode; onChange: (mode: TreeMode) => void }) {
+  const option = (value: TreeMode, label: string) => (
+    <button
+      aria-pressed={mode === value}
+      className={`h-6 flex-1 rounded-[3px] text-[0.6875rem] font-semibold ${
+        mode === value ? "bg-panel-strong text-foreground" : "text-muted hover:text-foreground"
+      }`}
+      onClick={() => onChange(value)}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div aria-label="Group fits by" className="mb-2 flex gap-0.5 rounded-md border border-border bg-background p-0.5" role="group">
+      {option("hulls", "Hulls")}
+      {option("tags", "Tags")}
+    </div>
   );
 }
 
@@ -116,6 +164,8 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   const [flyableBy, setFlyableBy] = useState("");
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useTreeMode();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -123,16 +173,28 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
       (fit) =>
         (!needle ||
           fit.name.toLowerCase().includes(needle) ||
-          (fit.ship.name ?? "").toLowerCase().includes(needle)) &&
+          (fit.ship.name ?? "").toLowerCase().includes(needle) ||
+          fit.tags.some((tag) => tag.toLowerCase().includes(needle))) &&
         (!flyableBy || flies(fit, flyableBy)),
     );
   }, [data, flyableBy, query]);
-  const tree = useMemo(() => fitTree(visible), [visible]);
+  const tree = useMemo(() => (mode === "tags" ? fitTagTree(visible) : fitTree(visible)), [mode, visible]);
+  const anyTags = (data ?? []).some((fit) => fit.tags.length > 0);
+  // Only fits shown count: a filter hides a fit from the bulk actions too.
+  const selectedFits = visible.filter((fit) => selected.has(fit.id));
+  const toggleSelected = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const hulls = new Set(visible.map((fit) => fit.ship.typeId)).size;
 
   return (
     <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="iw-panel p-2">
+        <TreeModeToggle mode={mode} onChange={setMode} />
         <label className="flex items-center gap-2 rounded-md border border-border bg-background px-2">
           <Search aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
           <input
@@ -145,7 +207,11 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
           />
         </label>
         <div className="mt-2">
-          <HullTree groups={tree} searching={query.trim() !== ""} />
+          {mode === "tags" && !anyTags && data?.length ? (
+            <p className="px-1 pb-1.5 text-[0.6875rem] text-muted">Tag fits from a fit's header or by selecting them in the table.</p>
+          ) : null}
+          {/* Each tree keeps its own open groups. */}
+          <HullTree groups={tree} key={mode} searching={query.trim() !== ""} />
         </div>
       </aside>
 
@@ -214,9 +280,23 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
 
         {visible.length ? (
           <div className="iw-panel">
+            <BulkBar
+              allTags={workspaceTags(data ?? [])}
+              onChanged={onChanged}
+              onClear={() => setSelected(new Set())}
+              onSelectAll={(all) => setSelected(all ? new Set(visible.map((fit) => fit.id)) : new Set())}
+              selected={selectedFits}
+              shown={visible.length}
+            />
             <OperationalTable ariaLabel="Fits" columns={COLUMNS} onSelectRow={(id) => navigate(id)} selectedRowKey={null}>
               {visible.map((fit) => (
-                <FitRow fit={fit} key={fit.id} onOpen={() => navigate(fit.id)} />
+                <FitRow
+                  checked={selected.has(fit.id)}
+                  fit={fit}
+                  key={fit.id}
+                  onOpen={() => navigate(fit.id)}
+                  onToggle={() => toggleSelected(fit.id)}
+                />
               ))}
             </OperationalTable>
           </div>
@@ -247,10 +327,100 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   );
 }
 
-function FitRow({ fit, onOpen }: { fit: FitSummary; onOpen: () => void }) {
+/** Select all, and with fits selected, tag or untag them all at once. */
+function BulkBar({
+  selected,
+  shown,
+  allTags,
+  onSelectAll,
+  onClear,
+  onChanged,
+}: {
+  selected: FitSummary[];
+  shown: number;
+  allTags: string[];
+  onSelectAll: (all: boolean) => void;
+  onClear: () => void;
+  onChanged: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const held = workspaceTags(selected);
+  const edit = async (change: { add?: string[]; remove?: string[] }) => {
+    setError(null);
+    setSaving(true);
+    try {
+      await editFitTags({ fitIds: selected.map((fit) => fit.id), ...change });
+      onChanged();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Couldn't change the tags.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="flex min-h-9 flex-wrap items-center gap-2 border-b border-border px-2 py-1 text-xs">
+      <label className="flex items-center gap-1.5 text-muted">
+        <input
+          aria-label="Select all fits shown"
+          checked={selected.length > 0 && selected.length === shown}
+          onChange={(event) => onSelectAll(event.target.checked)}
+          ref={(input) => {
+            if (input) input.indeterminate = selected.length > 0 && selected.length < shown;
+          }}
+          type="checkbox"
+        />
+        {selected.length ? null : "Select fits to tag them"}
+      </label>
+      {selected.length ? (
+        <>
+          <span className="font-semibold text-foreground">{selected.length} selected</span>
+          <TagInput
+            autoFocus={false}
+            label="Tag to add"
+            onSubmit={(tag) => void edit({ add: [tag] })}
+            placeholder="Add tag"
+            suggestions={allTags}
+          />
+          <select
+            aria-label="Remove tag"
+            className="iw-input h-7 min-h-0 w-auto py-0 text-[0.6875rem]"
+            disabled={saving || held.length === 0}
+            onChange={(event) => {
+              if (event.target.value) void edit({ remove: [event.target.value] });
+            }}
+            value=""
+          >
+            <option value="">Remove tag…</option>
+            {held.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+          <button aria-label="Clear selection" className="text-muted hover:text-foreground" onClick={onClear} type="button">
+            Clear
+          </button>
+          {error ? <span className="text-danger" role="alert">{error}</span> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function FitRow({ fit, checked, onOpen, onToggle }: { fit: FitSummary; checked: boolean; onOpen: () => void; onToggle: () => void }) {
   return (
     <OperationalTableRow
       cells={{
+        select: (
+          <input
+            aria-label={`Select ${fit.name}`}
+            checked={checked}
+            onChange={onToggle}
+            // Ticking a row selects it; it doesn't open the fit.
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+            type="checkbox"
+          />
+        ),
         fit: (
           <span className="flex min-w-0 items-center gap-2">
             <EveTypeImage size={32} typeId={fit.ship.typeId} typeName={fit.ship.name ?? "Ship"} />
@@ -260,6 +430,7 @@ function FitRow({ fit, onOpen }: { fit: FitSummary; onOpen: () => void }) {
                 {fit.ship.name ?? `Type ${fit.ship.typeId}`}
                 {fit.ship.groupName ? ` · ${fit.ship.groupName}` : ""}
               </span>
+              <TagChips small tags={fit.tags} />
             </span>
           </span>
         ),

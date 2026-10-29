@@ -110,6 +110,8 @@ export interface FitSummary {
   name: string;
   ship: FitType;
   itemCount: number;
+  /** By name. */
+  tags: string[];
   updatedAt: string;
   pilots: FitListPilot[];
 }
@@ -121,6 +123,8 @@ export interface FitDetail {
   description: string;
   ship: FitType;
   items: FitItemView[];
+  /** By name. */
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +173,23 @@ export function updateFit(id: string, draft: FitDraft): Promise<FitDetail> {
 
 export function deleteFit(id: string): Promise<void> {
   return request<void>(`/api/fittings/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Replaces the fit's tags; answers them as stored (the workspace's casing, by name). */
+export async function setFitTags(id: string, tags: string[]): Promise<string[]> {
+  const body = await request<{ tags: string[] }>(`/api/fittings/${encodeURIComponent(id)}/tags`, {
+    method: "PUT",
+    ...jsonBody({ tags }),
+  });
+  return body.tags;
+}
+
+/** Adds and removes tags on many fits at once. */
+export function editFitTags(edit: { fitIds: string[]; add?: string[]; remove?: string[] }): Promise<void> {
+  return request<void>("/api/fittings/tags", {
+    method: "POST",
+    ...jsonBody({ fitIds: edit.fitIds, add: edit.add ?? [], remove: edit.remove ?? [] }),
+  });
 }
 
 export function previewFitText(text: string, signal?: AbortSignal): Promise<FitTextPreview> {
