@@ -1,4 +1,4 @@
-import { Check, Circle, Flame, Lock, MoreHorizontal, X } from "lucide-react";
+import { Check, Circle, CircleDot, Flame, Lock, MoreHorizontal, X } from "lucide-react";
 
 import type {
   FitItemView,
@@ -56,13 +56,18 @@ const EMPTY_LABELS: Partial<Record<SlotKind, string>> = {
 };
 
 /** As pyfa draws them: a red cross offline, a yellow ring online, a green
- * check active, and a flame overheated. */
+ * check active, and a flame overheated (a passive module online: see
+ * `PASSIVE_ON`). */
 const STATE_ICONS: Record<ModuleState, { icon: typeof Circle; className: string }> = {
   offline: { icon: X, className: "text-danger" },
   online: { icon: Circle, className: "text-warning" },
   active: { icon: Check, className: "text-positive" },
   overload: { icon: Flame, className: "text-danger" },
 };
+
+/** A passive module (it goes no higher than online) that is online is fully
+ * on, so it reads as on rather than as an active module left idle. */
+const PASSIVE_ON = { icon: CircleDot, className: "text-positive" };
 
 const STATE_ORDER: ModuleState[] = ["offline", "online", "active", "overload"];
 
@@ -73,12 +78,18 @@ const toggleOf = (event: { shiftKey: boolean; altKey: boolean }): StateToggle =>
   event.altKey ? "offline" : event.shiftKey ? "overload" : "toggle";
 
 /** The state a module reached (or, without stats, the one it asks for). */
-function StateGlyph({ requested, reached }: { requested: ModuleState; reached: ModuleState | null }) {
+function StateGlyph({ requested, stats }: { requested: ModuleState; stats: ItemStats | null }) {
+  const reached = stats?.reachedState ?? null;
   // A state above the requested one is from stats not yet recalculated.
   const shown = reached !== null && STATE_ORDER.indexOf(reached) <= STATE_ORDER.indexOf(requested) ? reached : requested;
-  const { icon: Icon, className } = STATE_ICONS[shown];
   const lower = shown !== requested;
-  const label = lower ? `${stateLabel(shown)} (requested ${stateLabel(requested)})` : stateLabel(shown);
+  const passiveOn = !lower && shown === "online" && stats?.maxState === "online";
+  const { icon: Icon, className } = passiveOn ? PASSIVE_ON : STATE_ICONS[shown];
+  const label = lower
+    ? `${stateLabel(shown)} (requested ${stateLabel(requested)})`
+    : passiveOn
+      ? `${stateLabel(shown)} (passive)`
+      : stateLabel(shown);
   return (
     <span aria-label={label} className={`inline-flex ${lower ? "opacity-60" : ""}`} role="img" title={label}>
       <Icon aria-hidden="true" className={`h-3.5 w-3.5 ${className}`} />
@@ -206,10 +217,10 @@ function ModuleRow({
             title={drones ? DRONE_HINT : STATE_HINT}
             type="button"
           >
-            <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />
+            <StateGlyph requested={item.state} stats={stats} />
           </button>
         ) : (
-          <StateGlyph reached={stats?.reachedState ?? null} requested={item.state} />
+          <StateGlyph requested={item.state} stats={stats} />
         ),
         module: (
           <span className="flex min-w-0 items-center gap-1.5">

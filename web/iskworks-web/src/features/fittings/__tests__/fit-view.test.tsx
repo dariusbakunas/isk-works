@@ -104,6 +104,25 @@ describe("Fittings › fit view", () => {
     expect(within(afterburner).getByRole("img", { name: "Online (requested Active)" })).toBeInTheDocument();
   });
 
+  test("a passive module that's on reads apart from an active module left online", async () => {
+    stubFetch();
+    const { unmount } = renderPage(`/fittings/${FIT_ID}`);
+
+    const passive = await screen.findByRole("row", { name: /Damage Control II/ });
+    expect(within(passive).getByRole("img", { name: "Online (passive)" })).toBeInTheDocument();
+    unmount();
+
+    const view = statsView();
+    view.items[0] = { ...view.items[0]!, maxState: "active" };
+    stubFetch({ statsView: view });
+    renderPage(`/fittings/${FIT_ID}`);
+
+    // Stats are in once the afterburner shows the state it was held to.
+    await screen.findByRole("img", { name: "Online (requested Active)" });
+    const idle = screen.getByRole("row", { name: /Damage Control II/ });
+    expect(within(idle).getByRole("img", { name: "Online" })).toBeInTheDocument();
+  });
+
   test("a module the pilot can't use is locked; broken rules and unknown types are chipped", async () => {
     stubFetch({
       statsView: statsView({ flyability: pilots()[1].flyability }),
