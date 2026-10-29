@@ -50,10 +50,12 @@ export function FlyabilityChips({ fit }: { fit: FitSummary }) {
   );
 }
 
-function HullTree({ groups }: { groups: TreeGroup[] }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+// Groups start collapsed; a search opens every group so its matches show.
+function HullTree({ groups, searching }: { groups: TreeGroup[]; searching: boolean }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const isOpen = (name: string) => searching || expanded.has(name);
   const toggle = (name: string) =>
-    setCollapsed((current) => {
+    setExpanded((current) => {
       const next = new Set(current);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -64,15 +66,16 @@ function HullTree({ groups }: { groups: TreeGroup[] }) {
       {groups.map((group) => (
         <div key={group.name}>
           <button
-            aria-expanded={!collapsed.has(group.name)}
+            aria-expanded={isOpen(group.name)}
             className="flex w-full items-center gap-1 px-1 py-1.5 text-left font-semibold text-muted hover:text-foreground"
+            disabled={searching}
             onClick={() => toggle(group.name)}
             type="button"
           >
-            <ChevronDown aria-hidden="true" className={`h-3 w-3 transition ${collapsed.has(group.name) ? "-rotate-90" : ""}`} />
+            <ChevronDown aria-hidden="true" className={`h-3 w-3 transition ${isOpen(group.name) ? "" : "-rotate-90"}`} />
             {group.name}
           </button>
-          {collapsed.has(group.name)
+          {!isOpen(group.name)
             ? null
             : group.ships.map((ship) => (
                 <div className="pl-3" key={ship.typeId}>
@@ -142,7 +145,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
           />
         </label>
         <div className="mt-2">
-          <HullTree groups={tree} />
+          <HullTree groups={tree} searching={query.trim() !== ""} />
         </div>
       </aside>
 
