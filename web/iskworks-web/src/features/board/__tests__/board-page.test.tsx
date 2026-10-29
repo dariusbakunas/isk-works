@@ -1051,6 +1051,58 @@ describe("BoardPage combining tickets", () => {
     expect(screen.getAllByText("ISK-1205")).toEqual([within(combinedFrom).getByText("ISK-1205")]);
     expect(screen.getByText("⧉ 2 epics")).toBeInTheDocument();
   });
+
+  it("suggests combining every same-item group and combines the checked ones", async () => {
+    industryApi.listTickets.mockResolvedValue([
+      step("t-1205", "ISK-1205", "order-1"),
+      step("t-1214", "ISK-1214", "order-2"),
+      step("t-1202", "ISK-1202", "order-1", 16662),
+      step("t-1203", "ISK-1203", "order-2", 16662),
+      step("t-1204", "ISK-1204", "order-3", 16662),
+    ]);
+    industryApi.combineTickets.mockResolvedValue(step("t-1300", "ISK-1300", "order-1"));
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "2 combine suggestions" }));
+    const dialog = screen.getByRole("dialog", { name: "Combine suggestions" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Combine selected (2)" }));
+
+    expect(industryApi.combineTickets).toHaveBeenNthCalledWith(1, ["t-1202", "t-1203", "t-1204"]);
+    expect(industryApi.combineTickets).toHaveBeenNthCalledWith(2, ["t-1205", "t-1214"]);
+    expect(within(dialog).getAllByText("Combined")).toHaveLength(2);
+    industryApi.listTickets.mockClear();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(industryApi.listTickets).toHaveBeenCalled());
+  });
+
+  it("hides suggestions when nothing can be combined", async () => {
+    industryApi.listTickets.mockResolvedValue([step("t-1205", "ISK-1205", "order-1")]);
+
+    renderPage();
+    await screen.findByText("ISK-1205");
+    expect(screen.queryByRole("button", { name: /combine suggestion/ })).not.toBeInTheDocument();
+  });
+
+  it("selects the rest of a step's group from the selection bar", async () => {
+    industryApi.listTickets.mockResolvedValue([
+      step("t-1202", "ISK-1202", "order-1", 16662),
+      step("t-1203", "ISK-1203", "order-2", 16662),
+      step("t-1204", "ISK-1204", "order-3", 16662),
+      step("t-1205", "ISK-1205", "order-1"),
+    ]);
+
+    renderPage();
+    await screen.findByText("ISK-1202");
+    await userEvent.click(screen.getByRole("button", { name: "Select" }));
+    await userEvent.click(screen.getByLabelText("Select ISK-1202"));
+    await userEvent.click(screen.getByRole("button", { name: "Select all 3" }));
+
+    expect(screen.getByLabelText("Select ISK-1203")).toBeChecked();
+    expect(screen.getByLabelText("Select ISK-1204")).toBeChecked();
+    expect(screen.getByLabelText("Select ISK-1205")).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Combine (3)" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Select all/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("BoardPage ticket drag-and-drop", () => {

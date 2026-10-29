@@ -11,11 +11,17 @@ export function OrderSelectionBar({
   onClear,
   onCreateRun,
   onCombine,
+  onSelectGroup,
+  groupSize = 0,
 }: {
   selectedTickets: Ticket[];
   onClear: () => void;
   onCreateRun: () => void;
   onCombine: () => void;
+  // Set while the first selected step's combine suggestion group (same
+  // item, owner and facility) has unselected tickets: "Select all" adds them.
+  onSelectGroup?: () => void;
+  groupSize?: number;
 }) {
   const combining = selectedTickets.length > 0 && selectionKind(selectedTickets[0]) === "production";
   const count = selectedTickets.length;
@@ -36,6 +42,11 @@ export function OrderSelectionBar({
               : "Unstarted steps of the same item -- one ticket will do their work together."}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {onSelectGroup ? (
+            <button className="iw-button-secondary" onClick={onSelectGroup} type="button">
+              Select all {groupSize}
+            </button>
+          ) : null}
           <button className="iw-button-secondary" onClick={onClear} type="button">
             Clear
           </button>
