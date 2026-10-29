@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import type { FitSummary } from "../../../api/fittings";
 import {
   capacitorLabel,
+  fitTagTree,
   fitTree,
   formatDistance,
   formatHeadline,
@@ -85,6 +86,37 @@ describe("the hull tree", () => {
 
   test("fits whose ship the SDE lacks are named by type id", () => {
     expect(fitTree(fits)[2].ships[0].name).toBe("Type 999");
+  });
+});
+
+describe("tag tree", () => {
+  const fits = [
+    summary("cyno-falcon", [11957, "Falcon", "Force Recon Ship"], [], ["Cyno", "Recon"]),
+    summary("cyno-arazu", [11969, "Arazu", "Force Recon Ship"], [], ["Cyno"]),
+    summary("ratter", [24690, "Vexor Navy Issue", "Cruiser"], [], ["Ratting"]),
+    summary("plain", [641, "Megathron", "Battleship"]),
+  ];
+
+  test("a fit shows under each of its tags, by ship, and untagged fits come last", () => {
+    const tree = fitTagTree(fits);
+    expect(tree.map((group) => [group.name, group.fitCount])).toEqual([
+      ["Cyno", 2],
+      ["Ratting", 1],
+      ["Recon", 1],
+      ["Untagged", 1],
+    ]);
+    expect(tree[0].ships.map((ship) => ship.name)).toEqual(["Arazu", "Falcon"]);
+    expect(tree[2].ships[0].fits.map((fit) => fit.id)).toEqual(["cyno-falcon"]);
+    expect(tree[3].ships[0].name).toBe("Megathron");
+  });
+
+  test("tags sort without regard to case", () => {
+    const tree = fitTagTree([summary("a", [1, "A", "G"], [], ["beta"]), summary("b", [1, "A", "G"], [], ["Alpha"])]);
+    expect(tree.map((group) => group.name)).toEqual(["Alpha", "beta"]);
+  });
+
+  test("without fits there is nothing, not an empty Untagged group", () => {
+    expect(fitTagTree([])).toEqual([]);
   });
 });
 

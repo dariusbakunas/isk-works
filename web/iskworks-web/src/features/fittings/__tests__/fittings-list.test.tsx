@@ -71,6 +71,41 @@ describe("Fittings › list", () => {
     expect(within(tree).getAllByRole("link")).toHaveLength(1);
   });
 
+  test("the tree switches to tags, remembers it, and a fit shows under each of its tags", async () => {
+    window.localStorage.clear();
+    stubFetch();
+    const { unmount } = renderPage();
+
+    await screen.findByRole("table", { name: "Fits" });
+    expect(screen.getByRole("button", { name: "Hulls" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Tags" }));
+    expect(screen.getByRole("button", { name: "Tags" })).toHaveAttribute("aria-pressed", "true");
+    const tree = screen.getByRole("navigation", { name: "Hulls and fits" });
+
+    expect(within(tree).getAllByRole("button").map((group) => group.textContent)).toEqual(["Hauling", "Lowsec", "Untagged"]);
+    fireEvent.click(within(tree).getByRole("button", { name: "Hauling" }));
+    fireEvent.click(within(tree).getByRole("button", { name: "Lowsec" }));
+    expect(within(tree).getAllByRole("link", { name: "Lowsec Brick" })).toHaveLength(2);
+
+    unmount();
+    renderPage();
+    await screen.findByRole("table", { name: "Fits" });
+    expect(screen.getByRole("button", { name: "Tags" })).toHaveAttribute("aria-pressed", "true");
+    window.localStorage.clear();
+  });
+
+  test("searching matches a fit's tags too", async () => {
+    stubFetch();
+    renderPage();
+
+    await screen.findByRole("table", { name: "Fits" });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search hulls and fits" }), { target: { value: "hauling" } });
+    expect(screen.getAllByRole("row").filter((row) => row.dataset.rowKey).map((row) => row.dataset.rowKey)).toEqual([
+      FIT_ID,
+      "22222222-2222-2222-2222-222222222222",
+    ]);
+  });
+
   test("with no fits, the page asks for a paste and counts nothing", async () => {
     stubFetch({ fits: [] });
     renderPage();

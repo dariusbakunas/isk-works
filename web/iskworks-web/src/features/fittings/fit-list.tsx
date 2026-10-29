@@ -8,7 +8,7 @@ import { OperationalTable, OperationalTableRow, type OperationalColumn } from ".
 import { EmptyState, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
-import { fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
+import { fitTagTree, fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
 import { ImportDialog } from "./import-dialog";
 import { NewFitDialog } from "./new-fit-dialog";
 import { useFits } from "./use-fittings";
@@ -47,6 +47,52 @@ export function FlyabilityChips({ fit }: { fit: FitSummary }) {
         </span>
       ) : null}
     </span>
+  );
+}
+
+type TreeMode = "hulls" | "tags";
+const TREE_MODE_KEY = "iskworks:fittings-tree";
+
+function readTreeMode(): TreeMode {
+  try {
+    return window.localStorage.getItem(TREE_MODE_KEY) === "tags" ? "tags" : "hulls";
+  } catch {
+    return "hulls";
+  }
+}
+
+/** Which tree the browser shows, remembered per browser. */
+function useTreeMode(): [TreeMode, (mode: TreeMode) => void] {
+  const [mode, setMode] = useState(readTreeMode);
+  const choose = (next: TreeMode) => {
+    setMode(next);
+    try {
+      window.localStorage.setItem(TREE_MODE_KEY, next);
+    } catch {
+      // Storage off: it just won't be remembered.
+    }
+  };
+  return [mode, choose];
+}
+
+function TreeModeToggle({ mode, onChange }: { mode: TreeMode; onChange: (mode: TreeMode) => void }) {
+  const option = (value: TreeMode, label: string) => (
+    <button
+      aria-pressed={mode === value}
+      className={`h-6 flex-1 rounded-[3px] text-[0.6875rem] font-semibold ${
+        mode === value ? "bg-panel-strong text-foreground" : "text-muted hover:text-foreground"
+      }`}
+      onClick={() => onChange(value)}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div aria-label="Group fits by" className="mb-2 flex gap-0.5 rounded-md border border-border bg-background p-0.5" role="group">
+      {option("hulls", "Hulls")}
+      {option("tags", "Tags")}
+    </div>
   );
 }
 
@@ -116,6 +162,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   const [flyableBy, setFlyableBy] = useState("");
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useTreeMode();
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -123,16 +170,19 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
       (fit) =>
         (!needle ||
           fit.name.toLowerCase().includes(needle) ||
-          (fit.ship.name ?? "").toLowerCase().includes(needle)) &&
+          (fit.ship.name ?? "").toLowerCase().includes(needle) ||
+          fit.tags.some((tag) => tag.toLowerCase().includes(needle))) &&
         (!flyableBy || flies(fit, flyableBy)),
     );
   }, [data, flyableBy, query]);
-  const tree = useMemo(() => fitTree(visible), [visible]);
+  const tree = useMemo(() => (mode === "tags" ? fitTagTree(visible) : fitTree(visible)), [mode, visible]);
+  const anyTags = (data ?? []).some((fit) => fit.tags.length > 0);
   const hulls = new Set(visible.map((fit) => fit.ship.typeId)).size;
 
   return (
     <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
       <aside className="iw-panel p-2">
+        <TreeModeToggle mode={mode} onChange={setMode} />
         <label className="flex items-center gap-2 rounded-md border border-border bg-background px-2">
           <Search aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
           <input
@@ -145,7 +195,11 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
           />
         </label>
         <div className="mt-2">
-          <HullTree groups={tree} searching={query.trim() !== ""} />
+          {mode === "tags" && !anyTags && data?.length ? (
+            <p className="px-1 pb-1.5 text-[0.6875rem] text-muted">Tag fits from a fit's header or by selecting them in the table.</p>
+          ) : null}
+          {/* Each tree keeps its own open groups. */}
+          <HullTree groups={tree} key={mode} searching={query.trim() !== ""} />
         </div>
       </aside>
 
