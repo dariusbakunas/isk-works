@@ -14,11 +14,17 @@ import {
   stateLabel,
 } from "../fittings-format";
 
-const summary = (id: string, ship: [number, string, string], pilots: FitSummary["pilots"] = []): FitSummary => ({
+const summary = (
+  id: string,
+  ship: [number, string, string],
+  pilots: FitSummary["pilots"] = [],
+  tags: string[] = [],
+): FitSummary => ({
   id,
   name: `Fit ${id}`,
   ship: { typeId: ship[0], name: ship[1], groupName: ship[2] },
   itemCount: 1,
+  tags,
   updatedAt: "2026-10-26T00:00:00Z",
   pilots,
 });

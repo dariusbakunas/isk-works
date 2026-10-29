@@ -52,11 +52,18 @@ export function characters(): CharacterRosterEntry[] {
 }
 
 export function fits(): FitSummary[] {
-  const fit = (id: string, name: string, ship: [number, string, string], statuses: Array<FitSummary["pilots"][number]["status"]>): FitSummary => ({
+  const fit = (
+    id: string,
+    name: string,
+    ship: [number, string, string],
+    statuses: Array<FitSummary["pilots"][number]["status"]>,
+    tags: string[] = [],
+  ): FitSummary => ({
     id,
     name,
     ship: { typeId: ship[0], name: ship[1], groupName: ship[2] },
     itemCount: 13,
+    tags,
     updatedAt: "2026-10-26T00:00:00Z",
     pilots: [MIRA, AURA, FRESH, SCOUT].map((connectionId, index) => ({
       connectionId,
@@ -65,8 +72,8 @@ export function fits(): FitSummary[] {
     })),
   });
   return [
-    fit(FIT_ID, "Null Transport", [12731, "Bustard", "Deep Space Transport"], ["canUseAll", "canFlyHull", "cannot", null]),
-    fit("22222222-2222-2222-2222-222222222222", "Lowsec Brick", [12731, "Bustard", "Deep Space Transport"], ["cannot", "canFlyHull", "cannot", null]),
+    fit(FIT_ID, "Null Transport", [12731, "Bustard", "Deep Space Transport"], ["canUseAll", "canFlyHull", "cannot", null], ["Hauling"]),
+    fit("22222222-2222-2222-2222-222222222222", "Lowsec Brick", [12731, "Bustard", "Deep Space Transport"], ["cannot", "canFlyHull", "cannot", null], ["Hauling", "Lowsec"]),
     fit("33333333-3333-3333-3333-333333333333", "L4 Cruise", [641, "Megathron", "Battleship"], ["cannot", "cannot", "cannot", null]),
   ];
 }
@@ -100,6 +107,7 @@ export function fitDetail(): FitDetail {
       item({ typeId: 2456, slotKind: "drone_bay", slotIndex: null, quantity: 5, state: "active", name: "Hobgoblin II", groupName: "Combat Drone" }),
       item({ typeId: 28668, slotKind: "cargo", slotIndex: null, quantity: 100, state: "offline", name: "Nanite Repair Paste", groupName: "Nanite Repair Paste" }),
     ],
+    tags: ["Hauling"],
     createdAt: "2026-10-26T00:00:00Z",
     updatedAt: "2026-10-26T00:00:00Z",
   };
@@ -423,6 +431,12 @@ export function stubFetch(options: StubOptions = {}) {
     if (url.includes("/api/types/search")) {
       return json([{ typeId: 34, typeName: "Tritanium", groupName: "Mineral", published: true }]);
     }
+    if (url.endsWith("/tags") && method === "PUT") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { tags: string[] };
+      saved = { ...saved, tags: [...body.tags].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())) };
+      return json({ tags: saved.tags });
+    }
+    if (url.endsWith("/api/fittings/tags") && method === "POST") return new Response(null, { status: 204 });
     if (url.includes(`/api/fittings/`) && method === "PUT" && options.failSave) {
       return json({ title: "Server error" }, 500);
     }
