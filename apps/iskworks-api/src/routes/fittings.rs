@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
 use iskworks_app::{
@@ -11,7 +11,7 @@ use iskworks_app::{
 };
 use iskworks_core::fitting::{
     damage_profile_presets, DamageProfile, DamageProfilePreset, ExplainTarget, FitDraft, FitId,
-    FitInput, FittingEngineInfo, SlotKind,
+    FitInput, FitTagEdit, FittingEngineInfo, SlotKind,
 };
 use iskworks_core::skill_plans::SkillPlan;
 use iskworks_core::{
@@ -28,6 +28,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/fittings/parse", post(parse_text))
         .route("/api/fittings/import", post(import_text))
         .route("/api/fittings/calculate", post(calculate))
+        .route("/api/fittings/tags", post(edit_tags))
         .route("/api/fittings/catalogue", get(catalogue))
         .route("/api/fittings/catalogue/variations", get(variations))
         .route("/api/fittings/:fit_id/stats", get(fit_stats))
@@ -37,6 +38,7 @@ pub(crate) fn router() -> Router<AppState> {
         .route("/api/fittings/:fit_id/explain", get(explain_attribute))
         .route("/api/fittings/:fit_id/skill-plan", post(create_skill_plan))
         .route("/api/fittings/:fit_id/export", get(export_fit))
+        .route("/api/fittings/:fit_id/tags", put(set_tags))
         .route(
             "/api/fittings/:fit_id",
             get(get_fit).put(update_fit).delete(delete_fit),
@@ -140,6 +142,40 @@ async fn delete_fit(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FitTags {
+    tags: Vec<String>,
+}
+
+/// Replaces the fit's tags; returns them as stored (the workspace's casing,
+/// by name). Doesn't touch the fit itself.
+async fn set_tags(
+    State(state): State<AppState>,
+    Path(fit_id): Path<uuid::Uuid>,
+    Json(body): Json<FitTags>,
+) -> Result<Json<FitTags>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    state
+        .fitting_service()?
+        .set_tags(workspace_id, FitId(fit_id), &body.tags)
+        .await?
+        .map(|tags| Json(FitTags { tags }))
+        .ok_or(ApiError::NotFound)
+}
+
+/// Adds and removes tags on many fits at once.
+async fn edit_tags(
+    State(state): State<AppState>,
+    Json(edit): Json<FitTagEdit>,
+) -> Result<StatusCode, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    state
+        .fitting_service()?
+        .edit_tags(workspace_id, &edit)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Deserialize)]
