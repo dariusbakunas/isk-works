@@ -10,6 +10,7 @@ import {
   type ToolWindow,
   type ToolWindowsState,
 } from "./model";
+import { minimizeWithMotion, restoreWithMotion } from "./window-motion";
 
 // Per-browser convenience, like the pinned rail: open and minimised windows
 // come back after a reload. Never needed for anything to work.
@@ -140,8 +141,8 @@ export function ToolWindowsProvider({ kinds, children }: { kinds: AnyToolWindowK
         });
       },
       focus: (id) => dispatch({ type: "focus", id }),
-      minimize: (id) => dispatch({ type: "minimize", id }),
-      restore: (id) => dispatch({ type: "restore", id, viewport: viewport() }),
+      minimize: (id) => minimizeWithMotion(id, () => dispatch({ type: "minimize", id })),
+      restore: (id) => restoreWithMotion(id, () => dispatch({ type: "restore", id, viewport: viewport() })),
       close: (id) => dispatch({ type: "close", id }),
       move: (id, x, y) => dispatch({ type: "move", id, x, y, viewport: viewport() }),
       resize: (id, w, h) => {

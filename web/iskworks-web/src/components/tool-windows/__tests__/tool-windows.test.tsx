@@ -138,6 +138,39 @@ describe("tool windows", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  test("minimising flies a copy of the window into the dock; restoring grows it back out", () => {
+    // jsdom lays nothing out and has no Web Animations: give every box a size
+    // and record the animations instead.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100));
+    const animations: Array<{ target: Element; finish: () => void }> = [];
+    Element.prototype.animate = vi.fn(function (this: Element) {
+      const animation = { onfinish: null as (() => void) | null, oncancel: null, finish: () => animation.onfinish?.() };
+      animations.push({ target: this, finish: animation.finish });
+      return animation as unknown as Animation;
+    });
+    Element.prototype.getAnimations = () => [];
+    try {
+      renderWindows();
+      fireEvent.click(screen.getByRole("button", { name: "Open Harpy" }));
+      fireEvent.click(screen.getByRole("button", { name: "Minimise Harpy" }));
+
+      // The state changes at once; the copy is decoration, hidden from AT.
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      const ghost = document.querySelector("[data-tool-window-ghost]");
+      expect(ghost).toHaveAttribute("aria-hidden", "true");
+      expect(animations.map((animation) => animation.target)).toEqual([ghost]);
+      animations[0].finish();
+      expect(document.querySelector("[data-tool-window-ghost]")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Restore Harpy" }));
+      expect(animations[1].target).toBe(screen.getByRole("dialog", { name: "Harpy" }));
+    } finally {
+      delete (Element.prototype as Partial<Element>).animate;
+      delete (Element.prototype as Partial<Element>).getAnimations;
+      vi.restoreAllMocks();
+    }
+  });
+
   test("with more than four minimised the dock shows three and a menu for the rest", () => {
     renderWindows(false);
     for (let index = 0; index < 5; index += 1) {

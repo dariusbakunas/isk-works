@@ -45,7 +45,7 @@ export function WindowDock({ expanded }: { expanded: boolean }) {
   const rest = minimized.slice(shown.length);
 
   return (
-    <nav aria-label="Windows" className="relative shrink-0 border-t border-border py-1">
+    <nav aria-label="Windows" className="relative shrink-0 border-t border-border py-1" data-window-dock="">
       {expanded ? (
         <div className="flex h-5 items-center px-3 text-[8px] uppercase tracking-[.12em] text-subtle">Windows</div>
       ) : (
@@ -56,7 +56,7 @@ export function WindowDock({ expanded }: { expanded: boolean }) {
         if (!kind) return null;
         const title = kind.title(window.state);
         return (
-          <div className="group relative flex h-8 w-full items-center hover:bg-hover" key={window.id}>
+          <div className="group relative flex h-8 w-full items-center hover:bg-hover" data-window-dock-item={window.id} key={window.id}>
             <button
               aria-label={`Restore ${title}`}
               className={`flex h-full min-w-0 flex-1 items-center text-left ${rowFocus}`}
@@ -89,6 +89,7 @@ export function WindowDock({ expanded }: { expanded: boolean }) {
             aria-haspopup="menu"
             aria-label={`${rest.length} more windows`}
             className={`flex h-8 w-full items-center hover:bg-hover ${rowFocus}`}
+            data-window-dock-more=""
             onClick={() => setMenuOpen((open) => !open)}
             type="button"
           >
