@@ -330,7 +330,7 @@ export function MetaGroupLists({
               return (
                 <li className={`relative flex h-7 items-center gap-2 px-1 ${current ? "bg-[#0e1e2e]" : ""}`} key={item.typeId}>
                   {current ? <i aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-primary" /> : null}
-                  <TypeIcon metaGroupId={group.metaGroupId} name={item.name} size={22} typeId={item.typeId} />
+                  <TypeIcon name={item.name} size={22} typeId={item.typeId} />
                   {current ? (
                     <span aria-current="true" className="truncate text-[9px] text-bright">
                       {item.name}
