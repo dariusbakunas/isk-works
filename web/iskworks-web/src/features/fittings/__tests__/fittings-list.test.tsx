@@ -18,6 +18,7 @@ describe("Fittings › list", () => {
     const tree = screen.getByRole("navigation", { name: "Hulls and fits" });
     expect(within(tree).getByText("Deep Space Transport")).toBeInTheDocument();
     expect(within(tree).getByText("Battleship")).toBeInTheDocument();
+    fireEvent.click(within(tree).getByRole("button", { name: "Deep Space Transport" }));
     expect(within(tree).getByRole("link", { name: "Null Transport" })).toHaveAttribute("href", `/fittings/${FIT_ID}`);
     expect(within(tree).getByTestId("ship-count-12731")).toHaveTextContent("2");
   });
@@ -43,6 +44,21 @@ describe("Fittings › list", () => {
     expect(screen.queryByRole("row", { name: /L4 Cruise/ })).not.toBeInTheDocument();
   });
 
+  test("hull groups start collapsed and open on click", async () => {
+    stubFetch();
+    renderPage();
+
+    await screen.findByRole("table", { name: "Fits" });
+    const tree = screen.getByRole("navigation", { name: "Hulls and fits" });
+    const group = within(tree).getByRole("button", { name: "Deep Space Transport" });
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(within(tree).queryAllByRole("link")).toHaveLength(0);
+
+    fireEvent.click(group);
+    expect(group).toHaveAttribute("aria-expanded", "true");
+    expect(within(tree).getByRole("link", { name: "Null Transport" })).toBeInTheDocument();
+  });
+
   test("searching filters the tree and the table by fit or ship name", async () => {
     stubFetch();
     renderPage();
@@ -50,7 +66,9 @@ describe("Fittings › list", () => {
     await screen.findByRole("table", { name: "Fits" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search hulls and fits" }), { target: { value: "mega" } });
     expect(screen.getAllByRole("row").filter((row) => row.dataset.rowKey)).toHaveLength(1);
-    expect(within(screen.getByRole("navigation", { name: "Hulls and fits" })).queryByText("Bustard")).not.toBeInTheDocument();
+    const tree = screen.getByRole("navigation", { name: "Hulls and fits" });
+    expect(within(tree).queryByText("Bustard")).not.toBeInTheDocument();
+    expect(within(tree).getAllByRole("link")).toHaveLength(1);
   });
 
   test("with no fits, the page asks for a paste and counts nothing", async () => {
