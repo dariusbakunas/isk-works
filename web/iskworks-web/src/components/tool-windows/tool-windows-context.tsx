@@ -33,6 +33,10 @@ export interface ToolWindowKind<S> {
   title: (state: S) => string;
   /** The dock and title bar icon; the kind's `icon` otherwise. */
   renderIcon?: (state: S, size: number) => ReactNode;
+  /** False leaves the icon to the dock, for content that already shows it (Type Info's header). */
+  titleIcon?: boolean;
+  /** True when the content scrolls its own parts (Type Info: only the tab panel), so the window body doesn't. */
+  scrollsOwnContent?: boolean;
   /** Kind-specific title bar buttons, before Minimise (Type Info: back/forward). */
   renderTitleControls?: (props: ToolWindowRenderProps<S>) => ReactNode;
   defaultSize: Size;

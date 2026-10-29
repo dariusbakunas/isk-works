@@ -136,9 +136,13 @@ export function ToolWindow({
         onPointerUp={end}
         style={{ borderTop: `1px solid ${focused ? "var(--color-primary)" : "transparent"}` }}
       >
-        <span aria-hidden="true" className="grid w-8 shrink-0 place-items-center">
-          {kind.renderIcon ? kind.renderIcon(model.state, 16) : <kind.icon className="h-4 w-4 text-primary" />}
-        </span>
+        {kind.titleIcon === false ? (
+          <span aria-hidden="true" className="w-3 shrink-0" />
+        ) : (
+          <span aria-hidden="true" className="grid w-8 shrink-0 place-items-center">
+            {kind.renderIcon ? kind.renderIcon(model.state, 16) : <kind.icon className="h-4 w-4 text-primary" />}
+          </span>
+        )}
         <h2 className={`min-w-0 flex-1 truncate text-[11px] font-bold ${focused ? "text-bright" : "text-muted"}`} id={titleId}>
           {title}
         </h2>
@@ -152,7 +156,7 @@ export function ToolWindow({
           </TitleButton>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{kind.render(props)}</div>
+      <div className={`min-h-0 flex-1 ${kind.scrollsOwnContent ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>{kind.render(props)}</div>
       <div
         aria-label={`Resize ${title}`}
         aria-orientation="horizontal"

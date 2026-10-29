@@ -373,6 +373,24 @@ describe("Type Info window", () => {
     expect(within(dialog).getByText("Not used as a material")).toBeInTheDocument();
   });
 
+  test("the header and tabs stay put; only the tab content scrolls", async () => {
+    const dialog = await openInfo("Harpy");
+    const panel = within(dialog).getByRole("tabpanel");
+
+    expect(panel).toHaveClass("overflow-y-auto");
+    expect(panel).not.toContainElement(within(dialog).getByRole("tablist"));
+    expect(panel).not.toContainElement(within(dialog).getByRole("heading", { level: 3, name: "Harpy" }));
+    expect(dialog.querySelector(".overflow-y-auto")).toBe(panel);
+  });
+
+  test("the item's image shows in the header, not the title bar; minimised, the dock shows it", async () => {
+    const dialog = await openInfo("Harpy");
+    expect(within(dialog).getByTestId("tool-window-title-bar").querySelector("img")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimise Harpy" }));
+    expect(screen.getByRole("button", { name: "Restore Harpy" }).querySelector("img")).not.toBeNull();
+  });
+
   test("minimised, the dock names the item", async () => {
     await openInfo("Harpy");
     fireEvent.click(screen.getByRole("button", { name: "Minimise Harpy" }));

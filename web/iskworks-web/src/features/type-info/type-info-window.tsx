@@ -176,7 +176,7 @@ function Header({ info }: { info: TypeInfo }) {
   const plan = planBuildPath(info);
   return (
     <div className="flex shrink-0 gap-3 border-b border-border p-3">
-      <TypeIcon metaGroupId={info.metaGroup?.id} name={info.name} size={64} typeId={info.typeId} variation={ship ? "render" : "icon"} />
+      <TypeIcon name={info.name} size={64} typeId={info.typeId} variation={ship ? "render" : "icon"} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
           <h3 className="truncate text-sm font-semibold text-bright">{info.name}</h3>
@@ -324,12 +324,13 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
   }
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Header info={value} />
       {tabs.length && active ? (
         <Tabs active={active} narrow={width < NARROW_WIDTH} onTab={(tab) => setState(withTab(latest.current, tab))} tabs={tabs} />
       ) : null}
-      <div className="min-h-0 flex-1" role="tabpanel">
+      {/* Keyed so each tab and item starts at the top. */}
+      <div className="min-h-0 flex-1 overflow-y-auto" key={`${value.typeId}:${active}`} role="tabpanel">
         {section}
       </div>
     </div>

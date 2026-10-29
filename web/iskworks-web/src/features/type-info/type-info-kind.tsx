@@ -25,9 +25,11 @@ export const typeInfoKind: ToolWindowKind<TypeInfoWindowState> = {
   kind: TYPE_INFO_KIND,
   icon: Info,
   title,
+  titleIcon: false,
+  scrollsOwnContent: true,
   renderIcon: (state, size) => {
     const entry = currentEntry(state);
-    return <TypeIcon metaGroupId={entry.metaGroupId} name={title(state)} size={size} typeId={entry.typeId} />;
+    return <TypeIcon name={title(state)} size={size} typeId={entry.typeId} />;
   },
   renderTitleControls: ({ state, setState }) => (
     <>
