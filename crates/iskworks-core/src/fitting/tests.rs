@@ -258,6 +258,7 @@ fn a_stored_fit_is_calculated_from_its_ship_and_items() {
         description: String::new(),
         ship_type_id: 12_731,
         items: vec![item(SlotKind::Low, Some(0))],
+        tags: Vec::new(),
         created_at: chrono::DateTime::UNIX_EPOCH,
         updated_at: chrono::DateTime::UNIX_EPOCH,
     };

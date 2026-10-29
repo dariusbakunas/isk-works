@@ -217,6 +217,8 @@ pub struct Fit {
     pub ship_type_id: i64,
     /// In the order they were saved.
     pub items: Vec<FitItem>,
+    /// By name; see [`canonical_tags`].
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -410,6 +412,32 @@ pub trait FitRepository: Send + Sync {
         workspace_id: WorkspaceId,
         id: FitId,
     ) -> Result<bool, InventoryError>;
+
+    /// The tags on the workspace's fits, each once (in one of its casings).
+    async fn fit_tags_in_use(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<String>, InventoryError>;
+
+    /// Replaces the fit's tags with `tags`, written as given. `None` when the
+    /// fit isn't in the workspace. Doesn't change `updated_at`.
+    async fn replace_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+        tags: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError>;
+
+    /// Adds `add` to and removes `remove` from every listed fit of the
+    /// workspace, in one transaction; other fits are skipped. Removal ignores
+    /// case; adding a tag a fit holds (in any case) leaves it as it is.
+    async fn edit_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        ids: &[FitId],
+        add: &[String],
+        remove: &[String],
+    ) -> Result<(), InventoryError>;
 }
 
 /// Incoming damage, for effective hitpoints. Only the ratios matter.

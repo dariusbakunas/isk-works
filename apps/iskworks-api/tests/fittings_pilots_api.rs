@@ -381,6 +381,7 @@ impl FitRepository for FakeFits {
             description: draft.description.clone(),
             ship_type_id: draft.ship_type_id,
             items: draft.items.clone(),
+            tags: Vec::new(),
             created_at: now,
             updated_at: now,
         };
@@ -397,6 +398,26 @@ impl FitRepository for FakeFits {
         unimplemented!()
     }
     async fn delete_fit(&self, _: WorkspaceId, _: FitId) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+        unimplemented!()
+    }
+    async fn replace_fit_tags(
+        &self,
+        _: WorkspaceId,
+        _: FitId,
+        _: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError> {
+        unimplemented!()
+    }
+    async fn edit_fit_tags(
+        &self,
+        _: WorkspaceId,
+        _: &[FitId],
+        _: &[String],
+        _: &[String],
+    ) -> Result<(), InventoryError> {
         unimplemented!()
     }
 }

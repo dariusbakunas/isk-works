@@ -63,10 +63,11 @@ impl ItemRow {
 }
 
 impl PgFitRepository {
-    /// The fits' items in saved order, attached to their fits.
-    async fn with_items(&self, rows: Vec<FitRow>) -> Result<Vec<Fit>, InventoryError> {
+    /// The fits' items in saved order and tags by name, attached to their fits.
+    async fn with_children(&self, rows: Vec<FitRow>) -> Result<Vec<Fit>, InventoryError> {
         let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
         let mut items = HashMap::<Uuid, Vec<FitItem>>::new();
+        let mut tags = HashMap::<Uuid, Vec<String>>::new();
         if !ids.is_empty() {
             let item_rows = sqlx::query_as::<_, ItemRow>(
                 "SELECT fit_id, slot_kind, slot_index, type_id, quantity, state,
@@ -83,11 +84,15 @@ impl PgFitRepository {
                 let fit_id = row.fit_id;
                 items.entry(fit_id).or_default().push(row.into_item()?);
             }
+            for (fit_id, tag) in fetch_tags(&self.pool, &ids).await? {
+                tags.entry(fit_id).or_default().push(tag);
+            }
         }
         Ok(rows
             .into_iter()
             .map(|row| Fit {
                 items: items.remove(&row.id).unwrap_or_default(),
+                tags: tags.remove(&row.id).unwrap_or_default(),
                 id: FitId(row.id),
                 name: row.name,
                 description: row.description,
@@ -138,6 +143,20 @@ async fn insert_items(
     Ok(())
 }
 
+/// The fits' tags, by name within each fit.
+async fn fetch_tags<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    ids: &[Uuid],
+) -> Result<Vec<(Uuid, String)>, InventoryError> {
+    sqlx::query_as::<_, (Uuid, String)>(
+        "SELECT fit_id, tag FROM fit_tags WHERE fit_id = ANY($1) ORDER BY fit_id, lower(tag), tag",
+    )
+    .bind(ids)
+    .fetch_all(executor)
+    .await
+    .map_err(persistence)
+}
+
 const FIT_COLUMNS: &str = "id, name, description, ship_type_id, created_at, updated_at";
 
 #[async_trait]
@@ -152,7 +171,7 @@ impl FitRepository for PgFitRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(persistence)?;
-        self.with_items(rows).await
+        self.with_children(rows).await
     }
 
     async fn fit(
@@ -168,7 +187,7 @@ impl FitRepository for PgFitRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(persistence)?;
-        Ok(self.with_items(row.into_iter().collect()).await?.pop())
+        Ok(self.with_children(row.into_iter().collect()).await?.pop())
     }
 
     async fn create_fit(
@@ -201,6 +220,7 @@ impl FitRepository for PgFitRepository {
             description: row.description,
             ship_type_id: row.ship_type_id,
             items: draft.items.clone(),
+            tags: Vec::new(),
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -237,6 +257,7 @@ impl FitRepository for PgFitRepository {
             .await
             .map_err(persistence)?;
         insert_items(&mut tx, id.0, &draft.items).await?;
+        let tags = fetch_tags(&mut *tx, &[id.0]).await?;
         tx.commit().await.map_err(persistence)?;
         Ok(Some(Fit {
             id,
@@ -244,6 +265,7 @@ impl FitRepository for PgFitRepository {
             description: row.description,
             ship_type_id: row.ship_type_id,
             items: draft.items.clone(),
+            tags: tags.into_iter().map(|(_, tag)| tag).collect(),
             created_at: row.created_at,
             updated_at: row.updated_at,
         }))
@@ -261,5 +283,98 @@ impl FitRepository for PgFitRepository {
             .await
             .map_err(persistence)?;
         Ok(deleted.rows_affected() > 0)
+    }
+
+    async fn fit_tags_in_use(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<String>, InventoryError> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT ON (lower(t.tag)) t.tag
+             FROM fit_tags t JOIN fits f ON f.id = t.fit_id
+             WHERE f.workspace_id = $1
+             ORDER BY lower(t.tag), t.tag",
+        )
+        .bind(workspace_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(persistence)
+    }
+
+    async fn replace_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+        tags: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError> {
+        let mut tx = self.pool.begin().await.map_err(persistence)?;
+        let owned = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM fits WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(workspace_id.0)
+        .bind(id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(persistence)?;
+        if owned.is_none() {
+            return Ok(None);
+        }
+        sqlx::query("DELETE FROM fit_tags WHERE fit_id = $1")
+            .bind(id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(persistence)?;
+        sqlx::query(
+            "INSERT INTO fit_tags (fit_id, tag)
+             SELECT $1, tag FROM unnest($2::text[]) AS tag
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(id.0)
+        .bind(tags)
+        .execute(&mut *tx)
+        .await
+        .map_err(persistence)?;
+        let stored = fetch_tags(&mut *tx, &[id.0]).await?;
+        tx.commit().await.map_err(persistence)?;
+        Ok(Some(stored.into_iter().map(|(_, tag)| tag).collect()))
+    }
+
+    async fn edit_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        ids: &[FitId],
+        add: &[String],
+        remove: &[String],
+    ) -> Result<(), InventoryError> {
+        let ids = ids.iter().map(|id| id.0).collect::<Vec<_>>();
+        let removed = remove
+            .iter()
+            .map(|tag| tag.to_lowercase())
+            .collect::<Vec<_>>();
+        let mut tx = self.pool.begin().await.map_err(persistence)?;
+        sqlx::query(
+            "DELETE FROM fit_tags t USING fits f
+             WHERE f.id = t.fit_id AND f.workspace_id = $1 AND t.fit_id = ANY($2)
+               AND lower(t.tag) = ANY($3)",
+        )
+        .bind(workspace_id.0)
+        .bind(&ids)
+        .bind(&removed)
+        .execute(&mut *tx)
+        .await
+        .map_err(persistence)?;
+        sqlx::query(
+            "INSERT INTO fit_tags (fit_id, tag)
+             SELECT f.id, tag FROM fits f CROSS JOIN unnest($3::text[]) AS tag
+             WHERE f.workspace_id = $1 AND f.id = ANY($2)
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(workspace_id.0)
+        .bind(&ids)
+        .bind(add)
+        .execute(&mut *tx)
+        .await
+        .map_err(persistence)?;
+        tx.commit().await.map_err(persistence)
     }
 }
