@@ -319,6 +319,26 @@ impl iskworks_core::fitting::FitRepository for NoFits {
     ) -> Result<bool, InventoryError> {
         unimplemented!()
     }
+    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+        unimplemented!()
+    }
+    async fn replace_fit_tags(
+        &self,
+        _: WorkspaceId,
+        _: iskworks_core::fitting::FitId,
+        _: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError> {
+        unimplemented!()
+    }
+    async fn edit_fit_tags(
+        &self,
+        _: WorkspaceId,
+        _: &[iskworks_core::fitting::FitId],
+        _: &[String],
+        _: &[String],
+    ) -> Result<(), InventoryError> {
+        unimplemented!()
+    }
 }
 
 async fn get(app: axum::Router, uri: &str) -> (StatusCode, Value) {

@@ -116,6 +116,7 @@ impl FitRepository for FakeFits {
             description: draft.description.clone(),
             ship_type_id: draft.ship_type_id,
             items: draft.items.clone(),
+            tags: Vec::new(),
             created_at: now,
             updated_at: now,
         };
@@ -145,6 +146,59 @@ impl FitRepository for FakeFits {
         let before = fits.len();
         fits.retain(|fit| fit.id != id);
         Ok(fits.len() < before)
+    }
+    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+        let mut tags: Vec<String> = Vec::new();
+        for tag in self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|fit| fit.tags.clone())
+        {
+            if !tags.iter().any(|held| held.eq_ignore_ascii_case(&tag)) {
+                tags.push(tag);
+            }
+        }
+        Ok(tags)
+    }
+    async fn replace_fit_tags(
+        &self,
+        _: WorkspaceId,
+        id: FitId,
+        tags: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError> {
+        let mut fits = self.0.lock().unwrap();
+        let Some(fit) = fits.iter_mut().find(|fit| fit.id == id) else {
+            return Ok(None);
+        };
+        fit.tags = tags.to_vec();
+        Ok(Some(fit.tags.clone()))
+    }
+    async fn edit_fit_tags(
+        &self,
+        _: WorkspaceId,
+        ids: &[FitId],
+        add: &[String],
+        remove: &[String],
+    ) -> Result<(), InventoryError> {
+        for fit in self
+            .0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|fit| ids.contains(&fit.id))
+        {
+            fit.tags
+                .retain(|tag| !remove.iter().any(|gone| gone.eq_ignore_ascii_case(tag)));
+            for tag in add {
+                if !fit.tags.iter().any(|held| held.eq_ignore_ascii_case(tag)) {
+                    fit.tags.push(tag.clone());
+                }
+            }
+            fit.tags.sort_by_key(|tag| tag.to_lowercase());
+        }
+        Ok(())
     }
 }
 

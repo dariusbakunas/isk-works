@@ -217,6 +217,8 @@ pub struct Fit {
     pub ship_type_id: i64,
     /// In the order they were saved.
     pub items: Vec<FitItem>,
+    /// By name; see [`canonical_tags`].
+    pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -303,6 +305,79 @@ impl FitDraft {
     }
 }
 
+const MAX_TAG_CHARS: usize = 40;
+const MAX_TAGS_PER_FIT: usize = 20;
+const MAX_TAG_EDIT_FITS: usize = 500;
+
+/// A tag as stored: trimmed, inner whitespace collapsed to one space, 1 to
+/// 40 characters. Tags group fits in the fit browser; case doesn't make a
+/// different tag.
+pub fn normalize_tag(tag: &str) -> Result<String, String> {
+    let tag = tag.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars = tag.chars().count();
+    if chars == 0 || chars > MAX_TAG_CHARS {
+        return Err(format!("a tag is 1 to {MAX_TAG_CHARS} characters"));
+    }
+    Ok(tag)
+}
+
+fn normalize_tags(tags: &[String]) -> Result<Vec<String>, String> {
+    tags.iter().map(|tag| normalize_tag(tag)).collect()
+}
+
+/// What a fit stores for `requested`: normalised, in the casing the workspace
+/// already uses (`in_use`) so "cyno" joins "Cyno", each once whatever its
+/// case, by name.
+pub fn canonical_tags(requested: &[String], in_use: &[String]) -> Result<Vec<String>, String> {
+    let mut tags: Vec<String> = Vec::new();
+    for tag in normalize_tags(requested)? {
+        let key = tag.to_lowercase();
+        if tags.iter().any(|held| held.to_lowercase() == key) {
+            continue;
+        }
+        let existing = in_use.iter().find(|used| used.to_lowercase() == key);
+        tags.push(existing.cloned().unwrap_or(tag));
+    }
+    if tags.len() > MAX_TAGS_PER_FIT {
+        return Err(format!("a fit holds at most {MAX_TAGS_PER_FIT} tags"));
+    }
+    tags.sort_by_key(|tag| tag.to_lowercase());
+    Ok(tags)
+}
+
+/// Tags added to and removed from many fits at once.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitTagEdit {
+    pub fit_ids: Vec<FitId>,
+    #[serde(default)]
+    pub add: Vec<String>,
+    #[serde(default)]
+    pub remove: Vec<String>,
+}
+
+impl FitTagEdit {
+    /// The edit with its tags normalised, or why it can't be made.
+    pub fn validate(&self) -> Result<Self, String> {
+        if self.fit_ids.is_empty() || self.fit_ids.len() > MAX_TAG_EDIT_FITS {
+            return Err(format!("a tag edit names 1 to {MAX_TAG_EDIT_FITS} fits"));
+        }
+        if self.add.is_empty() && self.remove.is_empty() {
+            return Err("a tag edit adds or removes a tag".to_string());
+        }
+        if self.add.len() > MAX_TAGS_PER_FIT || self.remove.len() > MAX_TAGS_PER_FIT {
+            return Err(format!(
+                "a tag edit adds or removes at most {MAX_TAGS_PER_FIT} tags"
+            ));
+        }
+        Ok(Self {
+            fit_ids: self.fit_ids.clone(),
+            add: normalize_tags(&self.add)?,
+            remove: normalize_tags(&self.remove)?,
+        })
+    }
+}
+
 #[async_trait]
 pub trait FitRepository: Send + Sync {
     /// Every fit of the workspace, by name.
@@ -337,6 +412,32 @@ pub trait FitRepository: Send + Sync {
         workspace_id: WorkspaceId,
         id: FitId,
     ) -> Result<bool, InventoryError>;
+
+    /// The tags on the workspace's fits, each once (in one of its casings).
+    async fn fit_tags_in_use(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<String>, InventoryError>;
+
+    /// Replaces the fit's tags with `tags`, written as given. `None` when the
+    /// fit isn't in the workspace. Doesn't change `updated_at`.
+    async fn replace_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FitId,
+        tags: &[String],
+    ) -> Result<Option<Vec<String>>, InventoryError>;
+
+    /// Adds `add` to and removes `remove` from every listed fit of the
+    /// workspace, in one transaction; other fits are skipped. Removal ignores
+    /// case; adding a tag a fit holds (in any case) leaves it as it is.
+    async fn edit_fit_tags(
+        &self,
+        workspace_id: WorkspaceId,
+        ids: &[FitId],
+        add: &[String],
+        remove: &[String],
+    ) -> Result<(), InventoryError>;
 }
 
 /// Incoming damage, for effective hitpoints. Only the ratios matter.
