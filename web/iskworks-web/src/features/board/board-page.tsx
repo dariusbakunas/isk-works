@@ -38,6 +38,8 @@ import { OrderAcqGroupCard } from "./order-acq-group-card";
 import { OrderAcquisitionRunCard } from "./order-acquisition-run-card";
 import { OrderAcquisitionRunDrawer } from "./order-acquisition-run-drawer";
 import { OrderCard } from "./order-card";
+import { combineSuggestions } from "./combine-suggestions";
+import { CombineSuggestionsDialog } from "./combine-suggestions-dialog";
 import { CombineTicketsDialog } from "./combine-tickets-dialog";
 import { OrderSelectionBar } from "./order-selection-bar";
 import { isSelectable, selectionKind } from "./ticket-selection";
@@ -172,6 +174,7 @@ export function BoardPage() {
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [combineDialogOpen, setCombineDialogOpen] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(() => params.get("epic"));
   const [openTicketId, setOpenTicketId] = useState<string | null>(() => params.get("ticket"));
@@ -453,6 +456,21 @@ export function BoardPage() {
   const selectedTickets: Ticket[] =
     state.status === "ready" ? state.tickets.filter((ticket) => selectedTicketIds.has(ticket.id)) : [];
 
+  // Every group of Board tickets that could be combined right now.
+  const suggestions = useMemo(
+    () =>
+      state.status === "ready"
+        ? combineSuggestions(state.tickets, {
+            hasJobs: (ticket) => (jobsByTicketId.get(ticket.id)?.length ?? 0) > 0,
+            ordersById: new Map(state.orders.map((order) => [order.id, order])),
+          })
+        : [],
+    [state, jobsByTicketId],
+  );
+  const selectedGroup = selectedTickets[0]
+    ? suggestions.find((group) => group.tickets.some((ticket) => ticket.id === selectedTickets[0].id))
+    : undefined;
+
   const view = useMemo(() => {
     if (state.status !== "ready") return null;
     const { tickets, runs, orders, priceSources, characters } = state;
@@ -670,6 +688,11 @@ export function BoardPage() {
         >
           {showArchivedOrders ? "Hide archived" : "Show archived"}
         </button>
+        {suggestions.length > 0 ? (
+          <button className="iw-button-secondary" onClick={() => setSuggestionsOpen(true)} type="button">
+            {suggestions.length} combine suggestion{suggestions.length === 1 ? "" : "s"}
+          </button>
+        ) : null}
         <button
           aria-pressed={selectionMode}
           className={selectionMode ? "iw-button-primary" : "iw-button-secondary"}
@@ -879,6 +902,15 @@ export function BoardPage() {
           onClear={() => setSelectedTicketIds(new Set())}
           onCombine={() => setCombineDialogOpen(true)}
           onCreateRun={() => setCreateDialogOpen(true)}
+          groupSize={selectedGroup?.tickets.length}
+          onSelectGroup={
+            selectedGroup?.tickets.some((ticket) => !selectedTicketIds.has(ticket.id))
+              ? () =>
+                  setSelectedTicketIds(
+                    new Set([...selectedTicketIds, ...selectedGroup.tickets.map((ticket) => ticket.id)]),
+                  )
+              : undefined
+          }
           selectedTickets={selectedTickets}
         />
       ) : null}
@@ -906,6 +938,18 @@ export function BoardPage() {
         }}
         open={combineDialogOpen}
         tickets={selectedTickets}
+      />
+
+      <CombineSuggestionsDialog
+        onClose={(changed) => {
+          setSuggestionsOpen(false);
+          if (changed) {
+            exitSelectionMode();
+            void load();
+          }
+        }}
+        open={suggestionsOpen}
+        suggestions={suggestions}
       />
 
       {openRun ? (
