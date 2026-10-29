@@ -384,7 +384,7 @@ function BulkBar({
           />
           <select
             aria-label="Remove tag"
-            className="iw-input h-6 text-[0.6875rem]"
+            className="iw-input h-7 min-h-0 w-auto py-0 text-[0.6875rem]"
             disabled={saving || held.length === 0}
             onChange={(event) => {
               if (event.target.value) void edit({ remove: [event.target.value] });

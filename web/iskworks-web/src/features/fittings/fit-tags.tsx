@@ -80,7 +80,7 @@ export function TagInput({
       <input
         aria-label={label}
         autoFocus={autoFocus}
-        className="iw-input h-6 w-36 text-[0.6875rem]"
+        className="iw-input h-7 min-h-0 w-36 py-0 text-[0.6875rem]"
         list={listId}
         maxLength={40}
         onBlur={() => {
