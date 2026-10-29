@@ -325,19 +325,25 @@ fn normalize_tags(tags: &[String]) -> Result<Vec<String>, String> {
     tags.iter().map(|tag| normalize_tag(tag)).collect()
 }
 
-/// What a fit stores for `requested`: normalised, in the casing the workspace
-/// already uses (`in_use`) so "cyno" joins "Cyno", each once whatever its
-/// case, by name.
-pub fn canonical_tags(requested: &[String], in_use: &[String]) -> Result<Vec<String>, String> {
-    let mut tags: Vec<String> = Vec::new();
-    for tag in normalize_tags(requested)? {
+/// Normalised `tags` in the casing the workspace already uses (`in_use`), so
+/// "cyno" joins "Cyno"; each once whatever its case, in the order given.
+pub fn canonical_tag_casing(tags: &[String], in_use: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tag in tags {
         let key = tag.to_lowercase();
-        if tags.iter().any(|held| held.to_lowercase() == key) {
+        if out.iter().any(|held| held.to_lowercase() == key) {
             continue;
         }
         let existing = in_use.iter().find(|used| used.to_lowercase() == key);
-        tags.push(existing.cloned().unwrap_or(tag));
+        out.push(existing.unwrap_or(tag).clone());
     }
+    out
+}
+
+/// What a fit stores for `requested`: normalised, in the workspace's casing
+/// (see [`canonical_tag_casing`]), by name, at most 20.
+pub fn canonical_tags(requested: &[String], in_use: &[String]) -> Result<Vec<String>, String> {
+    let mut tags = canonical_tag_casing(&normalize_tags(requested)?, in_use);
     if tags.len() > MAX_TAGS_PER_FIT {
         return Err(format!("a fit holds at most {MAX_TAGS_PER_FIT} tags"));
     }

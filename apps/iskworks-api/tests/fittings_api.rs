@@ -682,3 +682,129 @@ async fn without_the_engine_no_item_is_marked_as_loading_charges() {
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(created["items"][0]["loadsCharges"], false);
 }
+
+async fn create(app: &axum::Router, name: &str) -> String {
+    let (_, created) = json(app, "POST", "/api/fittings", fit_body(name, Vec::new())).await;
+    created["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn a_fits_tags_are_replaced_in_the_workspaces_casing_and_shown_with_it() {
+    let app = app();
+    let cyno = create(&app, "Cyno").await;
+    let ratter = create(&app, "Ratter").await;
+    assert_eq!(
+        get(app.clone(), &format!("/api/fittings/{cyno}")).await.1["tags"],
+        json!([])
+    );
+
+    let (status, body) = json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{cyno}/tags"),
+        json!({ "tags": [" Cyno ", "alts"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!({ "tags": ["alts", "Cyno"] }));
+
+    // "cyno" joins the workspace's "Cyno".
+    let (_, body) = json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{ratter}/tags"),
+        json!({ "tags": ["cyno", "CYNO"] }),
+    )
+    .await;
+    assert_eq!(body, json!({ "tags": ["Cyno"] }));
+
+    let (_, list) = get(app.clone(), "/api/fittings").await;
+    let tags_of = |name: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|fit| fit["name"] == name)
+            .unwrap()["tags"]
+            .clone()
+    };
+    assert_eq!(tags_of("Cyno"), json!(["alts", "Cyno"]));
+    assert_eq!(tags_of("Ratter"), json!(["Cyno"]));
+    assert_eq!(
+        get(app.clone(), &format!("/api/fittings/{cyno}")).await.1["tags"],
+        json!(["alts", "Cyno"])
+    );
+
+    // Saving the fit from the editor leaves its tags alone.
+    let (_, replaced) = json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{cyno}"),
+        fit_body("Cyno", Vec::new()),
+    )
+    .await;
+    assert_eq!(replaced["tags"], json!(["alts", "Cyno"]));
+}
+
+#[tokio::test]
+async fn tagging_an_unknown_fit_is_not_found_and_a_broken_tag_is_refused() {
+    let app = app();
+    let (status, _) = json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{}/tags", Uuid::new_v4()),
+        json!({ "tags": ["Cyno"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let id = create(&app, "Fit").await;
+    let (status, body) = json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{id}/tags"),
+        json!({ "tags": ["x".repeat(41)] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+}
+
+#[tokio::test]
+async fn tags_are_added_to_and_removed_from_many_fits_at_once() {
+    let app = app();
+    let one = create(&app, "One").await;
+    let two = create(&app, "Two").await;
+    json(
+        &app,
+        "PUT",
+        &format!("/api/fittings/{one}/tags"),
+        json!({ "tags": ["Old", "Cyno"] }),
+    )
+    .await;
+
+    let (status, _) = json(
+        &app,
+        "POST",
+        "/api/fittings/tags",
+        json!({ "fitIds": [one, two], "add": ["cyno", " Ratting "], "remove": ["old"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        get(app.clone(), &format!("/api/fittings/{one}")).await.1["tags"],
+        json!(["Cyno", "Ratting"])
+    );
+    assert_eq!(
+        get(app.clone(), &format!("/api/fittings/{two}")).await.1["tags"],
+        json!(["Cyno", "Ratting"])
+    );
+
+    let (status, _) = json(
+        &app,
+        "POST",
+        "/api/fittings/tags",
+        json!({ "fitIds": [one] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
