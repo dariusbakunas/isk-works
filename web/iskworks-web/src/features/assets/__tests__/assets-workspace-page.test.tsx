@@ -72,6 +72,7 @@ const page: LoadedAssetPage = {
 };
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.mocked(queryAssets).mockReset().mockResolvedValue(page);
   vi.mocked(exportAssets).mockReset();
   vi.mocked(syncAssets).mockReset().mockResolvedValue([]);
@@ -238,4 +239,45 @@ test("the selected asset's inspector opens its item in Type Info", async () => {
   const inspector = await screen.findByRole("complementary", { name: "Selected asset" });
   fireEvent.click(within(inspector).getByRole("button", { name: "Show info: Tritanium" }));
   expect(screen.getByRole("dialog", { name: "Tritanium" })).toHaveTextContent("Type 34");
+});
+
+test("Export lets you pick columns, starting from the visible table columns", async () => {
+  vi.mocked(exportAssets).mockResolvedValue(new Blob(["Item\n"], { type: "text/csv" }));
+  const createObjectURL = vi.fn(() => "blob:assets");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL }));
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
+  await screen.findByText("Tritanium");
+
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  const dialog = screen.getByRole("dialog", { name: "Export assets" });
+  expect(dialog).toHaveTextContent("1 asset stack matching");
+  expect(within(dialog).getByRole("checkbox", { name: "Observed" })).toBeChecked();
+  fireEvent.click(within(dialog).getByRole("button", { name: "None" }));
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Location" }));
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Item" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Export CSV" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  // Picks come out in table order, not click order.
+  expect(exportAssets).toHaveBeenCalledWith(expect.objectContaining({ sort: "item" }), ["item", "location"]);
+  expect(click).toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Observed" })).not.toBeChecked();
+  expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Item" })).toBeChecked();
+  click.mockRestore();
+  vi.unstubAllGlobals();
+});
+
+test("a failed asset export keeps the dialog open with the error", async () => {
+  vi.mocked(exportAssets).mockRejectedValue(new Error("Export broke"));
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
+  await screen.findByText("Tritanium");
+
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Export CSV" }));
+
+  expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Export broke");
 });

@@ -20,8 +20,14 @@ import { Badge } from "../../../components/primitives";
 import { CharacterName } from "../../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
-import { blueprintLibraryCsv, type BlueprintExportColumnKey } from "./blueprint-export";
-import { BlueprintExportDialog } from "./blueprint-export-dialog";
+import { ExportColumnsDialog } from "../shared/export-columns-dialog";
+import {
+  BLUEPRINT_EXPORT_COLUMNS,
+  DEFAULT_EXPORT_COLUMNS,
+  EXPORT_COLUMNS_STORAGE_KEY,
+  blueprintLibraryCsv,
+  type BlueprintExportColumnKey,
+} from "./blueprint-export";
 import { BlueprintInspector } from "./blueprint-inspector";
 import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns } from "./blueprint-format";
 import {
@@ -214,7 +220,17 @@ export function BlueprintsPage() {
         </main>
       </div>
       {selected ? <BlueprintInspector blueprint={selected} onClose={() => setSelectedKey(null)} /> : null}
-      <BlueprintExportDialog onClose={() => setExportOpen(false)} onExport={exportCsv} open={exportOpen} total={library.total} />
+      <ExportColumnsDialog
+        columns={BLUEPRINT_EXPORT_COLUMNS}
+        description={`A CSV of the ${library.total.toLocaleString()} blueprint${library.total === 1 ? "" : "s"} matching the current filters, in the current sort order.`}
+        disabled={library.total === 0}
+        onClose={() => setExportOpen(false)}
+        onExport={exportCsv}
+        open={exportOpen}
+        storageKey={EXPORT_COLUMNS_STORAGE_KEY}
+        tableColumns={DEFAULT_EXPORT_COLUMNS}
+        title="Export blueprints"
+      />
     </section>
   );
 }
