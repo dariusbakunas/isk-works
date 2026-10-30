@@ -19,6 +19,7 @@ import { formatDuration } from "../industry/shared/formatting";
 import { groupBlockersByType } from "./blockers";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { prerequisiteSourcePresentation } from "./prerequisite-source";
+import { groupPrerequisites } from "./prerequisites";
 import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
 import { recordingTerms } from "./recording/recording-meta";
 import { RecordingSection } from "./recording/recording-section";
@@ -500,7 +501,7 @@ export function OrderTicketDetailDrawer({
               <span className="w-36 shrink-0 text-right">Source</span>
             </div>
             <div className="divide-y divide-border/50">
-              {ticket.prerequisites.map((prerequisite) => {
+              {groupPrerequisites(ticket.prerequisites, ticket.blockedBy).map((prerequisite) => {
                 // SOURCE folds the frozen Model-B reuse split into the
                 // sourcing kind: a fully inventory-covered row (fresh 0)
                 // reads "Use Inventory", a partial one "<Kind> · Missing
@@ -508,16 +509,23 @@ export function OrderTicketDetailDrawer({
                 // quantity. Shared with the Worksheet/Graph vocabulary. Once
                 // the server stops listing it as a blocker, the fresh part
                 // is done and the row reads "Built"/"Bought"/"Reacted".
-                const met = !ticket.blockedBy.some((blocker) => blocker.prerequisiteId === prerequisite.id);
+                const met = prerequisite.met;
                 const source = prerequisiteSourcePresentation(prerequisite, { met });
+                // A combined ticket's row may sum copies from several Epics.
+                const epicNames =
+                  epics && epics.length > 1
+                    ? prerequisite.orderIds
+                        .filter((orderId): orderId is string => orderId !== null)
+                        .map((orderId) => epics.find((epic) => epic.id === orderId)?.name ?? "Unknown Epic")
+                        .join(", ")
+                    : "";
                 return (
-                  <div className="flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.id}>
+                  <div className="flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.key}>
                     <span className="min-w-0 flex-1 text-foreground">
                       <span className="block truncate">{prerequisite.capturedName}</span>
-                      {/* A combined ticket holds one copy per Epic it serves. */}
-                      {prerequisite.orderId && epics && epics.length > 1 ? (
-                        <span className="block truncate text-[10px] text-muted">
-                          {epics.find((epic) => epic.id === prerequisite.orderId)?.name ?? "Unknown Epic"}
+                      {epicNames ? (
+                        <span className="block truncate text-[10px] text-muted" title={epicNames}>
+                          {epicNames}
                         </span>
                       ) : null}
                     </span>

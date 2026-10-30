@@ -895,6 +895,39 @@ describe("OrderTicketDetailDrawer combined tickets", () => {
     expect(onOpenTicket).toHaveBeenCalledWith("m-2");
   });
 
+  it("shows one Required Materials row per material, summed across Epics", () => {
+    const copy = (id: string, orderId: string, requiredQuantity: number) => ({
+      id,
+      ticketId: "combined-1",
+      typeId: 16654,
+      capturedName: "Fullerides",
+      kind: "buy" as const,
+      sourceBuildId: null,
+      requiredQuantity,
+      fulfillmentScope: "missing" as const,
+      reusedQuantity: 0,
+      freshQuantity: requiredQuantity,
+      estimatedUnitCost: null,
+      estimatedLineTotal: null,
+      reusedLineTotal: null,
+      orderId,
+    });
+    render(
+      <OrderTicketDetailDrawer
+        combinedFrom={members}
+        epics={epics}
+        onClose={vi.fn()}
+        ticket={{ ...combined, prerequisites: [copy("p-1", "epic-1", 1006), copy("p-2", "epic-2", 624)] }}
+      />,
+    );
+
+    const rows = screen.getAllByText("Fullerides");
+    expect(rows).toHaveLength(1);
+    const row = rows[0].closest("div") as HTMLElement;
+    expect(within(row).getAllByText("1,630")).toHaveLength(2);
+    expect(within(row).getByText("Prowler ×2, Wreathe ×2")).toBeInTheDocument();
+  });
+
   it("splits back into its members after confirming", async () => {
     industryApi.splitTicket.mockResolvedValue([]);
     const onChanged = vi.fn();
