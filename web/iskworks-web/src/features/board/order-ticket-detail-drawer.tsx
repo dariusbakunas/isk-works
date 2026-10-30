@@ -12,6 +12,7 @@ import {
   type TicketSummary,
 } from "../../api/industry";
 import { Badge, ConfirmDialog, InlineAlert } from "../../components/primitives";
+import { CopyValueButton } from "../../components/copy-value-button";
 import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { apiMessage } from "../industry/shared/api-error";
@@ -19,7 +20,7 @@ import { formatDuration } from "../industry/shared/formatting";
 import { groupBlockersByType } from "./blockers";
 import { orderTicketKindMeta, orderTicketStatusMeta } from "./order-meta";
 import { prerequisiteSourcePresentation } from "./prerequisite-source";
-import { groupPrerequisites } from "./prerequisites";
+import { groupPrerequisites, multibuyText } from "./prerequisites";
 import { RecordOutcomeDialog } from "./recording/record-outcome-dialog";
 import { recordingTerms } from "./recording/recording-meta";
 import { RecordingSection } from "./recording/recording-section";
@@ -28,6 +29,19 @@ import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted">{children}</h3>;
+}
+
+// A right-aligned quantity whose copy icon appears just left of its digits
+// while the enclosing `group` row is hovered, without taking column width.
+function CopyableQuantity({ quantity, label }: { quantity: number; label: string }) {
+  return (
+    <span className="relative inline-block">
+      <span className="absolute right-full top-1/2 flex -translate-y-1/2 bg-panel px-1 opacity-0 focus-within:opacity-100 group-hover:opacity-100">
+        <CopyValueButton label={label} value={String(quantity)} />
+      </span>
+      {quantity.toLocaleString()}
+    </span>
+  );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -102,6 +116,8 @@ export function OrderTicketDetailDrawer({
   const kindMeta = orderTicketKindMeta[ticket.kind];
   const statusMeta = orderTicketStatusMeta[ticket.status];
   const snapshot = ticket.executionSnapshot;
+  const materials = groupPrerequisites(ticket.prerequisites, ticket.blockedBy);
+  const buyList = multibuyText(materials);
   const blueprint = snapshot?.blueprint ?? null;
   const plannedFacilityId = ticket.planEvidence?.installation?.facilityProfileId ?? null;
   const facility =
@@ -449,9 +465,14 @@ export function OrderTicketDetailDrawer({
           <div className="space-y-1">
             <SectionHeading>Output</SectionHeading>
             <p className="text-sm font-semibold text-foreground">{ticket.capturedName}</p>
-            <p className="text-xs text-muted">
+            <p className="group flex items-center gap-1 text-xs text-muted">
               ×{(ticket.quantity ?? 0).toLocaleString()} units
               {snapshot ? ` from ${snapshot.runs.toLocaleString()} run${snapshot.runs === 1 ? "" : "s"}` : ""}
+              <CopyValueButton
+                label={`Copy ${(ticket.quantity ?? 0).toLocaleString()} units`}
+                revealOnHover
+                value={String(ticket.quantity ?? 0)}
+              />
             </p>
           </div>
         ) : null}
@@ -487,13 +508,27 @@ export function OrderTicketDetailDrawer({
           <dl className="space-y-1 text-xs">
             <SectionHeading>Time</SectionHeading>
             <Row label="Duration">{formatDuration(snapshot.durationSeconds)}</Row>
-            <Row label="Runs">{snapshot.runs.toLocaleString()}</Row>
+            <Row label="Runs">
+              <span className="group inline-flex items-center gap-1">
+                <CopyValueButton label={`Copy ${snapshot.runs.toLocaleString()} runs`} revealOnHover value={String(snapshot.runs)} />
+                {snapshot.runs.toLocaleString()}
+              </span>
+            </Row>
           </dl>
         ) : null}
 
-        {ticket.prerequisites.length > 0 ? (
+        {materials.length > 0 ? (
           <div className="space-y-1">
-            <SectionHeading>Required Materials</SectionHeading>
+            <div className="flex items-center justify-between gap-2">
+              <SectionHeading>Required Materials</SectionHeading>
+              {buyList ? (
+                <span className="text-[10px] font-semibold uppercase tracking-wide">
+                  <CopyValueButton label="Copy buy list for EVE Multibuy" value={buyList}>
+                    Copy buy list
+                  </CopyValueButton>
+                </span>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2 pb-1 text-[10px] uppercase text-muted">
               <span className="flex-1">Material</span>
               <span className="w-16 shrink-0 text-right">Req.</span>
@@ -501,7 +536,7 @@ export function OrderTicketDetailDrawer({
               <span className="w-36 shrink-0 text-right">Source</span>
             </div>
             <div className="divide-y divide-border/50">
-              {groupPrerequisites(ticket.prerequisites, ticket.blockedBy).map((prerequisite) => {
+              {materials.map((prerequisite) => {
                 // SOURCE folds the frozen Model-B reuse split into the
                 // sourcing kind: a fully inventory-covered row (fresh 0)
                 // reads "Use Inventory", a partial one "<Kind> · Missing
@@ -520,7 +555,7 @@ export function OrderTicketDetailDrawer({
                         .join(", ")
                     : "";
                 return (
-                  <div className="flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.key}>
+                  <div className="group flex items-center gap-2 py-0.5 text-[11px]" key={prerequisite.key}>
                     <span className="min-w-0 flex-1 text-foreground">
                       <span className="block truncate">{prerequisite.capturedName}</span>
                       {epicNames ? (
@@ -529,13 +564,25 @@ export function OrderTicketDetailDrawer({
                         </span>
                       ) : null}
                     </span>
+                    {/* Copy icons float just left of the digits on row
+                        hover, so the columns keep their width for the name. */}
                     <span className="w-16 shrink-0 text-right font-mono tabular-nums text-foreground">
-                      {prerequisite.requiredQuantity.toLocaleString()}
+                      <CopyableQuantity
+                        label={`Copy ${prerequisite.requiredQuantity.toLocaleString()} ${prerequisite.capturedName}`}
+                        quantity={prerequisite.requiredQuantity}
+                      />
                     </span>
                     <span
                       className={`w-16 shrink-0 text-right font-mono tabular-nums ${prerequisite.freshQuantity === 0 ? "text-positive" : met ? "text-foreground" : "text-danger"}`}
                     >
-                      {prerequisite.freshQuantity.toLocaleString()}
+                      {prerequisite.freshQuantity > 0 ? (
+                        <CopyableQuantity
+                          label={`Copy ${prerequisite.freshQuantity.toLocaleString()} fresh ${prerequisite.capturedName}`}
+                          quantity={prerequisite.freshQuantity}
+                        />
+                      ) : (
+                        "0"
+                      )}
                     </span>
                     <span className="flex w-36 shrink-0 justify-end">
                       <Badge square tone={source.tone}>

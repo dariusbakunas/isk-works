@@ -51,3 +51,22 @@ export function groupPrerequisites(
   }
   return [...groups.values()];
 }
+
+// What's still to buy, as EVE's Multibuy window pastes it: one
+// `<name> <quantity>` line per material. Only unmet Buy rows count -- Build and
+// React rows are made by other tickets, and a met row was already bought.
+// The remaining amount mirrors `prerequisiteSourcePresentation`: a
+// `full`-scoped row was frozen with no reuse, so all of it is to buy.
+export function multibuyText(prerequisites: GroupedPrerequisite[]): string {
+  const byType = new Map<number, { name: string; quantity: number }>();
+  for (const prerequisite of prerequisites) {
+    if (prerequisite.kind !== "buy" || prerequisite.met) continue;
+    const remaining =
+      prerequisite.fulfillmentScope === "full" ? prerequisite.requiredQuantity : prerequisite.freshQuantity;
+    if (remaining <= 0) continue;
+    const existing = byType.get(prerequisite.typeId);
+    if (existing) existing.quantity += remaining;
+    else byType.set(prerequisite.typeId, { name: prerequisite.capturedName, quantity: remaining });
+  }
+  return [...byType.values()].map(({ name, quantity }) => `${name} ${quantity}`).join("\n");
+}

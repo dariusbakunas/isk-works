@@ -1,8 +1,8 @@
-import { AlertTriangle, Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Link } from "react-router";
 
 import type { MarketOrderRow, MarketOrderSide, OrderStanding } from "../../api/market-orders";
+import { CopyValueButton } from "../../components/copy-value-button";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { Badge, ProgressBar } from "../../components/primitives";
@@ -91,24 +91,7 @@ export function GapCell({ standing }: { standing: OrderStanding }) {
 }
 
 export function CopyPriceButton({ price }: { price: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      aria-label={`Copy ${formatIskSummary(price)}`}
-      className={`inline-flex items-center ${copied ? "text-positive" : "text-muted hover:text-foreground"}`}
-      onClick={(event) => {
-        event.stopPropagation();
-        void navigator.clipboard?.writeText(price).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-      title="Copy price"
-      type="button"
-    >
-      {copied ? <Check aria-hidden="true" className="h-3 w-3" /> : <Copy aria-hidden="true" className="h-3 w-3" />}
-    </button>
-  );
+  return <CopyValueButton label={`Copy ${formatIskSummary(price)}`} value={price} />;
 }
 
 export function SuggestedCell({ standing }: { standing: OrderStanding }) {
