@@ -10,7 +10,8 @@ import { InventorySectionTabs } from "../inventory-section-tabs";
 import { RunwaySkeleton } from "./runway-skeleton";
 import { EpicReadinessStrip, RunwayKpiStrip } from "./runway-summary";
 import { categoryFromParam, RunwayTable } from "./runway-table";
-import { downloadText, shoppingListCsv, shoppingListMultibuy } from "./shopping-list-export";
+import { downloadText } from "../../../../components/csv";
+import { shoppingListCsv, shoppingListMultibuy } from "./shopping-list-export";
 import { useInventoryRunway } from "./use-inventory-runway";
 
 // Inventory › Runway: what committed Epics still have to buy, against stock.
