@@ -6,6 +6,7 @@ import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { CharacterName } from "../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../finance/finance-filter-controls";
+import { ExportColumnsDialog } from "../industry/shared/export-columns-dialog";
 import { formatAssetDecimal } from "./asset-format";
 import { AssetInspector } from "./asset-inspector";
 import { useAssetsQuery } from "./use-assets-query";
@@ -17,6 +18,7 @@ const columns: Array<{ key: AssetColumn; label: string; numeric?: boolean }> = [
   { key: "location", label: "Location" }, { key: "container", label: "Container" },
   { key: "group", label: "Group" }, { key: "status", label: "Status" }, { key: "observed", label: "Observed" },
 ];
+const EXPORT_COLUMNS_STORAGE_KEY = "iskworks.assets.exportColumns";
 const assetKinds: AssetKindFilter[] = ["blueprint", "material", "ship", "container", "other"];
 const blueprintKinds: AssetBlueprintKindFilter[] = ["original", "copy", "unknown"];
 const reconciliationStates: AssetReconciliationFilter[] = ["matched", "difference", "noAccountingRecord"];
@@ -39,6 +41,7 @@ export function AssetsWorkspacePage() {
   const [visible, setVisible] = useState(new Set<AssetColumn>(columns.map(({ key }) => key)));
   const [selected, setSelected] = useState<FlatAssetRow | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const workspace = useRef<HTMLElement>(null);
   useEffect(() => { const timer = window.setTimeout(() => setSearch(searchText.trim()), 250); return () => window.clearTimeout(timer); }, [searchText]);
@@ -53,7 +56,7 @@ export function AssetsWorkspacePage() {
   function reset() { setSearchText(""); setSearch(""); setConnectionIds([]); setNoCharacters(false); setLocationIds([]); setNoLocations(false); setKinds([]); setNoKinds(false); setGroupIds([]); setNoGroups(false); setBlueprints([]); setReconciliation([]); setSort("item"); setOrder("asc"); }
   function changeSort(next: AssetSortColumn) { if (next === sort) setOrder((value) => value === "asc" ? "desc" : "asc"); else { setSort(next); setOrder(next === "observed" ? "desc" : "asc"); } }
   async function handleSync() { setSyncing(true); try { const outcomes = await syncAssets(connectionIds); const failed = outcomes.filter(({ succeeded }) => !succeeded); setMessage(failed.length ? `${outcomes.length - failed.length} synchronized; ${failed.length} failed.` : `Synchronized ${outcomes.length} character${outcomes.length === 1 ? "" : "s"}.`); assets.refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Asset synchronization failed."); } finally { setSyncing(false); } }
-  async function handleExport() { const blob = await exportAssets(query, columns.filter(({ key }) => visible.has(key)).map(({ key }) => key)); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "isk-works-assets.csv"; anchor.click(); URL.revokeObjectURL(url); }
+  async function handleExport(keys: AssetColumn[]) { const blob = await exportAssets(query, keys); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "isk-works-assets.csv"; anchor.click(); URL.revokeObjectURL(url); }
   return (
     <section className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-var(--iw-header-h)-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4" data-assets-workspace ref={workspace}>
       <header className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-3"><h1 className="text-sm font-semibold">Assets</h1><span className="text-muted">Real synchronized EVE holdings</span></header>
@@ -64,12 +67,23 @@ export function AssetsWorkspacePage() {
           <AssetFilters blueprints={blueprints} connectionIds={connectionIds} groupIds={groupIds} kinds={kinds} locationIds={locationIds} noCharacters={noCharacters} noGroups={noGroups} noKinds={noKinds} noLocations={noLocations} page={page} reconciliation={reconciliation} setBlueprints={setBlueprints} setConnectionIds={setConnectionIds} setGroupIds={setGroupIds} setKinds={setKinds} setLocationIds={setLocationIds} setNoCharacters={setNoCharacters} setNoGroups={setNoGroups} setNoKinds={setNoKinds} setNoLocations={setNoLocations} setReconciliation={setReconciliation} />
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-2"><div className="relative min-w-48 max-w-md flex-1"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input aria-label="Search assets" className="iw-input min-h-7 py-1 pl-7 text-xs" onChange={(event) => setSearchText(event.target.value)} placeholder="Search item, character, location, or container" value={searchText} /></div><span className="ml-auto whitespace-nowrap text-muted">{assets.rows.length} of {page?.total ?? 0} rows</span><ColumnChooser onChange={setVisible} visible={visible} /><Action icon={<Download className="h-3.5 w-3.5" />} label="Export" onClick={() => void handleExport()} /><Action disabled={syncing} icon={<RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />} label={syncing ? "Syncing" : "Sync"} onClick={() => void handleSync()} /></div>
+          <div className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-2"><div className="relative min-w-48 max-w-md flex-1"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input aria-label="Search assets" className="iw-input min-h-7 py-1 pl-7 text-xs" onChange={(event) => setSearchText(event.target.value)} placeholder="Search item, character, location, or container" value={searchText} /></div><span className="ml-auto whitespace-nowrap text-muted">{assets.rows.length} of {page?.total ?? 0} rows</span><ColumnChooser onChange={setVisible} visible={visible} /><Action disabled={!page || page.total === 0} icon={<Download className="h-3.5 w-3.5" />} label="Export" onClick={() => setExportOpen(true)} /><Action disabled={syncing} icon={<RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />} label={syncing ? "Syncing" : "Sync"} onClick={() => void handleSync()} /></div>
           {message ? <div className="border-b border-border bg-primary/10 px-3 py-1.5" role="status">{message}</div> : null}
           <AssetTable assets={assets} onSelect={setSelected} onSort={changeSort} order={order} resetKey={queryKey} selected={selected} sort={sort} visible={visible} />
         </main>
       </div>
       {selected ? <AssetInspector asset={selected} onClose={() => setSelected(null)} /> : null}
+      <ExportColumnsDialog
+        columns={columns}
+        description={`A CSV of the ${(page?.total ?? 0).toLocaleString()} asset stack${page?.total === 1 ? "" : "s"} matching the current filters, in the current sort order.`}
+        disabled={!page || page.total === 0}
+        onClose={() => setExportOpen(false)}
+        onExport={handleExport}
+        open={exportOpen}
+        storageKey={EXPORT_COLUMNS_STORAGE_KEY}
+        tableColumns={columns.filter(({ key }) => visible.has(key)).map(({ key }) => key)}
+        title="Export assets"
+      />
     </section>
   );
 }

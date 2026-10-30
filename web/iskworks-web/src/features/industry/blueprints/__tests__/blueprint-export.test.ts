@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 
 import type { BlueprintLibraryRow } from "../../../../api/industry";
-import { blueprintLibraryCsv, DEFAULT_EXPORT_COLUMNS, readExportColumns, storeExportColumns } from "../blueprint-export";
+import { BLUEPRINT_EXPORT_COLUMNS, blueprintLibraryCsv, DEFAULT_EXPORT_COLUMNS, EXPORT_COLUMNS_STORAGE_KEY } from "../blueprint-export";
+import { readStoredColumns, storeColumns } from "../../shared/export-columns-dialog";
 
 const base: BlueprintLibraryRow = {
   observationId: "obs-1",
@@ -66,11 +67,12 @@ describe("blueprintLibraryCsv", () => {
 
 describe("export column memory", () => {
   test("falls back to the table columns, and drops unknown keys", () => {
+    const read = () => readStoredColumns(EXPORT_COLUMNS_STORAGE_KEY, BLUEPRINT_EXPORT_COLUMNS, DEFAULT_EXPORT_COLUMNS);
     window.localStorage.clear();
-    expect(readExportColumns()).toEqual(DEFAULT_EXPORT_COLUMNS);
-    window.localStorage.setItem("iskworks.blueprints.exportColumns", JSON.stringify(["gone", "te", "blueprint"]));
-    expect(readExportColumns()).toEqual(["blueprint", "te"]);
-    storeExportColumns(["itemId"]);
-    expect(readExportColumns()).toEqual(["itemId"]);
+    expect(read()).toEqual(DEFAULT_EXPORT_COLUMNS);
+    window.localStorage.setItem(EXPORT_COLUMNS_STORAGE_KEY, JSON.stringify(["gone", "te", "blueprint"]));
+    expect(read()).toEqual(["blueprint", "te"]);
+    storeColumns(EXPORT_COLUMNS_STORAGE_KEY, ["itemId"]);
+    expect(read()).toEqual(["itemId"]);
   });
 });
