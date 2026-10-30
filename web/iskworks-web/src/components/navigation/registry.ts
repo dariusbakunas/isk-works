@@ -19,11 +19,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-/** A page under a nav item, reachable from the command palette. */
+/** A page under a nav item: a row under it in the expanded rail, and a palette entry. */
 export interface NavChild {
   label: string;
   path: string;
   keywords?: string[];
+  /** Starts something rather than showing a view ("New build"): palette only, no rail row. */
+  action?: boolean;
 }
 
 export interface NavItem {
@@ -78,7 +80,7 @@ export const navGroups: NavGroup[] = [
         path: "/builds",
         icon: Factory,
         children: [
-          { label: "New build", path: "/builds/new" },
+          { label: "New build", path: "/builds/new", action: true },
           { label: "Blueprints", path: "/builds/blueprints", keywords: ["bp", "bpo", "bpc"] },
         ],
       },
@@ -128,7 +130,7 @@ export const navGroups: NavGroup[] = [
         keywords: ["prices"],
         children: [
           { label: "Market imports", path: "/prices/imports" },
-          { label: "New price source", path: "/prices/new" },
+          { label: "New price source", path: "/prices/new", action: true },
         ],
       },
       {
