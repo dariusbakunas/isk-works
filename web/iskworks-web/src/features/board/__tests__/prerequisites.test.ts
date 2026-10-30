@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TicketBlockerRef, TicketPrerequisite } from "../../../api/industry";
-import { groupPrerequisites } from "../prerequisites";
+import { groupPrerequisites, multibuyText } from "../prerequisites";
 
 function prerequisite(
   id: string,
@@ -67,5 +67,41 @@ describe("groupPrerequisites", () => {
     );
 
     expect(grouped.map((row) => row.kind)).toEqual(["buy", "react"]);
+  });
+});
+
+describe("multibuyText", () => {
+  it("lists what is still to buy, one Multibuy line per material", () => {
+    const grouped = groupPrerequisites(
+      [
+        prerequisite("a", 1, 1006, 400, { kind: "buy", orderId: "epic-1" }),
+        prerequisite("b", 1, 624, 624, { kind: "buy", orderId: "epic-2" }),
+        // Reacted by another ticket, not bought.
+        prerequisite("c", 2, 67, 67, { kind: "react" }),
+      ],
+      // Unmet rows are the ones the server lists as blockers.
+      [blocker("a"), blocker("b"), blocker("c")],
+    );
+
+    expect(multibuyText(grouped)).toBe("Fullerides 1024");
+  });
+
+  it("skips covered and already-bought rows, and buys all of a full-scope row", () => {
+    const grouped = groupPrerequisites(
+      [
+        prerequisite("covered", 1, 1006, 0, { kind: "buy" }),
+        prerequisite("bought", 2, 67, 67, { kind: "buy", fulfillmentScope: "full" }),
+        prerequisite("full", 2, 108, 0, { kind: "buy", fulfillmentScope: "full", orderId: "epic-2" }),
+      ],
+      [blocker("full")],
+    );
+
+    // "bought" is met; the unmet full-scope row merges with it, so the
+    // whole group is unmet and all of its required quantity is to buy.
+    expect(multibuyText(grouped)).toBe("Nanotransistors 175");
+  });
+
+  it("is empty when nothing is left to buy", () => {
+    expect(multibuyText(groupPrerequisites([prerequisite("a", 1, 10, 0, { kind: "buy" })], []))).toBe("");
   });
 });

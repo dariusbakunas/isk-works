@@ -120,6 +120,62 @@ describe("OrderTicketDetailDrawer", () => {
     expect(screen.getAllByText("50")).toHaveLength(2);
   });
 
+  it("copies raw material quantities and the buy list for EVE Multibuy", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const material = (id: string, typeId: number, capturedName: string, kind: "buy" | "react", required: number, fresh: number) => ({
+      id,
+      ticketId: "ticket-1",
+      typeId,
+      capturedName,
+      kind,
+      sourceBuildId: null,
+      requiredQuantity: required,
+      fulfillmentScope: "missing" as const,
+      reusedQuantity: required - fresh,
+      freshQuantity: fresh,
+      estimatedUnitCost: null,
+      estimatedLineTotal: null,
+      reusedLineTotal: null,
+    });
+    render(
+      <OrderTicketDetailDrawer
+        onClose={() => {}}
+        ticket={ticketFixture({
+          kind: "manufacturing",
+          status: "todo",
+          prerequisites: [
+            material("p-1", 16680, "Phenolic Composites", "buy", 2468, 1531),
+            material("p-2", 16681, "Nanotransistors", "react", 108, 108),
+            material("p-3", 16682, "Fullerides", "buy", 624, 0),
+          ],
+          blockedBy: [
+            {
+              prerequisiteId: "p-1",
+              kind: "buy",
+              typeId: 16680,
+              capturedName: "Phenolic Composites",
+              outstandingQuantity: 1531,
+              representativeFulfillingTicketId: null,
+              representativeFulfillingTicketDisplayId: null,
+              representativeFulfillingTicketStatus: null,
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy 2,468 Phenolic Composites" }));
+    expect(writeText).toHaveBeenLastCalledWith("2468");
+    fireEvent.click(screen.getByRole("button", { name: "Copy 1,531 fresh Phenolic Composites" }));
+    expect(writeText).toHaveBeenLastCalledWith("1531");
+    // Nothing fresh to copy on a fully covered row.
+    expect(screen.queryByRole("button", { name: /Copy 0 fresh Fullerides/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy buy list for EVE Multibuy" }));
+    expect(writeText).toHaveBeenLastCalledWith("Phenolic Composites 1531");
+  });
+
   it("SOURCE reflects frozen inventory coverage, not the bare sourcing kind", () => {
     render(
       <OrderTicketDetailDrawer
