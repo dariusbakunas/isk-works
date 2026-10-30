@@ -47,6 +47,39 @@ describe("NavigationRail", () => {
     expect(within(nav).getByRole("link", { name: "Assets" })).not.toHaveAttribute("aria-current");
   });
 
+  test("expanded, sub-pages sit under their parent and actions stay out", () => {
+    renderRail("/inventory", { pinned: true });
+
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("link", { name: "Blueprints" })).toHaveAttribute("href", "/builds/blueprints");
+    expect(within(nav).getByRole("link", { name: "Runway" })).toHaveAttribute("href", "/inventory/runway");
+    expect(within(nav).queryByRole("link", { name: "New build" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "New price source" })).not.toBeInTheDocument();
+  });
+
+  test("collapsed, sub-pages are left out", () => {
+    renderRail();
+
+    expect(screen.queryByRole("link", { name: "Blueprints" })).not.toBeInTheDocument();
+  });
+
+  test("expanded, the sub-page row is the current page and its parent stays lit", () => {
+    renderRail("/builds/blueprints", { pinned: true });
+
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("link", { name: "Blueprints" })).toHaveAttribute("aria-current", "page");
+    const builds = within(nav).getByRole("link", { name: "Builds" });
+    expect(builds).not.toHaveAttribute("aria-current");
+    expect(builds).toHaveClass("text-primary");
+  });
+
+  test("on an action page, the parent row is the current page", () => {
+    renderRail("/builds/new", { pinned: true });
+
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("link", { name: "Builds" })).toHaveAttribute("aria-current", "page");
+  });
+
   test("Admin sits in the footer, for admins only", () => {
     const { unmount } = renderRail("/inventory", { isAdmin: true });
     const footer = screen.getByRole("navigation", { name: "Account and help" });

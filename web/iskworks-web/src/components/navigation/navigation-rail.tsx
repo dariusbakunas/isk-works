@@ -1,12 +1,12 @@
 import { CircleHelp, PanelLeftClose, PanelLeftOpen, Search, type LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import mascotHead from "../../assets/mascot-head.png";
 import { HELP_PATH } from "../community-links";
 import { EsiStatusItem } from "../esi-status";
 import { WindowDock } from "../tool-windows/window-dock";
-import { adminNavItem, isNavPathActive, navGroups } from "./registry";
+import { adminNavItem, isNavPathActive, navGroups, resolveNavEntry } from "./registry";
 import { modKey } from "./shortcut-keys";
 
 export const RAIL_COLLAPSED_WIDTH = 52;
@@ -19,10 +19,21 @@ function RailLabel({ expanded, className = "", children }: { expanded: boolean; 
   return <span className={expanded ? `truncate ${className}` : "sr-only"}>{children}</span>;
 }
 
-function RailLink({ to, label, icon: Icon, expanded, active }: { to: string; label: string; icon: LucideIcon; expanded: boolean; active: boolean }) {
+interface RailLinkProps {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  expanded: boolean;
+  /** Lit: the page, or one of its sub-pages, is open. */
+  active: boolean;
+  /** The row for the open page itself; defaults to `active`. False when a sub-page row is the current one. */
+  current?: boolean;
+}
+
+function RailLink({ to, label, icon: Icon, expanded, active, current = active }: RailLinkProps) {
   return (
     <Link
-      aria-current={active ? "page" : undefined}
+      aria-current={current ? "page" : undefined}
       className={`relative flex h-8 w-full items-center hover:bg-hover hover:text-foreground ${rowFocus} ${
         active ? "bg-hover text-primary" : "text-muted"
       }`}
@@ -35,6 +46,25 @@ function RailLink({ to, label, icon: Icon, expanded, active }: { to: string; lab
       <RailLabel className={`text-[11px] ${active ? "text-bright" : "text-foreground"}`} expanded={expanded}>
         {label}
       </RailLabel>
+    </Link>
+  );
+}
+
+/** A sub-page row under its parent; only rendered while the rail is expanded. */
+function RailSubLink({ to, label, current }: { to: string; label: string; current: boolean }) {
+  return (
+    <Link
+      aria-current={current ? "page" : undefined}
+      className={`group flex h-6 w-full items-center pl-[51px] hover:bg-hover ${rowFocus}`}
+      to={to}
+    >
+      <span
+        className={`truncate border-l py-0.5 pl-2.5 text-[10px] ${
+          current ? "border-primary text-bright" : "border-border text-muted group-hover:text-foreground"
+        }`}
+      >
+        {label}
+      </span>
     </Link>
   );
 }
@@ -53,6 +83,7 @@ export interface RailContentProps {
 /** The rail's contents, shared by the desktop rail and the mobile drawer. */
 export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, onOpenSearch, pin }: RailContentProps) {
   const { pathname } = useLocation();
+  const currentPath = resolveNavEntry(pathname)?.path;
 
   return (
     <>
@@ -96,16 +127,27 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
             ) : index > 0 ? (
               <div aria-hidden="true" className="mx-3 my-1 border-t border-border" />
             ) : null}
-            {group.items.map((item) => (
-              <RailLink
-                active={isNavPathActive(pathname, item.path)}
-                expanded={expanded}
-                icon={item.icon}
-                key={item.path}
-                label={item.label}
-                to={item.path}
-              />
-            ))}
+            {group.items.map((item) => {
+              // Collapsed, there's no room for sub-pages: the parent stands in for them.
+              const subPages = expanded ? (item.children ?? []).filter((child) => !child.action) : [];
+              const currentSubPage = subPages.find((child) => child.path === currentPath);
+              const active = isNavPathActive(pathname, item.path);
+              return (
+                <Fragment key={item.path}>
+                  <RailLink
+                    active={active}
+                    current={active && !currentSubPage}
+                    expanded={expanded}
+                    icon={item.icon}
+                    label={item.label}
+                    to={item.path}
+                  />
+                  {subPages.map((child) => (
+                    <RailSubLink current={child === currentSubPage} key={child.path} label={child.label} to={child.path} />
+                  ))}
+                </Fragment>
+              );
+            })}
           </div>
         ))}
       </nav>
