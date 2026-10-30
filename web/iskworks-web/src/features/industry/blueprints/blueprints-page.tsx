@@ -1,4 +1,4 @@
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Download, Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -15,10 +15,13 @@ import {
   OperationalTableRow,
   type OperationalColumn,
 } from "../../../components/operational-table";
+import { downloadText } from "../../../components/csv";
 import { Badge } from "../../../components/primitives";
 import { CharacterName } from "../../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
+import { blueprintLibraryCsv, type BlueprintExportColumnKey } from "./blueprint-export";
+import { BlueprintExportDialog } from "./blueprint-export-dialog";
 import { BlueprintInspector } from "./blueprint-inspector";
 import { formatEfficiency, formatRuns, groupBlueprints, hasUnlimitedRuns } from "./blueprint-format";
 import {
@@ -30,7 +33,7 @@ import {
   type BlueprintGrouping,
   type BlueprintLibraryView,
 } from "./blueprint-library-url-state";
-import { useBlueprintLibrary } from "./use-blueprint-library";
+import { fetchAllBlueprintPages, useBlueprintLibrary } from "./use-blueprint-library";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
@@ -54,6 +57,7 @@ export function BlueprintsPage() {
   const view = useMemo(() => parseBlueprintLibraryView(searchParams), [searchParams]);
   const [searchText, setSearchText] = useState(view.search);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const library = useBlueprintLibrary(blueprintLibraryQuery(view), view.groupBy !== "none");
 
   function update(patch: Partial<BlueprintLibraryView>) {
@@ -71,6 +75,15 @@ export function BlueprintsPage() {
   function reset() {
     setSearchText("");
     setSearchParams(blueprintLibraryViewParams({ ...DEFAULT_VIEW, groupBy: view.groupBy }), { replace: true });
+  }
+
+  /** Every row matching the view, not just the pages loaded so far. */
+  async function exportCsv(keys: BlueprintExportColumnKey[]) {
+    const rows = library.rows.length >= library.total
+      ? library.rows
+      : (await fetchAllBlueprintPages(blueprintLibraryQuery(view))).rows;
+    const date = new Date().toISOString().slice(0, 10);
+    downloadText(blueprintLibraryCsv(rows, keys), `iskworks-blueprints-${date}.csv`, "text/csv");
   }
 
   function toggleSort(sort: BlueprintLibrarySort) {
@@ -140,6 +153,15 @@ export function BlueprintsPage() {
             <span className="ml-auto whitespace-nowrap text-muted" role="status">
               {library.rows.length.toLocaleString()} of {library.total.toLocaleString()} blueprints
             </span>
+            <button
+              className="inline-flex h-7 items-center rounded-[3px] border border-border bg-panel-strong px-2 text-[0.6875rem] font-semibold text-muted hover:text-foreground disabled:opacity-50"
+              disabled={library.loading || library.total === 0}
+              onClick={() => setExportOpen(true)}
+              type="button"
+            >
+              <Download aria-hidden="true" className="mr-1.5 h-3.5 w-3.5" />
+              Export
+            </button>
           </div>
           {library.error ? <div className="border-b border-border bg-destructive/10 px-3 py-1.5 text-destructive" role="alert">{library.error}</div> : null}
           <div aria-busy={library.loading} className={`min-h-0 flex-1 overflow-auto transition-opacity ${library.loading && library.rows.length > 0 ? "opacity-60" : ""}`}>
@@ -192,6 +214,7 @@ export function BlueprintsPage() {
         </main>
       </div>
       {selected ? <BlueprintInspector blueprint={selected} onClose={() => setSelectedKey(null)} /> : null}
+      <BlueprintExportDialog onClose={() => setExportOpen(false)} onExport={exportCsv} open={exportOpen} total={library.total} />
     </section>
   );
 }

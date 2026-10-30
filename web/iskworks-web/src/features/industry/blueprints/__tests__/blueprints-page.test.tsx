@@ -9,9 +9,15 @@ import {
   type BlueprintLibraryPage,
   type BlueprintLibraryRow,
 } from "../../../../api/industry";
+import { downloadText } from "../../../../components/csv";
 import { BlueprintsPage } from "../blueprints-page";
 import { WithToolWindows } from "../../../../test/tool-windows";
 import { BlueprintInspector } from "../blueprint-inspector";
+
+vi.mock("../../../../components/csv", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../../components/csv")>(),
+  downloadText: vi.fn(),
+}));
 
 vi.mock("../../../../api/industry", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../../api/industry")>(),
@@ -91,6 +97,8 @@ function renderPage(entry = "/builds/blueprints", wrapper?: typeof WithToolWindo
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
+  vi.mocked(downloadText).mockReset();
   vi.mocked(listBlueprintLibrary).mockReset().mockResolvedValue(page(rows));
   vi.mocked(getBlueprintLibraryFacets).mockReset().mockResolvedValue({
     categories: [{ value: "4", label: "Material", count: 1 }, { value: "6", label: "Ship", count: 3 }],
@@ -241,6 +249,72 @@ describe("Blueprints page", () => {
     expect(listBlueprintLibrary).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 2 }));
     expect(await screen.findByText("Mystery Blueprint")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+  });
+
+  test("Export saves the picked columns and remembers them", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Export" }));
+    const dialog = screen.getByRole("dialog", { name: "Export blueprints" });
+    expect(dialog).toHaveTextContent("4 blueprints");
+    expect(within(dialog).getByRole("checkbox", { name: "Character" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Item ID" })).not.toBeChecked();
+    await user.click(within(dialog).getByRole("checkbox", { name: "Character" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Item ID" }));
+    await user.click(within(dialog).getByRole("button", { name: "Export CSV" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const [csv, filename, type] = vi.mocked(downloadText).mock.calls[0];
+    expect(csv.split("\n")[0]).toBe("Blueprint,Product,Kind,ME,TE,Runs,Location,Item ID");
+    expect(csv).toContain("Rifter Blueprint,Rifter,Copy,8,20,5,Jita IV - Moon 4,2");
+    expect(filename).toMatch(/^iskworks-blueprints-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(type).toBe("text/csv");
+    // Already loaded every row, so no extra fetch.
+    expect(listBlueprintLibrary).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Item ID" })).toBeChecked();
+    expect(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Character" })).not.toBeChecked();
+  });
+
+  test("Export covers every matching row, not just the loaded page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listBlueprintLibrary)
+      .mockResolvedValueOnce(page(rows.slice(0, 2), 4))
+      .mockResolvedValueOnce(page(rows.slice(0, 2), 4))
+      .mockResolvedValueOnce(page(rows.slice(2), 4));
+    renderPage("/builds/blueprints?groupBy=none&sort=me&order=desc");
+
+    await user.click(await screen.findByRole("button", { name: "Export" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "None" }));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Export CSV" })).toBeDisabled();
+    await user.click(within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Blueprint" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Export CSV" }));
+
+    await waitFor(() => expect(downloadText).toHaveBeenCalled());
+    expect(listBlueprintLibrary).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 2, sort: "me", order: "desc" }));
+    expect(vi.mocked(downloadText).mock.calls[0][0].trim().split("\n")).toEqual([
+      "Blueprint",
+      "Rifter Blueprint",
+      "Rifter Blueprint",
+      "Crystalline Carbonide Reaction Formula",
+      "Mystery Blueprint",
+    ]);
+  });
+
+  test("a failed export keeps the dialog open with the error", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listBlueprintLibrary)
+      .mockResolvedValueOnce(page(rows.slice(0, 2), 4))
+      .mockRejectedValueOnce(new Error("Network down"));
+    renderPage("/builds/blueprints?groupBy=none");
+
+    await user.click(await screen.findByRole("button", { name: "Export" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Export CSV" }));
+
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Network down");
+    expect(downloadText).not.toHaveBeenCalled();
   });
 });
 

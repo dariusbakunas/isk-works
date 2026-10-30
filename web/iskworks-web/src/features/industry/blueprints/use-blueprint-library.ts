@@ -15,7 +15,7 @@ import { apiMessage } from "../shared/api-error";
 // page usually is everything; "Load more" covers the rest.
 export const BLUEPRINT_PAGE_SIZE = 500;
 
-async function fetchAllPages(query: BlueprintLibraryQuery): Promise<BlueprintLibraryPage> {
+export async function fetchAllBlueprintPages(query: BlueprintLibraryQuery): Promise<BlueprintLibraryPage> {
   const first = await listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 });
   const rows = [...first.rows];
   let total = first.total;
@@ -64,7 +64,7 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = fals
     const current = ++sequence.current;
     setLoading(true);
     setError(null);
-    (loadAll ? fetchAllPages(query) : listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 }))
+    (loadAll ? fetchAllBlueprintPages(query) : listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 }))
       .then((page) => {
         if (current !== sequence.current) return;
         setRows(page.rows);
