@@ -69,24 +69,5 @@ export function blueprintLibraryCsv(rows: BlueprintLibraryRow[], keys: readonly 
   ]);
 }
 
-const COLUMNS_KEY = "iskworks.blueprints.exportColumns";
-
-/** The last export's columns, remembered per browser. */
-export function readExportColumns(): BlueprintExportColumnKey[] {
-  try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(COLUMNS_KEY) ?? "null");
-    if (!Array.isArray(stored)) return DEFAULT_EXPORT_COLUMNS;
-    const keys = BLUEPRINT_EXPORT_COLUMNS.map((column) => column.key).filter((key) => stored.includes(key));
-    return keys.length > 0 ? keys : DEFAULT_EXPORT_COLUMNS;
-  } catch {
-    return DEFAULT_EXPORT_COLUMNS;
-  }
-}
-
-export function storeExportColumns(keys: readonly BlueprintExportColumnKey[]): void {
-  try {
-    window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(keys));
-  } catch {
-    // Storage off: it just won't be remembered.
-  }
-}
+/** Where the Export dialog remembers this browser's last picks. */
+export const EXPORT_COLUMNS_STORAGE_KEY = "iskworks.blueprints.exportColumns";
