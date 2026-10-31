@@ -24,6 +24,7 @@ mod manual_sync_gate;
 mod market_orders;
 mod operation_metrics;
 mod order_plan;
+mod pi_planner;
 mod planetary;
 mod public_market;
 mod skill_plans;
@@ -67,6 +68,11 @@ pub use market_orders::{
     TraderCharacter, TraderCharacterSource,
 };
 pub use order_plan::{OrderPlanCoordinator, OrderPlanError};
+pub use pi_planner::{
+    DensityWriteDto, PiPlannerError, PiPlannerService, PlanetSettingsWriteDto,
+    PlannerCharacterSkillsDto, PlannerPlanetsDto, PlannerRankingDto, PlannerScenarioDto,
+    MAX_PLANNER_RADIUS,
+};
 pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,
 };

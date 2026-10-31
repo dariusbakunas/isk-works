@@ -46,6 +46,7 @@ uuid.workspace = true
 [dev-dependencies]
 calamine = "0.36"
 iskworks-app = { path = "../../crates/iskworks-app", features = ["test-support"] }
+iskworks-core = { path = "../../crates/iskworks-core", features = ["test-support"] }
 iskworks-esi = { path = "../../crates/iskworks-esi", features = ["test-support"] }
 metrics-util.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

@@ -12,8 +12,9 @@ mod inputs;
 mod rank;
 mod yields;
 
-#[cfg(test)]
-mod fixtures;
+/// Real-SDE catalogue fixtures for tests in this and other crates.
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;
 
 pub use capacity::{ColonyBudget, ColonyLayout, LINK_K, MAX_HEADS_PER_ECU};
 pub use catalogue::{
