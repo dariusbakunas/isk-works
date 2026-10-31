@@ -355,8 +355,10 @@ impl PiPlannerService {
         let available_colonies = scenario.available_colonies();
         let radius = request.radius;
         let work = tokio::task::spawn_blocking(move || {
+            let started = std::time::Instant::now();
             let plan = solve(&catalogue.catalogue, &scenario, &candidates, &prices)
                 .map_err(|error| PiPlannerError::Solver(error.to_string()))?;
+            let solved = started.elapsed();
             let what_ifs = what_ifs(
                 &catalogue.catalogue,
                 &scenario,
@@ -364,6 +366,13 @@ impl PiPlannerService {
                 &prices,
                 radius,
                 &plan,
+            );
+            tracing::info!(
+                planets = candidates.len(),
+                colonies = plan.colonies.len(),
+                solve_ms = solved.as_millis() as u64,
+                total_ms = started.elapsed().as_millis() as u64,
+                "pi planner solved"
             );
             Ok::<_, PiPlannerError>((catalogue, plan, what_ifs))
         });

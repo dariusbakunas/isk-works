@@ -440,6 +440,434 @@ fn recipe_m3(catalogue: &PiCatalogue, recipe: &Recipe) -> f64 {
             .sum::<f64>()
 }
 
+/// Branch-and-bound nodes per solve; past this the best plan found so far
+/// stands. Keeps every solve (and the what-ifs' dozens) bounded.
+const NODE_LIMIT: usize = 250;
+
+/// The colony patterns and recipes a solve chooses between.
+struct Model<'a> {
+    catalogue: &'a PiCatalogue,
+    scenario: &'a RankScenario,
+    planets: &'a [CandidatePlanet],
+    prices: &'a Prices,
+    groups: Vec<Group>,
+    patterns: Vec<ExtractionPattern>,
+    sites: Vec<FactorySite>,
+    upper: Vec<&'a Recipe>,
+    costs: BTreeMap<i64, (f64, f64)>,
+    traded: BTreeSet<i64>,
+}
+
+/// One LP relaxation: colony counts (patterns, then sites) and flows.
+#[derive(Clone)]
+struct Relaxed {
+    objective: f64,
+    counts: Vec<f64>,
+    extracted: Vec<Vec<f64>>,
+    made: BTreeMap<i64, f64>,
+    sold: BTreeMap<i64, f64>,
+    bought: BTreeMap<i64, f64>,
+}
+
+impl<'a> Model<'a> {
+    fn new(
+        catalogue: &'a PiCatalogue,
+        scenario: &'a RankScenario,
+        planets: &'a [CandidatePlanet],
+        prices: &'a Prices,
+    ) -> Self {
+        let groups = groups(scenario);
+        let upper = catalogue
+            .recipes()
+            .filter(|recipe| recipe.tier >= 2)
+            .collect::<Vec<_>>();
+        let patterns = extraction_patterns(catalogue, scenario, planets, &groups);
+        let sites = factory_sites(catalogue, scenario, planets, &groups, &upper);
+        let costs: BTreeMap<i64, (f64, f64)> = upper
+            .iter()
+            .filter_map(|recipe| {
+                recipe_cost(catalogue, planets, &sites, recipe)
+                    .map(|cost| (recipe.output_type_id, cost))
+            })
+            .collect();
+        let upper = upper
+            .into_iter()
+            .filter(|recipe| costs.contains_key(&recipe.output_type_id))
+            .collect::<Vec<_>>();
+        let traded = catalogue
+            .recipes()
+            .map(|recipe| recipe.output_type_id)
+            .collect::<BTreeSet<_>>();
+        Self {
+            catalogue,
+            scenario,
+            planets,
+            prices,
+            groups,
+            patterns,
+            sites,
+            upper,
+            costs,
+            traded,
+        }
+    }
+
+    /// Each colony count's bounds before branching: none up to the group's
+    /// size.
+    fn bounds(&self) -> Vec<(f64, f64)> {
+        self.patterns
+            .iter()
+            .map(|pattern| pattern.group)
+            .chain(self.sites.iter().map(|site| site.group))
+            .map(|group| (0.0, self.groups[group].characters.len() as f64))
+            .collect()
+    }
+
+    /// The LP relaxation with colony counts held to `bounds`; `None` when
+    /// infeasible.
+    fn relax(&self, bounds: &[(f64, f64)]) -> Option<Relaxed> {
+        let Self {
+            catalogue,
+            scenario,
+            planets,
+            prices,
+            groups,
+            patterns,
+            sites,
+            upper,
+            costs,
+            traded,
+        } = self;
+        let mut vars = ProblemVariables::new();
+        let mut bound = bounds.iter();
+        let mut count_var = |vars: &mut ProblemVariables| {
+            let (low, high) = bound.next().copied().unwrap_or((0.0, 0.0));
+            vars.add(variable().min(low).max(high))
+        };
+        let x: Vec<Variable> = patterns.iter().map(|_| count_var(&mut vars)).collect();
+        let y: Vec<Variable> = sites.iter().map(|_| count_var(&mut vars)).collect();
+        let extracted: Vec<Vec<Variable>> = patterns
+            .iter()
+            .map(|pattern| {
+                pattern
+                    .outputs
+                    .iter()
+                    .map(|_| vars.add(variable().min(0)))
+                    .collect()
+            })
+            .collect();
+        let made: BTreeMap<i64, Variable> = upper
+            .iter()
+            .map(|recipe| (recipe.output_type_id, vars.add(variable().min(0))))
+            .collect();
+        let sold: BTreeMap<i64, Variable> = traded
+            .iter()
+            .filter(|type_id| prices.best_buy.contains_key(type_id))
+            .map(|type_id| (*type_id, vars.add(variable().min(0))))
+            .collect();
+        let bought: BTreeMap<i64, Variable> = if scenario.buy_intermediates {
+            traded
+                .iter()
+                .filter(|type_id| catalogue.tier(**type_id).is_some_and(|tier| tier <= 3))
+                .filter(|type_id| prices.best_sell.contains_key(type_id))
+                .map(|type_id| (*type_id, vars.add(variable().min(0))))
+                .collect()
+        } else {
+            BTreeMap::new()
+        };
+        // Objective, per hour, with factory-side tax at the default rate; the
+        // plan reprices every transfer at its own planet afterwards.
+        let default_rate = scenario.default_customs_rate;
+        let mut objective = Expression::from(0.0);
+        for (type_id, var) in &sold {
+            let mut value = prices.best_buy[type_id];
+            if catalogue.tier(*type_id).is_some_and(|tier| tier >= 2) {
+                value -= catalogue.export_tax(*type_id, default_rate);
+            }
+            objective += value * *var;
+        }
+        for (type_id, var) in &bought {
+            objective -=
+                (prices.best_sell[type_id] + catalogue.import_tax(*type_id, default_rate)) * *var;
+        }
+        for (pattern, vars) in patterns.iter().zip(&extracted) {
+            let rate = customs_rate(scenario, &planets[pattern.planet]);
+            for (output, var) in pattern.outputs.iter().zip(vars) {
+                objective -= catalogue.export_tax(output.p1, rate) * *var;
+            }
+        }
+        for recipe in upper.iter() {
+            let per_unit_tax = recipe
+                .inputs
+                .iter()
+                .filter(|(input, _)| catalogue.tier(*input) == Some(1))
+                .map(|(input, quantity)| {
+                    quantity / recipe.output_quantity * catalogue.import_tax(*input, default_rate)
+                })
+                .sum::<f64>();
+            objective -= per_unit_tax * made[&recipe.output_type_id];
+        }
+        for var in x.iter().chain(&y) {
+            objective -= COLONY_PENALTY * *var;
+        }
+
+        let mut problem = vars.maximise(objective).using(default_solver);
+
+        // Extraction up to the colonies' output.
+        for ((pattern, count), vars) in patterns.iter().zip(&x).zip(&extracted) {
+            for (output, var) in pattern.outputs.iter().zip(vars) {
+                problem = problem.with((Expression::from(*var) - output.rate * *count).leq(0.0));
+            }
+        }
+        // Colonies per group, one per character per planet, and the cap.
+        for (group_index, group) in groups.iter().enumerate() {
+            let mut total = Expression::from(0.0);
+            let mut per_planet: BTreeMap<usize, Expression> = BTreeMap::new();
+            for (pattern, var) in patterns.iter().zip(&x) {
+                if pattern.group == group_index {
+                    total += *var;
+                    *per_planet.entry(pattern.planet).or_default() += *var;
+                }
+            }
+            for (site, var) in sites.iter().zip(&y) {
+                if site.group == group_index {
+                    total += *var;
+                    *per_planet.entry(site.planet).or_default() += *var;
+                }
+            }
+            let characters = group.characters.len() as f64;
+            problem = problem.with(total.leq(characters * f64::from(group.colonies_each)));
+            for expression in per_planet.into_values() {
+                problem = problem.with(expression.leq(characters));
+            }
+        }
+        if let Some(cap) = scenario.max_colonies {
+            let total = x
+                .iter()
+                .chain(&y)
+                .fold(Expression::from(0.0), |sum, var| sum + *var);
+            problem = problem.with(total.leq(f64::from(cap)));
+        }
+        // Recipe balance for every traded commodity.
+        for type_id in traded.iter() {
+            let mut balance = Expression::from(0.0);
+            for (pattern, vars) in patterns.iter().zip(&extracted) {
+                for (output, var) in pattern.outputs.iter().zip(vars) {
+                    if output.p1 == *type_id {
+                        balance += *var;
+                    }
+                }
+            }
+            if let Some(var) = made.get(type_id) {
+                balance += *var;
+            }
+            if let Some(var) = bought.get(type_id) {
+                balance += *var;
+            }
+            for recipe in upper.iter() {
+                if let Some((_, quantity)) =
+                    recipe.inputs.iter().find(|(input, _)| input == type_id)
+                {
+                    balance -= quantity / recipe.output_quantity * made[&recipe.output_type_id];
+                }
+            }
+            if let Some(var) = sold.get(type_id) {
+                balance -= *var;
+            }
+            problem = problem.with(balance.eq(0.0));
+        }
+        // Factory capacity: all upper recipes on every site, P4 on high-tech ones.
+        for (pool_high_tech, axis) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
+            let mut used = Expression::from(0.0);
+            for recipe in upper.iter() {
+                if pool_high_tech && recipe.tier < 4 {
+                    continue;
+                }
+                let cost = costs[&recipe.output_type_id];
+                let per_factory = if axis == 0 { cost.0 } else { cost.1 };
+                used += per_factory / recipe.output_per_hour() * made[&recipe.output_type_id];
+            }
+            let mut room = Expression::from(0.0);
+            for (site, var) in sites.iter().zip(&y) {
+                if pool_high_tech && !site.high_tech {
+                    continue;
+                }
+                room += (if axis == 0 { site.room.0 } else { site.room.1 }) * *var;
+            }
+            problem = problem.with((used - room).leq(0.0));
+        }
+        // Factory buffers: the launchpad between logins, the skyhook between hauls.
+        let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort);
+        let mut through = Expression::from(0.0);
+        for recipe in upper.iter() {
+            through += recipe_m3(catalogue, recipe) * made[&recipe.output_type_id];
+        }
+        let factories = y.iter().fold(Expression::from(0.0), |sum, var| sum + *var);
+        problem = problem.with(
+            (held.on_planet_m3 * through.clone() - LAUNCHPAD_M3 * factories.clone()).leq(0.0),
+        );
+        if held.skyhook_m3 > 0.0 {
+            problem = problem.with((held.skyhook_m3 * through - SKYHOOK_M3 * factories).leq(0.0));
+        }
+
+        let solution = problem.solve().ok()?;
+        let value = |var: Variable| solution.value(var).max(0.0);
+        let rates = |vars: &BTreeMap<i64, Variable>| {
+            vars.iter()
+                .map(|(type_id, var)| (*type_id, value(*var)))
+                .filter(|(_, rate)| *rate > 1e-6)
+                .collect::<BTreeMap<_, _>>()
+        };
+        let counts: Vec<f64> = x.iter().chain(&y).map(|var| value(*var)).collect();
+        let sold = rates(&sold);
+        let bought = rates(&bought);
+        let made = rates(&made);
+        let extracted: Vec<Vec<f64>> = extracted
+            .iter()
+            .map(|vars| vars.iter().map(|var| value(*var)).collect())
+            .collect();
+        Some(Relaxed {
+            objective: self.objective(&counts, &extracted, &made, &sold, &bought),
+            counts,
+            extracted,
+            made,
+            sold,
+            bought,
+        })
+    }
+
+    /// The objective at these values, recomputed so it doesn't depend on the
+    /// solver's own rounding.
+    fn objective(
+        &self,
+        counts: &[f64],
+        extracted: &[Vec<f64>],
+        made: &BTreeMap<i64, f64>,
+        sold: &BTreeMap<i64, f64>,
+        bought: &BTreeMap<i64, f64>,
+    ) -> f64 {
+        let catalogue = self.catalogue;
+        let rate = self.scenario.default_customs_rate;
+        let mut total = 0.0;
+        for (type_id, units) in sold {
+            let mut value = self.prices.best_buy[type_id];
+            if catalogue.tier(*type_id).is_some_and(|tier| tier >= 2) {
+                value -= catalogue.export_tax(*type_id, rate);
+            }
+            total += value * units;
+        }
+        for (type_id, units) in bought {
+            total -=
+                (self.prices.best_sell[type_id] + catalogue.import_tax(*type_id, rate)) * units;
+        }
+        for (pattern, units) in self.patterns.iter().zip(extracted) {
+            let planet_rate = customs_rate(self.scenario, &self.planets[pattern.planet]);
+            for (output, made) in pattern.outputs.iter().zip(units) {
+                total -= catalogue.export_tax(output.p1, planet_rate) * made;
+            }
+        }
+        for recipe in &self.upper {
+            let Some(units) = made.get(&recipe.output_type_id) else {
+                continue;
+            };
+            let per_unit_tax = recipe
+                .inputs
+                .iter()
+                .filter(|(input, _)| catalogue.tier(*input) == Some(1))
+                .map(|(input, quantity)| {
+                    quantity / recipe.output_quantity * catalogue.import_tax(*input, rate)
+                })
+                .sum::<f64>();
+            total -= per_unit_tax * units;
+        }
+        total - COLONY_PENALTY * counts.iter().sum::<f64>()
+    }
+}
+
+/// The colony count furthest from a whole number, if any isn't whole.
+fn most_fractional(counts: &[f64]) -> Option<(usize, f64)> {
+    counts
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            (
+                index,
+                *value,
+                (value - value.floor()).min(value.ceil() - value),
+            )
+        })
+        .filter(|(_, _, distance)| *distance > 1e-6)
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(index, value, _)| (index, value))
+}
+
+/// Depth-first branch and bound over the colony counts, nearest rounding
+/// first, pruned by the relaxation's bound. Stops at [`NODE_LIMIT`] with
+/// the best whole plan found, else the root rounded down.
+fn branch_and_bound(model: &Model<'_>) -> Result<Relaxed, SolveError> {
+    let root_bounds = model.bounds();
+    let root = model
+        .relax(&root_bounds)
+        .ok_or_else(|| SolveError::Solver("the relaxation is infeasible".to_string()))?;
+    // Doing nothing is always possible and earns nothing.
+    let mut best: Option<Relaxed> = None;
+    let mut best_objective = 0.0;
+    let mut stack = vec![(root_bounds.clone(), Some(root.clone()))];
+    let mut nodes = 0;
+    while let Some((bounds, relaxed)) = stack.pop() {
+        if nodes >= NODE_LIMIT {
+            break;
+        }
+        nodes += 1;
+        let Some(relaxed) = relaxed.or_else(|| model.relax(&bounds)) else {
+            continue;
+        };
+        if relaxed.objective <= best_objective + 1e-6 {
+            continue;
+        }
+        match most_fractional(&relaxed.counts) {
+            None => {
+                best_objective = relaxed.objective;
+                best = Some(relaxed);
+            }
+            Some((index, value)) => {
+                let mut down = bounds.clone();
+                down[index].1 = value.floor();
+                let mut up = bounds;
+                up[index].0 = value.ceil();
+                // The nearer side is explored first, so it goes on last.
+                if value - value.floor() >= 0.5 {
+                    stack.push((down, None));
+                    stack.push((up, None));
+                } else {
+                    stack.push((up, None));
+                    stack.push((down, None));
+                }
+            }
+        }
+    }
+    if let Some(best) = best {
+        return Ok(best);
+    }
+    let floored = root
+        .counts
+        .iter()
+        .map(|count| (count.floor(), count.floor()))
+        .collect::<Vec<_>>();
+    Ok(model.relax(&floored).unwrap_or(Relaxed {
+        objective: 0.0,
+        counts: vec![0.0; root.counts.len()],
+        extracted: root
+            .extracted
+            .iter()
+            .map(|units| vec![0.0; units.len()])
+            .collect(),
+        made: BTreeMap::new(),
+        sold: BTreeMap::new(),
+        bought: BTreeMap::new(),
+    }))
+}
+
 /// Solves the scenario. A plan with no colonies means nothing pays.
 pub fn solve(
     catalogue: &PiCatalogue,
@@ -447,260 +875,51 @@ pub fn solve(
     planets: &[CandidatePlanet],
     prices: &Prices,
 ) -> Result<PiPlan, SolveError> {
-    let groups = groups(scenario);
-    let upper = catalogue
-        .recipes()
-        .filter(|recipe| recipe.tier >= 2)
-        .collect::<Vec<_>>();
-    let patterns = extraction_patterns(catalogue, scenario, planets, &groups);
-    let sites = factory_sites(catalogue, scenario, planets, &groups, &upper);
-    let costs: BTreeMap<i64, (f64, f64)> = upper
-        .iter()
-        .filter_map(|recipe| {
-            recipe_cost(catalogue, planets, &sites, recipe)
-                .map(|cost| (recipe.output_type_id, cost))
-        })
-        .collect();
-    let upper = upper
-        .into_iter()
-        .filter(|recipe| costs.contains_key(&recipe.output_type_id))
-        .collect::<Vec<_>>();
-
-    let mut vars = ProblemVariables::new();
-    let colony_count = |vars: &mut ProblemVariables, group: &Group| {
-        vars.add(
-            variable()
-                .integer()
-                .min(0)
-                .max(group.characters.len() as f64),
-        )
-    };
-    let x: Vec<Variable> = patterns
-        .iter()
-        .map(|pattern| colony_count(&mut vars, &groups[pattern.group]))
-        .collect();
-    let extracted: Vec<Vec<Variable>> = patterns
-        .iter()
-        .map(|pattern| {
-            pattern
-                .outputs
-                .iter()
-                .map(|_| vars.add(variable().min(0)))
-                .collect()
-        })
-        .collect();
-    let y: Vec<Variable> = sites
-        .iter()
-        .map(|site| colony_count(&mut vars, &groups[site.group]))
-        .collect();
-    let made: BTreeMap<i64, Variable> = upper
-        .iter()
-        .map(|recipe| (recipe.output_type_id, vars.add(variable().min(0))))
-        .collect();
-    let traded = catalogue
-        .recipes()
-        .map(|recipe| recipe.output_type_id)
-        .collect::<BTreeSet<_>>();
-    let sold: BTreeMap<i64, Variable> = traded
-        .iter()
-        .filter(|type_id| prices.best_buy.contains_key(type_id))
-        .map(|type_id| (*type_id, vars.add(variable().min(0))))
-        .collect();
-    let bought: BTreeMap<i64, Variable> = if scenario.buy_intermediates {
-        traded
-            .iter()
-            .filter(|type_id| catalogue.tier(**type_id).is_some_and(|tier| tier <= 3))
-            .filter(|type_id| prices.best_sell.contains_key(type_id))
-            .map(|type_id| (*type_id, vars.add(variable().min(0))))
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
-
-    // Objective, per hour, with factory-side tax at the default rate; the
-    // plan reprices every transfer at its own planet afterwards.
-    let default_rate = scenario.default_customs_rate;
-    let mut objective = Expression::from(0.0);
-    for (type_id, var) in &sold {
-        let mut value = prices.best_buy[type_id];
-        if catalogue.tier(*type_id).is_some_and(|tier| tier >= 2) {
-            value -= catalogue.export_tax(*type_id, default_rate);
-        }
-        objective += value * *var;
+    let model = Model::new(catalogue, scenario, planets, prices);
+    let best = branch_and_bound(&model)?;
+    if best.objective <= 0.0 {
+        return Ok(build_plan(
+            catalogue,
+            scenario,
+            planets,
+            prices,
+            &model.groups,
+            PlanValues::default(),
+        ));
     }
-    for (type_id, var) in &bought {
-        objective -=
-            (prices.best_sell[type_id] + catalogue.import_tax(*type_id, default_rate)) * *var;
-    }
-    for (pattern, vars) in patterns.iter().zip(&extracted) {
-        let rate = customs_rate(scenario, &planets[pattern.planet]);
-        for (output, var) in pattern.outputs.iter().zip(vars) {
-            objective -= catalogue.export_tax(output.p1, rate) * *var;
-        }
-    }
-    for recipe in &upper {
-        let per_unit_tax = recipe
-            .inputs
-            .iter()
-            .filter(|(input, _)| catalogue.tier(*input) == Some(1))
-            .map(|(input, quantity)| {
-                quantity / recipe.output_quantity * catalogue.import_tax(*input, default_rate)
-            })
-            .sum::<f64>();
-        objective -= per_unit_tax * made[&recipe.output_type_id];
-    }
-    for var in x.iter().chain(&y) {
-        objective -= COLONY_PENALTY * *var;
-    }
-
-    let mut problem = vars.maximise(objective).using(default_solver);
-
-    // Extraction up to the colonies' output.
-    for ((pattern, count), vars) in patterns.iter().zip(&x).zip(&extracted) {
-        for (output, var) in pattern.outputs.iter().zip(vars) {
-            problem = problem.with((Expression::from(*var) - output.rate * *count).leq(0.0));
-        }
-    }
-    // Colonies per group, one per character per planet, and the cap.
-    for (group_index, group) in groups.iter().enumerate() {
-        let mut total = Expression::from(0.0);
-        let mut per_planet: BTreeMap<usize, Expression> = BTreeMap::new();
-        for (pattern, var) in patterns.iter().zip(&x) {
-            if pattern.group == group_index {
-                total += *var;
-                *per_planet.entry(pattern.planet).or_default() += *var;
-            }
-        }
-        for (site, var) in sites.iter().zip(&y) {
-            if site.group == group_index {
-                total += *var;
-                *per_planet.entry(site.planet).or_default() += *var;
-            }
-        }
-        let characters = group.characters.len() as f64;
-        problem = problem.with(total.leq(characters * f64::from(group.colonies_each)));
-        for expression in per_planet.into_values() {
-            problem = problem.with(expression.leq(characters));
-        }
-    }
-    if let Some(cap) = scenario.max_colonies {
-        let total = x
-            .iter()
-            .chain(&y)
-            .fold(Expression::from(0.0), |sum, var| sum + *var);
-        problem = problem.with(total.leq(f64::from(cap)));
-    }
-    // Recipe balance for every traded commodity.
-    for type_id in &traded {
-        let mut balance = Expression::from(0.0);
-        for (pattern, vars) in patterns.iter().zip(&extracted) {
-            for (output, var) in pattern.outputs.iter().zip(vars) {
-                if output.p1 == *type_id {
-                    balance += *var;
-                }
-            }
-        }
-        if let Some(var) = made.get(type_id) {
-            balance += *var;
-        }
-        if let Some(var) = bought.get(type_id) {
-            balance += *var;
-        }
-        for recipe in &upper {
-            if let Some((_, quantity)) = recipe.inputs.iter().find(|(input, _)| input == type_id) {
-                balance -= quantity / recipe.output_quantity * made[&recipe.output_type_id];
-            }
-        }
-        if let Some(var) = sold.get(type_id) {
-            balance -= *var;
-        }
-        problem = problem.with(balance.eq(0.0));
-    }
-    // Factory capacity: all upper recipes on every site, P4 on high-tech ones.
-    for (pool_high_tech, axis) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
-        let mut used = Expression::from(0.0);
-        for recipe in &upper {
-            if pool_high_tech && recipe.tier < 4 {
-                continue;
-            }
-            let cost = costs[&recipe.output_type_id];
-            let per_factory = if axis == 0 { cost.0 } else { cost.1 };
-            used += per_factory / recipe.output_per_hour() * made[&recipe.output_type_id];
-        }
-        let mut room = Expression::from(0.0);
-        for (site, var) in sites.iter().zip(&y) {
-            if pool_high_tech && !site.high_tech {
-                continue;
-            }
-            room += (if axis == 0 { site.room.0 } else { site.room.1 }) * *var;
-        }
-        problem = problem.with((used - room).leq(0.0));
-    }
-    // Factory buffers: the launchpad between logins, the skyhook between hauls.
-    let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort);
-    let mut through = Expression::from(0.0);
-    for recipe in &upper {
-        through += recipe_m3(catalogue, recipe) * made[&recipe.output_type_id];
-    }
-    let factories = y.iter().fold(Expression::from(0.0), |sum, var| sum + *var);
-    problem = problem
-        .with((held.on_planet_m3 * through.clone() - LAUNCHPAD_M3 * factories.clone()).leq(0.0));
-    if held.skyhook_m3 > 0.0 {
-        problem = problem.with((held.skyhook_m3 * through - SKYHOOK_M3 * factories).leq(0.0));
-    }
-
-    let solution = problem
-        .solve()
-        .map_err(|error| SolveError::Solver(error.to_string()))?;
-    let value = |var: Variable| solution.value(var).max(0.0);
-    let count = |var: Variable| value(var).round() as u32;
-
+    let count = |value: f64| value.round() as u32;
+    let (pattern_counts, site_counts) = best.counts.split_at(model.patterns.len());
     Ok(build_plan(
         catalogue,
         scenario,
         planets,
         prices,
-        &groups,
+        &model.groups,
         PlanValues {
-            extraction: patterns
+            extraction: model
+                .patterns
                 .iter()
-                .zip(&x)
-                .zip(&extracted)
-                .filter(|((_, var), _)| count(**var) > 0)
-                .map(|((pattern, var), made)| {
-                    (
-                        pattern,
-                        count(*var),
-                        made.iter().map(|var| value(*var)).collect(),
-                    )
-                })
+                .zip(pattern_counts)
+                .zip(&best.extracted)
+                .filter(|((_, value), _)| count(**value) > 0)
+                .map(|((pattern, value), made)| (pattern, count(*value), made.clone()))
                 .collect(),
-            factories: sites
+            factories: model
+                .sites
                 .iter()
-                .zip(&y)
-                .filter(|(_, var)| count(**var) > 0)
-                .map(|(site, var)| (site, count(*var)))
+                .zip(site_counts)
+                .filter(|(_, value)| count(**value) > 0)
+                .map(|(site, value)| (site, count(*value)))
                 .collect(),
-            made: made
-                .iter()
-                .map(|(type_id, var)| (*type_id, value(*var)))
-                .filter(|(_, rate)| *rate > 1e-6)
-                .collect(),
-            sold: sold
-                .iter()
-                .map(|(type_id, var)| (*type_id, value(*var)))
-                .filter(|(_, rate)| *rate > 1e-6)
-                .collect(),
-            bought: bought
-                .iter()
-                .map(|(type_id, var)| (*type_id, value(*var)))
-                .filter(|(_, rate)| *rate > 1e-6)
-                .collect(),
-            costs,
+            made: best.made,
+            sold: best.sold,
+            bought: best.bought,
+            costs: model.costs.clone(),
         },
     ))
 }
 
+#[derive(Default)]
 struct PlanValues<'a> {
     /// Each pattern used, its colony count, and P1 per hour per output.
     extraction: Vec<(&'a ExtractionPattern, u32, Vec<f64>)>,
