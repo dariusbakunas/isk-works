@@ -390,7 +390,38 @@ pub struct PlanetSchematic {
     pub cycle_time_seconds: i64,
     pub inputs: Vec<PlanetSchematicLine>,
     pub outputs: Vec<PlanetSchematicLine>,
+    /// The processor types that can run it, sorted.
+    pub pin_type_ids: Vec<i64>,
 }
+
+/// A solar system and its distance in gate jumps from the system the
+/// [`SdeReadRepository::systems_within_jumps`] walk started at.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct SystemDistance {
+    pub solar_system_id: i64,
+    pub name: String,
+    pub security_status: Option<Decimal>,
+    pub region_name: Option<String>,
+    pub wormhole_class_id: Option<i64>,
+    pub jumps: u8,
+}
+
+/// A planet the PI Planner can use: one whose type is known.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct PlannerPlanet {
+    pub planet_id: i64,
+    pub name: String,
+    pub solar_system_id: i64,
+    pub celestial_index: i64,
+    pub type_id: i64,
+    pub radius_m: Option<i64>,
+}
+
+/// A PI structure type, as imported.
+pub type PlanetPinType = ImportPlanetPinType;
+
+/// A PI commodity's customs tax multipliers, as imported.
+pub type PlanetCommodity = ImportPlanetCommodity;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct PlanetSchematicLine {
@@ -793,6 +824,40 @@ pub trait SdeReadRepository: Send + Sync {
     ) -> Result<BTreeMap<i64, PlanetSchematic>, SdeError> {
         let _ = schematic_ids;
         Ok(BTreeMap::new())
+    }
+    /// Every PI schematic with its processor types, sorted by id. Empty when
+    /// the import predates planetary data.
+    async fn planet_schematic_catalogue(&self) -> Result<Vec<PlanetSchematic>, SdeError> {
+        Ok(Vec::new())
+    }
+    /// The PI structure types, sorted by type id. Empty when the import
+    /// predates the PI Planner data.
+    async fn planet_pin_types(&self) -> Result<Vec<PlanetPinType>, SdeError> {
+        Ok(Vec::new())
+    }
+    /// Customs tax multipliers by commodity type id.
+    async fn planet_commodities(&self) -> Result<BTreeMap<i64, PlanetCommodity>, SdeError> {
+        Ok(BTreeMap::new())
+    }
+    /// The start system and every system within `max_jumps` gate jumps of
+    /// it (capped at 5), each at its shortest distance, sorted by jumps then
+    /// name. Empty when the system is unknown; a system without gates (such
+    /// as a wormhole) returns only itself.
+    async fn systems_within_jumps(
+        &self,
+        solar_system_id: i64,
+        max_jumps: u8,
+    ) -> Result<Vec<SystemDistance>, SdeError> {
+        let _ = (solar_system_id, max_jumps);
+        Ok(Vec::new())
+    }
+    /// The planets of these systems whose type is known, sorted by planet id.
+    async fn planets_in_systems(
+        &self,
+        solar_system_ids: &[i64],
+    ) -> Result<Vec<PlannerPlanet>, SdeError> {
+        let _ = solar_system_ids;
+        Ok(Vec::new())
     }
     /// `(from, to)` system pairs for every stargate whose two ends are both
     /// in the region, from the active import. Empty when the import has no

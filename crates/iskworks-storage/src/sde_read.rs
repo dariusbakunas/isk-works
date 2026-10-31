@@ -1024,45 +1024,168 @@ impl SdeReadRepository for PgSdeRepository {
         if schematic_ids.is_empty() {
             return Ok(std::collections::BTreeMap::new());
         }
-        let rows = sqlx::query_as::<_, PlanetSchematicLineRow>(
+        Ok(self
+            .read_planet_schematics(Some(schematic_ids))
+            .await?
+            .into_iter()
+            .map(|schematic| (schematic.schematic_id, schematic))
+            .collect())
+    }
+
+    async fn planet_schematic_catalogue(
+        &self,
+    ) -> Result<Vec<iskworks_sde::PlanetSchematic>, SdeError> {
+        self.read_planet_schematics(None).await
+    }
+
+    async fn planet_pin_types(&self) -> Result<Vec<iskworks_sde::PlanetPinType>, SdeError> {
+        let rows = sqlx::query_as::<_, PlanetPinTypeRow>(
             r#"
-            SELECT schematic.schematic_id, schematic.name_en, schematic.cycle_time_seconds,
-                   line.type_id, line.is_input, line.quantity
+            SELECT pin.type_id, pin.kind, pin.planet_type_id, pin.harvester_type_id,
+                   pin.cpu_load, pin.power_load, pin.cpu_output, pin.power_output,
+                   pin.ecu_head_cpu, pin.ecu_head_power, pin.cpu_load_per_km,
+                   pin.power_load_per_km, pin.cpu_load_level_modifier,
+                   pin.power_load_level_modifier
             FROM sde_imports import
-            JOIN sde_planet_schematics schematic ON schematic.import_id = import.id
-            JOIN sde_planet_schematic_types line
-              ON line.import_id = schematic.import_id
-             AND line.schematic_id = schematic.schematic_id
-            WHERE import.active = true AND schematic.schematic_id = ANY($1)
-            ORDER BY schematic.schematic_id, line.is_input DESC, line.type_id
+            JOIN sde_planet_pin_types pin ON pin.import_id = import.id
+            WHERE import.active = true
+            ORDER BY pin.type_id
             "#,
         )
-        .bind(schematic_ids)
         .fetch_all(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
-        let mut schematics = std::collections::BTreeMap::new();
-        for row in rows {
-            let schematic = schematics.entry(row.schematic_id).or_insert_with(|| {
-                iskworks_sde::PlanetSchematic {
-                    schematic_id: row.schematic_id,
-                    name: row.name_en.clone(),
-                    cycle_time_seconds: row.cycle_time_seconds,
-                    inputs: Vec::new(),
-                    outputs: Vec::new(),
-                }
-            });
-            let line = iskworks_sde::PlanetSchematicLine {
-                type_id: row.type_id,
-                quantity: row.quantity,
-            };
-            if row.is_input {
-                schematic.inputs.push(line);
-            } else {
-                schematic.outputs.push(line);
-            }
+        Ok(rows
+            .into_iter()
+            .filter_map(PlanetPinTypeRow::into_pin_type)
+            .collect())
+    }
+
+    async fn planet_commodities(
+        &self,
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::PlanetCommodity>, SdeError> {
+        let rows = sqlx::query_as::<_, (i64, rust_decimal::Decimal, rust_decimal::Decimal)>(
+            r#"
+            SELECT commodity.type_id, commodity.export_tax_multiplier,
+                   commodity.import_tax_multiplier
+            FROM sde_imports import
+            JOIN sde_planet_commodities commodity ON commodity.import_id = import.id
+            WHERE import.active = true
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|(type_id, export_tax_multiplier, import_tax_multiplier)| {
+                (
+                    type_id,
+                    iskworks_sde::PlanetCommodity {
+                        type_id,
+                        export_tax_multiplier,
+                        import_tax_multiplier,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    async fn systems_within_jumps(
+        &self,
+        solar_system_id: i64,
+        max_jumps: u8,
+    ) -> Result<Vec<iskworks_sde::SystemDistance>, SdeError> {
+        let rows = sqlx::query_as::<_, SystemDistanceRow>(
+            r#"
+            WITH RECURSIVE active AS (
+              SELECT id FROM sde_imports WHERE active = true
+            ),
+            walk(solar_system_id, jumps) AS (
+              SELECT system.solar_system_id, 0
+              FROM sde_solar_systems system
+              JOIN active ON system.import_id = active.id
+              WHERE system.solar_system_id = $1
+              UNION
+              SELECT gate.destination_solar_system_id, walk.jumps + 1
+              FROM walk
+              JOIN sde_stargates gate ON gate.solar_system_id = walk.solar_system_id
+              JOIN active ON gate.import_id = active.id
+              WHERE walk.jumps < $2
+            )
+            SELECT system.solar_system_id, system.name_en, system.security_status,
+                   region.name_en AS region_name, system.wormhole_class_id,
+                   min(walk.jumps) AS jumps
+            FROM walk
+            JOIN active ON true
+            JOIN sde_solar_systems system
+              ON system.import_id = active.id
+             AND system.solar_system_id = walk.solar_system_id
+            LEFT JOIN sde_regions region
+              ON region.import_id = system.import_id
+             AND region.region_id = system.region_id
+            GROUP BY system.solar_system_id, system.name_en, system.security_status,
+                     region.name_en, system.wormhole_class_id
+            ORDER BY jumps, system.name_en, system.solar_system_id
+            "#,
+        )
+        .bind(solar_system_id)
+        .bind(i32::from(max_jumps.min(MAX_PLANNER_JUMPS)))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| iskworks_sde::SystemDistance {
+                solar_system_id: row.solar_system_id,
+                name: row.name_en,
+                security_status: row.security_status,
+                region_name: row.region_name,
+                wormhole_class_id: row.wormhole_class_id,
+                jumps: u8::try_from(row.jumps).unwrap_or(u8::MAX),
+            })
+            .collect())
+    }
+
+    async fn planets_in_systems(
+        &self,
+        solar_system_ids: &[i64],
+    ) -> Result<Vec<iskworks_sde::PlannerPlanet>, SdeError> {
+        if solar_system_ids.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(schematics)
+        sqlx::query_as::<_, (i64, String, i64, i64, i64, Option<i64>)>(
+            r#"
+            SELECT planet.planet_id, planet.name_en, planet.solar_system_id,
+                   planet.celestial_index, planet.type_id, planet.radius_m
+            FROM sde_imports import
+            JOIN sde_planets planet ON planet.import_id = import.id
+            WHERE import.active = true
+              AND planet.solar_system_id = ANY($1)
+              AND planet.type_id IS NOT NULL
+            ORDER BY planet.planet_id
+            "#,
+        )
+        .bind(solar_system_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(
+                    |(planet_id, name, solar_system_id, celestial_index, type_id, radius_m)| {
+                        iskworks_sde::PlannerPlanet {
+                            planet_id,
+                            name,
+                            solar_system_id,
+                            celestial_index,
+                            type_id,
+                            radius_m,
+                        }
+                    },
+                )
+                .collect()
+        })
+        .map_err(map_sde_sqlx_error)
     }
 
     async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError> {
@@ -2219,6 +2342,121 @@ struct TypeNameRow {
     name_en: String,
 }
 
+/// The PI Planner never looks further than this many jumps from home.
+const MAX_PLANNER_JUMPS: u8 = 5;
+
+impl PgSdeRepository {
+    /// PI schematics with their lines and processor types, sorted by id;
+    /// `None` reads them all.
+    async fn read_planet_schematics(
+        &self,
+        schematic_ids: Option<&[i64]>,
+    ) -> Result<Vec<iskworks_sde::PlanetSchematic>, SdeError> {
+        let rows = sqlx::query_as::<_, PlanetSchematicLineRow>(
+            r#"
+            SELECT schematic.schematic_id, schematic.name_en, schematic.cycle_time_seconds,
+                   line.type_id, line.is_input, line.quantity,
+                   COALESCE((
+                     SELECT array_agg(pin.pin_type_id ORDER BY pin.pin_type_id)
+                     FROM sde_planet_schematic_pins pin
+                     WHERE pin.import_id = schematic.import_id
+                       AND pin.schematic_id = schematic.schematic_id
+                   ), ARRAY[]::bigint[]) AS pin_type_ids
+            FROM sde_imports import
+            JOIN sde_planet_schematics schematic ON schematic.import_id = import.id
+            JOIN sde_planet_schematic_types line
+              ON line.import_id = schematic.import_id
+             AND line.schematic_id = schematic.schematic_id
+            WHERE import.active = true
+              AND ($1::bigint[] IS NULL OR schematic.schematic_id = ANY($1))
+            ORDER BY schematic.schematic_id, line.is_input DESC, line.type_id
+            "#,
+        )
+        .bind(schematic_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        let mut schematics: Vec<iskworks_sde::PlanetSchematic> = Vec::new();
+        for row in rows {
+            if schematics
+                .last()
+                .map_or(true, |last| last.schematic_id != row.schematic_id)
+            {
+                schematics.push(iskworks_sde::PlanetSchematic {
+                    schematic_id: row.schematic_id,
+                    name: row.name_en.clone(),
+                    cycle_time_seconds: row.cycle_time_seconds,
+                    inputs: Vec::new(),
+                    outputs: Vec::new(),
+                    pin_type_ids: row.pin_type_ids.clone(),
+                });
+            }
+            let Some(schematic) = schematics.last_mut() else {
+                continue;
+            };
+            let line = iskworks_sde::PlanetSchematicLine {
+                type_id: row.type_id,
+                quantity: row.quantity,
+            };
+            if row.is_input {
+                schematic.inputs.push(line);
+            } else {
+                schematic.outputs.push(line);
+            }
+        }
+        Ok(schematics)
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct PlanetPinTypeRow {
+    type_id: i64,
+    kind: String,
+    planet_type_id: Option<i64>,
+    harvester_type_id: Option<i64>,
+    cpu_load: Option<rust_decimal::Decimal>,
+    power_load: Option<rust_decimal::Decimal>,
+    cpu_output: Option<rust_decimal::Decimal>,
+    power_output: Option<rust_decimal::Decimal>,
+    ecu_head_cpu: Option<rust_decimal::Decimal>,
+    ecu_head_power: Option<rust_decimal::Decimal>,
+    cpu_load_per_km: Option<rust_decimal::Decimal>,
+    power_load_per_km: Option<rust_decimal::Decimal>,
+    cpu_load_level_modifier: Option<rust_decimal::Decimal>,
+    power_load_level_modifier: Option<rust_decimal::Decimal>,
+}
+
+impl PlanetPinTypeRow {
+    fn into_pin_type(self) -> Option<iskworks_sde::PlanetPinType> {
+        Some(iskworks_sde::PlanetPinType {
+            type_id: self.type_id,
+            kind: iskworks_sde::PlanetPinKind::parse(&self.kind)?,
+            planet_type_id: self.planet_type_id,
+            harvester_type_id: self.harvester_type_id,
+            cpu_load: self.cpu_load,
+            power_load: self.power_load,
+            cpu_output: self.cpu_output,
+            power_output: self.power_output,
+            ecu_head_cpu: self.ecu_head_cpu,
+            ecu_head_power: self.ecu_head_power,
+            cpu_load_per_km: self.cpu_load_per_km,
+            power_load_per_km: self.power_load_per_km,
+            cpu_load_level_modifier: self.cpu_load_level_modifier,
+            power_load_level_modifier: self.power_load_level_modifier,
+        })
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SystemDistanceRow {
+    solar_system_id: i64,
+    name_en: String,
+    security_status: Option<rust_decimal::Decimal>,
+    region_name: Option<String>,
+    wormhole_class_id: Option<i64>,
+    jumps: i32,
+}
+
 #[derive(sqlx::FromRow)]
 struct PlanetSchematicLineRow {
     schematic_id: i64,
@@ -2227,6 +2465,7 @@ struct PlanetSchematicLineRow {
     type_id: i64,
     is_input: bool,
     quantity: i64,
+    pin_type_ids: Vec<i64>,
 }
 
 #[derive(sqlx::FromRow)]

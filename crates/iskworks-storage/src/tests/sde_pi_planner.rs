@@ -259,3 +259,122 @@ async fn pi_planner_data_is_stored_and_an_import_without_it_is_redone(pool: PgPo
         vec![(3645, Decimal::from(400), Decimal::from(400))]
     );
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn systems_within_jumps_walk_the_gate_graph_once(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    import_active(&repository, &pi_planner_dataset("checksum-pi-jumps")).await;
+    let jumps = |systems: Vec<iskworks_sde::SystemDistance>| {
+        systems
+            .into_iter()
+            .map(|system| (system.name, system.jumps))
+            .collect::<Vec<_>>()
+    };
+
+    // The Alpha–Bravo–Charlie loop doesn't count Charlie twice.
+    assert_eq!(
+        jumps(
+            repository
+                .systems_within_jumps(30_000_001, 1)
+                .await
+                .unwrap()
+        ),
+        vec![
+            ("Alpha".to_string(), 0),
+            ("Bravo".to_string(), 1),
+            ("Charlie".to_string(), 1),
+        ]
+    );
+    let two = repository
+        .systems_within_jumps(30_000_001, 2)
+        .await
+        .unwrap();
+    assert_eq!(
+        two.last()
+            .map(|system| (system.name.as_str(), system.jumps)),
+        Some(("Delta", 2))
+    );
+    assert_eq!(two[0].region_name.as_deref(), Some("Insmother"));
+    assert_eq!(two[0].security_status, Some(Decimal::new(-58, 2)));
+    // Asking past the cap returns no more than 5 jumps.
+    assert_eq!(
+        repository
+            .systems_within_jumps(30_000_001, 9)
+            .await
+            .unwrap()
+            .len(),
+        4
+    );
+    let wormhole = repository
+        .systems_within_jumps(31_000_001, 3)
+        .await
+        .unwrap();
+    assert_eq!(jumps(wormhole.clone()), vec![("J100001".to_string(), 0)]);
+    assert_eq!(wormhole[0].wormhole_class_id, Some(3));
+    assert!(repository
+        .systems_within_jumps(30_999_999, 3)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn pi_planner_static_data_reads_back(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    import_active(&repository, &pi_planner_dataset("checksum-pi-reads")).await;
+
+    // Bravo I has no type, so the planner can't use it.
+    let planets = repository
+        .planets_in_systems(&[30_000_001, 30_000_002, 30_000_004])
+        .await
+        .unwrap();
+    assert_eq!(
+        planets,
+        vec![
+            iskworks_sde::PlannerPlanet {
+                planet_id: 40_000_011,
+                name: "Alpha I".into(),
+                solar_system_id: 30_000_001,
+                celestial_index: 1,
+                type_id: 2016,
+                radius_m: Some(5_060_000),
+            },
+            iskworks_sde::PlannerPlanet {
+                planet_id: 40_000_012,
+                name: "Alpha II".into(),
+                solar_system_id: 30_000_001,
+                celestial_index: 2,
+                type_id: 13,
+                radius_m: Some(5_060_000),
+            },
+            iskworks_sde::PlannerPlanet {
+                planet_id: 40_000_041,
+                name: "Delta I".into(),
+                solar_system_id: 30_000_004,
+                celestial_index: 1,
+                type_id: 2016,
+                radius_m: Some(5_060_000),
+            },
+        ]
+    );
+
+    let pins = repository.planet_pin_types().await.unwrap();
+    assert_eq!(pins.len(), 3);
+    assert_eq!(pins[0].kind, PlanetPinKind::ExtractorResource);
+    assert_eq!(pins[0].harvester_type_id, Some(2267));
+    assert_eq!(pins[2].cpu_output, Some(Decimal::from(1_675)));
+
+    let catalogue = repository.planet_schematic_catalogue().await.unwrap();
+    assert_eq!(catalogue.len(), 1);
+    assert_eq!(catalogue[0].pin_type_ids, vec![2473]);
+    assert_eq!(catalogue[0].outputs[0].type_id, 3645);
+    assert_eq!(
+        repository.planet_schematics(&[121]).await.unwrap()[&121].pin_type_ids,
+        vec![2473]
+    );
+
+    let commodities = repository.planet_commodities().await.unwrap();
+    assert_eq!(commodities[&3645].export_tax_multiplier, Decimal::from(400));
+}
