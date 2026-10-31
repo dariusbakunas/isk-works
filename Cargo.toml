@@ -19,6 +19,9 @@ rust-version = "1.78"
 license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
+# PI Planner optimiser. Pinned: later good_lp/microlp need a newer Rust than
+# the workspace MSRV (1.78); 1.12.0 resolves microlp 0.2.x, which builds on it.
+good_lp = { version = "=1.12.0", default-features = false, features = ["microlp"] }
 async-trait = "0.1"
 aes-gcm = "0.10"
 axum = { version = "0.7", features = ["multipart"] }
@@ -49,3 +52,11 @@ metrics-util = { version = "0.20", default-features = false, features = ["debugg
 jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# The PI Planner's solver is unusably slow unoptimised; optimise it (only it)
+# in dev and test builds too.
+[profile.dev.package.microlp]
+opt-level = 3
+
+[profile.dev.package.good_lp]
+opt-level = 3

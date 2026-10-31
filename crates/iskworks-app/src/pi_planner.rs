@@ -59,6 +59,11 @@ pub enum PiPlannerError {
     Sde(#[from] SdeError),
     #[error(transparent)]
     Market(#[from] MarketError),
+    /// The solve ran past its deadline.
+    #[error("the plan took too long to solve")]
+    SolveTimeout,
+    #[error("the plan could not be solved: {0}")]
+    Solver(String),
 }
 
 fn invalid(message: &str) -> PiPlannerError {
@@ -342,6 +347,44 @@ impl Catalogue {
     }
 }
 
+/// What a rank or a solve works from.
+struct Prepared {
+    scenario: RankScenario,
+    catalogue: Catalogue,
+    area: Neighbourhood,
+    candidates: Vec<CandidatePlanet>,
+    prices: Prices,
+    price_observed_at: Option<DateTime<Utc>>,
+}
+
+fn ranked_input(
+    catalogue: &Catalogue,
+    input: iskworks_core::pi_planner::RankedInput,
+    planet_name: &impl Fn(i64) -> String,
+) -> RankedInputDto {
+    RankedInputDto {
+        resource_type_id: input.resource_type_id,
+        resource_name: catalogue.name(input.resource_type_id),
+        planet_id: input.planet_id,
+        planet_name: planet_name(input.planet_id),
+        source: input.source.into(),
+        contested: input.contested,
+    }
+}
+
+fn effort_dto(effort: &iskworks_core::pi_planner::Effort) -> EffortDto {
+    EffortDto {
+        logins_per_week_by_character: effort
+            .logins_per_week_by_character
+            .iter()
+            .map(|logins| fmt_f64(*logins, 2))
+            .collect(),
+        haul_runs_per_week: fmt_f64(effort.haul_runs_per_week, 2),
+        stops_per_run: effort.stops_per_run,
+        m3_per_run: fmt_f64(effort.m3_per_run, 2),
+    }
+}
+
 /// The planets in range with what the player entered for them.
 struct Neighbourhood {
     systems: Vec<SystemDistance>,
@@ -351,6 +394,16 @@ struct Neighbourhood {
 }
 
 impl Neighbourhood {
+    fn planet_name(&self, planet_id: i64) -> String {
+        self.planets
+            .iter()
+            .find(|planet| planet.planet_id == planet_id)
+            .map_or_else(
+                || format!("Planet {planet_id}"),
+                |planet| planet.name.clone(),
+            )
+    }
+
     fn system(&self, solar_system_id: i64) -> Option<&SystemDistance> {
         self.systems
             .iter()
@@ -393,6 +446,7 @@ impl PiPlannerService {
             .flat_map(|schematic| schematic.inputs.iter().chain(&schematic.outputs))
             .map(|line| line.type_id)
             .chain(pins.iter().filter_map(|pin| pin.harvester_type_id))
+            .chain(pins.iter().map(|pin| pin.type_id))
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
@@ -630,45 +684,17 @@ impl PiPlannerService {
         scope: MarketScope,
         request: PlannerScenarioDto,
     ) -> Result<PlannerRankingDto, PiPlannerError> {
-        let scenario = scenario(&request)?;
-        let catalogue = self.catalogue().await?;
-        let area = self
-            .neighbourhood(workspace_id, request.home_system_id, request.radius)
-            .await?;
-        let candidates = candidates(&area);
-
-        let products: Vec<i64> = catalogue
-            .catalogue
-            .recipes()
-            .map(|recipe| recipe.output_type_id)
-            .collect();
-        let books = self
-            .market
-            .scoped_order_books(workspace_id, scope, &products)
-            .await?;
-        let mut prices = Prices::default();
-        let mut price_observed_at = None;
-        for (type_id, orders) in &books {
-            let data = summarize_scoped_orders(orders);
-            if let Some(best_buy) = data.best_buy {
-                prices.best_buy.insert(*type_id, to_f64(best_buy.0));
-            }
-            if let Some(best_sell) = data.best_sell {
-                prices.best_sell.insert(*type_id, to_f64(best_sell.0));
-            }
-            price_observed_at = price_observed_at.max(data.observed_at);
-        }
+        let Prepared {
+            scenario,
+            catalogue,
+            area,
+            candidates,
+            prices,
+            price_observed_at,
+        } = self.prepare(workspace_id, scope, &request).await?;
 
         let ranking = rank(&catalogue.catalogue, &scenario, &candidates, &prices);
-        let planet_name = |planet_id: i64| {
-            area.planets
-                .iter()
-                .find(|planet| planet.planet_id == planet_id)
-                .map_or_else(
-                    || format!("Planet {planet_id}"),
-                    |planet| planet.name.clone(),
-                )
-        };
+        let planet_name = |planet_id: i64| area.planet_name(planet_id);
         let ranked = ranking
             .ranked
             .into_iter()
@@ -683,14 +709,7 @@ impl PiPlannerService {
                 inputs: product
                     .inputs
                     .into_iter()
-                    .map(|input| RankedInputDto {
-                        resource_type_id: input.resource_type_id,
-                        resource_name: catalogue.name(input.resource_type_id),
-                        planet_id: input.planet_id,
-                        planet_name: planet_name(input.planet_id),
-                        source: input.source.into(),
-                        contested: input.contested,
-                    })
+                    .map(|input| ranked_input(&catalogue, input, &planet_name))
                     .collect(),
                 bought: product
                     .bought
@@ -701,17 +720,7 @@ impl PiPlannerService {
                     })
                     .collect(),
                 confidence: fmt_f64(product.confidence, 3),
-                effort: EffortDto {
-                    logins_per_week_by_character: product
-                        .effort
-                        .logins_per_week_by_character
-                        .iter()
-                        .map(|logins| fmt_f64(*logins, 2))
-                        .collect(),
-                    haul_runs_per_week: fmt_f64(product.effort.haul_runs_per_week, 2),
-                    stops_per_run: product.effort.stops_per_run,
-                    m3_per_run: fmt_f64(product.effort.m3_per_run, 2),
-                },
+                effort: effort_dto(&product.effort),
                 haul_constrained_days: product.haul_constrained_days,
             })
             .collect();
@@ -744,6 +753,53 @@ impl PiPlannerService {
             available_colonies: scenario.available_colonies(),
             ranked,
             out_of_reach,
+        })
+    }
+
+    /// The scenario, catalogue, planets in range and prices a rank or a
+    /// solve works from.
+    async fn prepare(
+        &self,
+        workspace_id: WorkspaceId,
+        scope: MarketScope,
+        request: &PlannerScenarioDto,
+    ) -> Result<Prepared, PiPlannerError> {
+        let scenario = scenario(request)?;
+        let catalogue = self.catalogue().await?;
+        let area = self
+            .neighbourhood(workspace_id, request.home_system_id, request.radius)
+            .await?;
+        let candidates = candidates(&area);
+
+        let products: Vec<i64> = catalogue
+            .catalogue
+            .recipes()
+            .map(|recipe| recipe.output_type_id)
+            .collect();
+        let books = self
+            .market
+            .scoped_order_books(workspace_id, scope, &products)
+            .await?;
+        let mut prices = Prices::default();
+        let mut price_observed_at = None;
+        for (type_id, orders) in &books {
+            let data = summarize_scoped_orders(orders);
+            if let Some(best_buy) = data.best_buy {
+                prices.best_buy.insert(*type_id, to_f64(best_buy.0));
+            }
+            if let Some(best_sell) = data.best_sell {
+                prices.best_sell.insert(*type_id, to_f64(best_sell.0));
+            }
+            price_observed_at = price_observed_at.max(data.observed_at);
+        }
+
+        Ok(Prepared {
+            scenario,
+            catalogue,
+            area,
+            candidates,
+            prices,
+            price_observed_at,
         })
     }
 }
@@ -821,6 +877,10 @@ fn candidates(area: &Neighbourhood) -> Vec<CandidatePlanet> {
         })
         .collect()
 }
+
+mod solve;
+
+pub use solve::{traded_types, PlannerSolutionDto};
 
 #[cfg(test)]
 mod tests;

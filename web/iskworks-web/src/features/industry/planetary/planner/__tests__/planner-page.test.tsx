@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { PlannerPlanets, PlannerRanking, RankedProduct } from "../../../../../api/pi-planner";
 import { ApiError } from "../../../../../api/workspace";
 import { PlannerPage } from "../planner-page";
+import { SOLUTION } from "./plan-fixture";
 
 const api = vi.hoisted(() => ({
   getPlannerPlanets: vi.fn(),
@@ -13,6 +14,7 @@ const api = vi.hoisted(() => ({
   rankProducts: vi.fn(),
   saveDensities: vi.fn(),
   savePlanetSettings: vi.fn(),
+  solvePlan: vi.fn(),
 }));
 vi.mock("../../../../../api/pi-planner", async () => ({
   ...(await vi.importActual("../../../../../api/pi-planner")),
@@ -215,5 +217,58 @@ describe("PlannerPage", () => {
     renderPage();
     expect(await screen.findByText("Planet data needs an SDE re-import")).toBeInTheDocument();
     expect(screen.getByText("make sde-import SDE_PATH=…")).toBeInTheDocument();
+  });
+});
+
+describe("PlannerPage plan tab", () => {
+  const solution = {
+    ...SOLUTION,
+    plan: {
+      ...SOLUTION.plan,
+      colonies: SOLUTION.plan.colonies.map((colony) => ({ ...colony, planetId: 1, planetName: "Q-3HS5 I" })),
+      sharedHotspots: [],
+    },
+    whatIfs: {
+      ...SOLUTION.whatIfs,
+      scanFirst: [
+        {
+          planetId: 1,
+          planetName: "Q-3HS5 I",
+          resourceTypeId: 2302,
+          resourceName: "Heavy Metals",
+          source: "default" as const,
+          iskLostPerMonth: "90000000",
+        },
+      ],
+    },
+  };
+
+  test("solves on opening and scan-first rings the reading", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue(solution);
+    renderPage();
+    await screen.findByText("Robotics");
+    expect(api.solvePlan).not.toHaveBeenCalled();
+
+    await user.click(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" }));
+    expect(await screen.findByRole("table", { name: "Colonies" })).toBeInTheDocument();
+    expect(api.solvePlan).toHaveBeenCalledWith(expect.objectContaining({ homeSystemId: HOME }));
+
+    await user.click(screen.getByRole("button", { name: /Q-3HS5 I · Heavy Metals/ }));
+    const cell = screen.getByLabelText("Heavy Metals density percent").closest("[data-testid='density-cell']");
+    expect(cell).toHaveAttribute("data-highlighted", "true");
+    expect(document.activeElement).toBe(screen.getByLabelText("Heavy Metals density percent"));
+  });
+
+  test("a solve past its deadline says so", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockRejectedValue(
+      new ApiError(408, { code: "solve_timeout", message: "The plan took too long to solve." }),
+    );
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" }));
+    expect(await screen.findByText("Solve timed out")).toBeInTheDocument();
+    expect(screen.getByText("The plan took too long to solve.")).toBeInTheDocument();
   });
 });

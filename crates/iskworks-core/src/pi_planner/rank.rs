@@ -13,7 +13,7 @@ use super::effort::{
 };
 use super::yields::{resolve_yield, DensityEntry, SecurityBand, YieldSource};
 
-const HOURS_PER_MONTH: f64 = 720.0;
+pub(super) const HOURS_PER_MONTH: f64 = 720.0;
 /// One colony runs at most two extractor control units.
 const MAX_ECUS_PER_COLONY: usize = 2;
 
@@ -50,7 +50,7 @@ impl RankScenario {
         self.max_colonies.map_or(total, |cap| cap.min(total))
     }
 
-    fn command_center_level(&self) -> u8 {
+    pub(super) fn command_center_level(&self) -> u8 {
         self.characters
             .iter()
             .map(|character| character.command_center_upgrades)
@@ -144,9 +144,10 @@ pub struct Ranking {
 
 /// An extraction colony of a reference chain: the P1 it refines and how
 /// much, per hour.
-struct ExtractionColony<'a> {
-    planet: &'a CandidatePlanet,
-    output: Vec<(i64, f64)>,
+pub(super) struct ExtractionColony<'a> {
+    pub(super) planet: &'a CandidatePlanet,
+    pub(super) output: Vec<(i64, f64)>,
+    pub(super) layout: ColonyLayout,
 }
 
 /// Ranks every recipe output (P1–P4).
@@ -177,7 +178,7 @@ pub fn rank(
     ranking
 }
 
-fn customs_rate(scenario: &RankScenario, planet: &CandidatePlanet) -> f64 {
+pub(super) fn customs_rate(scenario: &RankScenario, planet: &CandidatePlanet) -> f64 {
     planet.customs_rate.unwrap_or(scenario.default_customs_rate)
 }
 
@@ -439,7 +440,7 @@ fn rank_product(
 
 /// The most heads (split evenly across one ECU per resource) the colony fits
 /// with basic factories refining everything and storage for its buffers.
-fn size_extraction<'a>(
+pub(super) fn size_extraction<'a>(
     catalogue: &PiCatalogue,
     scenario: &RankScenario,
     planet: &'a CandidatePlanet,
@@ -496,7 +497,11 @@ fn size_extraction<'a>(
         );
         layout.extra_storage = storage_needed(held.on_planet_m3);
         if budget.fits(catalogue, &layout) {
-            return Ok(ExtractionColony { planet, output });
+            return Ok(ExtractionColony {
+                planet,
+                output,
+                layout,
+            });
         }
     }
     Err(OutOfReach::NoRoom)
