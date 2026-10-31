@@ -2514,3 +2514,22 @@ describe("Facilities section tabs", () => {
       .toHaveAttribute("aria-current", "page");
   });
 });
+
+describe("Planetary section tabs", () => {
+  test("Planner is a tab of Planetary", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) return mockResponse(authenticatedSession);
+      if (url.endsWith("/api/workspace")) return mockResponse(configuredWorkspace);
+      if (url.endsWith("/api/esi/status")) return mockResponse({ downtime: false, retryAfterSeconds: null });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/planetary/planner");
+    const tabs = await screen.findByRole("navigation", { name: "Planetary views" });
+    expect(within(tabs).getByRole("link", { name: "Planner" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByText("Plan planetary production")).toBeInTheDocument();
+    expect(within(tabs).getByRole("link", { name: "Colonies" })).toHaveAttribute("href", "/planetary");
+  });
+});

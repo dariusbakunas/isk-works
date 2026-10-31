@@ -58,6 +58,7 @@ const ConsumptionPage = lazy(() =>
 );
 import { OpportunitiesPage } from "./features/industry/opportunities/opportunities-page";
 import { PlanetaryPage } from "./features/industry/planetary/planetary-page";
+import { PlannerPage } from "./features/industry/planetary/planner/planner-page";
 import { AssetsWorkspacePage } from "./features/assets/assets-workspace-page";
 import { CharactersPage } from "./features/characters/characters-page";
 import { FittingsPage } from "./features/fittings/fittings-page";
@@ -365,6 +366,7 @@ function ProtectedShell({
         <Route path="/facilities" element={<FacilitiesPage />} />
         <Route path="/facilities/defaults" element={<FacilityDefaultsPage />} />
         <Route path="/planetary" element={<PlanetaryPage />} />
+        <Route path="/planetary/planner" element={<PlannerPage />} />
         <Route path="/finance/*" element={<FinanceWorkspace />} />
         {/* EVE character connection management lives on /characters; these
             two are kept as redirects for old bookmarks/links, and the OAuth
