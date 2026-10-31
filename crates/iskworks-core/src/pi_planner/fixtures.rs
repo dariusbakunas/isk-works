@@ -8,7 +8,7 @@ use iskworks_sde::{
 };
 use rust_decimal::Decimal;
 
-use super::PiCatalogue;
+use super::{CandidatePlanet, DensityEntry, PiCatalogue, Prices, SecurityBand};
 
 pub const BARREN: i64 = 2016;
 pub const LAVA: i64 = 2015;
@@ -283,4 +283,96 @@ pub fn volumes() -> BTreeMap<i64, f64> {
 
 pub fn catalogue() -> PiCatalogue {
     PiCatalogue::build(pin_types(), schematics(), commodities(), volumes())
+}
+
+// ---- Planets and prices -----------------------------------------------
+
+pub const LAVA_I: i64 = 40_000_001;
+pub const BARREN_II: i64 = 40_000_002;
+pub const BARREN_IV: i64 = 40_000_004;
+pub const PLASMA_IX: i64 = 40_000_009;
+
+pub fn scanned(pct: f64) -> DensityEntry {
+    DensityEntry {
+        density_pct: Some(pct),
+        head_value: None,
+    }
+}
+
+pub fn planet(planet_id: i64, type_id: i64, densities: &[(i64, f64)]) -> CandidatePlanet {
+    CandidatePlanet {
+        planet_id,
+        type_id,
+        radius_m: Some(5_000_000),
+        jumps: 0,
+        band: SecurityBand::Null,
+        customs_rate: None,
+        contested: false,
+        densities: densities
+            .iter()
+            .map(|(resource, pct)| (*resource, scanned(*pct)))
+            .collect(),
+    }
+}
+
+/// Q-3HS5's Lava, Barren and Plasma planets with the densities read in game.
+pub fn q3hs5() -> Vec<CandidatePlanet> {
+    vec![
+        planet(
+            LAVA_I,
+            LAVA,
+            &[
+                (BASE_METALS, 40.0),
+                (HEAVY_METALS, 50.0),
+                (NON_CS_CRYSTALS, 44.0),
+            ],
+        ),
+        planet(
+            BARREN_II,
+            BARREN,
+            &[
+                (BASE_METALS, 58.0),
+                (NOBLE_METALS, 47.0),
+                (AQUEOUS_LIQUIDS, 50.0),
+            ],
+        ),
+        planet(
+            BARREN_IV,
+            BARREN,
+            &[(BASE_METALS, 62.0), (NOBLE_METALS, 60.0)],
+        ),
+        planet(
+            PLASMA_IX,
+            PLASMA,
+            &[
+                (BASE_METALS, 35.0),
+                (HEAVY_METALS, 61.0),
+                (NOBLE_METALS, 28.0),
+                (NON_CS_CRYSTALS, 57.0),
+            ],
+        ),
+    ]
+}
+
+pub fn prices(best_buy: &[(i64, f64)]) -> Prices {
+    Prices {
+        best_buy: best_buy.iter().copied().collect(),
+        best_sell: best_buy
+            .iter()
+            .map(|(id, price)| (*id, price * 1.1))
+            .collect(),
+    }
+}
+
+pub fn market() -> Prices {
+    prices(&[
+        (WATER, 600.0),
+        (REACTIVE_METALS, 500.0),
+        (PRECIOUS_METALS, 550.0),
+        (TOXIC_METALS, 450.0),
+        (CHIRAL_STRUCTURES, 520.0),
+        (MECHANICAL_PARTS, 9_000.0),
+        (CONSUMER_ELECTRONICS, 9_500.0),
+        (ROBOTICS, 90_000.0),
+    ])
 }

@@ -11,6 +11,7 @@ mod effort;
 mod inputs;
 mod rank;
 mod solve;
+mod what_if;
 mod yields;
 
 /// Real-SDE catalogue fixtures for tests in this and other crates.
@@ -36,6 +37,10 @@ pub use rank::{
 };
 pub use solve::{
     solve, ColonyRole, FlowEnd, PiPlan, PlannedColony, PlannedFlow, SharedHotspot, SolveError,
+};
+pub use what_if::{
+    what_ifs, EffortCell, ScanFirst, WhatIfs, GRID_HAUL_DAYS, GRID_RESET_DAYS, SCAN_FIRST,
+    SENSITIVITY_POINTS,
 };
 pub use yields::{
     duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
