@@ -402,7 +402,8 @@ pub struct SystemDistance {
     pub name: String,
     pub security_status: Option<Decimal>,
     pub region_name: Option<String>,
-    pub wormhole_class_id: Option<i64>,
+    /// In one of the wormhole (Anoikis) regions.
+    pub wormhole: bool,
     pub jumps: u8,
 }
 
