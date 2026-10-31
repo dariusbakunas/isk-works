@@ -35,6 +35,7 @@ mod opportunity;
 mod opportunity_quality;
 pub mod order;
 mod owner;
+pub mod pi_planner;
 pub mod plan_state;
 pub mod planetary;
 mod production;
