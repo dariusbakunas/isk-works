@@ -8,6 +8,7 @@ mod capacity;
 mod catalogue;
 mod chain;
 mod effort;
+mod rank;
 mod yields;
 
 #[cfg(test)]
@@ -21,6 +22,10 @@ pub use chain::{expand, ChainDemand};
 pub use effort::{
     buffers, effort, storage_needed, Buffers, ColonyVisit, Effort, EffortSettings, INTERVAL_DAYS,
     LAUNCHPAD_M3, SKYHOOK_M3, STORAGE_M3,
+};
+pub use rank::{
+    rank, CandidatePlanet, OutOfReach, PlannerCharacter, Prices, RankScenario, RankedInput,
+    RankedProduct, Ranking,
 };
 pub use yields::{
     duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
