@@ -182,3 +182,111 @@ export function rankProducts(scenario: PlannerScenario): Promise<PlannerRanking>
     body: JSON.stringify(scenario),
   });
 }
+
+// ---- Solve ------------------------------------------------------------------
+
+export const SOLVE_TIMEOUT = "solve_timeout";
+
+export interface PlanRate {
+  typeId: number;
+  name: string;
+  tier: number;
+  unitsPerHour: string;
+}
+
+export interface PlanColony {
+  /** Position in `colonies`; flows refer to it. */
+  index: number;
+  /** Position in the scenario's characters. */
+  character: number;
+  planetId: number;
+  planetName: string;
+  jumps: number;
+  role: "extraction" | "factory";
+  setup: {
+    ecus: number;
+    heads: number;
+    launchpads: number;
+    extraStorage: number;
+    processors: { typeId: number; name: string; count: number }[];
+  };
+  extracts: PlanRate[];
+  imports: PlanRate[];
+  exports: PlanRate[];
+  recipes: { typeId: number; name: string; tier: number; factories: string }[];
+  taxPerMonth: string;
+  /** 0–1. */
+  cpuUsed: string;
+  powerUsed: string;
+  onPlanetM3: string;
+  skyhookM3: string;
+}
+
+export interface PlanFlow {
+  /** Colony index; `null` is the market. */
+  from: number | null;
+  to: number | null;
+  typeId: number;
+  name: string;
+  tier: number;
+  unitsPerHour: string;
+  m3PerHour: string;
+  taxPerMonth: string;
+  crossCharacter: boolean;
+}
+
+export interface PiPlan {
+  iskPerMonth: string;
+  salesPerMonth: string;
+  purchasesPerMonth: string;
+  customsTaxPerMonth: string;
+  effort: PlannerEffort;
+  colonies: PlanColony[];
+  flows: PlanFlow[];
+  inputs: RankedInput[];
+  sharedHotspots: {
+    planetId: number;
+    planetName: string;
+    resourceTypeId: number;
+    resourceName: string;
+    characters: number;
+  }[];
+}
+
+export interface EffortCell {
+  resetDays: number;
+  haulDays: number;
+  iskPerMonth: string;
+  loginsPerWeek: string;
+}
+
+export interface ScanFirst {
+  planetId: number;
+  planetName: string;
+  resourceTypeId: number;
+  resourceName: string;
+  source: YieldSource;
+  iskLostPerMonth: string;
+}
+
+export interface PlannerSolution {
+  priceObservedAt: string | null;
+  availableColonies: number;
+  plan: PiPlan;
+  whatIfs: {
+    /** ISK/month with the first 1..=N characters. */
+    perCharacter: string[];
+    perRadius: { jumps: number; iskPerMonth: string }[];
+    grid: EffortCell[];
+    scanFirst: ScanFirst[];
+  };
+}
+
+/** Can take seconds; fails with `408 solve_timeout` past its deadline. */
+export function solvePlan(scenario: PlannerScenario): Promise<PlannerSolution> {
+  return requestJson<PlannerSolution>("/api/planetary/planner/solve", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(scenario),
+  });
+}

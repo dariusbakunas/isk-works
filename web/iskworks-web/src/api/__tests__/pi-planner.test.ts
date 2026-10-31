@@ -6,6 +6,8 @@ import {
   rankProducts,
   saveDensities,
   savePlanetSettings,
+  solvePlan,
+  SOLVE_TIMEOUT,
   SDE_MISSING_PLANNER_DATA,
   type PlannerScenario,
 } from "../pi-planner";
@@ -75,4 +77,27 @@ test("rank posts the scenario and surfaces a missing-SDE 409", async () => {
   const error = await rankProducts(scenario).catch((reason: unknown) => reason);
   expect(error).toBeInstanceOf(ApiError);
   expect((error as ApiError).body.code).toBe(SDE_MISSING_PLANNER_DATA);
+});
+
+test("solve posts the scenario and surfaces a timeout", async () => {
+  const scenario: PlannerScenario = {
+    homeSystemId: 30_000_797,
+    radius: 0,
+    characters: [{ interplanetaryConsolidation: 4, commandCenterUpgrades: 4 }],
+    defaultCustomsRate: "0.1",
+    resetDays: 3,
+    haulDays: 3,
+    upliftAtLogin: true,
+    buyIntermediates: false,
+    maxColonies: null,
+  };
+  let fetch = respond({ plan: {}, whatIfs: {} });
+  await solvePlan(scenario);
+  expect(call(fetch)[0]).toBe("/api/planetary/planner/solve");
+  expect(JSON.parse(String(call(fetch)[1]?.body))).toEqual(scenario);
+
+  fetch = respond({ error: { code: SOLVE_TIMEOUT, message: "Too long." } }, 408);
+  const error = await solvePlan(scenario).catch((reason: unknown) => reason);
+  expect((error as ApiError).status).toBe(408);
+  expect((error as ApiError).body.code).toBe(SOLVE_TIMEOUT);
 });

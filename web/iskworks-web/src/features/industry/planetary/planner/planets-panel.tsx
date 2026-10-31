@@ -77,6 +77,7 @@ export function PlanetsPanel({
   data,
   defaultCustomsRate,
   filter,
+  highlight = null,
   nowMs,
   onFilterChange,
   onSaved,
@@ -84,6 +85,8 @@ export function PlanetsPanel({
 }: {
   data: PlannerPlanets;
   defaultCustomsRate: string;
+  /** A reading to ring and focus, from "Scan these first". */
+  highlight?: { planetId: number; resourceTypeId: number } | null;
   filter: PlanetFilter;
   nowMs: number;
   onFilterChange: (filter: PlanetFilter) => void;
@@ -99,6 +102,16 @@ export function PlanetsPanel({
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [headValuePlanet, setHeadValuePlanet] = useState<PlannerPlanet | null>(null);
   const [taxPlanet, setTaxPlanet] = useState<PlannerPlanet | null>(null);
+
+  useEffect(() => {
+    if (!highlight) return;
+    setQuery("");
+    const cell = document.querySelector<HTMLElement>(
+      `[data-planet="${highlight.planetId}"] [data-reading="${highlight.resourceTypeId}"]`,
+    );
+    cell?.scrollIntoView?.({ block: "center" });
+    cell?.querySelector("input")?.focus();
+  }, [highlight]);
 
   const pending = useRef(new Map<number, Map<number, DensityWrite>>());
   const timers = useRef(new Map<number, number>());
@@ -219,6 +232,9 @@ export function PlanetsPanel({
         const index = cellIndex++;
         return (
           <DensityCell
+            highlighted={
+              highlight?.planetId === planet.planetId && highlight.resourceTypeId === resource.typeId
+            }
             index={index}
             key={resource.typeId}
             nowMs={nowMs}
@@ -252,7 +268,12 @@ export function PlanetsPanel({
               </div>
             ),
             resources: (
-              <div className="grid w-full min-w-0 grid-cols-[repeat(5,minmax(0,1fr))] divide-x divide-border">{cells}</div>
+              <div
+                className="grid w-full min-w-0 grid-cols-[repeat(5,minmax(0,1fr))] divide-x divide-border"
+                data-planet={planet.planetId}
+              >
+                {cells}
+              </div>
             ),
             tax: (
               <span

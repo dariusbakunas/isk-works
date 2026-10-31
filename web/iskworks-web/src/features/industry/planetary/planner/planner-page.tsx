@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { AlertTriangle, Globe2 } from "lucide-react";
+import { AlertTriangle, Globe2, RefreshCw } from "lucide-react";
 
 import {
   getPlannerPlanets,
   rankProducts,
   SDE_MISSING_PLANNER_DATA,
+  SOLVE_TIMEOUT,
+  solvePlan,
   type PlannerScenario,
 } from "../../../../api/pi-planner";
 import { ApiError } from "../../../../api/workspace";
@@ -22,11 +24,16 @@ import {
   type ScenarioSettings,
 } from "./planner-format";
 import { PlanetarySectionTabs } from "../planetary-section-tabs";
+import { PlanPanel } from "./plan-panel";
 import { RankingPanel } from "./ranking-panel";
 import { ScenarioBar } from "./scenario-bar";
 
 /** Re-rank once the scenario has been still for this long. */
 const RANK_DEBOUNCE_MS = 300;
+
+function isSolveTimeout(error: Error | null): boolean {
+  return error instanceof ApiError && error.body.code === SOLVE_TIMEOUT;
+}
 
 function isMissingSde(error: Error | null): boolean {
   return error instanceof ApiError && error.body.code === SDE_MISSING_PLANNER_DATA;
@@ -91,7 +98,9 @@ export function PlannerPage() {
     storeCharacters(next);
   }, []);
   const [filter, setFilter] = useState<PlanetFilter>("all");
-  const [mobileTab, setMobileTab] = useState<"planets" | "ranking">("planets");
+  const [mobileTab, setMobileTab] = useState<"planets" | "results">("planets");
+  const [resultsTab, setResultsTab] = useState<"ranking" | "plan">("ranking");
+  const [highlight, setHighlight] = useState<{ planetId: number; resourceTypeId: number } | null>(null);
   const [revision, setRevision] = useState(0);
   const [nowMs] = useState(() => Date.now());
 
@@ -119,7 +128,12 @@ export function PlannerPage() {
   );
 
   const onSaved = useCallback(() => setRevision((current) => current + 1), []);
-  const missingSde = isMissingSde(planets.error) || isMissingSde(ranking.error);
+  const solveKey = resultsTab === "plan" ? rankKey : "";
+  const solution = useLoad(
+    solveKey === "" ? null : () => solvePlan(JSON.parse(solveKey.split("#")[0]) as PlannerScenario),
+    solveKey,
+  );
+  const missingSde = isMissingSde(planets.error) || isMissingSde(ranking.error) || isMissingSde(solution.error);
   const homeSystem = planets.data?.systems.find((system) => system.jumps === 0) ?? null;
   const [scannedPlanets, setScannedPlanets] = useState(0);
 
@@ -162,19 +176,34 @@ export function PlannerPage() {
         <p className="text-sm text-muted">Loading planets…</p>
       ) : (
         <>
-          <div aria-label="Planner view" className="mb-2 grid grid-cols-2 md:hidden" role="tablist">
-            {(["planets", "ranking"] as const).map((tab) => (
-              <button
-                aria-selected={mobileTab === tab}
-                className={`h-8 border-b-2 text-xs capitalize ${mobileTab === tab ? "border-primary text-foreground" : "border-transparent text-muted"}`}
-                key={tab}
-                onClick={() => setMobileTab(tab)}
-                role="tab"
-                type="button"
-              >
-                {tab}
-              </button>
-            ))}
+          <div aria-label="Planner view" className="mb-2 grid grid-cols-3 md:hidden" role="tablist">
+            {(
+              [
+                ["planets", "Planets"],
+                ["ranking", "Ranking"],
+                ["plan", "Plan"],
+              ] as const
+            ).map(([tab, label]) => {
+              const selected = tab === "planets" ? mobileTab === "planets" : mobileTab === "results" && resultsTab === tab;
+              return (
+                <button
+                  aria-selected={selected}
+                  className={`h-8 border-b-2 text-xs ${selected ? "border-primary text-foreground" : "border-transparent text-muted"}`}
+                  key={tab}
+                  onClick={() => {
+                    if (tab === "planets") setMobileTab("planets");
+                    else {
+                      setMobileTab("results");
+                      setResultsTab(tab);
+                    }
+                  }}
+                  role="tab"
+                  type="button"
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
           <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,46fr)_minmax(0,54fr)]">
             <div className={mobileTab === "planets" ? "min-w-0" : "hidden min-w-0 md:block"}>
@@ -182,34 +211,83 @@ export function PlannerPage() {
                 data={planets.data}
                 defaultCustomsRate={settings.defaultCustomsRate}
                 filter={filter}
+                highlight={highlight}
                 nowMs={nowMs}
                 onFilterChange={setFilter}
                 onSaved={onSaved}
                 onScannedCountChange={setScannedPlanets}
               />
             </div>
-            <div className={mobileTab === "ranking" ? "min-w-0" : "hidden min-w-0 md:block"}>
-              {ranking.error ? (
-                <InlineAlert title="Ranking failed">{apiMessage(ranking.error)}</InlineAlert>
-              ) : ranking.data === null ? (
-                <p className="text-sm text-muted">Ranking products…</p>
+            <div className={mobileTab === "results" ? "min-w-0" : "hidden min-w-0 md:block"}>
+              <div aria-label="Results" className="mb-2 hidden items-end border-b border-border md:flex" role="tablist">
+                {(
+                  [
+                    ["ranking", "Ranking"],
+                    ["plan", "Plan"],
+                  ] as const
+                ).map(([tab, label]) => (
+                  <button
+                    aria-selected={resultsTab === tab}
+                    className={`h-9 border-b-2 px-3 text-xs font-semibold ${
+                      resultsTab === tab ? "border-primary text-foreground" : "border-transparent text-muted hover:text-foreground"
+                    }`}
+                    key={tab}
+                    onClick={() => setResultsTab(tab)}
+                    role="tab"
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {resultsTab === "ranking" ? (
+                ranking.error ? (
+                  <InlineAlert title="Ranking failed">{apiMessage(ranking.error)}</InlineAlert>
+                ) : ranking.data === null ? (
+                  <p className="text-sm text-muted">Ranking products…</p>
+                ) : (
+                  <RankingPanel
+                    actions={{
+                      tryRadius: (radius) => setSettings({ ...settings, radius }),
+                      addCharacter,
+                      allowBuying: () => setSettings({ ...settings, buyIntermediates: true }),
+                      showNotScanned: () => {
+                        setFilter("unscanned");
+                        setMobileTab("planets");
+                      },
+                    }}
+                    haulDays={settings.haulDays}
+                    radius={settings.radius}
+                    ranking={ranking.data}
+                    refreshing={ranking.loading}
+                    scannedPlanets={scannedPlanets}
+                  />
+                )
+              ) : solution.error ? (
+                <InlineAlert title={isSolveTimeout(solution.error) ? "Solve timed out" : "Solve failed"}>
+                  {apiMessage(solution.error)}
+                </InlineAlert>
+              ) : solution.data === null ? (
+                <p className="flex items-center gap-2 text-sm text-muted" role="status">
+                  <RefreshCw aria-hidden="true" className="h-3.5 w-3.5 animate-spin text-primary" />
+                  Optimising colonies…
+                </p>
               ) : (
-                <RankingPanel
-                  actions={{
-                    tryRadius: (radius) => setSettings({ ...settings, radius }),
-                    addCharacter,
-                    allowBuying: () => setSettings({ ...settings, buyIntermediates: true }),
-                    showNotScanned: () => {
-                      setFilter("unscanned");
+                <section aria-label="Plan" className="iw-panel min-w-0">
+                  <PlanPanel
+                    characterNames={characters.map((character) => character.name)}
+                    haulDays={settings.haulDays}
+                    onCadence={(resetDays, haulDays) => setSettings({ ...settings, resetDays, haulDays })}
+                    onScanFirst={(planetId, resourceTypeId) => {
+                      setFilter("all");
+                      setHighlight({ planetId, resourceTypeId });
                       setMobileTab("planets");
-                    },
-                  }}
-                  haulDays={settings.haulDays}
-                  radius={settings.radius}
-                  ranking={ranking.data}
-                  refreshing={ranking.loading}
-                  scannedPlanets={scannedPlanets}
-                />
+                    }}
+                    resetDays={settings.resetDays}
+                    solution={solution.data}
+                    solving={solution.loading}
+                  />
+                </section>
               )}
             </div>
           </div>

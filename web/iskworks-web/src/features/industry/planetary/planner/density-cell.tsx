@@ -43,6 +43,7 @@ function SegmentBar({ pct, blank }: { pct: number | null; blank: boolean }) {
  * or a head value from a draft program, which overrides it.
  */
 export function DensityCell({
+  highlighted = false,
   index,
   nowMs,
   onCommit,
@@ -50,6 +51,8 @@ export function DensityCell({
   resource,
   saved,
 }: {
+  /** Picked from "Scan these first": ringed until the next pick. */
+  highlighted?: boolean;
   /** Position across the whole table, for Enter-to-next. */
   index: number;
   nowMs: number;
@@ -110,7 +113,13 @@ export function DensityCell({
           : `${resource.name} · Resource Density ${text} %`;
 
   return (
-    <div className="min-w-0 px-1 py-0.5 [container-type:inline-size]" data-testid="density-cell" title={title}>
+    <div
+      className={`min-w-0 px-1 py-0.5 [container-type:inline-size] ${highlighted ? "bg-primary/15 ring-1 ring-inset ring-primary" : ""}`}
+      data-highlighted={highlighted || undefined}
+      data-reading={`${resource.typeId}`}
+      data-testid="density-cell"
+      title={title}
+    >
       <div className="flex min-w-0 items-center gap-1 text-[0.65rem] leading-4">
         <span className="truncate text-muted @max-[119px]:hidden">{resource.name}</span>
         <span className="hidden font-mono text-muted @max-[119px]:inline">{code}</span>
