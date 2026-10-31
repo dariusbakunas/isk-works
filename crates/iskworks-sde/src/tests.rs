@@ -632,7 +632,9 @@ fn names_planets_from_their_system_and_celestial_index() {
         &[(
             "mapPlanets.jsonl",
             concat!(
-                r#"{"_key":40000002,"celestialIndex":4,"solarSystemID":30004878,"statistics":{"density":1.0}}"#,
+                r#"{"_key":40000002,"celestialIndex":4,"radius":5060000,"solarSystemID":30004878,"statistics":{"density":1.0},"typeID":2016}"#,
+                "\n",
+                r#"{"_key":40000003,"celestialIndex":5,"solarSystemID":30004878}"#,
                 "\n",
                 r#"{"_key":40000099,"celestialIndex":1,"solarSystemID":31000001}"#
             ),
@@ -645,12 +647,25 @@ fn names_planets_from_their_system_and_celestial_index() {
 
     assert_eq!(
         dataset.planets,
-        vec![ImportPlanet {
-            planet_id: 40_000_002,
-            solar_system_id: 30_004_878,
-            celestial_index: 4,
-            name: "C-J6MT IV".to_string(),
-        }]
+        vec![
+            ImportPlanet {
+                planet_id: 40_000_002,
+                solar_system_id: 30_004_878,
+                celestial_index: 4,
+                name: "C-J6MT IV".to_string(),
+                type_id: Some(2016),
+                radius_m: Some(5_060_000),
+            },
+            // An older SDE without type and radius still names the planet.
+            ImportPlanet {
+                planet_id: 40_000_003,
+                solar_system_id: 30_004_878,
+                celestial_index: 5,
+                name: "C-J6MT V".to_string(),
+                type_id: None,
+                radius_m: None,
+            },
+        ]
     );
 }
 

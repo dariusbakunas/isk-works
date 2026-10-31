@@ -203,6 +203,9 @@ pub(crate) struct RawPlanet {
     pub(crate) solar_system_id: i64,
     #[serde(rename = "celestialIndex")]
     pub(crate) celestial_index: i64,
+    #[serde(rename = "typeID")]
+    pub(crate) type_id: Option<i64>,
+    pub(crate) radius: Option<serde_json::Number>,
 }
 
 #[derive(Debug, Deserialize)]

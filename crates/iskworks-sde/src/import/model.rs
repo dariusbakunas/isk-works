@@ -198,6 +198,11 @@ pub struct ImportPlanet {
     pub celestial_index: i64,
     /// `"<system> <ROMAN(celestial_index)>"`, e.g. `Q-3HS5 IV`.
     pub name: String,
+    /// The planet type (Barren 2016, Gas 13, ...). `None` in an SDE that
+    /// predates it.
+    pub type_id: Option<i64>,
+    /// For the PI Planner's link-length estimate.
+    pub radius_m: Option<i64>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

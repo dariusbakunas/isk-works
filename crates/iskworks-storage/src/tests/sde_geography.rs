@@ -470,6 +470,8 @@ async fn planetary_sde_data_round_trips_through_the_active_import(pool: PgPool) 
         solar_system_id: 30_000_142,
         celestial_index: 4,
         name: "Jita IV".into(),
+        type_id: Some(11),
+        radius_m: Some(6_420_000),
     }];
     let import_id = repository
         .begin_import(NewImport {

@@ -570,6 +570,12 @@ pub(super) fn normalize_planets(
             solar_system_id: record.solar_system_id,
             celestial_index: record.celestial_index,
             name: format!("{system} {}", roman_numeral(record.celestial_index)),
+            type_id: record.type_id,
+            radius_m: record
+                .radius
+                .and_then(json_number_decimal)
+                .and_then(|radius| radius.round().to_i64())
+                .filter(|radius| *radius > 0),
         });
     }
     values.sort_by_key(|value| value.planet_id);
