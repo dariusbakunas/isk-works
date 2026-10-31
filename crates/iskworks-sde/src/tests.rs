@@ -583,12 +583,14 @@ fn parses_planet_schematics_and_drops_unresolvable_lines() {
     let source = fixture_source_inner(
         blueprints_fixture(),
         None,
-        None,
+        Some(
+            r#"{"_key":2470,"groupID":1028,"name":{"en":"Barren Basic Industry Facility"},"published":true}"#,
+        ),
         &[
             (
                 "planetSchematics.jsonl",
                 concat!(
-                    r#"{"_key":65,"cycleTime":3600,"name":{"en":"Superconductors"},"pins":[2470],"types":[{"_key":34,"isInput":true,"quantity":40},{"_key":777,"isInput":true,"quantity":40},{"_key":5876,"isInput":false,"quantity":5}]}"#,
+                    r#"{"_key":65,"cycleTime":3600,"name":{"en":"Superconductors"},"pins":[4444,2470],"types":[{"_key":34,"isInput":true,"quantity":40},{"_key":777,"isInput":true,"quantity":40},{"_key":5876,"isInput":false,"quantity":5}]}"#,
                     "\n",
                     r#"{"_key":66,"cycleTime":1800,"name":{"en":"Ghost"},"types":[{"_key":34,"isInput":true,"quantity":1},{"_key":778,"isInput":false,"quantity":1}]}"#
                 ),
@@ -619,6 +621,8 @@ fn parses_planet_schematics_and_drops_unresolvable_lines() {
                     quantity: 5,
                 },
             ],
+            // Pin 4444 is unknown, so it is dropped.
+            pin_type_ids: vec![2470],
         }]
     );
 }

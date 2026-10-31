@@ -184,6 +184,9 @@ pub(crate) struct RawPlanetSchematic {
     pub(crate) cycle_time: i64,
     #[serde(default)]
     pub(crate) types: Vec<RawPlanetSchematicType>,
+    /// The processor types that can run this schematic.
+    #[serde(default)]
+    pub(crate) pins: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -464,6 +464,7 @@ async fn planetary_sde_data_round_trips_through_the_active_import(pool: PgPool) 
                 quantity: 5,
             },
         ],
+        pin_type_ids: Vec::new(),
     }];
     dataset.planets = vec![iskworks_sde::ImportPlanet {
         planet_id: 40_009_077,

@@ -182,6 +182,9 @@ pub struct ImportPlanetSchematic {
     pub name: String,
     pub cycle_time_seconds: i64,
     pub types: Vec<ImportPlanetSchematicType>,
+    /// The processor types that can run it, sorted. Unknown types are
+    /// dropped.
+    pub pin_type_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

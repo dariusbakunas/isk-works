@@ -538,11 +538,24 @@ pub(super) fn normalize_planet_schematics(
         types.sort_by_key(|line| (!line.is_input, line.type_id));
         types.dedup_by_key(|line| (line.is_input, line.type_id));
         referenced_type_ids.extend(types.iter().map(|line| line.type_id));
+        let mut pin_type_ids = record
+            .pins
+            .into_iter()
+            .filter(|id| {
+                raw_types_by_id
+                    .get(id)
+                    .is_some_and(|item| item.name.en.is_some())
+            })
+            .collect::<Vec<_>>();
+        pin_type_ids.sort_unstable();
+        pin_type_ids.dedup();
+        referenced_type_ids.extend(pin_type_ids.iter().copied());
         values.push(ImportPlanetSchematic {
             schematic_id: record.key,
             name,
             cycle_time_seconds: record.cycle_time,
             types,
+            pin_type_ids,
         });
     }
     values.sort_by_key(|value| value.schematic_id);
