@@ -328,6 +328,12 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         &dogma_attribute_names,
         &mut referenced_type_ids,
     );
+    let planet_commodities = pi_planner::normalize_planet_commodities(
+        &raw_types_by_id,
+        &raw_type_dogma,
+        &dogma_attribute_names,
+        &mut referenced_type_ids,
+    );
 
     let (structure_modifiers, rig_modifiers, reaction_rig_modifiers) =
         normalize_facility_dogma(&raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
@@ -501,6 +507,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         planets,
         stargates,
         planet_pin_types,
+        planet_commodities,
         skills,
         required_skills,
         type_info,

@@ -290,6 +290,7 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         planets: Vec::new(),
         stargates: Vec::new(),
         planet_pin_types: Vec::new(),
+        planet_commodities: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),

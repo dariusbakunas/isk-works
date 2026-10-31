@@ -34,6 +34,9 @@ pub struct NormalizedSde {
     /// Planetary Interaction structures (category 41) with their CPU and
     /// power figures. Empty when the SDE lacks dogma.
     pub planet_pin_types: Vec<ImportPlanetPinType>,
+    /// Customs tax multipliers of every PI commodity, P0 to P4. Empty when
+    /// the SDE lacks dogma.
+    pub planet_commodities: Vec<ImportPlanetCommodity>,
     /// Training dogma for every imported skill (category 16). Empty when
     /// the SDE lacks `typeDogma`.
     pub skills: Vec<ImportSkill>,
@@ -280,6 +283,16 @@ pub struct ImportPlanetPinType {
     pub power_load_per_km: Option<Decimal>,
     pub cpu_load_level_modifier: Option<Decimal>,
     pub power_load_level_modifier: Option<Decimal>,
+}
+
+/// A PI commodity's customs tax multipliers. The tax per unit is the
+/// multiplier × the customs office's rate; the game charges imports at half
+/// of it. The attributes are unpublished, so Type Info doesn't keep them.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportPlanetCommodity {
+    pub type_id: i64,
+    pub export_tax_multiplier: Decimal,
+    pub import_tax_multiplier: Decimal,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

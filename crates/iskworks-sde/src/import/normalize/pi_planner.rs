@@ -76,3 +76,36 @@ pub(super) fn normalize_planet_pin_types(
     referenced_type_ids.extend(values.iter().map(|value| value.type_id));
     values
 }
+
+/// Every named type with an `exportTaxMultiplier`, sorted by type id. A
+/// missing `importTaxMultiplier` falls back to the export one, as the SDE has
+/// them equal. The types are marked referenced.
+pub(super) fn normalize_planet_commodities(
+    raw_types_by_id: &HashMap<i64, RawType>,
+    raw_type_dogma: &[RawTypeDogma],
+    attribute_names: &HashMap<i64, String>,
+    referenced_type_ids: &mut HashSet<i64>,
+) -> Vec<ImportPlanetCommodity> {
+    let named = |type_id: i64| {
+        raw_types_by_id
+            .get(&type_id)
+            .is_some_and(|item| item.name.en.is_some())
+    };
+    let mut values = named_dogma(raw_type_dogma, attribute_names, named)
+        .into_iter()
+        .filter_map(|(type_id, dogma)| {
+            let export_tax_multiplier = *dogma.get("exportTaxMultiplier")?;
+            Some(ImportPlanetCommodity {
+                type_id,
+                export_tax_multiplier,
+                import_tax_multiplier: dogma
+                    .get("importTaxMultiplier")
+                    .copied()
+                    .unwrap_or(export_tax_multiplier),
+            })
+        })
+        .collect::<Vec<_>>();
+    values.sort_by_key(|value| value.type_id);
+    referenced_type_ids.extend(values.iter().map(|value| value.type_id));
+    values
+}

@@ -1521,3 +1521,24 @@ fn pi_structures_are_empty_without_dogma() {
     let dataset = parse(&fixture_source(blueprints_fixture()).unwrap()).unwrap();
     assert!(dataset.planet_pin_types.is_empty());
 }
+
+#[test]
+fn imports_commodity_customs_tax_multipliers() {
+    let dataset = parse(&pi_structures_source()).unwrap();
+
+    assert_eq!(
+        dataset.planet_commodities,
+        vec![
+            ImportPlanetCommodity {
+                type_id: 2267,
+                export_tax_multiplier: Decimal::from(5),
+                import_tax_multiplier: Decimal::from(5),
+            },
+            ImportPlanetCommodity {
+                type_id: 3645,
+                export_tax_multiplier: Decimal::from(400),
+                import_tax_multiplier: Decimal::from(400),
+            },
+        ]
+    );
+}
