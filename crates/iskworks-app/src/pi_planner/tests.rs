@@ -133,9 +133,11 @@ impl SdeReadRepository for FakeSde {
             })
             .collect())
     }
+    /// Like the real import: planet types have no `sde_types` row.
     async fn type_names(&self, type_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
         Ok(type_ids
             .iter()
+            .filter(|type_id| ![BARREN, LAVA, PLASMA].contains(type_id))
             .map(|type_id| (*type_id, type_name(*type_id)))
             .collect())
     }
@@ -186,9 +188,6 @@ fn type_name(type_id: i64) -> String {
         MECHANICAL_PARTS => "Mechanical Parts",
         CONSUMER_ELECTRONICS => "Consumer Electronics",
         ROBOTICS => "Robotics",
-        BARREN => "Planet (Barren)",
-        LAVA => "Planet (Lava)",
-        PLASMA => "Planet (Plasma)",
         _ => return format!("Type {type_id}"),
     }
     .to_string()

@@ -38,6 +38,7 @@ import {
   StorageCell,
 } from "./planetary-cells";
 import { countdown, formatHours, isStale, toneText } from "./planetary-format";
+import { PlanetarySectionTabs } from "./planetary-section-tabs";
 
 const COLUMNS: OperationalColumn[] = [
   { key: "planet", label: "Planet", width: "minmax(170px,1.1fr)", sticky: true },
@@ -329,6 +330,7 @@ export function PlanetaryPage() {
           </div>
         ) : null}
       </header>
+      <PlanetarySectionTabs />
 
       {actionError ? <div className="mb-3"><InlineAlert title="Planetary action failed">{actionError}</InlineAlert></div> : null}
       {state.status === "loading" ? <Panel>Loading Planetary Interaction…</Panel> : null}

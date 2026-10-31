@@ -28,6 +28,23 @@ use crate::PlanetaryCharacterSource;
 const INTERPLANETARY_CONSOLIDATION_SKILL_ID: i64 = 2_495;
 /// Command Center Upgrades: the command center level.
 const COMMAND_CENTER_UPGRADES_SKILL_ID: i64 = 2_505;
+/// Planet type names. The SDE import skips celestial types, so their names
+/// aren't in `sde_types`; these ids have been stable since PI shipped.
+fn planet_type_name(type_id: i64) -> Option<&'static str> {
+    Some(match type_id {
+        11 => "Planet (Temperate)",
+        12 => "Planet (Ice)",
+        13 => "Planet (Gas)",
+        2014 => "Planet (Oceanic)",
+        2015 => "Planet (Lava)",
+        2016 => "Planet (Barren)",
+        2017 => "Planet (Storm)",
+        2063 => "Planet (Plasma)",
+        30_889 => "Planet (Shattered)",
+        _ => return None,
+    })
+}
+
 /// The widest radius the planner walks, in jumps.
 pub const MAX_PLANNER_RADIUS: u8 = 5;
 
@@ -507,6 +524,7 @@ impl PiPlannerService {
                     type_name: type_names
                         .get(&planet.type_id)
                         .cloned()
+                        .or_else(|| planet_type_name(planet.type_id).map(str::to_string))
                         .unwrap_or_else(|| format!("Type {}", planet.type_id)),
                     customs_rate: settings.and_then(|settings| settings.customs_rate).map(fmt),
                     contested: settings.is_some_and(|settings| settings.contested),
