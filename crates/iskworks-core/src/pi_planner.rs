@@ -5,10 +5,15 @@
 //! All quantities are per hour and in `f64`; they are estimates.
 
 mod catalogue;
+mod yields;
 
 #[cfg(test)]
 mod fixtures;
 
 pub use catalogue::{
     command_center_output, PiCatalogue, Recipe, COMMAND_CENTER_LEVELS, IMPORT_TAX_RATIO,
+};
+pub use yields::{
+    duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
+    HEAD_VALUE_PER_DENSITY_PCT,
 };
