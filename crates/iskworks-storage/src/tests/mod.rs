@@ -12,6 +12,7 @@ mod auth_sessions;
 mod fits;
 mod sde_geography;
 mod sde_market_catalog;
+mod sde_pi_planner;
 mod sde_recipes;
 mod sde_skills;
 mod sde_type_info;

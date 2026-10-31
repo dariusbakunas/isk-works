@@ -45,6 +45,7 @@ impl SdeImportStore for PgSdeRepository {
             stargates: requires_stargates,
             skill_dogma: requires_skill_dogma,
             type_info: requires_type_info,
+            pi_planner_data: requires_pi_planner_data,
         } = requires;
         let row = sqlx::query_as::<_, ImportIdentityRow>(
             r#"
@@ -145,6 +146,20 @@ impl SdeImportStore for PgSdeRepository {
                   WHERE attributes.import_id = sde_imports.id
                 )
               )
+              AND (
+                $12 = false
+                OR EXISTS (
+                  SELECT 1
+                  FROM sde_planets planets
+                  WHERE planets.import_id = sde_imports.id
+                    AND planets.type_id IS NOT NULL
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM sde_planet_pin_types pins
+                  WHERE pins.import_id = sde_imports.id
+                )
+              )
             "#,
         )
         .bind(checksum)
@@ -158,6 +173,7 @@ impl SdeImportStore for PgSdeRepository {
         .bind(requires_stargates)
         .bind(requires_skill_dogma)
         .bind(requires_type_info)
+        .bind(requires_pi_planner_data)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
@@ -689,17 +705,93 @@ impl SdeImportStore for PgSdeRepository {
                 .await
                 .map_err(map_sde_sqlx_error)?;
         }
+        let schematic_pins = dataset
+            .planet_schematics
+            .iter()
+            .flat_map(|schematic| {
+                schematic
+                    .pin_type_ids
+                    .iter()
+                    .map(move |pin_type_id| (schematic.schematic_id, *pin_type_id))
+            })
+            .collect::<Vec<_>>();
+        for batch in schematic_pins.chunks(RECIPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_planet_schematic_pins (import_id, schematic_id, pin_type_id) ",
+            );
+            query.push_values(batch, |mut row, (schematic_id, pin_type_id)| {
+                row.push_bind(import_id)
+                    .push_bind(*schematic_id)
+                    .push_bind(*pin_type_id);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+        for batch in dataset.planet_pin_types.chunks(TYPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_planet_pin_types \
+                 (import_id, type_id, kind, planet_type_id, harvester_type_id, cpu_load, \
+                  power_load, cpu_output, power_output, ecu_head_cpu, ecu_head_power, \
+                  cpu_load_per_km, power_load_per_km, cpu_load_level_modifier, \
+                  power_load_level_modifier) ",
+            );
+            query.push_values(batch, |mut row, pin| {
+                row.push_bind(import_id)
+                    .push_bind(pin.type_id)
+                    .push_bind(pin.kind.as_str())
+                    .push_bind(pin.planet_type_id)
+                    .push_bind(pin.harvester_type_id)
+                    .push_bind(pin.cpu_load)
+                    .push_bind(pin.power_load)
+                    .push_bind(pin.cpu_output)
+                    .push_bind(pin.power_output)
+                    .push_bind(pin.ecu_head_cpu)
+                    .push_bind(pin.ecu_head_power)
+                    .push_bind(pin.cpu_load_per_km)
+                    .push_bind(pin.power_load_per_km)
+                    .push_bind(pin.cpu_load_level_modifier)
+                    .push_bind(pin.power_load_level_modifier);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
+        for batch in dataset.planet_commodities.chunks(TYPE_BATCH_SIZE) {
+            let mut query = QueryBuilder::<Postgres>::new(
+                "INSERT INTO sde_planet_commodities \
+                 (import_id, type_id, export_tax_multiplier, import_tax_multiplier) ",
+            );
+            query.push_values(batch, |mut row, commodity| {
+                row.push_bind(import_id)
+                    .push_bind(commodity.type_id)
+                    .push_bind(commodity.export_tax_multiplier)
+                    .push_bind(commodity.import_tax_multiplier);
+            });
+            query
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sde_sqlx_error)?;
+        }
         for batch in dataset.planets.chunks(TYPE_BATCH_SIZE) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "INSERT INTO sde_planets \
-                 (import_id, planet_id, solar_system_id, celestial_index, name_en) ",
+                 (import_id, planet_id, solar_system_id, celestial_index, name_en, type_id, \
+                  radius_m) ",
             );
             query.push_values(batch, |mut row, planet| {
                 row.push_bind(import_id)
                     .push_bind(planet.planet_id)
                     .push_bind(planet.solar_system_id)
                     .push_bind(planet.celestial_index)
-                    .push_bind(&planet.name);
+                    .push_bind(&planet.name)
+                    .push_bind(planet.type_id)
+                    .push_bind(planet.radius_m);
             });
             query
                 .build()
