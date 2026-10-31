@@ -7,6 +7,7 @@
 mod capacity;
 mod catalogue;
 mod chain;
+mod effort;
 mod yields;
 
 #[cfg(test)]
@@ -17,6 +18,10 @@ pub use catalogue::{
     command_center_output, PiCatalogue, Recipe, COMMAND_CENTER_LEVELS, IMPORT_TAX_RATIO,
 };
 pub use chain::{expand, ChainDemand};
+pub use effort::{
+    buffers, effort, storage_needed, Buffers, ColonyVisit, Effort, EffortSettings, INTERVAL_DAYS,
+    LAUNCHPAD_M3, SKYHOOK_M3, STORAGE_M3,
+};
 pub use yields::{
     duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
     HEAD_VALUE_PER_DENSITY_PCT,
