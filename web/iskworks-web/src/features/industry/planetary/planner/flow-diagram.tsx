@@ -116,7 +116,7 @@ export function FlowDiagram({
   return (
     <>
       <div className="hidden overflow-x-auto rounded-md border border-border bg-background lg:block" data-testid="flow-diagram">
-        <svg aria-label="Product flow" className="block min-w-[900px]" role="img" viewBox={`0 0 ${WIDTH} ${height}`} width="100%">
+        <svg aria-label="Product flow" className="block min-w-[640px]" role="img" viewBox={`0 0 ${WIDTH} ${height}`} width="100%">
           {columns.map((column, index) => (
             <text className="fill-muted text-[10px] uppercase" key={String(column)} x={columnX(index)} y={16}>
               {column === "market" ? "Market" : column === 1 ? "P1 · extract + refine" : `P${column}`}

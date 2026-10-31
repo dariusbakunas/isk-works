@@ -16,11 +16,11 @@ const GRID_RESET = [1, 3, 7];
 const GRID_HAUL = [1, 3, 7, 14];
 
 const COLUMNS: OperationalColumn[] = [
-  { key: "planet", label: "Planet", width: "minmax(7rem,1fr)" },
+  { key: "planet", label: "Planet", width: "7rem" },
   { key: "role", label: "Role", width: "6.5rem" },
-  { key: "setup", label: "Setup", width: "minmax(8rem,1.1fr)" },
-  { key: "in", label: "In", width: "minmax(8rem,1.1fr)" },
-  { key: "out", label: "Out", width: "minmax(8rem,1.1fr)" },
+  { key: "setup", label: "Setup", width: "10rem" },
+  { key: "in", label: "In", width: "9rem" },
+  { key: "out", label: "Out", width: "9rem" },
   { key: "tax", label: "Tax/mo", width: "4.5rem", align: "right", numeric: true },
   { key: "info", label: "", width: "2rem" },
 ];
@@ -119,7 +119,7 @@ export function PlanPanel({
           <Tile label="Stops per run" title="Customs offices visited each run" value={String(plan.effort.stopsPerRun)} />
           <Tile label="Per run" title="Size your hauler for this" value={`${Math.round(Number(plan.effort.m3PerRun)).toLocaleString("en-US")} m³`} />
         </div>
-        <div className="grid items-start gap-3 p-3 2xl:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="grid items-start gap-3 p-3 min-[1900px]:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-3">
             <OperationalTable ariaLabel="Colonies" columns={COLUMNS} onSelectRow={() => {}} selectedRowKey={null}>
               {characters.map((character) => {
@@ -167,7 +167,9 @@ export function PlanPanel({
                             ),
                             setup: (
                               <span className="block text-xs text-muted">
-                                {setup(colony)}
+                                <span className="line-clamp-2" title={setup(colony)}>
+                                  {setup(colony)}
+                                </span>
                                 {colony.setup.extraStorage > 0 ? (
                                   <span className="mt-0.5 block w-fit rounded-sm border border-primary/40 bg-primary/10 px-1 text-[0.6rem] text-primary">
                                     +{colony.setup.extraStorage} storage
@@ -219,7 +221,7 @@ export function PlanPanel({
               <FlowDiagram characterNames={characterNames} hovered={hovered} onHover={setHovered} plan={plan} />
             </div>
           </div>
-          <aside aria-label="What-ifs" className="space-y-4 text-xs">
+          <aside aria-label="What-ifs" className="grid gap-4 text-xs sm:grid-cols-2 min-[1900px]:grid-cols-1">
             <section>
               <h3 className="iw-eyebrow mb-1 text-muted">Profit vs effort</h3>
               <table className="w-full border-collapse" aria-label="Profit vs effort">
@@ -311,7 +313,9 @@ export function PlanPanel({
                           {entry.planetName} · {entry.resourceName}
                           {entry.source === "default" ? <span className="ml-1 text-warning">not scanned</span> : null}
                         </span>
-                        <span className="font-mono text-muted">−{formatIskCompact(entry.iskLostPerMonth)}</span>
+                        <span className="font-mono text-muted">
+                          {Number(entry.iskLostPerMonth) >= 1 ? `−${formatIskCompact(entry.iskLostPerMonth)}` : "0"}
+                        </span>
                       </button>
                     </li>
                   ))}
