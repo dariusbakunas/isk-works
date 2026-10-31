@@ -95,6 +95,7 @@ pub(super) fn normalize_market_groups(
 
 #[cfg(test)]
 mod market_group_ordering_tests;
+mod pi_planner;
 mod type_info;
 use type_info::{normalize_type_info, type_details};
 
@@ -143,6 +144,10 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let raw_type_materials: Vec<RawTypeMaterials> =
         parse_optional_jsonl(source, TYPE_MATERIALS_FILE)?;
     let raw_type_bonuses: Vec<RawTypeBonus> = parse_optional_jsonl(source, TYPE_BONUS_FILE)?;
+    let dogma_attribute_names = raw_dogma_attributes
+        .iter()
+        .map(|attribute| (attribute.key, attribute.name.clone()))
+        .collect::<HashMap<_, _>>();
     let rig_filter_ids: HashMap<i64, RigFilterIds> = raw_industry_modifier_sources
         .into_iter()
         .map(|source| {
@@ -317,6 +322,13 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         &mut referenced_type_ids,
     )?;
 
+    let planet_pin_types = pi_planner::normalize_planet_pin_types(
+        &raw_types_by_id,
+        &raw_type_dogma,
+        &dogma_attribute_names,
+        &mut referenced_type_ids,
+    );
+
     let (structure_modifiers, rig_modifiers, reaction_rig_modifiers) =
         normalize_facility_dogma(&raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
 
@@ -488,6 +500,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         planet_schematics,
         planets,
         stargates,
+        planet_pin_types,
         skills,
         required_skills,
         type_info,
