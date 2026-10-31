@@ -193,6 +193,10 @@ describe("PlannerPage", () => {
     await screen.findByText("No planets scanned yet");
     await user.click(screen.getByRole("button", { name: "Show not scanned" }));
     expect(screen.getByRole("tab", { name: "Not scanned" })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByLabelText("Heavy Metals density percent"));
+    await user.keyboard("50{Enter}");
+    expect(screen.queryByText("No planets scanned yet")).toBeNull();
   });
 
   test("nothing feasible offers a wider radius and buying", async () => {

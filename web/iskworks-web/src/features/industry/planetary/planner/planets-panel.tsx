@@ -80,6 +80,7 @@ export function PlanetsPanel({
   nowMs,
   onFilterChange,
   onSaved,
+  onScannedCountChange,
 }: {
   data: PlannerPlanets;
   defaultCustomsRate: string;
@@ -88,6 +89,8 @@ export function PlanetsPanel({
   onFilterChange: (filter: PlanetFilter) => void;
   /** After any reading or setting is stored, so the ranking can refresh. */
   onSaved: () => void;
+  /** Planets with any reading, as typed (before the server echoes it). */
+  onScannedCountChange?: (count: number) => void;
 }) {
   const [planets, setPlanets] = useState(data.planets);
   useEffect(() => setPlanets(data.planets), [data.planets]);
@@ -197,6 +200,7 @@ export function PlanetsPanel({
   );
 
   const scannedCount = planets.filter(planetScanned).length;
+  useEffect(() => onScannedCountChange?.(scannedCount), [onScannedCountChange, scannedCount]);
   const visible = useMemo(() => planets.filter((planet) => matches(planet, filter, query)), [filter, planets, query]);
   const bySystem = useMemo(() => {
     const groups = new Map<number, PlannerPlanet[]>();
@@ -248,7 +252,7 @@ export function PlanetsPanel({
               </div>
             ),
             resources: (
-              <div className="grid min-w-0 grid-cols-[repeat(5,minmax(0,1fr))] divide-x divide-border">{cells}</div>
+              <div className="grid w-full min-w-0 grid-cols-[repeat(5,minmax(0,1fr))] divide-x divide-border">{cells}</div>
             ),
             tax: (
               <span

@@ -14,7 +14,6 @@ import { useLoad } from "../../../../hooks/use-load";
 import { apiMessage } from "../../inventory/shared";
 import { PlanetsPanel, type PlanetFilter } from "./planets-panel";
 import {
-  isScanned,
   loadCharacters,
   settingsFromQuery,
   settingsToQuery,
@@ -122,7 +121,7 @@ export function PlannerPage() {
   const onSaved = useCallback(() => setRevision((current) => current + 1), []);
   const missingSde = isMissingSde(planets.error) || isMissingSde(ranking.error);
   const homeSystem = planets.data?.systems.find((system) => system.jumps === 0) ?? null;
-  const scannedPlanets = planets.data?.planets.filter((planet) => planet.resources.some(isScanned)).length ?? 0;
+  const [scannedPlanets, setScannedPlanets] = useState(0);
 
   const addCharacter = () =>
     setCharacters([
@@ -186,6 +185,7 @@ export function PlannerPage() {
                 nowMs={nowMs}
                 onFilterChange={setFilter}
                 onSaved={onSaved}
+                onScannedCountChange={setScannedPlanets}
               />
             </div>
             <div className={mobileTab === "ranking" ? "min-w-0" : "hidden min-w-0 md:block"}>
