@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { Minus, Plus, Search, X } from "lucide-react";
 
 import { searchSolarSystems, type SolarSystemSearchResult } from "../../../../api/industry";
-import { getPlannerCharacters, INTERVAL_DAYS, MAX_RADIUS, type PlannerSystem } from "../../../../api/pi-planner";
+import {
+  getPlannerCharacters,
+  INTERVAL_DAYS,
+  MAX_RADIUS,
+  type PlannerCharacterSkills,
+  type PlannerSystem,
+} from "../../../../api/pi-planner";
+import { DropdownMenu, type DropdownMenuItem } from "../../../../components/dropdown-menu";
 import { useDebouncedLookup } from "../../../../hooks/use-debounced-lookup";
 import { apiMessage } from "../../inventory/shared";
 import { SecurityValue } from "./planets-panel";
@@ -12,9 +19,23 @@ import {
   MAX_SKILL_LEVEL,
   percentRate,
   ratePercent,
+  DEFAULT_CHARACTERS,
   type ScenarioCharacter,
   type ScenarioSettings,
 } from "./planner-format";
+
+function fromConnected(character: PlannerCharacterSkills): ScenarioCharacter {
+  return {
+    name: character.name,
+    interplanetaryConsolidation: clampLevel(character.interplanetaryConsolidation ?? 0),
+    commandCenterUpgrades: clampLevel(character.commandCenterUpgrades ?? 0),
+  };
+}
+
+/** Still the untouched placeholder a fresh scenario starts with. */
+function isPlaceholder(characters: ScenarioCharacter[]): boolean {
+  return JSON.stringify(characters) === JSON.stringify(DEFAULT_CHARACTERS);
+}
 
 function Segmented<T extends number>({
   label,
@@ -169,30 +190,51 @@ export function ScenarioBar({
 }) {
   const [taxText, setTaxText] = useState(ratePercent(settings.defaultCustomsRate));
   useEffect(() => setTaxText(ratePercent(settings.defaultCustomsRate)), [settings.defaultCustomsRate]);
-  const [prefillMessage, setPrefillMessage] = useState<string | null>(null);
+  const [connected, setConnected] = useState<PlannerCharacterSkills[]>([]);
+  const [connectedError, setConnectedError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getPlannerCharacters()
+      .then((loaded) => {
+        if (!cancelled) setConnected(loaded ?? []);
+      })
+      .catch((requestError: unknown) => {
+        if (!cancelled) setConnectedError(apiMessage(requestError));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const set = (patch: Partial<ScenarioSettings>) => onSettingsChange({ ...settings, ...patch });
   const setCharacter = (index: number, patch: Partial<ScenarioCharacter>) =>
     onCharactersChange(characters.map((character, i) => (i === index ? { ...character, ...patch } : character)));
+  // Picking a real character replaces the placeholder a fresh scenario starts with.
+  const add = (added: ScenarioCharacter[]) =>
+    onCharactersChange([...(isPlaceholder(characters) ? [] : characters), ...added]);
 
-  const prefill = async () => {
-    try {
-      const connected = await getPlannerCharacters();
-      if (connected.length === 0) {
-        setPrefillMessage("No connected characters.");
-        return;
-      }
-      setPrefillMessage(null);
-      onCharactersChange(
-        connected.map((character) => ({
-          name: character.name,
-          interplanetaryConsolidation: clampLevel(character.interplanetaryConsolidation ?? 0),
-          commandCenterUpgrades: clampLevel(character.commandCenterUpgrades ?? 0),
-        })),
-      );
-    } catch (requestError) {
-      setPrefillMessage(apiMessage(requestError));
-    }
-  };
+  const unused = connected.filter((character) => !characters.some((used) => used.name === character.name));
+  const addItems: DropdownMenuItem[] = [
+    ...unused.map((character) => ({
+      key: `character-${character.eveCharacterId}`,
+      label:
+        character.interplanetaryConsolidation === null
+          ? `${character.name} · skills not synced`
+          : `${character.name} · IC ${character.interplanetaryConsolidation} · CCU ${character.commandCenterUpgrades ?? 0}`,
+      onSelect: () => add([fromConnected(character)]),
+    })),
+    ...(unused.length > 1
+      ? [{ key: "all", label: `All ${unused.length} not yet added`, onSelect: () => add(unused.map(fromConnected)) }]
+      : []),
+    {
+      key: "custom",
+      label: "Custom character",
+      onSelect: () =>
+        onCharactersChange([
+          ...characters,
+          { name: `Character ${characters.length + 1}`, interplanetaryConsolidation: 4, commandCenterUpgrades: 4 },
+        ]),
+    },
+  ];
 
   return (
     <section aria-label="Scenario" className="iw-panel mb-3 p-3">
@@ -317,23 +359,14 @@ export function ScenarioBar({
             </button>
           </div>
         ))}
-        <button
-          className="iw-button-secondary"
-          onClick={() =>
-            onCharactersChange([
-              ...characters,
-              { name: `Character ${characters.length + 1}`, interplanetaryConsolidation: 4, commandCenterUpgrades: 4 },
-            ])
-          }
-          type="button"
-        >
-          <Plus aria-hidden="true" className="h-3.5 w-3.5" />
-          <span className="ml-1">Add character</span>
-        </button>
-        <button className="text-xs text-primary hover:underline" onClick={() => void prefill()} type="button">
-          Prefill from connected characters
-        </button>
-        {prefillMessage ? <span className="text-xs text-muted">{prefillMessage}</span> : null}
+        <span data-private="">
+          <DropdownMenu
+            icon={<Plus aria-hidden="true" className="h-3.5 w-3.5" />}
+            items={addItems}
+            label="Add character"
+          />
+        </span>
+        {connectedError ? <span className="text-xs text-muted">{connectedError}</span> : null}
       </div>
     </section>
   );

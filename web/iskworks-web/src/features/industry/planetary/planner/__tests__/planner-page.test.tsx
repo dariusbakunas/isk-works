@@ -112,6 +112,7 @@ beforeEach(() => {
   window.localStorage.clear();
   Object.values(api).forEach((mock) => mock.mockReset());
   api.getPlannerPlanets.mockResolvedValue(planets("40"));
+  api.getPlannerCharacters.mockResolvedValue([]);
   api.rankProducts.mockResolvedValue(RANKING);
   api.saveDensities.mockResolvedValue(undefined);
 });
@@ -173,19 +174,48 @@ describe("PlannerPage", () => {
     );
   });
 
-  test("prefill replaces the characters with connected ones", async () => {
+  test("add character picks one connected character at a time", async () => {
     const user = userEvent.setup();
     api.getPlannerCharacters.mockResolvedValue([
       { eveCharacterId: 1, name: "Valka", interplanetaryConsolidation: 5, commandCenterUpgrades: 3 },
       { eveCharacterId: 2, name: "Alt", interplanetaryConsolidation: null, commandCenterUpgrades: null },
+      { eveCharacterId: 3, name: "Hauler", interplanetaryConsolidation: 2, commandCenterUpgrades: 2 },
     ]);
     renderPage();
-    await user.click(screen.getByRole("button", { name: "Prefill from connected characters" }));
-    const rows = await screen.findAllByTestId("scenario-character");
-    expect(rows).toHaveLength(2);
+    await screen.findByText("Robotics");
+    await user.click(screen.getByRole("button", { name: "Add character" }));
+    await user.click(screen.getByRole("menuitem", { name: "Valka · IC 5 · CCU 3" }));
+    // Picking a real character replaces the starting placeholder.
+    let rows = screen.getAllByTestId("scenario-character");
+    expect(rows).toHaveLength(1);
     expect(within(rows[0]).getByText("Valka")).toBeInTheDocument();
     expect(within(rows[0]).getByText("→ 6 planets")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add character" }));
+    expect(screen.queryByRole("menuitem", { name: /Valka/ })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: "Alt · skills not synced" }));
+    rows = screen.getAllByTestId("scenario-character");
+    expect(rows).toHaveLength(2);
     expect(within(rows[1]).getByText("→ 1 planet")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add character" }));
+    expect(screen.queryByRole("menuitem", { name: /^All/ })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: "Custom character" }));
+    expect(screen.getAllByTestId("scenario-character")).toHaveLength(3);
+  });
+
+  test("add character can add every connected character at once", async () => {
+    const user = userEvent.setup();
+    api.getPlannerCharacters.mockResolvedValue([
+      { eveCharacterId: 1, name: "Valka", interplanetaryConsolidation: 5, commandCenterUpgrades: 3 },
+      { eveCharacterId: 2, name: "Alt", interplanetaryConsolidation: 4, commandCenterUpgrades: 4 },
+    ]);
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(screen.getByRole("button", { name: "Add character" }));
+    await user.click(screen.getByRole("menuitem", { name: "All 2 not yet added" }));
+    const rows = screen.getAllByTestId("scenario-character");
+    expect(rows.map((row) => within(row).getByText(/Valka|Alt/).textContent)).toEqual(["Valka", "Alt"]);
   });
 
   test("with nothing scanned a banner links to the unscanned planets", async () => {
