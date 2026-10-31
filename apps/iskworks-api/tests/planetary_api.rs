@@ -197,6 +197,7 @@ impl SdeReadRepository for FakeSde {
                             type_id: REACTIVE,
                             quantity: 20,
                         }],
+                        pin_type_ids: Vec::new(),
                     },
                 )
             })

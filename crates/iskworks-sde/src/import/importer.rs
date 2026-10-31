@@ -89,6 +89,7 @@ pub struct SdeDatasetRequirements {
     pub stargates: bool,
     pub skill_dogma: bool,
     pub type_info: bool,
+    pub pi_planner_data: bool,
 }
 
 #[async_trait]
@@ -148,6 +149,7 @@ impl<'a> SdeImporter<'a> {
                         stargates: source.has_stargates(),
                         skill_dogma: source.has_skill_dogma(),
                         type_info: source.has_type_info(),
+                        pi_planner_data: source.has_pi_planner_data(),
                     },
                 )
                 .await?

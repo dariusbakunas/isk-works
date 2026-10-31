@@ -259,6 +259,13 @@ impl SdeSource {
             .all(|name| self.files.contains_key(name))
     }
 
+    /// The PI Planner's data: planet types and radii from `mapPlanets`, plus
+    /// structure CPU/power and commodity tax multipliers from dogma.
+    #[must_use]
+    pub fn has_pi_planner_data(&self) -> bool {
+        self.has_planetary_data() && self.has_type_info()
+    }
+
     pub(super) fn file(&self, name: &'static str) -> Result<&str, SdeError> {
         self.files
             .get(name)

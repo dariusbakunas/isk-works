@@ -12,6 +12,7 @@ mod auth_sessions;
 mod fits;
 mod sde_geography;
 mod sde_market_catalog;
+mod sde_pi_planner;
 mod sde_recipes;
 mod sde_skills;
 mod sde_type_info;
@@ -289,6 +290,8 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        planet_pin_types: Vec::new(),
+        planet_commodities: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),

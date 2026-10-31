@@ -31,6 +31,12 @@ pub struct NormalizedSde {
     /// One row per stargate (both directions of a connection). Empty when
     /// the SDE lacks `mapStargates`.
     pub stargates: Vec<ImportStargate>,
+    /// Planetary Interaction structures (category 41) with their CPU and
+    /// power figures. Empty when the SDE lacks dogma.
+    pub planet_pin_types: Vec<ImportPlanetPinType>,
+    /// Customs tax multipliers of every PI commodity, P0 to P4. Empty when
+    /// the SDE lacks dogma.
+    pub planet_commodities: Vec<ImportPlanetCommodity>,
     /// Training dogma for every imported skill (category 16). Empty when
     /// the SDE lacks `typeDogma`.
     pub skills: Vec<ImportSkill>,
@@ -182,6 +188,9 @@ pub struct ImportPlanetSchematic {
     pub name: String,
     pub cycle_time_seconds: i64,
     pub types: Vec<ImportPlanetSchematicType>,
+    /// The processor types that can run it, sorted. Unknown types are
+    /// dropped.
+    pub pin_type_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -191,6 +200,101 @@ pub struct ImportPlanetSchematicType {
     pub quantity: i64,
 }
 
+/// What a Planetary Interaction structure type is, from its group.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
+pub enum PlanetPinKind {
+    /// Group 1026: not placeable. It marks which raw resource
+    /// (`harvester_type_id`) a planet type (`planet_type_id`) yields.
+    ExtractorResource,
+    CommandCenter,
+    /// Basic, advanced and high-tech factories; the tier follows from the
+    /// schematics that list the pin.
+    Processor,
+    Storage,
+    Launchpad,
+    Link,
+    ExtractorControlUnit,
+}
+
+impl PlanetPinKind {
+    #[must_use]
+    pub fn from_group_id(group_id: i64) -> Option<Self> {
+        match group_id {
+            1026 => Some(Self::ExtractorResource),
+            1027 => Some(Self::CommandCenter),
+            1028 => Some(Self::Processor),
+            1029 => Some(Self::Storage),
+            1030 => Some(Self::Launchpad),
+            1036 => Some(Self::Link),
+            1063 => Some(Self::ExtractorControlUnit),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExtractorResource => "extractor_resource",
+            Self::CommandCenter => "command_center",
+            Self::Processor => "processor",
+            Self::Storage => "storage",
+            Self::Launchpad => "launchpad",
+            Self::Link => "link",
+            Self::ExtractorControlUnit => "ecu",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        [
+            Self::ExtractorResource,
+            Self::CommandCenter,
+            Self::Processor,
+            Self::Storage,
+            Self::Launchpad,
+            Self::Link,
+            Self::ExtractorControlUnit,
+        ]
+        .into_iter()
+        .find(|kind| kind.as_str() == value)
+    }
+}
+
+/// A Planetary Interaction structure type. Every figure is the SDE dogma
+/// value, `None` when the type doesn't carry the attribute. A command
+/// center's figures are for upgrade level 0 only.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportPlanetPinType {
+    pub type_id: i64,
+    pub kind: PlanetPinKind,
+    /// `planetRestriction`: the planet type it can be built on.
+    pub planet_type_id: Option<i64>,
+    /// `harvesterType`: the raw resource an extractor marker stands for.
+    pub harvester_type_id: Option<i64>,
+    pub cpu_load: Option<Decimal>,
+    pub power_load: Option<Decimal>,
+    pub cpu_output: Option<Decimal>,
+    pub power_output: Option<Decimal>,
+    /// Per extractor head on an ECU.
+    pub ecu_head_cpu: Option<Decimal>,
+    pub ecu_head_power: Option<Decimal>,
+    /// Links: load per km of length, and per link level.
+    pub cpu_load_per_km: Option<Decimal>,
+    pub power_load_per_km: Option<Decimal>,
+    pub cpu_load_level_modifier: Option<Decimal>,
+    pub power_load_level_modifier: Option<Decimal>,
+}
+
+/// A PI commodity's customs tax multipliers. The tax per unit is the
+/// multiplier × the customs office's rate; the game charges imports at half
+/// of it. The attributes are unpublished, so Type Info doesn't keep them.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportPlanetCommodity {
+    pub type_id: i64,
+    pub export_tax_multiplier: Decimal,
+    pub import_tax_multiplier: Decimal,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ImportPlanet {
     pub planet_id: i64,
@@ -198,6 +302,11 @@ pub struct ImportPlanet {
     pub celestial_index: i64,
     /// `"<system> <ROMAN(celestial_index)>"`, e.g. `Q-3HS5 IV`.
     pub name: String,
+    /// The planet type (Barren 2016, Gas 13, ...). `None` in an SDE that
+    /// predates it.
+    pub type_id: Option<i64>,
+    /// For the PI Planner's link-length estimate.
+    pub radius_m: Option<i64>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

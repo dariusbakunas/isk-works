@@ -95,6 +95,7 @@ pub(super) fn normalize_market_groups(
 
 #[cfg(test)]
 mod market_group_ordering_tests;
+mod pi_planner;
 mod type_info;
 use type_info::{normalize_type_info, type_details};
 
@@ -143,6 +144,10 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let raw_type_materials: Vec<RawTypeMaterials> =
         parse_optional_jsonl(source, TYPE_MATERIALS_FILE)?;
     let raw_type_bonuses: Vec<RawTypeBonus> = parse_optional_jsonl(source, TYPE_BONUS_FILE)?;
+    let dogma_attribute_names = raw_dogma_attributes
+        .iter()
+        .map(|attribute| (attribute.key, attribute.name.clone()))
+        .collect::<HashMap<_, _>>();
     let rig_filter_ids: HashMap<i64, RigFilterIds> = raw_industry_modifier_sources
         .into_iter()
         .map(|source| {
@@ -317,6 +322,19 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         &mut referenced_type_ids,
     )?;
 
+    let planet_pin_types = pi_planner::normalize_planet_pin_types(
+        &raw_types_by_id,
+        &raw_type_dogma,
+        &dogma_attribute_names,
+        &mut referenced_type_ids,
+    );
+    let planet_commodities = pi_planner::normalize_planet_commodities(
+        &raw_types_by_id,
+        &raw_type_dogma,
+        &dogma_attribute_names,
+        &mut referenced_type_ids,
+    );
+
     let (structure_modifiers, rig_modifiers, reaction_rig_modifiers) =
         normalize_facility_dogma(&raw_type_dogma, &raw_types_by_id, &rig_filter_ids);
 
@@ -488,6 +506,8 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         planet_schematics,
         planets,
         stargates,
+        planet_pin_types,
+        planet_commodities,
         skills,
         required_skills,
         type_info,
@@ -538,11 +558,24 @@ pub(super) fn normalize_planet_schematics(
         types.sort_by_key(|line| (!line.is_input, line.type_id));
         types.dedup_by_key(|line| (line.is_input, line.type_id));
         referenced_type_ids.extend(types.iter().map(|line| line.type_id));
+        let mut pin_type_ids = record
+            .pins
+            .into_iter()
+            .filter(|id| {
+                raw_types_by_id
+                    .get(id)
+                    .is_some_and(|item| item.name.en.is_some())
+            })
+            .collect::<Vec<_>>();
+        pin_type_ids.sort_unstable();
+        pin_type_ids.dedup();
+        referenced_type_ids.extend(pin_type_ids.iter().copied());
         values.push(ImportPlanetSchematic {
             schematic_id: record.key,
             name,
             cycle_time_seconds: record.cycle_time,
             types,
+            pin_type_ids,
         });
     }
     values.sort_by_key(|value| value.schematic_id);
@@ -570,6 +603,12 @@ pub(super) fn normalize_planets(
             solar_system_id: record.solar_system_id,
             celestial_index: record.celestial_index,
             name: format!("{system} {}", roman_numeral(record.celestial_index)),
+            type_id: record.type_id,
+            radius_m: record
+                .radius
+                .and_then(json_number_decimal)
+                .and_then(|radius| radius.round().to_i64())
+                .filter(|radius| *radius > 0),
         });
     }
     values.sort_by_key(|value| value.planet_id);

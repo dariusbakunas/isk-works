@@ -184,6 +184,9 @@ pub(crate) struct RawPlanetSchematic {
     pub(crate) cycle_time: i64,
     #[serde(default)]
     pub(crate) types: Vec<RawPlanetSchematicType>,
+    /// The processor types that can run this schematic.
+    #[serde(default)]
+    pub(crate) pins: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +206,9 @@ pub(crate) struct RawPlanet {
     pub(crate) solar_system_id: i64,
     #[serde(rename = "celestialIndex")]
     pub(crate) celestial_index: i64,
+    #[serde(rename = "typeID")]
+    pub(crate) type_id: Option<i64>,
+    pub(crate) radius: Option<serde_json::Number>,
 }
 
 #[derive(Debug, Deserialize)]

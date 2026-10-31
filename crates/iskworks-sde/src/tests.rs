@@ -583,12 +583,14 @@ fn parses_planet_schematics_and_drops_unresolvable_lines() {
     let source = fixture_source_inner(
         blueprints_fixture(),
         None,
-        None,
+        Some(
+            r#"{"_key":2470,"groupID":1028,"name":{"en":"Barren Basic Industry Facility"},"published":true}"#,
+        ),
         &[
             (
                 "planetSchematics.jsonl",
                 concat!(
-                    r#"{"_key":65,"cycleTime":3600,"name":{"en":"Superconductors"},"pins":[2470],"types":[{"_key":34,"isInput":true,"quantity":40},{"_key":777,"isInput":true,"quantity":40},{"_key":5876,"isInput":false,"quantity":5}]}"#,
+                    r#"{"_key":65,"cycleTime":3600,"name":{"en":"Superconductors"},"pins":[4444,2470],"types":[{"_key":34,"isInput":true,"quantity":40},{"_key":777,"isInput":true,"quantity":40},{"_key":5876,"isInput":false,"quantity":5}]}"#,
                     "\n",
                     r#"{"_key":66,"cycleTime":1800,"name":{"en":"Ghost"},"types":[{"_key":34,"isInput":true,"quantity":1},{"_key":778,"isInput":false,"quantity":1}]}"#
                 ),
@@ -619,6 +621,8 @@ fn parses_planet_schematics_and_drops_unresolvable_lines() {
                     quantity: 5,
                 },
             ],
+            // Pin 4444 is unknown, so it is dropped.
+            pin_type_ids: vec![2470],
         }]
     );
 }
@@ -632,7 +636,9 @@ fn names_planets_from_their_system_and_celestial_index() {
         &[(
             "mapPlanets.jsonl",
             concat!(
-                r#"{"_key":40000002,"celestialIndex":4,"solarSystemID":30004878,"statistics":{"density":1.0}}"#,
+                r#"{"_key":40000002,"celestialIndex":4,"radius":5060000,"solarSystemID":30004878,"statistics":{"density":1.0},"typeID":2016}"#,
+                "\n",
+                r#"{"_key":40000003,"celestialIndex":5,"solarSystemID":30004878}"#,
                 "\n",
                 r#"{"_key":40000099,"celestialIndex":1,"solarSystemID":31000001}"#
             ),
@@ -645,12 +651,25 @@ fn names_planets_from_their_system_and_celestial_index() {
 
     assert_eq!(
         dataset.planets,
-        vec![ImportPlanet {
-            planet_id: 40_000_002,
-            solar_system_id: 30_004_878,
-            celestial_index: 4,
-            name: "C-J6MT IV".to_string(),
-        }]
+        vec![
+            ImportPlanet {
+                planet_id: 40_000_002,
+                solar_system_id: 30_004_878,
+                celestial_index: 4,
+                name: "C-J6MT IV".to_string(),
+                type_id: Some(2016),
+                radius_m: Some(5_060_000),
+            },
+            // An older SDE without type and radius still names the planet.
+            ImportPlanet {
+                planet_id: 40_000_003,
+                solar_system_id: 30_004_878,
+                celestial_index: 5,
+                name: "C-J6MT V".to_string(),
+                type_id: None,
+                radius_m: None,
+            },
+        ]
     );
 }
 
@@ -1326,4 +1345,200 @@ fn type_bonus_source_names_its_kind() {
     assert_eq!(TypeBonusSource::Role.kind(), "role");
     assert_eq!(TypeBonusSource::Misc.kind(), "misc");
     assert_eq!(TypeBonusSource::Misc.skill_type_id(), None);
+}
+
+/// PI structure shapes copied from SDE 3482594 (Barren pins plus the link).
+fn pi_structures_source() -> SdeSource {
+    let extra_types = concat!(
+        r#"{"_key":2280,"groupID":1036,"name":{"en":"Link"},"published":true}"#,
+        "\n",
+        r#"{"_key":2430,"groupID":1026,"name":{"en":"Barren Base Metals Extractor"},"published":true}"#,
+        "\n",
+        r#"{"_key":2473,"groupID":1028,"name":{"en":"Barren Basic Industry Facility"},"published":true}"#,
+        "\n",
+        r#"{"_key":2524,"groupID":1027,"name":{"en":"Barren Command Center"},"published":true}"#,
+        "\n",
+        r#"{"_key":2848,"groupID":1063,"name":{"en":"Barren Extractor Control Unit"},"published":true}"#,
+        "\n",
+        r#"{"_key":9998,"groupID":1028,"name":{"en":"Retired Facility"},"published":false}"#,
+        "\n",
+        r#"{"_key":2267,"name":{"en":"Base Metals"},"published":true,"volume":0.01}"#,
+        "\n",
+        r#"{"_key":3645,"name":{"en":"Water"},"published":true,"volume":0.19}"#
+    );
+    let attribute =
+        |id: i64, name: &str| format!(r#"{{"_key":{id},"name":"{name}","published":true}}"#);
+    let attributes = [
+        attribute(11, "powerOutput"),
+        attribute(15, "powerLoad"),
+        attribute(48, "cpuOutput"),
+        attribute(49, "cpuLoad"),
+        attribute(709, "harvesterType"),
+        attribute(1632, "planetRestriction"),
+        attribute(1633, "powerLoadPerKm"),
+        attribute(1634, "cpuLoadPerKm"),
+        attribute(1635, "cpuLoadLevelModifier"),
+        attribute(1636, "powerLoadLevelModifier"),
+        attribute(1640, "importTaxMultiplier"),
+        attribute(1641, "exportTaxMultiplier"),
+        attribute(1690, "ecuExtractorHeadCPU"),
+        attribute(1691, "ecuExtractorHeadPower"),
+    ]
+    .join("\n");
+    let dogma = |id: i64, values: &[(i64, f64)]| {
+        let values = values
+            .iter()
+            .map(|(attribute, value)| format!(r#"{{"attributeID":{attribute},"value":{value:?}}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#"{{"_key":{id},"dogmaAttributes":[{values}]}}"#)
+    };
+    let type_dogma = [
+        dogma(
+            2280,
+            &[
+                (15, 10.0),
+                (49, 15.0),
+                (1633, 0.15),
+                (1634, 0.2),
+                (1635, 1.4),
+                (1636, 1.2),
+            ],
+        ),
+        dogma(
+            2430,
+            &[(15, 800.0), (49, 200.0), (709, 2267.0), (1632, 2016.0)],
+        ),
+        dogma(2473, &[(15, 800.0), (49, 200.0), (1632, 2016.0)]),
+        dogma(2524, &[(11, 6000.0), (48, 1675.0), (1632, 2016.0)]),
+        dogma(
+            2848,
+            &[
+                (15, 2600.0),
+                (49, 400.0),
+                (1632, 2016.0),
+                (1690, 110.0),
+                (1691, 550.0),
+            ],
+        ),
+        dogma(9998, &[(15, 1.0), (49, 1.0)]),
+        dogma(2267, &[(1640, 5.0), (1641, 5.0)]),
+        dogma(3645, &[(1640, 400.0), (1641, 400.0)]),
+    ]
+    .join("\n");
+    let groups = [
+        (1026, "Extractors"),
+        (1027, "Command Centers"),
+        (1028, "Processors"),
+        (1036, "Planetary Links"),
+        (1063, "Extractor Control Units"),
+    ]
+    .map(|(id, name)| {
+        format!(r#"{{"_key":{id},"categoryID":41,"name":{{"en":"{name}"}},"published":true}}"#)
+    })
+    .join("\n");
+    fixture_source_inner(
+        blueprints_fixture(),
+        None,
+        Some(extra_types),
+        &[
+            (
+                "categories.jsonl",
+                r#"{"_key":41,"name":{"en":"Planetary Interaction"},"published":true}"#,
+            ),
+            ("groups.jsonl", &groups),
+            ("dogmaAttributes.jsonl", &attributes),
+            ("typeDogma.jsonl", &type_dogma),
+        ],
+    )
+    .unwrap()
+}
+
+#[test]
+fn imports_pi_structures_with_their_cpu_and_power() {
+    let dataset = parse(&pi_structures_source()).unwrap();
+    let decimal = |value: &str| Some(value.parse::<Decimal>().unwrap());
+    let pin = |type_id: i64, kind: PlanetPinKind| ImportPlanetPinType {
+        type_id,
+        kind,
+        planet_type_id: Some(2016),
+        harvester_type_id: None,
+        cpu_load: None,
+        power_load: None,
+        cpu_output: None,
+        power_output: None,
+        ecu_head_cpu: None,
+        ecu_head_power: None,
+        cpu_load_per_km: None,
+        power_load_per_km: None,
+        cpu_load_level_modifier: None,
+        power_load_level_modifier: None,
+    };
+
+    assert_eq!(
+        dataset.planet_pin_types,
+        vec![
+            ImportPlanetPinType {
+                planet_type_id: None,
+                cpu_load: decimal("15"),
+                power_load: decimal("10"),
+                cpu_load_per_km: decimal("0.2"),
+                power_load_per_km: decimal("0.15"),
+                cpu_load_level_modifier: decimal("1.4"),
+                power_load_level_modifier: decimal("1.2"),
+                ..pin(2280, PlanetPinKind::Link)
+            },
+            ImportPlanetPinType {
+                harvester_type_id: Some(2267),
+                cpu_load: decimal("200"),
+                power_load: decimal("800"),
+                ..pin(2430, PlanetPinKind::ExtractorResource)
+            },
+            ImportPlanetPinType {
+                cpu_load: decimal("200"),
+                power_load: decimal("800"),
+                ..pin(2473, PlanetPinKind::Processor)
+            },
+            ImportPlanetPinType {
+                cpu_output: decimal("1675"),
+                power_output: decimal("6000"),
+                ..pin(2524, PlanetPinKind::CommandCenter)
+            },
+            // The unpublished processor (9998) is skipped.
+            ImportPlanetPinType {
+                cpu_load: decimal("400"),
+                power_load: decimal("2600"),
+                ecu_head_cpu: decimal("110"),
+                ecu_head_power: decimal("550"),
+                ..pin(2848, PlanetPinKind::ExtractorControlUnit)
+            },
+        ]
+    );
+}
+
+#[test]
+fn pi_structures_are_empty_without_dogma() {
+    let dataset = parse(&fixture_source(blueprints_fixture()).unwrap()).unwrap();
+    assert!(dataset.planet_pin_types.is_empty());
+}
+
+#[test]
+fn imports_commodity_customs_tax_multipliers() {
+    let dataset = parse(&pi_structures_source()).unwrap();
+
+    assert_eq!(
+        dataset.planet_commodities,
+        vec![
+            ImportPlanetCommodity {
+                type_id: 2267,
+                export_tax_multiplier: Decimal::from(5),
+                import_tax_multiplier: Decimal::from(5),
+            },
+            ImportPlanetCommodity {
+                type_id: 3645,
+                export_tax_multiplier: Decimal::from(400),
+                import_tax_multiplier: Decimal::from(400),
+            },
+        ]
+    );
 }

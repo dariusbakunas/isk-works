@@ -464,12 +464,15 @@ async fn planetary_sde_data_round_trips_through_the_active_import(pool: PgPool) 
                 quantity: 5,
             },
         ],
+        pin_type_ids: Vec::new(),
     }];
     dataset.planets = vec![iskworks_sde::ImportPlanet {
         planet_id: 40_009_077,
         solar_system_id: 30_000_142,
         celestial_index: 4,
         name: "Jita IV".into(),
+        type_id: Some(11),
+        radius_m: Some(6_420_000),
     }];
     let import_id = repository
         .begin_import(NewImport {
@@ -740,6 +743,8 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        planet_pin_types: Vec::new(),
+        planet_commodities: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
@@ -847,6 +852,8 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        planet_pin_types: Vec::new(),
+        planet_commodities: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
@@ -955,6 +962,8 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         planet_schematics: Vec::new(),
         planets: Vec::new(),
         stargates: Vec::new(),
+        planet_pin_types: Vec::new(),
+        planet_commodities: Vec::new(),
         skills: Vec::new(),
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
