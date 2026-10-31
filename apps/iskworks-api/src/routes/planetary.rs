@@ -28,9 +28,7 @@ async fn overview(State(state): State<AppState>) -> Result<Json<PlanetaryOvervie
 }
 
 /// Keeps every PI commodity on the page covered by the market worker in the
-/// valuation scope (and refreshes the uncovered ones now), the same way Build
-/// preview requests prices for its materials. Fire-and-forget: a slow or
-/// failing ESI fetch must not hold the page, and the next load picks prices up.
+/// valuation scope.
 fn register_commodity_coverage(
     state: &AppState,
     workspace_id: WorkspaceId,
@@ -49,6 +47,19 @@ fn register_commodity_coverage(
             items.insert(item.type_id, item.name.clone());
         }
     }
+    register_coverage(state, workspace_id, scope, items);
+}
+
+/// Registers these commodities with the market worker in the valuation scope
+/// (and refreshes the uncovered ones now), the same way Build preview
+/// requests prices for its materials. Fire-and-forget: a slow or failing ESI
+/// fetch must not hold the page, and the next load picks prices up.
+pub(crate) fn register_coverage(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    scope: MarketScope,
+    items: BTreeMap<i64, String>,
+) {
     if items.is_empty() {
         return;
     }
