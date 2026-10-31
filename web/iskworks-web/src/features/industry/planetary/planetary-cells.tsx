@@ -27,7 +27,7 @@ const barFill: Record<Tone, string> = {
   danger: "bg-destructive",
 };
 
-function PlanetTypeChip({ type }: { type: string }) {
+export function PlanetTypeChip({ type }: { type: string }) {
   const meta = PLANET_TYPES[type] ?? {
     short: type.slice(0, 1).toUpperCase() || "?",
     label: type,
