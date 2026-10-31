@@ -19,6 +19,9 @@ rust-version = "1.78"
 license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
+# PI Planner optimiser. Pinned: later good_lp/microlp need a newer Rust than
+# the workspace MSRV (1.78); 1.12.0 resolves microlp 0.2.x, which builds on it.
+good_lp = { version = "=1.12.0", default-features = false, features = ["microlp"] }
 async-trait = "0.1"
 aes-gcm = "0.10"
 axum = { version = "0.7", features = ["multipart"] }

@@ -10,6 +10,7 @@ mod chain;
 mod effort;
 mod inputs;
 mod rank;
+mod solve;
 mod yields;
 
 /// Real-SDE catalogue fixtures for tests in this and other crates.
@@ -32,6 +33,9 @@ pub use inputs::{
 pub use rank::{
     rank, CandidatePlanet, OutOfReach, PlannerCharacter, Prices, RankScenario, RankedInput,
     RankedProduct, Ranking,
+};
+pub use solve::{
+    solve, ColonyRole, FlowEnd, PiPlan, PlannedColony, PlannedFlow, SharedHotspot, SolveError,
 };
 pub use yields::{
     duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
