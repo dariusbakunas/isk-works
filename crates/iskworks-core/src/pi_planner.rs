@@ -4,12 +4,14 @@
 //!
 //! All quantities are per hour and in `f64`; they are estimates.
 
+mod capacity;
 mod catalogue;
 mod yields;
 
 #[cfg(test)]
 mod fixtures;
 
+pub use capacity::{ColonyBudget, ColonyLayout, LINK_K, MAX_HEADS_PER_ECU};
 pub use catalogue::{
     command_center_output, PiCatalogue, Recipe, COMMAND_CENTER_LEVELS, IMPORT_TAX_RATIO,
 };
