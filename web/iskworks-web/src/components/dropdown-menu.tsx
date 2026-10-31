@@ -110,7 +110,7 @@ export function DropdownMenu({
         >
           {items.map((item) => (
             <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold text-foreground transition hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs font-semibold text-foreground transition hover:bg-panel disabled:cursor-not-allowed disabled:opacity-50"
               disabled={item.disabled}
               key={item.key}
               onClick={() => {
