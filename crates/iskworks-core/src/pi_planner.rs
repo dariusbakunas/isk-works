@@ -6,6 +6,7 @@
 
 mod capacity;
 mod catalogue;
+mod chain;
 mod yields;
 
 #[cfg(test)]
@@ -15,6 +16,7 @@ pub use capacity::{ColonyBudget, ColonyLayout, LINK_K, MAX_HEADS_PER_ECU};
 pub use catalogue::{
     command_center_output, PiCatalogue, Recipe, COMMAND_CENTER_LEVELS, IMPORT_TAX_RATIO,
 };
+pub use chain::{expand, ChainDemand};
 pub use yields::{
     duration_factor, resolve_yield, DensityEntry, SecurityBand, YieldEstimate, YieldSource,
     HEAD_VALUE_PER_DENSITY_PCT,
