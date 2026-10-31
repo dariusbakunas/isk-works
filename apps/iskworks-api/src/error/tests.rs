@@ -402,6 +402,16 @@ async fn curated_domain_errors_pass_through_without_a_correlation_id() {
         ),
         (ApiError::NotFound, StatusCode::NOT_FOUND, "not_found"),
         (ApiError::Conflict("no"), StatusCode::CONFLICT, "conflict"),
+        (
+            ApiError::SdeMissingPlannerData,
+            StatusCode::CONFLICT,
+            "sde_missing_planner_data",
+        ),
+        (
+            ApiError::SolveTimeout,
+            StatusCode::REQUEST_TIMEOUT,
+            "solve_timeout",
+        ),
     ];
 
     for (error, expected_status, expected_code) in cases {

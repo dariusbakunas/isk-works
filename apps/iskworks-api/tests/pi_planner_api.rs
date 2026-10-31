@@ -587,11 +587,75 @@ async fn characters_prefill_pi_skills() {
 }
 
 #[tokio::test]
+async fn solve_returns_a_plan_with_what_ifs() {
+    let harness = harness(true);
+    send(
+        &harness.app,
+        with_json(
+            "PUT",
+            "/api/planetary/planner/densities",
+            &json!([
+                { "planetId": LAVA_I, "resourceTypeId": HEAVY_METALS, "densityPct": "50" },
+                { "planetId": LAVA_I, "resourceTypeId": NON_CS_CRYSTALS, "densityPct": "44" },
+                { "planetId": BARREN_II, "resourceTypeId": BASE_METALS, "densityPct": "58" },
+                { "planetId": BARREN_II, "resourceTypeId": NOBLE_METALS, "headValue": "160" },
+            ]),
+        ),
+    )
+    .await;
+    let mut two = scenario();
+    two["characters"] = json!([
+        { "interplanetaryConsolidation": 2, "commandCenterUpgrades": 4 },
+        { "interplanetaryConsolidation": 2, "commandCenterUpgrades": 4 },
+    ]);
+
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &two),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let plan = &body["plan"];
+    assert!(plan["iskPerMonth"].is_string());
+    let colonies = plan["colonies"].as_array().unwrap();
+    assert!(!colonies.is_empty() && colonies.len() <= 6, "{plan}");
+    let first = &colonies[0];
+    assert_eq!(first["index"], 0);
+    assert!(first["planetName"].as_str().unwrap().starts_with("Q-3HS5"));
+    assert!(["extraction", "factory"].contains(&first["role"].as_str().unwrap()));
+    assert!(first["cpuUsed"].is_string());
+    // Flows end at the market or a colony index.
+    assert!(plan["flows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|flow| flow["to"].is_null()));
+    let what_ifs = &body["whatIfs"];
+    assert_eq!(what_ifs["grid"].as_array().unwrap().len(), 12);
+    assert_eq!(what_ifs["perCharacter"].as_array().unwrap().len(), 2);
+    assert_eq!(what_ifs["perRadius"][0]["jumps"], 0);
+}
+
+#[tokio::test]
+async fn solve_validates_the_scenario() {
+    let harness = harness(true);
+    let mut bad = scenario();
+    bad["haulDays"] = json!(5);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &bad),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+#[tokio::test]
 async fn an_sde_without_planner_data_is_a_409() {
     let harness = harness(false);
     for request in [
         get(PLANETS),
         with_json("POST", "/api/planetary/planner/rank", &scenario()),
+        with_json("POST", "/api/planetary/planner/solve", &scenario()),
     ] {
         let (status, body) = send(&harness.app, request).await;
         assert_eq!(status, StatusCode::CONFLICT, "{body}");

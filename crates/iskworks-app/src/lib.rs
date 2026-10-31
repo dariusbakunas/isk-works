@@ -69,9 +69,9 @@ pub use market_orders::{
 };
 pub use order_plan::{OrderPlanCoordinator, OrderPlanError};
 pub use pi_planner::{
-    DensityWriteDto, PiPlannerError, PiPlannerService, PlanetSettingsWriteDto,
-    PlannerCharacterSkillsDto, PlannerPlanetsDto, PlannerRankingDto, PlannerScenarioDto,
-    MAX_PLANNER_RADIUS,
+    traded_types as pi_planner_traded_types, DensityWriteDto, PiPlannerError, PiPlannerService,
+    PlanetSettingsWriteDto, PlannerCharacterSkillsDto, PlannerPlanetsDto, PlannerRankingDto,
+    PlannerScenarioDto, PlannerSolutionDto, MAX_PLANNER_RADIUS,
 };
 pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,

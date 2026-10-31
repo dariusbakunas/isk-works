@@ -9,7 +9,7 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use iskworks_app::{
     DensityWriteDto, PlanetSettingsWriteDto, PlannerCharacterSkillsDto, PlannerPlanetsDto,
-    PlannerRankingDto, PlannerScenarioDto,
+    PlannerRankingDto, PlannerScenarioDto, PlannerSolutionDto,
 };
 use serde::Deserialize;
 
@@ -26,6 +26,7 @@ pub(crate) fn router() -> Router<AppState> {
             put(put_planet_settings),
         )
         .route("/api/planetary/planner/rank", post(rank))
+        .route("/api/planetary/planner/solve", post(solve))
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,4 +108,22 @@ async fn rank(
         .collect();
     register_coverage(&state, workspace_id, scope, items);
     Ok(Json(ranking))
+}
+
+async fn solve(
+    State(state): State<AppState>,
+    Json(scenario): Json<PlannerScenarioDto>,
+) -> Result<Json<PlannerSolutionDto>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let scope = state.workspace_default_market_scope(workspace_id).await?;
+    let solution = state
+        .pi_planner_service()?
+        .solve(workspace_id, scope, scenario)
+        .await?;
+    let items: BTreeMap<i64, String> = iskworks_app::pi_planner_traded_types(&solution)
+        .into_iter()
+        .map(|entry| (entry.type_id, entry.name))
+        .collect();
+    register_coverage(&state, workspace_id, scope, items);
+    Ok(Json(solution))
 }

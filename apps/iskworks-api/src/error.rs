@@ -76,6 +76,8 @@ pub enum ApiError {
     /// The active SDE import predates the PI Planner data; a re-import
     /// fixes it.
     SdeMissingPlannerData,
+    /// The PI plan ran past its solve deadline.
+    SolveTimeout,
     /// The request is well-formed but not allowed in the current state;
     /// the message is curated and safe to show.
     Conflict(&'static str),
@@ -176,6 +178,10 @@ impl From<iskworks_app::PiPlannerError> for ApiError {
             iskworks_app::PiPlannerError::Inventory(error) => Self::Inventory(error),
             iskworks_app::PiPlannerError::Sde(error) => error.into(),
             iskworks_app::PiPlannerError::Market(error) => Self::Market(error),
+            iskworks_app::PiPlannerError::SolveTimeout => Self::SolveTimeout,
+            iskworks_app::PiPlannerError::Solver(message) => {
+                Self::Inventory(InventoryError::Persistence(message))
+            }
         }
     }
 }
@@ -802,6 +808,18 @@ impl IntoResponse for ApiError {
                         .to_string(),
                     fields: None,
                     retryable: false,
+                    correlation_id: None,
+                },
+            ),
+            Self::SolveTimeout => (
+                StatusCode::REQUEST_TIMEOUT,
+                ErrorBody {
+                    code: "solve_timeout",
+                    message: "The plan took too long to solve. Try a smaller radius or fewer \
+                              characters."
+                        .to_string(),
+                    fields: None,
+                    retryable: true,
                     correlation_id: None,
                 },
             ),
