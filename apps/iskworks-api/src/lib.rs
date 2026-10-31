@@ -187,6 +187,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::esi::router())
         .merge(routes::characters::router())
         .merge(routes::planetary::router())
+        .merge(routes::pi_planner::router())
         .merge(routes::skills::router())
         .merge(routes::fittings::router())
         .merge(routes::types::router())

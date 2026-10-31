@@ -75,17 +75,23 @@ fn pi_planner_dataset(checksum: &str) -> NormalizedSde {
         pi_type(2524, "Barren Command Center"),
         pi_type(3645, "Water"),
     ]);
-    dataset.regions = vec![ImportRegion {
-        region_id: 10_000_001,
-        name: "Insmother".into(),
-    }];
+    dataset.regions = vec![
+        ImportRegion {
+            region_id: 10_000_001,
+            name: "Insmother".into(),
+        },
+        ImportRegion {
+            region_id: 11_000_001,
+            name: "A-R00001".into(),
+        },
+    ];
     dataset.solar_systems = vec![
         system(30_000_001, "Alpha", Decimal::new(-58, 2)),
         system(30_000_002, "Bravo", Decimal::new(-3, 1)),
         system(30_000_003, "Charlie", Decimal::new(-6, 1)),
         system(30_000_004, "Delta", Decimal::new(-1, 1)),
         ImportSolarSystem {
-            region_id: None,
+            region_id: Some(11_000_001),
             wormhole_class_id: Some(3),
             ..system(31_000_001, "J100001", Decimal::new(-1, 0))
         },
@@ -311,7 +317,14 @@ async fn systems_within_jumps_walk_the_gate_graph_once(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(jumps(wormhole.clone()), vec![("J100001".to_string(), 0)]);
-    assert_eq!(wormhole[0].wormhole_class_id, Some(3));
+    assert!(wormhole[0].wormhole);
+    assert!(
+        !repository
+            .systems_within_jumps(30_000_001, 0)
+            .await
+            .unwrap()[0]
+            .wormhole
+    );
     assert!(repository
         .systems_within_jumps(30_999_999, 3)
         .await

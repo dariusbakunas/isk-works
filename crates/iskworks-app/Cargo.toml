@@ -28,6 +28,7 @@ test-support = ["iskworks-esi/test-support"]
 
 [dev-dependencies]
 metrics-util.workspace = true
+iskworks-core = { path = "../iskworks-core", features = ["test-support"] }
 iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
 sqlx.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

@@ -73,6 +73,9 @@ pub enum ApiError {
     /// The fitting engine's data did not load (missing or stale `sde.dat`),
     /// so fit text and stats are unavailable; saved fits still work.
     FittingEngineUnavailable,
+    /// The active SDE import predates the PI Planner data; a re-import
+    /// fixes it.
+    SdeMissingPlannerData,
     /// The request is well-formed but not allowed in the current state;
     /// the message is curated and safe to show.
     Conflict(&'static str),
@@ -163,6 +166,17 @@ impl From<FinanceError> for ApiError {
 impl From<MarketError> for ApiError {
     fn from(value: MarketError) -> Self {
         Self::Market(value)
+    }
+}
+
+impl From<iskworks_app::PiPlannerError> for ApiError {
+    fn from(value: iskworks_app::PiPlannerError) -> Self {
+        match value {
+            iskworks_app::PiPlannerError::SdeMissingPlannerData => Self::SdeMissingPlannerData,
+            iskworks_app::PiPlannerError::Inventory(error) => Self::Inventory(error),
+            iskworks_app::PiPlannerError::Sde(error) => error.into(),
+            iskworks_app::PiPlannerError::Market(error) => Self::Market(error),
+        }
     }
 }
 
@@ -773,6 +787,18 @@ impl IntoResponse for ApiError {
                     code: "fitting_engine_unavailable",
                     message: "Fit stats and fit import/export are unavailable: the server has no \
                               fitting engine data."
+                        .to_string(),
+                    fields: None,
+                    retryable: false,
+                    correlation_id: None,
+                },
+            ),
+            Self::SdeMissingPlannerData => (
+                StatusCode::CONFLICT,
+                ErrorBody {
+                    code: "sde_missing_planner_data",
+                    message: "The static data import predates the PI Planner. Re-import the SDE \
+                              to use it."
                         .to_string(),
                     fields: None,
                     retryable: false,

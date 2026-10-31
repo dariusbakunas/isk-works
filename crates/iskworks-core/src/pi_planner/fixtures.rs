@@ -10,25 +10,25 @@ use rust_decimal::Decimal;
 
 use super::PiCatalogue;
 
-pub(crate) const BARREN: i64 = 2016;
-pub(crate) const LAVA: i64 = 2015;
-pub(crate) const PLASMA: i64 = 2063;
-pub(crate) const GAS: i64 = 13;
-pub(crate) const SHATTERED: i64 = 30_889;
+pub const BARREN: i64 = 2016;
+pub const LAVA: i64 = 2015;
+pub const PLASMA: i64 = 2063;
+pub const GAS: i64 = 13;
+pub const SHATTERED: i64 = 30_889;
 
-pub(crate) const AQUEOUS_LIQUIDS: i64 = 2268;
-pub(crate) const BASE_METALS: i64 = 2267;
-pub(crate) const NOBLE_METALS: i64 = 2270;
-pub(crate) const HEAVY_METALS: i64 = 2272;
-pub(crate) const NON_CS_CRYSTALS: i64 = 2306;
-pub(crate) const REACTIVE_METALS: i64 = 2398;
-pub(crate) const PRECIOUS_METALS: i64 = 2399;
-pub(crate) const TOXIC_METALS: i64 = 2400;
-pub(crate) const CHIRAL_STRUCTURES: i64 = 2401;
-pub(crate) const WATER: i64 = 3645;
-pub(crate) const MECHANICAL_PARTS: i64 = 3689;
-pub(crate) const CONSUMER_ELECTRONICS: i64 = 9836;
-pub(crate) const ROBOTICS: i64 = 9848;
+pub const AQUEOUS_LIQUIDS: i64 = 2268;
+pub const BASE_METALS: i64 = 2267;
+pub const NOBLE_METALS: i64 = 2270;
+pub const HEAVY_METALS: i64 = 2272;
+pub const NON_CS_CRYSTALS: i64 = 2306;
+pub const REACTIVE_METALS: i64 = 2398;
+pub const PRECIOUS_METALS: i64 = 2399;
+pub const TOXIC_METALS: i64 = 2400;
+pub const CHIRAL_STRUCTURES: i64 = 2401;
+pub const WATER: i64 = 3645;
+pub const MECHANICAL_PARTS: i64 = 3689;
+pub const CONSUMER_ELECTRONICS: i64 = 9836;
+pub const ROBOTICS: i64 = 9848;
 
 fn decimal(value: i64) -> Option<Decimal> {
     Some(Decimal::from(value))
@@ -99,7 +99,7 @@ fn planet_pins(planet: i64, ids: [i64; 6], resources: &[i64]) -> Vec<PlanetPinTy
     pins
 }
 
-pub(crate) fn pin_types() -> Vec<PlanetPinType> {
+pub fn pin_types() -> Vec<PlanetPinType> {
     let mut pins = Vec::new();
     pins.extend(planet_pins(
         BARREN,
@@ -150,7 +150,7 @@ fn schematic(
     }
 }
 
-pub(crate) fn schematics() -> Vec<PlanetSchematic> {
+pub fn schematics() -> Vec<PlanetSchematic> {
     let basic = || vec![2469, 2471, 2473];
     let advanced = || vec![2470, 2472, 2474];
     vec![
@@ -213,7 +213,7 @@ pub(crate) fn schematics() -> Vec<PlanetSchematic> {
     ]
 }
 
-pub(crate) fn commodities() -> BTreeMap<i64, PlanetCommodity> {
+pub fn commodities() -> BTreeMap<i64, PlanetCommodity> {
     let tiers: [(&[i64], i64); 4] = [
         (
             &[
@@ -255,7 +255,7 @@ pub(crate) fn commodities() -> BTreeMap<i64, PlanetCommodity> {
         .collect()
 }
 
-pub(crate) fn volumes() -> BTreeMap<i64, f64> {
+pub fn volumes() -> BTreeMap<i64, f64> {
     let mut volumes = BTreeMap::new();
     for p0 in [
         AQUEOUS_LIQUIDS,
@@ -281,6 +281,6 @@ pub(crate) fn volumes() -> BTreeMap<i64, f64> {
     volumes
 }
 
-pub(crate) fn catalogue() -> PiCatalogue {
+pub fn catalogue() -> PiCatalogue {
     PiCatalogue::build(pin_types(), schematics(), commodities(), volumes())
 }

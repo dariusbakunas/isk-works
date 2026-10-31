@@ -10,6 +10,7 @@ use iskworks_sde::{
 
 mod auth_sessions;
 mod fits;
+mod pi_planner;
 mod sde_geography;
 mod sde_market_catalog;
 mod sde_pi_planner;

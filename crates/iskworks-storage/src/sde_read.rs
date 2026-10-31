@@ -1114,7 +1114,8 @@ impl SdeReadRepository for PgSdeRepository {
               WHERE walk.jumps < $2
             )
             SELECT system.solar_system_id, system.name_en, system.security_status,
-                   region.name_en AS region_name, system.wormhole_class_id,
+                   region.name_en AS region_name,
+                   coalesce(system.region_id BETWEEN 11000001 AND 11000033, false) AS wormhole,
                    min(walk.jumps) AS jumps
             FROM walk
             JOIN active ON true
@@ -1125,7 +1126,7 @@ impl SdeReadRepository for PgSdeRepository {
               ON region.import_id = system.import_id
              AND region.region_id = system.region_id
             GROUP BY system.solar_system_id, system.name_en, system.security_status,
-                     region.name_en, system.wormhole_class_id
+                     region.name_en, system.region_id
             ORDER BY jumps, system.name_en, system.solar_system_id
             "#,
         )
@@ -1141,7 +1142,7 @@ impl SdeReadRepository for PgSdeRepository {
                 name: row.name_en,
                 security_status: row.security_status,
                 region_name: row.region_name,
-                wormhole_class_id: row.wormhole_class_id,
+                wormhole: row.wormhole,
                 jumps: u8::try_from(row.jumps).unwrap_or(u8::MAX),
             })
             .collect())
@@ -2453,7 +2454,7 @@ struct SystemDistanceRow {
     name_en: String,
     security_status: Option<rust_decimal::Decimal>,
     region_name: Option<String>,
-    wormhole_class_id: Option<i64>,
+    wormhole: bool,
     jumps: i32,
 }
 

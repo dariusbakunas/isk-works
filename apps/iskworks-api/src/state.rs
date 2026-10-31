@@ -57,6 +57,7 @@ pub struct AppState {
     fit_repository: Option<Arc<dyn iskworks_core::fitting::FitRepository>>,
     planetary_preferences:
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
+    pi_planner_repository: Option<Arc<dyn iskworks_core::pi_planner::PiPlannerInputsRepository>>,
     facility_repository: Option<Arc<iskworks_storage::PgFacilityRepository>>,
     facility_defaults_repository:
         Option<Arc<dyn iskworks_core::facility_defaults::FacilityDefaultsRepository>>,
@@ -105,6 +106,7 @@ impl AppState {
             fitting_engine: None,
             fit_repository: None,
             planetary_preferences: None,
+            pi_planner_repository: None,
             facility_repository: None,
             facility_defaults_repository: None,
             finance_repository: None,
@@ -246,6 +248,15 @@ impl AppState {
     ) -> Self {
         self.planetary_characters = Some(characters);
         self.planetary_preferences = Some(preferences);
+        self
+    }
+
+    #[must_use]
+    pub fn with_pi_planner_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::pi_planner::PiPlannerInputsRepository>,
+    ) -> Self {
+        self.pi_planner_repository = Some(repository);
         self
     }
 
@@ -783,6 +794,25 @@ impl AppState {
             self.sde_repository.clone(),
             self.market_repository()?,
         ))
+    }
+
+    /// The PI Planner. Character prefill needs ESI; everything else works
+    /// without it.
+    pub(crate) fn pi_planner_service(&self) -> Result<iskworks_app::PiPlannerService, ApiError> {
+        let inputs = self.pi_planner_repository.clone().ok_or_else(|| {
+            ApiError::Inventory(InventoryError::Persistence(
+                "PI Planner persistence is unavailable.".to_string(),
+            ))
+        })?;
+        let service = iskworks_app::PiPlannerService::new(
+            self.sde_repository.clone(),
+            self.market_repository()?,
+            inputs,
+        );
+        Ok(match self.planetary_characters.clone() {
+            Some(characters) => service.with_characters(characters),
+            None => service,
+        })
     }
 
     pub(crate) fn skill_catalogue_service(

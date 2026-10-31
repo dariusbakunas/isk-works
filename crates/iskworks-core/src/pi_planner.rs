@@ -8,11 +8,13 @@ mod capacity;
 mod catalogue;
 mod chain;
 mod effort;
+mod inputs;
 mod rank;
 mod yields;
 
-#[cfg(test)]
-mod fixtures;
+/// Real-SDE catalogue fixtures for tests in this and other crates.
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;
 
 pub use capacity::{ColonyBudget, ColonyLayout, LINK_K, MAX_HEADS_PER_ECU};
 pub use catalogue::{
@@ -22,6 +24,10 @@ pub use chain::{expand, ChainDemand};
 pub use effort::{
     buffers, effort, storage_needed, Buffers, ColonyVisit, Effort, EffortSettings, INTERVAL_DAYS,
     LAUNCHPAD_M3, SKYHOOK_M3, STORAGE_M3,
+};
+pub use inputs::{
+    DensityWrite, PiPlannerInputsRepository, PlanetSettingsWrite, StoredDensity,
+    StoredPlanetSettings,
 };
 pub use rank::{
     rank, CandidatePlanet, OutOfReach, PlannerCharacter, Prices, RankScenario, RankedInput,
