@@ -1,13 +1,15 @@
 //! Ranks every PI product the planets in range can support, by ISK/month of
-//! one reference chain per character budget. No optimiser: each raw resource
-//! comes from its best planet, refined to P1 where it is extracted, and one
-//! factory colony builds everything above P1.
+//! reference chains built until the characters run out of colonies. No
+//! optimiser: each raw resource comes from its best open planet, refined to
+//! P1 where it is extracted, and one factory colony builds everything above
+//! P1. A planet takes one colony per character, so later chains move on to
+//! the next-best planets.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::capacity::{ColonyBudget, ColonyLayout, MAX_HEADS_PER_ECU};
 use super::catalogue::PiCatalogue;
-use super::chain::expand;
+use super::chain::{expand, ChainDemand};
 use super::effort::{
     buffers, effort, storage_needed, ColonyVisit, Effort, EffortSettings, INTERVAL_DAYS,
 };
@@ -206,20 +208,59 @@ pub(super) fn customs_rate(scenario: &RankScenario, planet: &CandidatePlanet) ->
     planet.customs_rate.unwrap_or(scenario.default_customs_rate)
 }
 
-fn rank_product(
+/// One reference chain: its colonies and what it earns.
+struct Chain<'a> {
+    extraction: Vec<ExtractionColony<'a>>,
+    factory: Option<&'a CandidatePlanet>,
+    /// Product per hour.
+    rate: f64,
+    /// What the chain consumes at `rate`.
+    used: ChainDemand,
+    /// ISK per hour after taxes and bought inputs.
+    net: f64,
+    inputs: Vec<RankedInput>,
+    bought: Vec<i64>,
+}
+
+impl Chain<'_> {
+    fn colonies(&self) -> u32 {
+        self.extraction.len() as u32 + u32::from(self.factory.is_some())
+    }
+
+    fn planets(&self) -> impl Iterator<Item = i64> + '_ {
+        self.extraction
+            .iter()
+            .map(|colony| colony.planet.planet_id)
+            .chain(self.factory.map(|planet| planet.planet_id))
+    }
+}
+
+/// The best chain for `product` on planets with room for another colony,
+/// given the colonies earlier chains hold on each planet.
+#[allow(clippy::too_many_lines)]
+fn build_chain<'a>(
     catalogue: &PiCatalogue,
     scenario: &RankScenario,
-    planets: &[CandidatePlanet],
+    planets: &'a [CandidatePlanet],
     prices: &Prices,
     product: i64,
-) -> Result<RankedProduct, OutOfReach> {
+    on_planet: &BTreeMap<i64, u32>,
+) -> Result<Chain<'a>, OutOfReach> {
+    // Each character holds one colony per planet.
+    let per_planet = scenario.characters.len().max(1) as u32;
+    let held = |planet: i64| on_planet.get(&planet).copied().unwrap_or(0);
+    let full = on_planet
+        .keys()
+        .copied()
+        .filter(|planet| held(*planet) >= per_planet)
+        .collect::<BTreeSet<_>>();
     let product_price = *prices.best_buy.get(&product).ok_or(OutOfReach::NoPrice)?;
     let tier = catalogue.tier(product).unwrap_or(0);
     let unit_chain = expand(catalogue, product, 1.0).ok_or(OutOfReach::NoPrice)?;
     let program_hours = f64::from(scenario.effort.reset_days.max(1)) * 24.0;
     let level = scenario.command_center_level();
 
-    // The best planet for each P1's raw resource.
+    // The best open planet for each P1's raw resource.
     let needed_p1 = unit_chain
         .per_hour
         .keys()
@@ -238,6 +279,7 @@ fn rank_product(
         };
         let best = planets
             .iter()
+            .filter(|planet| !full.contains(&planet.planet_id))
             .filter(|planet| catalogue.can_colonise(planet.type_id))
             .filter(|planet| catalogue.resources(planet.type_id).any(|r| r == resource))
             .filter(|planet| planet.yields(scenario, resource))
@@ -322,10 +364,22 @@ fn rank_product(
         .filter_map(|p1| supply.get(p1).map(|have| have / unit_chain.per_hour[p1]))
         .fold(f64::INFINITY, f64::min);
 
-    // One factory colony builds everything above P1.
+    // One factory colony builds everything above P1, where a character
+    // still has room after this chain's extraction.
     let factory = if tier >= 2 {
+        let mut taken = full.clone();
+        for colony in &extraction {
+            let planet = colony.planet.planet_id;
+            let mine = extraction
+                .iter()
+                .filter(|other| other.planet.planet_id == planet)
+                .count() as u32;
+            if held(planet) + mine >= per_planet {
+                taken.insert(planet);
+            }
+        }
         let (planet, fitted_rate) =
-            place_factory(catalogue, scenario, planets, product, rate, level)?;
+            place_factory(catalogue, scenario, planets, &taken, product, rate, level)?;
         rate = fitted_rate;
         Some(planet)
     } else {
@@ -335,17 +389,7 @@ fn rank_product(
         return Err(OutOfReach::NoRoom);
     }
 
-    let per_chain = extraction.len() as u32 + u32::from(factory.is_some());
-    let available = scenario.available_colonies();
-    if per_chain > available {
-        return Err(OutOfReach::NeedsColonies {
-            needed: per_chain,
-            available,
-        });
-    }
-    let chains = (available / per_chain).max(1);
-
-    // ISK per hour of one chain.
+    // ISK per hour.
     let used = expand(catalogue, product, rate).ok_or(OutOfReach::NoPrice)?;
     let mut net = rate * product_price;
     let factory_rate = factory.map(|planet| customs_rate(scenario, planet));
@@ -374,6 +418,68 @@ fn rank_product(
         net -= rate * catalogue.export_tax(product, rate_at_factory);
     }
 
+    Ok(Chain {
+        extraction,
+        factory,
+        rate,
+        used,
+        net,
+        inputs,
+        bought,
+    })
+}
+
+fn rank_product(
+    catalogue: &PiCatalogue,
+    scenario: &RankScenario,
+    planets: &[CandidatePlanet],
+    prices: &Prices,
+    product: i64,
+) -> Result<RankedProduct, OutOfReach> {
+    let tier = catalogue.tier(product).unwrap_or(0);
+    let available = scenario.available_colonies();
+
+    let mut on_planet: BTreeMap<i64, u32> = BTreeMap::new();
+    let first = build_chain(catalogue, scenario, planets, prices, product, &on_planet)?;
+    if first.colonies() > available {
+        return Err(OutOfReach::NeedsColonies {
+            needed: first.colonies(),
+            available,
+        });
+    }
+    let mut colonies = 0;
+    let mut chains = vec![first];
+    loop {
+        let last = chains.last().expect("one chain");
+        colonies += last.colonies();
+        for planet in last.planets() {
+            *on_planet.entry(planet).or_default() += 1;
+        }
+        let Ok(next) = build_chain(catalogue, scenario, planets, prices, product, &on_planet)
+        else {
+            break;
+        };
+        if colonies + next.colonies() > available || next.net <= 0.0 {
+            break;
+        }
+        chains.push(next);
+    }
+
+    let mut inputs: Vec<RankedInput> = Vec::new();
+    let mut bought: Vec<i64> = Vec::new();
+    for chain in &chains {
+        for input in &chain.inputs {
+            if !inputs.contains(input) {
+                inputs.push(input.clone());
+            }
+        }
+        for p1 in &chain.bought {
+            if !bought.contains(p1) {
+                bought.push(*p1);
+            }
+        }
+    }
+
     // Effort across every chain, colonies dealt to characters in turn.
     let mut visits = Vec::new();
     let mut slots = scenario
@@ -383,8 +489,8 @@ fn rank_product(
         .flat_map(|(index, character)| {
             std::iter::repeat(index).take(character.colonies() as usize)
         });
-    for _ in 0..chains {
-        for colony in &extraction {
+    for chain in &chains {
+        for colony in &chain.extraction {
             visits.push(ColonyVisit {
                 character: slots.next().unwrap_or(0),
                 extracts: true,
@@ -395,8 +501,9 @@ fn rank_product(
                     .sum(),
             });
         }
-        if factory.is_some() {
-            let inputs_m3 = used
+        if chain.factory.is_some() {
+            let inputs_m3 = chain
+                .used
                 .per_hour
                 .iter()
                 .filter(|(type_id, _)| catalogue.tier(**type_id) == Some(1))
@@ -405,7 +512,7 @@ fn rank_product(
             visits.push(ColonyVisit {
                 character: slots.next().unwrap_or(0),
                 extracts: false,
-                m3_per_hour: inputs_m3 + rate * catalogue.volume(product),
+                m3_per_hour: inputs_m3 + chain.rate * catalogue.volume(product),
             });
         }
     }
@@ -458,10 +565,10 @@ fn rank_product(
     Ok(RankedProduct {
         type_id: product,
         tier,
-        isk_per_month: net * HOURS_PER_MONTH * f64::from(chains),
-        units_per_hour: rate * f64::from(chains),
-        colonies: per_chain * chains,
-        chains,
+        isk_per_month: chains.iter().map(|chain| chain.net).sum::<f64>() * HOURS_PER_MONTH,
+        units_per_hour: chains.iter().map(|chain| chain.rate).sum(),
+        colonies: chains.iter().map(Chain::colonies).sum(),
+        chains: chains.len() as u32,
         inputs,
         bought,
         confidence: weights.iter().sum::<f64>() / weights.len() as f64,
@@ -545,6 +652,7 @@ fn place_factory<'a>(
     catalogue: &PiCatalogue,
     scenario: &RankScenario,
     planets: &'a [CandidatePlanet],
+    taken: &BTreeSet<i64>,
     product: i64,
     rate: f64,
     level: u8,
@@ -558,6 +666,7 @@ fn place_factory<'a>(
         .collect::<Vec<_>>();
     let mut candidates = planets
         .iter()
+        .filter(|planet| !taken.contains(&planet.planet_id))
         .filter(|planet| {
             recipes
                 .iter()

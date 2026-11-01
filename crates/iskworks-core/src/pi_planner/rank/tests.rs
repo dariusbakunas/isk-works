@@ -164,6 +164,76 @@ fn robotics_is_built_from_the_best_planet_for_each_resource() {
 }
 
 #[test]
+fn a_planet_takes_one_colony_per_character() {
+    // Base Metals is on all four planets: each Reactive Metals chain takes
+    // the best planet still open, so a single character uses all four once.
+    let ranking = rank(&catalogue(), &scenario(5, 0.1), &q3hs5(), &prices());
+    let reactive = ranked(&ranking, REACTIVE_METALS);
+    assert_eq!((reactive.colonies, reactive.chains), (4, 4));
+    let planets = reactive
+        .inputs
+        .iter()
+        .map(|input| input.planet_id)
+        .collect::<Vec<_>>();
+    assert_eq!(planets, vec![BARREN_IV, BARREN_II, LAVA_I, PLASMA_IX]);
+
+    // Stacking all four on Barren IV would have earned more.
+    let best_only = q3hs5()
+        .into_iter()
+        .filter(|planet| planet.planet_id == BARREN_IV)
+        .collect::<Vec<_>>();
+    let one = rank(&catalogue(), &scenario(5, 0.1), &best_only, &prices());
+    let one = ranked(&one, REACTIVE_METALS);
+    assert_eq!((one.colonies, one.chains), (1, 1));
+    assert!(reactive.isk_per_month < one.isk_per_month * 4.0);
+    assert!(reactive.isk_per_month > one.isk_per_month);
+
+    // A second character can colonise the same planet once more.
+    let two = RankScenario {
+        characters: vec![
+            PlannerCharacter {
+                interplanetary_consolidation: 5,
+                command_center_upgrades: 4,
+            };
+            2
+        ],
+        ..scenario(5, 0.1)
+    };
+    let ranking = rank(&catalogue(), &two, &best_only, &prices());
+    let reactive = ranked(&ranking, REACTIVE_METALS);
+    assert_eq!((reactive.colonies, reactive.chains), (2, 2));
+}
+
+#[test]
+fn a_lone_character_never_puts_its_factory_on_an_extraction_planet() {
+    // Barren IV yields both of Mechanical Parts' P1, so one colony there
+    // extracts everything; its factory needs another planet.
+    let barren_iv = q3hs5()
+        .into_iter()
+        .filter(|planet| planet.planet_id == BARREN_IV)
+        .collect::<Vec<_>>();
+    let ranking = rank(&catalogue(), &scenario(5, 0.1), &barren_iv, &prices());
+    assert_eq!(
+        reason(&ranking, MECHANICAL_PARTS),
+        Some(OutOfReach::NoFactoryPlanet)
+    );
+
+    let two = RankScenario {
+        characters: vec![
+            PlannerCharacter {
+                interplanetary_consolidation: 5,
+                command_center_upgrades: 4,
+            };
+            2
+        ],
+        ..scenario(5, 0.1)
+    };
+    let ranking = rank(&catalogue(), &two, &barren_iv, &prices());
+    let mechanical = ranked(&ranking, MECHANICAL_PARTS);
+    assert_eq!((mechanical.colonies, mechanical.chains), (2, 1));
+}
+
+#[test]
 fn a_missing_raw_resource_puts_the_product_out_of_reach() {
     let barren_only = q3hs5()
         .into_iter()
