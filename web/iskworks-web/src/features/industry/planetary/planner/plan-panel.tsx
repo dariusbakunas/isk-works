@@ -117,6 +117,22 @@ export function PlanPanel({
   const logins = plan.effort.loginsPerWeekByCharacter.map(Number);
   const averageLogins = logins.length ? logins.reduce((sum, value) => sum + value, 0) / logins.length : 0;
   const hotspots = new Set(plan.sharedHotspots.map((hotspot) => `${hotspot.planetId}:${hotspot.resourceTypeId}`));
+  const sharedWith = (colony: PlanColony, typeId: number) =>
+    hotspots.has(`${colony.planetId}:${typeId}`)
+      ? [
+          ...new Set(
+            plan.colonies
+              .filter(
+                (other) =>
+                  other.character !== colony.character &&
+                  other.planetId === colony.planetId &&
+                  other.extracts.some((extract) => extract.typeId === typeId),
+              )
+              .map((other) => characterNames[other.character] ?? `Character ${other.character + 1}`),
+          ),
+        ]
+      : [];
+  const sharedPlanets = new Set(plan.sharedHotspots.map((hotspot) => hotspot.planetId)).size;
   const characters = [...new Set(plan.colonies.map((colony) => colony.character))].sort((a, b) => a - b);
   const best = Math.max(1, ...whatIfs.perCharacter.map(Number));
 
@@ -169,6 +185,16 @@ export function PlanPanel({
         </div>
         <div className="grid items-start gap-3 p-3 min-[1900px]:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-3">
+            {sharedPlanets > 0 ? (
+              <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs" role="note">
+                <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                <span>
+                  On {sharedPlanets} {sharedPlanets === 1 ? "planet" : "planets"} more than one of your characters
+                  extracts the same resource. Their heads drain one hotspot, so real yields there fall below these
+                  estimates sooner. Rows marked <b className="text-warning">shared</b> are the ones affected.
+                </span>
+              </p>
+            ) : null}
             <OperationalTable ariaLabel="Colonies" columns={COLUMNS} onSelectRow={() => {}} selectedRowKey={null}>
               {characters.map((character) => {
                 const mine = plan.colonies.filter((colony) => colony.character === character);
@@ -188,7 +214,9 @@ export function PlanPanel({
                     }
                   >
                     {mine.map((colony) => {
-                      const shared = colony.extracts.some((extract) => hotspots.has(`${colony.planetId}:${extract.typeId}`));
+                      const shared = colony.extracts
+                        .map((extract) => ({ name: extract.name, with: sharedWith(colony, extract.typeId) }))
+                        .filter((entry) => entry.with.length > 0);
                       return (
                         <OperationalTableRow
                           cells={{
@@ -228,6 +256,17 @@ export function PlanPanel({
                             in: (
                               <span className="block text-xs text-muted">
                                 {rateLines(colony.role === "extraction" ? colony.extracts : colony.imports)}
+                                {shared.map((entry) => (
+                                  <span
+                                    className="mt-0.5 flex w-fit max-w-full items-center gap-1 rounded-sm border border-warning/40 bg-warning/10 px-1 text-[0.6rem] text-warning"
+                                    data-private=""
+                                    key={entry.name}
+                                    title={`${entry.with.join(", ")} also ${entry.with.length === 1 ? "extracts" : "extract"} ${entry.name} on this planet. Heads on one hotspot drain it together, so real yields fall below this estimate sooner.`}
+                                  >
+                                    <AlertTriangle aria-hidden="true" className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">shared with {entry.with.join(", ")}</span>
+                                  </span>
+                                ))}
                               </span>
                             ),
                             out: <span className="block text-xs">{rateLines(colony.exports)}</span>,
@@ -236,12 +275,7 @@ export function PlanPanel({
                                 −<Isk value={colony.taxPerMonth} />
                               </span>
                             ),
-                            info: shared ? (
-                              <AlertTriangle
-                                aria-label="Shared hotspot: another character extracts this resource here"
-                                className="h-3.5 w-3.5 text-warning"
-                              />
-                            ) : (
+                            info: (
                               <span
                                 title={`Planet ${Number(colony.onPlanetM3).toLocaleString("en-US")} m³ between logins · skyhook ${Number(
                                   colony.skyhookM3,
