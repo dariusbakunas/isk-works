@@ -478,6 +478,7 @@ fn scenario_request(radius: u8) -> PlannerScenarioDto {
         buy_intermediates: false,
         max_colonies: None,
         estimate_unscanned: true,
+        target_type_id: None,
     }
 }
 

@@ -25,6 +25,7 @@ fn scenario(characters: Vec<PlannerCharacter>) -> RankScenario {
         buy_intermediates: false,
         max_colonies: None,
         estimate_unscanned: true,
+        target: None,
     }
 }
 
@@ -85,6 +86,40 @@ fn without_estimates_only_entered_readings_are_planned() {
         .iter()
         .filter(|colony| colony.planet_id == 40_000_101)
         .all(|colony| colony.extracts.is_empty()));
+}
+
+#[test]
+fn a_target_sells_only_that_product_and_its_intermediates() {
+    let targeted = |product: i64| RankScenario {
+        target: Some(product),
+        ..scenario(vec![character(5), character(5)])
+    };
+    let market_types = |plan: &PiPlan| {
+        plan.flows
+            .iter()
+            .filter(|flow| flow.to == FlowEnd::Market)
+            .map(|flow| flow.type_id)
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+
+    let reactive = plan(&targeted(REACTIVE_METALS), &q3hs5(), &market());
+    assert!(reactive.isk_per_month > 0.0);
+    assert_eq!(market_types(&reactive), [REACTIVE_METALS].into());
+
+    let robotics = plan(&targeted(ROBOTICS), &q3hs5(), &market());
+    assert!(sold(&robotics, ROBOTICS) > 0.0);
+    let chain = super::super::chain::expand(&catalogue(), ROBOTICS, 1.0).unwrap();
+    assert!(market_types(&robotics)
+        .iter()
+        .all(|type_id| chain.per_hour.contains_key(type_id)));
+    // The best mix earns at least as much as any one product.
+    let best = plan(
+        &scenario(vec![character(5), character(5)]),
+        &q3hs5(),
+        &market(),
+    );
+    assert!(best.isk_per_month >= robotics.isk_per_month - 1.0);
+    assert!(best.isk_per_month >= reactive.isk_per_month - 1.0);
 }
 
 #[test]

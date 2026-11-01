@@ -876,6 +876,14 @@ pub fn solve(
     planets: &[CandidatePlanet],
     prices: &Prices,
 ) -> Result<PiPlan, SolveError> {
+    let targeted;
+    let prices = match scenario.target {
+        Some(product) => {
+            targeted = prices.for_target(catalogue, product);
+            &targeted
+        }
+        None => prices,
+    };
     let model = Model::new(catalogue, scenario, planets, prices);
     let best = branch_and_bound(&model)?;
     if best.objective <= 0.0 {

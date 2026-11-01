@@ -46,6 +46,9 @@ pub struct RankScenario {
     /// Unscanned resources yield the security band's default density.
     /// Off, only what the player entered is extracted.
     pub estimate_unscanned: bool,
+    /// Plan for this product: sell only it and its own intermediates.
+    /// The ranking ignores it.
+    pub target: Option<i64>,
 }
 
 impl RankScenario {
@@ -103,6 +106,25 @@ pub struct Prices {
     pub best_buy: BTreeMap<i64, f64>,
     /// What a bought input costs (instant buy).
     pub best_sell: BTreeMap<i64, f64>,
+}
+
+impl Prices {
+    /// Sale prices kept only for `product` and what goes into it.
+    #[must_use]
+    pub fn for_target(&self, catalogue: &PiCatalogue, product: i64) -> Self {
+        let chain = expand(catalogue, product, 1.0)
+            .map(|chain| chain.per_hour.into_keys().collect::<BTreeSet<_>>())
+            .unwrap_or_default();
+        Self {
+            best_buy: self
+                .best_buy
+                .iter()
+                .filter(|(type_id, _)| **type_id == product || chain.contains(type_id))
+                .map(|(type_id, price)| (*type_id, *price))
+                .collect(),
+            best_sell: self.best_sell.clone(),
+        }
+    }
 }
 
 /// Where one raw resource of a ranked chain comes from.
