@@ -113,8 +113,9 @@ export function PlannerPage() {
     storeCharacters(next);
   }, []);
   const [filter, setFilter] = useState<PlanetFilter>("all");
-  const [mobileTab, setMobileTab] = useState<"planets" | "results">("planets");
-  const [resultsTab, setResultsTab] = useState<"ranking" | "plan">("ranking");
+  // Below md each of the three is its own tab; wider, Planets and Ranking
+  // share the screen and the Plan takes all of it.
+  const [view, setView] = useState<"planets" | "ranking" | "plan">("planets");
   const [highlight, setHighlight] = useState<{ planetId: number; resourceTypeId: number } | null>(null);
   const [revision, setRevision] = useState(0);
   const [nowMs] = useState(() => Date.now());
@@ -143,7 +144,7 @@ export function PlannerPage() {
   );
 
   const onSaved = useCallback(() => setRevision((current) => current + 1), []);
-  const solveKey = resultsTab === "plan" && rankKey !== "" ? `${rankKey}@${target ?? ""}` : "";
+  const solveKey = view === "plan" && rankKey !== "" ? `${rankKey}@${target ?? ""}` : "";
   const solution = useLoad(
     solveKey === ""
       ? null
@@ -206,30 +207,44 @@ export function PlannerPage() {
                 ["ranking", "Ranking"],
                 ["plan", "Plan"],
               ] as const
-            ).map(([tab, label]) => {
-              const selected = tab === "planets" ? mobileTab === "planets" : mobileTab === "results" && resultsTab === tab;
-              return (
-                <button
-                  aria-selected={selected}
-                  className={`h-8 border-b-2 text-xs ${selected ? "border-primary text-foreground" : "border-transparent text-muted"}`}
-                  key={tab}
-                  onClick={() => {
-                    if (tab === "planets") setMobileTab("planets");
-                    else {
-                      setMobileTab("results");
-                      setResultsTab(tab);
-                    }
-                  }}
-                  role="tab"
-                  type="button"
-                >
-                  {label}
-                </button>
-              );
-            })}
+            ).map(([tab, label]) => (
+              <button
+                aria-selected={view === tab}
+                className={`h-8 border-b-2 text-xs ${view === tab ? "border-primary text-foreground" : "border-transparent text-muted"}`}
+                key={tab}
+                onClick={() => setView(tab)}
+                role="tab"
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,46fr)_minmax(0,54fr)]">
-            <div className={mobileTab === "planets" ? "min-w-0" : "hidden min-w-0 md:block"}>
+          <div aria-label="Planner sections" className="mb-2 hidden items-end border-b border-border md:flex" role="tablist">
+            {(
+              [
+                ["ranking", "Scan & rank", view !== "plan"],
+                ["plan", "Plan", view === "plan"],
+              ] as const
+            ).map(([tab, label, selected]) => (
+              <button
+                aria-selected={selected}
+                className={`h-9 border-b-2 px-3 text-xs font-semibold ${
+                  selected ? "border-primary text-foreground" : "border-transparent text-muted hover:text-foreground"
+                }`}
+                key={tab}
+                onClick={() => {
+                  if (!selected) setView(tab);
+                }}
+                role="tab"
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className={view === "plan" ? "hidden" : "grid items-start gap-3 xl:grid-cols-[minmax(0,46fr)_minmax(0,54fr)]"}>
+            <div className={view === "planets" ? "min-w-0" : "hidden min-w-0 md:block"}>
               <PlanetsPanel
                 data={planets.data}
                 defaultCustomsRate={settings.defaultCustomsRate}
@@ -241,59 +256,40 @@ export function PlannerPage() {
                 onScannedCountChange={setScannedPlanets}
               />
             </div>
-            <div className={mobileTab === "results" ? "min-w-0" : "hidden min-w-0 md:block"}>
-              <div aria-label="Results" className="mb-2 hidden items-end border-b border-border md:flex" role="tablist">
-                {(
-                  [
-                    ["ranking", "Ranking"],
-                    ["plan", "Plan"],
-                  ] as const
-                ).map(([tab, label]) => (
-                  <button
-                    aria-selected={resultsTab === tab}
-                    className={`h-9 border-b-2 px-3 text-xs font-semibold ${
-                      resultsTab === tab ? "border-primary text-foreground" : "border-transparent text-muted hover:text-foreground"
-                    }`}
-                    key={tab}
-                    onClick={() => setResultsTab(tab)}
-                    role="tab"
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {resultsTab === "ranking" ? (
-                ranking.error ? (
-                  <InlineAlert title="Ranking failed">{apiMessage(ranking.error)}</InlineAlert>
-                ) : ranking.data === null ? (
-                  <p className="text-sm text-muted">Ranking products…</p>
-                ) : (
-                  <RankingPanel
-                    actions={{
-                      tryRadius: (radius) => setSettings({ ...settings, radius }),
-                      addCharacter,
-                      allowBuying: () => setSettings({ ...settings, buyIntermediates: true }),
-                      showNotScanned: () => {
-                        setFilter("unscanned");
-                        setMobileTab("planets");
-                      },
-                      estimateUnscanned: () => setSettings({ ...settings, estimateUnscanned: true }),
-                      planThis: (typeId) => {
-                        setTarget(typeId);
-                        setResultsTab("plan");
-                      },
-                    }}
-                    estimating={settings.estimateUnscanned}
-                    haulDays={settings.haulDays}
-                    radius={settings.radius}
-                    ranking={ranking.data}
-                    refreshing={ranking.loading}
-                    scannedPlanets={scannedPlanets}
-                  />
-                )
-              ) : null}
-              {resultsTab === "plan" && targetName !== null ? (
+            <div className={view === "ranking" ? "min-w-0" : "hidden min-w-0 md:block"}>
+              {ranking.error ? (
+                <InlineAlert title="Ranking failed">{apiMessage(ranking.error)}</InlineAlert>
+              ) : ranking.data === null ? (
+                <p className="text-sm text-muted">Ranking products…</p>
+              ) : (
+                <RankingPanel
+                  actions={{
+                    tryRadius: (radius) => setSettings({ ...settings, radius }),
+                    addCharacter,
+                    allowBuying: () => setSettings({ ...settings, buyIntermediates: true }),
+                    showNotScanned: () => {
+                      setFilter("unscanned");
+                      setView("planets");
+                    },
+                    estimateUnscanned: () => setSettings({ ...settings, estimateUnscanned: true }),
+                    planThis: (typeId) => {
+                      setTarget(typeId);
+                      setView("plan");
+                    },
+                  }}
+                  estimating={settings.estimateUnscanned}
+                  haulDays={settings.haulDays}
+                  radius={settings.radius}
+                  ranking={ranking.data}
+                  refreshing={ranking.loading}
+                  scannedPlanets={scannedPlanets}
+                />
+              )}
+            </div>
+          </div>
+          {view === "plan" ? (
+            <div className="min-w-0">
+              {targetName !== null ? (
                 <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs">
                   <span>
                     Planning <b className="text-foreground">{targetName}</b> only: it and its intermediates are the only
@@ -304,7 +300,7 @@ export function PlannerPage() {
                   </button>
                 </div>
               ) : null}
-              {resultsTab === "ranking" ? null : solution.error ? (
+              {solution.error ? (
                 <InlineAlert title={isSolveTimeout(solution.error) ? "Solve timed out" : "Solve failed"}>
                   {apiMessage(solution.error)}
                 </InlineAlert>
@@ -322,7 +318,7 @@ export function PlannerPage() {
                     onScanFirst={(planetId, resourceTypeId) => {
                       setFilter("all");
                       setHighlight({ planetId, resourceTypeId });
-                      setMobileTab("planets");
+                      setView("planets");
                     }}
                     resetDays={settings.resetDays}
                     solution={solution.data}
@@ -331,7 +327,7 @@ export function PlannerPage() {
                 </section>
               )}
             </div>
-          </div>
+          ) : null}
         </>
       )}
     </>
