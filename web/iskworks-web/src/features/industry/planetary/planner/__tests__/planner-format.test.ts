@@ -45,6 +45,7 @@ describe("planner-format", () => {
       upliftAtLogin: false,
       buyIntermediates: true,
       maxColonies: 6,
+      estimateUnscanned: true,
     };
     const query = settingsToQuery(settings, new URLSearchParams("tab=x"));
     expect(query.get("tab")).toBe("x");

@@ -65,6 +65,7 @@ test("rank posts the scenario and surfaces a missing-SDE 409", async () => {
     upliftAtLogin: true,
     buyIntermediates: false,
     maxColonies: null,
+    estimateUnscanned: false,
   };
   let fetch = respond({ priceObservedAt: null, availableColonies: 5, ranked: [], outOfReach: [] });
   await rankProducts(scenario);
@@ -90,6 +91,7 @@ test("solve posts the scenario and surfaces a timeout", async () => {
     upliftAtLogin: true,
     buyIntermediates: false,
     maxColonies: null,
+    estimateUnscanned: false,
   };
   let fetch = respond({ plan: {}, whatIfs: {} });
   await solvePlan(scenario);

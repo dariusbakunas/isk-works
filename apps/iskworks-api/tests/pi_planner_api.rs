@@ -571,6 +571,36 @@ async fn rank_returns_priced_products_as_decimal_strings() {
 }
 
 #[tokio::test]
+async fn unscanned_planets_rank_only_when_estimated() {
+    let harness = harness(true);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/rank", &scenario()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["ranked"], json!([]));
+    let robotics = body["outOfReach"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|product| product["typeId"] == ROBOTICS)
+        .unwrap();
+    assert_eq!(robotics["reason"]["kind"], "notScanned");
+    assert!(robotics["reason"]["name"].is_string());
+
+    let mut estimating = scenario();
+    estimating["estimateUnscanned"] = json!(true);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/rank", &estimating),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body["ranked"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn characters_prefill_pi_skills() {
     let harness = harness(true);
     let (status, body) = send(&harness.app, get("/api/planetary/planner/characters")).await;

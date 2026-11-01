@@ -255,7 +255,9 @@ export function PlannerPage() {
                         setFilter("unscanned");
                         setMobileTab("planets");
                       },
+                      estimateUnscanned: () => setSettings({ ...settings, estimateUnscanned: true }),
                     }}
+                    estimating={settings.estimateUnscanned}
                     haulDays={settings.haulDays}
                     radius={settings.radius}
                     ranking={ranking.data}

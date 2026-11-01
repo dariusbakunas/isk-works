@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 
-import type { PlanColony, PlannerSolution } from "../../../../api/pi-planner";
+import type { PlanColony, PlannerSolution, ScanFirst } from "../../../../api/pi-planner";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
 import {
   OperationalTable,
@@ -57,6 +57,43 @@ function Tile({ label, title, value }: { label: string; title?: string; value: s
   );
 }
 
+function ScanFirstList({
+  entries,
+  onScanFirst,
+}: {
+  entries: ScanFirst[];
+  onScanFirst: (planetId: number, resourceTypeId: number) => void;
+}) {
+  return (
+    <ul className="space-y-1">
+      {entries.map((entry) => (
+        <li key={`${entry.planetId}:${entry.resourceTypeId}`}>
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left hover:bg-primary/10"
+            onClick={() => onScanFirst(entry.planetId, entry.resourceTypeId)}
+            title={
+              entry.source === "default"
+                ? `At a typical density, this reading alone adds ${formatIskSummary(entry.iskPerMonth)} ISK/mo`
+                : `10 points lower costs ${formatIskSummary(entry.iskPerMonth)} ISK/mo`
+            }
+            type="button"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {entry.planetName} · {entry.resourceName}
+              {entry.source === "default" ? <span className="ml-1 text-warning">not scanned</span> : null}
+            </span>
+            <span className="font-mono text-muted">
+              {Number(entry.iskPerMonth) < 1
+                ? "0"
+                : `${entry.source === "default" ? "+" : "−"}${formatIskCompact(entry.iskPerMonth)}`}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The optimised plan: what each character sets up, how goods move, and what-ifs. */
 export function PlanPanel({
   characterNames,
@@ -84,6 +121,17 @@ export function PlanPanel({
   const best = Math.max(1, ...whatIfs.perCharacter.map(Number));
 
   if (plan.colonies.length === 0) {
+    const unscanned = whatIfs.scanFirst.filter((entry) => entry.source === "default");
+    if (unscanned.length > 0) {
+      return (
+        <div className="mx-auto max-w-md p-6 text-sm">
+          <p className="mb-2 text-center text-muted">
+            Nothing you have scanned can be planned yet. Scanning these would start a plan:
+          </p>
+          <ScanFirstList entries={unscanned} onScanFirst={onScanFirst} />
+        </div>
+      );
+    }
     return (
       <div className="p-6 text-center text-sm text-muted">
         No colony pays with these prices and planets. Try a wider radius or allow buying intermediates.
@@ -300,26 +348,7 @@ export function PlanPanel({
             {whatIfs.scanFirst.length > 0 ? (
               <section>
                 <h3 className="iw-eyebrow mb-1 text-muted">Scan these first</h3>
-                <ul className="space-y-1">
-                  {whatIfs.scanFirst.map((entry) => (
-                    <li key={`${entry.planetId}:${entry.resourceTypeId}`}>
-                      <button
-                        className="flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left hover:bg-primary/10"
-                        onClick={() => onScanFirst(entry.planetId, entry.resourceTypeId)}
-                        title={`10 points lower costs ${formatIskSummary(entry.iskLostPerMonth)} ISK/mo`}
-                        type="button"
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          {entry.planetName} · {entry.resourceName}
-                          {entry.source === "default" ? <span className="ml-1 text-warning">not scanned</span> : null}
-                        </span>
-                        <span className="font-mono text-muted">
-                          {Number(entry.iskLostPerMonth) >= 1 ? `−${formatIskCompact(entry.iskLostPerMonth)}` : "0"}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <ScanFirstList entries={whatIfs.scanFirst} onScanFirst={onScanFirst} />
               </section>
             ) : null}
           </aside>

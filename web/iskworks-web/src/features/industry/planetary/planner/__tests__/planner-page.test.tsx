@@ -231,6 +231,34 @@ describe("PlannerPage", () => {
     expect(screen.queryByText("No planets scanned yet")).toBeNull();
   });
 
+  test("unscanned planets stay out of the plan until estimates are on", async () => {
+    const user = userEvent.setup();
+    api.getPlannerPlanets.mockResolvedValue(planets(null));
+    api.rankProducts.mockResolvedValue({
+      ...RANKING,
+      ranked: [],
+      outOfReach: [
+        { typeId: 9848, name: "Robotics", tier: 3, reason: { kind: "notScanned", typeId: 2302, name: "Heavy Metals" } },
+      ],
+    });
+    renderPage();
+    await screen.findByText("No planets scanned yet");
+    await waitFor(() =>
+      expect(api.rankProducts).toHaveBeenLastCalledWith(expect.objectContaining({ estimateUnscanned: false })),
+    );
+    // Nothing is buildable yet, but that's down to scanning, not the scenario.
+    expect(screen.queryByText(/Nothing can be built/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Expand Out of reach" }));
+    expect(screen.getByText("Not scanned: Heavy Metals — no planet within 1 jump has a reading")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Estimate unscanned planets" }));
+    expect(location).toContain("estimate=1");
+    expect(screen.getByLabelText("Estimate unscanned planets")).toBeChecked();
+    await waitFor(() =>
+      expect(api.rankProducts).toHaveBeenLastCalledWith(expect.objectContaining({ estimateUnscanned: true })),
+    );
+  });
+
   test("nothing feasible offers a wider radius and buying", async () => {
     const user = userEvent.setup();
     api.rankProducts.mockResolvedValue({ ...RANKING, ranked: [] });
@@ -267,7 +295,7 @@ describe("PlannerPage plan tab", () => {
           resourceTypeId: 2302,
           resourceName: "Heavy Metals",
           source: "default" as const,
-          iskLostPerMonth: "90000000",
+          iskPerMonth: "90000000",
         },
       ],
     },

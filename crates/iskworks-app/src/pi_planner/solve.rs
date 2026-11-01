@@ -155,7 +155,7 @@ pub struct ScanFirstDto {
     pub resource_type_id: i64,
     pub resource_name: String,
     pub source: YieldSourceDto,
-    pub isk_lost_per_month: String,
+    pub isk_per_month: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -329,7 +329,7 @@ fn what_ifs_dto(catalogue: &Catalogue, area: &Neighbourhood, what_ifs: WhatIfs) 
                 resource_type_id: entry.resource_type_id,
                 resource_name: catalogue.name(entry.resource_type_id),
                 source: entry.source.into(),
-                isk_lost_per_month: fmt_f64(entry.isk_lost_per_month, 2),
+                isk_per_month: fmt_f64(entry.isk_per_month, 2),
             })
             .collect(),
     }

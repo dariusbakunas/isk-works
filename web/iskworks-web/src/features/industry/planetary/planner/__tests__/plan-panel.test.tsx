@@ -66,6 +66,29 @@ describe("PlanPanel", () => {
   test("scan these first points at the reading", async () => {
     const user = userEvent.setup();
     const { onScanFirst } = renderPanel();
+    const unscanned = screen.getByRole("button", { name: /Q-3HS5 IV · Base Metals/ });
+    // An unscanned reading shows what scanning it could add.
+    expect(unscanned).toHaveTextContent("+120M");
+    expect(unscanned).toHaveAttribute("title", expect.stringContaining("alone adds 120,000,000"));
+    await user.click(unscanned);
+    expect(onScanFirst).toHaveBeenCalledWith(4, 2267);
+  });
+
+  test("an empty plan points at the readings worth scanning", async () => {
+    const user = userEvent.setup();
+    const onScanFirst = vi.fn();
+    render(
+      <PlanPanel
+        characterNames={["Valka"]}
+        haulDays={3}
+        onCadence={vi.fn()}
+        onScanFirst={onScanFirst}
+        resetDays={3}
+        solution={{ ...SOLUTION, plan: { ...SOLUTION.plan, colonies: [], flows: [], inputs: [], sharedHotspots: [] } }}
+        solving={false}
+      />,
+    );
+    expect(screen.getByText(/Nothing you have scanned can be planned yet/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Q-3HS5 IV · Base Metals/ }));
     expect(onScanFirst).toHaveBeenCalledWith(4, 2267);
   });

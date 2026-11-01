@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use super::super::effort::EffortSettings;
 use super::super::fixtures::*;
 use super::super::rank::{rank, PlannerCharacter};
+use super::super::yields::YieldSource;
 use super::*;
 
 fn character(interplanetary_consolidation: u8) -> PlannerCharacter {
@@ -23,6 +24,7 @@ fn scenario(characters: Vec<PlannerCharacter>) -> RankScenario {
         default_customs_rate: 0.1,
         buy_intermediates: false,
         max_colonies: None,
+        estimate_unscanned: true,
     }
 }
 
@@ -61,6 +63,28 @@ fn one_colony_matches_the_best_reference_chain() {
         assert!(colony.cpu_used <= 1.0 + 1e-6, "{colony:?}");
         assert!(colony.power_used <= 1.0 + 1e-6, "{colony:?}");
     }
+}
+
+#[test]
+fn without_estimates_only_entered_readings_are_planned() {
+    // A Barren next door that nobody has scanned.
+    let mut planets = q3hs5();
+    planets.push(planet(40_000_101, BARREN, &[]));
+    let scanned_only = RankScenario {
+        estimate_unscanned: false,
+        ..scenario(vec![character(5), character(5)])
+    };
+    let result = plan(&scanned_only, &planets, &market());
+    assert!(result.isk_per_month > 0.0);
+    assert!(result
+        .inputs
+        .iter()
+        .all(|input| input.source != YieldSource::Default));
+    assert!(result
+        .colonies
+        .iter()
+        .filter(|colony| colony.planet_id == 40_000_101)
+        .all(|colony| colony.extracts.is_empty()));
 }
 
 #[test]

@@ -88,6 +88,7 @@ fn scenario(interplanetary_consolidation: u8, customs_rate: f64) -> RankScenario
         default_customs_rate: customs_rate,
         buy_intermediates: false,
         max_colonies: None,
+        estimate_unscanned: true,
     }
 }
 
@@ -179,6 +180,37 @@ fn a_missing_raw_resource_puts_the_product_out_of_reach() {
         .ranked
         .iter()
         .any(|product| product.type_id == MECHANICAL_PARTS));
+}
+
+#[test]
+fn unscanned_resources_are_left_out_unless_estimated() {
+    // Nobody has read Heavy Metals on the Lava or the Plasma planet.
+    let mut planets = q3hs5();
+    for planet in &mut planets {
+        planet.densities.remove(&HEAVY_METALS);
+    }
+    let scanned_only = RankScenario {
+        estimate_unscanned: false,
+        ..scenario(4, 0.1)
+    };
+    let ranking = rank(&catalogue(), &scanned_only, &planets, &prices());
+    assert_eq!(
+        reason(&ranking, ROBOTICS),
+        Some(OutOfReach::NotScanned {
+            type_id: HEAVY_METALS
+        })
+    );
+    assert!(ranking
+        .ranked
+        .iter()
+        .flat_map(|product| &product.inputs)
+        .all(|input| input.source != YieldSource::Default));
+
+    let ranking = rank(&catalogue(), &scenario(4, 0.1), &planets, &prices());
+    let robotics = ranked(&ranking, ROBOTICS);
+    assert!(robotics.inputs.iter().any(
+        |input| input.resource_type_id == HEAVY_METALS && input.source == YieldSource::Default
+    ));
 }
 
 #[test]

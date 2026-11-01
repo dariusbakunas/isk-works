@@ -33,6 +33,7 @@ export interface RankingActions {
   addCharacter: () => void;
   allowBuying: () => void;
   showNotScanned: () => void;
+  estimateUnscanned: () => void;
 }
 
 function TierChip({ tier }: { tier: number }) {
@@ -118,6 +119,8 @@ function reasonText(product: OutOfReachProduct, radius: number): string {
   switch (product.reason.kind) {
     case "missingResource":
       return `Missing: ${product.reason.name} — no planet ${range} yields it`;
+    case "notScanned":
+      return `Not scanned: ${product.reason.name} — no planet ${range} has a reading`;
     case "noFactoryPlanet":
       return `No planet ${range} can host its factories`;
     case "needsColonies":
@@ -148,6 +151,13 @@ function ReasonAction({
       </button>
     );
   }
+  if (kind === "notScanned") {
+    return (
+      <button className="text-xs text-primary hover:underline" onClick={actions.showNotScanned} type="button">
+        Show not scanned
+      </button>
+    );
+  }
   if (kind === "needsColonies") {
     return (
       <button className="text-xs text-primary hover:underline" onClick={actions.addCharacter} type="button">
@@ -161,6 +171,7 @@ function ReasonAction({
 /** Every product the planets in range support, best ISK/month first. */
 export function RankingPanel({
   actions,
+  estimating,
   haulDays,
   radius,
   ranking,
@@ -168,6 +179,8 @@ export function RankingPanel({
   scannedPlanets,
 }: {
   actions: RankingActions;
+  /** Unscanned resources are planned at a default density. */
+  estimating: boolean;
   haulDays: number;
   radius: number;
   ranking: PlannerRanking;
@@ -208,7 +221,9 @@ export function RankingPanel({
         </div>
         <span
           className="ml-auto inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[0.65rem] uppercase text-muted"
-          title="Yields are estimated from scan densities. Blank resources use a low default for the security band. Prices are best buy in your market scope."
+          title={`Yields are estimated from scan densities. ${
+            estimating ? "Blank resources use a low default for the security band." : "Blank resources are left out."
+          } Prices are best buy in your market scope.`}
         >
           <Info aria-hidden="true" className="h-3 w-3" />
           Estimates · {ranking.availableColonies} colonies
@@ -217,14 +232,24 @@ export function RankingPanel({
       {scannedPlanets === 0 ? (
         <div className="p-2">
           <InlineAlert title="No planets scanned yet" tone="info">
-            Every resource uses a low default. Scan a few planets to sharpen this.{" "}
+            {estimating
+              ? "Every resource uses a low default. Scan a few planets to sharpen this. "
+              : "Only scanned resources are planned. Enter the densities you read in game, or estimate unscanned planets with a low default. "}
             <button className="underline" onClick={actions.showNotScanned} type="button">
               Show not scanned
             </button>
+            {estimating ? null : (
+              <>
+                {" · "}
+                <button className="underline" onClick={actions.estimateUnscanned} type="button">
+                  Estimate unscanned planets
+                </button>
+              </>
+            )}
           </InlineAlert>
         </div>
       ) : null}
-      {ranking.ranked.length === 0 ? (
+      {ranking.ranked.length === 0 && (estimating || scannedPlanets > 0) ? (
         <div className="grid place-items-center p-6 text-center">
           <h2 className="text-sm font-semibold">Nothing can be built within {range} with these characters.</h2>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
