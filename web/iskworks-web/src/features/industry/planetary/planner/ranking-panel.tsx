@@ -25,6 +25,7 @@ const COLUMNS: OperationalColumn[] = [
   { key: "effort", label: "Effort", title: "Logins and haul runs per week", width: "7.5rem" },
   { key: "inputs", label: "Inputs", width: "minmax(10rem,1.2fr)" },
   { key: "confidence", label: "Conf.", title: "How much rests on scans rather than defaults", width: "4rem" },
+  { key: "plan", label: "", width: "4.5rem" },
 ];
 
 /** Actions the page can take for an out-of-reach reason or the empty result. */
@@ -34,6 +35,7 @@ export interface RankingActions {
   allowBuying: () => void;
   showNotScanned: () => void;
   estimateUnscanned: () => void;
+  planThis: (typeId: number) => void;
 }
 
 function TierChip({ tier }: { tier: number }) {
@@ -87,6 +89,13 @@ function EffortCell({ product, haulDays }: { product: RankedProduct; haulDays: n
 
 function InputsCell({ product }: { product: RankedProduct }) {
   const defaults = product.inputs.filter((input) => input.source === "default").length;
+  // A resource extracted on several planets shows once; any guess marks it.
+  const resources = [...new Map(product.inputs.map((input) => [input.resourceTypeId, input])).values()].map((input) => ({
+    ...input,
+    unscanned: product.inputs.some(
+      (other) => other.resourceTypeId === input.resourceTypeId && other.source === "default",
+    ),
+  }));
   return (
     <span
       className="block truncate text-xs text-muted"
@@ -96,12 +105,12 @@ function InputsCell({ product }: { product: RankedProduct }) {
           : `${defaults} of ${product.inputs.length} inputs use default densities`
       }
     >
-      {product.inputs.map((input, index) => (
-        <Fragment key={`${input.resourceTypeId}-${input.planetId}`}>
+      {resources.map((input, index) => (
+        <Fragment key={input.resourceTypeId}>
           {index > 0 ? " · " : null}
           <span
-            className={input.source === "default" ? "border-b border-dashed border-muted" : undefined}
-            data-unscanned={input.source === "default" || undefined}
+            className={input.unscanned ? "border-b border-dashed border-muted" : undefined}
+            data-unscanned={input.unscanned || undefined}
           >
             {input.resourceName}
           </span>
@@ -293,6 +302,17 @@ export function RankingPanel({
                 effort: <EffortCell haulDays={haulDays} product={product} />,
                 inputs: <InputsCell product={product} />,
                 confidence: <ConfidenceMeter confidence={Number(product.confidence)} />,
+                plan: (
+                  <button
+                    aria-label={`Plan ${product.name}`}
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => actions.planThis(product.typeId)}
+                    title={`Optimise colonies for ${product.name} only`}
+                    type="button"
+                  >
+                    Plan this
+                  </button>
+                ),
               }}
               interactive={false}
               key={product.typeId}
@@ -325,6 +345,7 @@ export function RankingPanel({
                 effort: null,
                 inputs: <span className="block truncate text-xs text-muted">{reasonText(product, radius)}</span>,
                 confidence: <ReasonAction actions={actions} product={product} radius={radius} />,
+                plan: null,
               }}
               interactive={false}
               key={product.typeId}

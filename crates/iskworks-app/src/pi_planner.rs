@@ -211,6 +211,9 @@ pub struct PlannerScenarioDto {
     /// Plan unscanned resources at the security band's default density.
     #[serde(default)]
     pub estimate_unscanned: bool,
+    /// Solve for this product only. Ranking ignores it.
+    #[serde(default)]
+    pub target_type_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -854,6 +857,7 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
         buy_intermediates: request.buy_intermediates,
         max_colonies: request.max_colonies,
         estimate_unscanned: request.estimate_unscanned,
+        target: request.target_type_id,
     })
 }
 

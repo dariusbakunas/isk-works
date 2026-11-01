@@ -667,6 +667,28 @@ async fn solve_returns_a_plan_with_what_ifs() {
 }
 
 #[tokio::test]
+async fn solve_for_a_target_sells_only_that_product() {
+    let harness = harness(true);
+    let mut targeted = scenario();
+    targeted["estimateUnscanned"] = json!(true);
+    targeted["targetTypeId"] = json!(TOXIC_METALS);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &targeted),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let market = body["plan"]["flows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|flow| flow["to"].is_null())
+        .collect::<Vec<_>>();
+    assert!(!market.is_empty(), "{body}");
+    assert!(market.iter().all(|flow| flow["typeId"] == TOXIC_METALS));
+}
+
+#[tokio::test]
 async fn solve_validates_the_scenario() {
     let harness = harness(true);
     let mut bad = scenario();

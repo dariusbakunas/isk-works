@@ -318,6 +318,48 @@ describe("PlannerPage plan tab", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("Heavy Metals density percent"));
   });
 
+  test("plan this solves for one product until the best mix is back", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue(solution);
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Plan Robotics" }));
+    expect(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(location).toContain("plan=9848");
+    await waitFor(() => expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ targetTypeId: 9848 })));
+    expect(screen.getByText("Robotics", { selector: "b" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show the best mix" }));
+    expect(location).not.toContain("plan=");
+    await waitFor(() => expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ targetTypeId: null })));
+    expect(screen.queryByRole("button", { name: "Show the best mix" })).toBeNull();
+  });
+
+  test("a resource extracted on two planets is listed once", async () => {
+    const base = { resourceTypeId: 2300, resourceName: "Base Metals", planetName: "Q-3HS5 I", contested: false };
+    api.rankProducts.mockResolvedValue({
+      ...RANKING,
+      ranked: [
+        product({
+          typeId: 2398,
+          name: "Reactive Metals",
+          tier: 1,
+          inputs: [
+            { ...base, planetId: 1, source: "scanned" },
+            { ...base, planetId: 2, planetName: "Q-3HS5 II", source: "default" },
+          ],
+        }),
+      ],
+    });
+    renderPage();
+    const products = await screen.findByRole("table", { name: "Products" });
+    const inputs = within(products).getAllByText("Base Metals");
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toHaveAttribute("data-unscanned", "true");
+  });
+
   test("a solve past its deadline says so", async () => {
     const user = userEvent.setup();
     api.solvePlan.mockRejectedValue(
