@@ -88,6 +88,21 @@ function MissingSde() {
 export function PlannerPage() {
   const [params, setParams] = useSearchParams();
   const settings = useMemo(() => settingsFromQuery(params), [params]);
+  // "Plan this": the product the Plan tab solves for, or the best mix.
+  const target = Number(params.get("plan")) || null;
+  const setTarget = useCallback(
+    (typeId: number | null) =>
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (typeId === null) next.delete("plan");
+          else next.set("plan", String(typeId));
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   const setSettings = useCallback(
     (next: ScenarioSettings) => setParams((current) => settingsToQuery(next, current), { replace: true }),
     [setParams],
@@ -128,11 +143,19 @@ export function PlannerPage() {
   );
 
   const onSaved = useCallback(() => setRevision((current) => current + 1), []);
-  const solveKey = resultsTab === "plan" ? rankKey : "";
+  const solveKey = resultsTab === "plan" && rankKey !== "" ? `${rankKey}@${target ?? ""}` : "";
   const solution = useLoad(
-    solveKey === "" ? null : () => solvePlan(JSON.parse(solveKey.split("#")[0]) as PlannerScenario),
+    solveKey === ""
+      ? null
+      : () =>
+          solvePlan({ ...(JSON.parse(solveKey.split("#")[0]) as PlannerScenario), targetTypeId: target }),
     solveKey,
   );
+  const targetName =
+    target === null
+      ? null
+      : ([...(ranking.data?.ranked ?? []), ...(ranking.data?.outOfReach ?? [])].find((product) => product.typeId === target)
+          ?.name ?? "this product");
   const missingSde = isMissingSde(planets.error) || isMissingSde(ranking.error) || isMissingSde(solution.error);
   const homeSystem = planets.data?.systems.find((system) => system.jumps === 0) ?? null;
   const [scannedPlanets, setScannedPlanets] = useState(0);
@@ -256,6 +279,10 @@ export function PlannerPage() {
                         setMobileTab("planets");
                       },
                       estimateUnscanned: () => setSettings({ ...settings, estimateUnscanned: true }),
+                      planThis: (typeId) => {
+                        setTarget(typeId);
+                        setResultsTab("plan");
+                      },
                     }}
                     estimating={settings.estimateUnscanned}
                     haulDays={settings.haulDays}
@@ -265,7 +292,19 @@ export function PlannerPage() {
                     scannedPlanets={scannedPlanets}
                   />
                 )
-              ) : solution.error ? (
+              ) : null}
+              {resultsTab === "plan" && targetName !== null ? (
+                <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs">
+                  <span>
+                    Planning <b className="text-foreground">{targetName}</b> only: it and its intermediates are the only
+                    things sold.
+                  </span>
+                  <button className="ml-auto text-primary hover:underline" onClick={() => setTarget(null)} type="button">
+                    Show the best mix
+                  </button>
+                </div>
+              ) : null}
+              {resultsTab === "ranking" ? null : solution.error ? (
                 <InlineAlert title={isSolveTimeout(solution.error) ? "Solve timed out" : "Solve failed"}>
                   {apiMessage(solution.error)}
                 </InlineAlert>

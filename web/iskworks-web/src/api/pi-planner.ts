@@ -94,6 +94,8 @@ export interface PlannerScenario {
   /** Plan unscanned resources at the security band's default density;
    * off, only entered readings are planned. */
   estimateUnscanned: boolean;
+  /** Solve for this product only: sell it and its own intermediates. */
+  targetTypeId?: number | null;
 }
 
 export interface RankedInput {
