@@ -310,6 +310,18 @@ export function ScenarioBar({
           />
           Buy intermediates
         </label>
+        <label
+          className="flex items-center gap-1.5"
+          title="Plan resources nobody has scanned at a low default density for the security band. Off, only the densities you entered are used."
+        >
+          <input
+            checked={settings.estimateUnscanned}
+            className="h-3.5 w-3.5"
+            onChange={(event) => set({ estimateUnscanned: event.target.checked })}
+            type="checkbox"
+          />
+          Estimate unscanned planets
+        </label>
         <label className="flex items-center gap-1.5">
           Max colonies
           <input

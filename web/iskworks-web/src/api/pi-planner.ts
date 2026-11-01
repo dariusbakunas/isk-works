@@ -91,6 +91,9 @@ export interface PlannerScenario {
   upliftAtLogin: boolean;
   buyIntermediates: boolean;
   maxColonies: number | null;
+  /** Plan unscanned resources at the security band's default density;
+   * off, only entered readings are planned. */
+  estimateUnscanned: boolean;
 }
 
 export interface RankedInput {
@@ -129,6 +132,7 @@ export interface RankedProduct {
 
 export type OutOfReachReason =
   | { kind: "missingResource"; typeId: number; name: string }
+  | { kind: "notScanned"; typeId: number; name: string }
   | { kind: "noFactoryPlanet" }
   | { kind: "needsColonies"; needed: number; available: number }
   | { kind: "overflowsSkyhook" }
@@ -266,7 +270,7 @@ export interface ScanFirst {
   resourceTypeId: number;
   resourceName: string;
   source: YieldSource;
-  iskLostPerMonth: string;
+  iskPerMonth: string;
 }
 
 export interface PlannerSolution {

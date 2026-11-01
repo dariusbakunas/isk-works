@@ -69,7 +69,7 @@ export const SOLUTION: PlannerSolution = {
       })),
     ),
     scanFirst: [
-      { planetId: 4, planetName: "Q-3HS5 IV", resourceTypeId: 2267, resourceName: "Base Metals", source: "default", iskLostPerMonth: "120000000" },
+      { planetId: 4, planetName: "Q-3HS5 IV", resourceTypeId: 2267, resourceName: "Base Metals", source: "default", iskPerMonth: "120000000" },
     ],
   },
 };

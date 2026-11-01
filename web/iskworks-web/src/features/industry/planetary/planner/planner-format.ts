@@ -95,6 +95,7 @@ export const DEFAULT_SETTINGS: ScenarioSettings = {
   upliftAtLogin: true,
   buyIntermediates: false,
   maxColonies: null,
+  estimateUnscanned: false,
 };
 
 export const DEFAULT_CHARACTERS: ScenarioCharacter[] = [
@@ -120,6 +121,7 @@ export function settingsFromQuery(params: URLSearchParams): ScenarioSettings {
     upliftAtLogin: params.get("uplift") !== "0",
     buyIntermediates: params.get("buy") === "1",
     maxColonies: Number.isInteger(max) && max > 0 ? max : null,
+    estimateUnscanned: params.get("estimate") === "1",
   };
 }
 
@@ -138,6 +140,7 @@ export function settingsToQuery(settings: ScenarioSettings, params: URLSearchPar
   put("uplift", settings.upliftAtLogin ? null : "0");
   put("buy", settings.buyIntermediates ? "1" : null);
   put("max", settings.maxColonies === null ? null : String(settings.maxColonies));
+  put("estimate", settings.estimateUnscanned ? "1" : null);
   return next;
 }
 
