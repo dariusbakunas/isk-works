@@ -308,11 +308,14 @@ describe("PlannerPage plan tab", () => {
     await screen.findByText("Robotics");
     expect(api.solvePlan).not.toHaveBeenCalled();
 
-    await user.click(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" }));
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
     expect(await screen.findByRole("table", { name: "Colonies" })).toBeInTheDocument();
     expect(api.solvePlan).toHaveBeenCalledWith(expect.objectContaining({ homeSystemId: HOME }));
 
     await user.click(screen.getByRole("button", { name: /Q-3HS5 I · Heavy Metals/ }));
+    expect(
+      within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Scan & rank" }),
+    ).toHaveAttribute("aria-selected", "true");
     const cell = screen.getByLabelText("Heavy Metals density percent").closest("[data-testid='density-cell']");
     expect(cell).toHaveAttribute("data-highlighted", "true");
     expect(document.activeElement).toBe(screen.getByLabelText("Heavy Metals density percent"));
@@ -323,7 +326,7 @@ describe("PlannerPage plan tab", () => {
     api.solvePlan.mockResolvedValue(solution);
     renderPage();
     await user.click(await screen.findByRole("button", { name: "Plan Robotics" }));
-    expect(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" })).toHaveAttribute(
+    expect(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -367,7 +370,7 @@ describe("PlannerPage plan tab", () => {
     );
     renderPage();
     await screen.findByText("Robotics");
-    await user.click(within(screen.getByRole("tablist", { name: "Results" })).getByRole("tab", { name: "Plan" }));
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
     expect(await screen.findByText("Solve timed out")).toBeInTheDocument();
     expect(screen.getByText("The plan took too long to solve.")).toBeInTheDocument();
   });
