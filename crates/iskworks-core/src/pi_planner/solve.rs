@@ -242,6 +242,7 @@ fn extraction_patterns(
             }
             let available = catalogue
                 .resources(planet.type_id)
+                .filter(|resource| planet.yields(scenario, *resource))
                 .filter_map(|resource| p1s.get(&resource).map(|p1| (*p1, resource)))
                 .collect::<Vec<_>>();
             let pattern = |(outputs, layout): (Vec<Extracted>, ColonyLayout)| ExtractionPattern {

@@ -17,6 +17,8 @@ pub const GRID_HAUL_DAYS: [u32; 4] = [1, 3, 7, 14];
 pub const SENSITIVITY_POINTS: f64 = 10.0;
 /// Readings in the "scan these first" list.
 pub const SCAN_FIRST: usize = 5;
+/// Unscanned readings re-solved one at a time, to price scanning each.
+const UNSCANNED_SOLVES: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EffortCell {
@@ -27,13 +29,16 @@ pub struct EffortCell {
     pub logins_per_week: f64,
 }
 
-/// One reading the plan rests on, and the ISK/month a worse reading costs.
+/// One reading worth scanning or checking.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScanFirst {
     pub planet_id: i64,
     pub resource_type_id: i64,
     pub source: YieldSource,
-    pub isk_lost_per_month: f64,
+    /// Unscanned: what the reading alone adds to the plan of entered
+    /// readings, at its default density. Entered: what a reading
+    /// `SENSITIVITY_POINTS` lower costs.
+    pub isk_per_month: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,7 +48,7 @@ pub struct WhatIfs {
     /// ISK/month at each radius from 0 up to the scenario's, in jumps.
     pub per_radius: Vec<(u8, f64)>,
     pub grid: Vec<EffortCell>,
-    /// Unscanned readings first, then by ISK lost.
+    /// Unscanned readings first, then entered ones; most ISK first.
     pub scan_first: Vec<ScanFirst>,
 }
 
@@ -101,6 +106,26 @@ fn worse(entry: Option<&DensityEntry>, planet: &CandidatePlanet) -> DensityEntry
     }
 }
 
+/// `planets` with one reading replaced.
+fn with_reading(
+    planets: &[CandidatePlanet],
+    planet_id: i64,
+    resource: i64,
+    entry: impl Fn(&CandidatePlanet) -> DensityEntry,
+) -> Vec<CandidatePlanet> {
+    planets
+        .iter()
+        .map(|planet| {
+            let mut planet = planet.clone();
+            if planet.planet_id == planet_id {
+                let replaced = entry(&planet);
+                planet.densities.insert(resource, replaced);
+            }
+            planet
+        })
+        .collect()
+}
+
 fn isk(plan: Option<&PiPlan>) -> f64 {
     plan.map_or(0.0, |plan| plan.isk_per_month)
 }
@@ -142,20 +167,32 @@ pub fn what_ifs(
             jobs.push((cadence, planets.to_vec()));
         }
     }
-    for input in &plan.inputs {
-        let lower = planets
-            .iter()
-            .map(|planet| {
-                let mut planet = planet.clone();
-                if planet.planet_id == input.planet_id {
-                    let entry = worse(planet.densities.get(&input.resource_type_id), &planet);
-                    planet.densities.insert(input.resource_type_id, entry);
-                }
-                planet
-            })
-            .collect();
+    let entered = plan
+        .inputs
+        .iter()
+        .filter(|input| input.source != YieldSource::Default)
+        .collect::<Vec<_>>();
+    for input in &entered {
+        let lower = with_reading(planets, input.planet_id, input.resource_type_id, |planet| {
+            worse(planet.densities.get(&input.resource_type_id), planet)
+        });
         jobs.push((scenario.clone(), lower));
     }
+    // Unscanned readings come from the plan with estimates on, and are
+    // priced against the plan of entered readings only.
+    let estimating = RankScenario {
+        estimate_unscanned: true,
+        ..scenario.clone()
+    };
+    let entered_only = RankScenario {
+        estimate_unscanned: false,
+        ..scenario.clone()
+    };
+    jobs.push(if scenario.estimate_unscanned {
+        (entered_only.clone(), planets.to_vec())
+    } else {
+        (estimating, planets.to_vec())
+    });
 
     let mut results = solve_all(catalogue, prices, jobs).into_iter();
     let mut per_character = (1..characters)
@@ -182,21 +219,58 @@ pub fn what_ifs(
             });
         }
     }
-    let mut scan_first = plan
-        .inputs
+    let mut scan_first = entered
         .iter()
         .map(|input| ScanFirst {
             planet_id: input.planet_id,
             resource_type_id: input.resource_type_id,
             source: input.source,
-            isk_lost_per_month: (plan.isk_per_month - isk(results.next().flatten().as_ref()))
-                .max(0.0),
+            isk_per_month: (plan.isk_per_month - isk(results.next().flatten().as_ref())).max(0.0),
         })
         .collect::<Vec<_>>();
+    let other = results.next().flatten();
+    let (estimated, base) = if scenario.estimate_unscanned {
+        (Some(plan), other.as_ref())
+    } else {
+        (other.as_ref(), Some(plan))
+    };
+    if let Some(estimated) = estimated {
+        let unscanned = estimated
+            .inputs
+            .iter()
+            .filter(|input| input.source == YieldSource::Default)
+            .take(UNSCANNED_SOLVES)
+            .collect::<Vec<_>>();
+        let alone = unscanned
+            .iter()
+            .map(|input| {
+                let planets =
+                    with_reading(planets, input.planet_id, input.resource_type_id, |planet| {
+                        DensityEntry {
+                            density_pct: Some(planet.band.default_density_pct()),
+                            head_value: None,
+                        }
+                    });
+                (entered_only.clone(), planets)
+            })
+            .collect();
+        let base = isk(base);
+        scan_first.extend(
+            unscanned
+                .iter()
+                .zip(solve_all(catalogue, prices, alone))
+                .map(|(input, solved)| ScanFirst {
+                    planet_id: input.planet_id,
+                    resource_type_id: input.resource_type_id,
+                    source: input.source,
+                    isk_per_month: (isk(solved.as_ref()) - base).max(0.0),
+                }),
+        );
+    }
     scan_first.sort_by(|a, b| {
         (b.source == YieldSource::Default)
             .cmp(&(a.source == YieldSource::Default))
-            .then(b.isk_lost_per_month.total_cmp(&a.isk_lost_per_month))
+            .then(b.isk_per_month.total_cmp(&a.isk_per_month))
             .then(a.planet_id.cmp(&b.planet_id))
             .then(a.resource_type_id.cmp(&b.resource_type_id))
     });

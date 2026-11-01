@@ -208,6 +208,9 @@ pub struct PlannerScenarioDto {
     pub buy_intermediates: bool,
     #[serde(default)]
     pub max_colonies: Option<u32>,
+    /// Plan unscanned resources at the security band's default density.
+    #[serde(default)]
+    pub estimate_unscanned: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -296,6 +299,11 @@ pub struct OutOfReachDto {
 pub enum OutOfReachReasonDto {
     #[serde(rename_all = "camelCase")]
     MissingResource {
+        type_id: i64,
+        name: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    NotScanned {
         type_id: i64,
         name: String,
     },
@@ -738,6 +746,10 @@ impl PiPlannerService {
                             name: catalogue.name(type_id),
                         }
                     }
+                    OutOfReach::NotScanned { type_id } => OutOfReachReasonDto::NotScanned {
+                        type_id,
+                        name: catalogue.name(type_id),
+                    },
                     OutOfReach::NoFactoryPlanet => OutOfReachReasonDto::NoFactoryPlanet,
                     OutOfReach::NeedsColonies { needed, available } => {
                         OutOfReachReasonDto::NeedsColonies { needed, available }
@@ -841,6 +853,7 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
         default_customs_rate: to_f64(request.default_customs_rate),
         buy_intermediates: request.buy_intermediates,
         max_colonies: request.max_colonies,
+        estimate_unscanned: request.estimate_unscanned,
     })
 }
 

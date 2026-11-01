@@ -41,6 +41,9 @@ pub struct RankScenario {
     /// A P1 no planet in range yields may be bought at best sell.
     pub buy_intermediates: bool,
     pub max_colonies: Option<u32>,
+    /// Unscanned resources yield the security band's default density.
+    /// Off, only what the player entered is extracted.
+    pub estimate_unscanned: bool,
 }
 
 impl RankScenario {
@@ -72,6 +75,23 @@ pub struct CandidatePlanet {
     pub contested: bool,
     /// By raw resource type id.
     pub densities: BTreeMap<i64, DensityEntry>,
+}
+
+impl CandidatePlanet {
+    /// The player entered a density or head value for `resource` here.
+    #[must_use]
+    pub fn scanned(&self, resource: i64) -> bool {
+        self.densities.get(&resource).is_some_and(|entry| {
+            entry.density_pct.is_some() || entry.head_value.is_some_and(|value| value > 0.0)
+        })
+    }
+
+    /// `resource` can be planned here: scanned, or estimated when the
+    /// scenario allows it.
+    #[must_use]
+    pub fn yields(&self, scenario: &RankScenario, resource: i64) -> bool {
+        scenario.estimate_unscanned || self.scanned(resource)
+    }
 }
 
 /// Unit prices by type id.
@@ -118,6 +138,10 @@ pub struct RankedProduct {
 pub enum OutOfReach {
     /// No planet in range yields this raw resource.
     MissingResource {
+        type_id: i64,
+    },
+    /// Planets in range have this raw resource, but none is scanned.
+    NotScanned {
         type_id: i64,
     },
     /// No planet in range has the factories the product needs.
@@ -216,6 +240,7 @@ fn rank_product(
             .iter()
             .filter(|planet| catalogue.can_colonise(planet.type_id))
             .filter(|planet| catalogue.resources(planet.type_id).any(|r| r == resource))
+            .filter(|planet| planet.yields(scenario, resource))
             .map(|planet| {
                 let estimate =
                     resolve_yield(planet.densities.get(&resource), planet.band, program_hours);
@@ -243,6 +268,13 @@ fn rank_product(
             }
             None if scenario.buy_intermediates && prices.best_sell.contains_key(p1) => {
                 bought.push(*p1)
+            }
+            None if planets.iter().any(|planet| {
+                catalogue.can_colonise(planet.type_id)
+                    && catalogue.resources(planet.type_id).any(|r| r == resource)
+            }) =>
+            {
+                return Err(OutOfReach::NotScanned { type_id: resource })
             }
             None => return Err(OutOfReach::MissingResource { type_id: resource }),
         }

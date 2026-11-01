@@ -23,6 +23,7 @@ fn scenario(characters: Vec<PlannerCharacter>) -> RankScenario {
         default_customs_rate: 0.1,
         buy_intermediates: false,
         max_colonies: None,
+        estimate_unscanned: true,
     }
 }
 
@@ -88,10 +89,11 @@ fn the_grid_covers_every_cadence_and_matches_the_plan() {
 
 #[test]
 fn scan_first_puts_unscanned_readings_first() {
-    // The unscanned Barren one jump out holds the best Aqueous Liquids by
-    // default, so the plan rests on a guess there.
+    // Nobody has read Base Metals, so the plan rests on guesses for it.
     let mut planets = neighbourhood();
-    planets[1].densities.remove(&AQUEOUS_LIQUIDS);
+    for planet in &mut planets {
+        planet.densities.remove(&BASE_METALS);
+    }
     planets[4].densities.insert(
         NOBLE_METALS,
         DensityEntry {
@@ -113,13 +115,42 @@ fn scan_first_puts_unscanned_readings_first() {
         .filter(|input| input.source == YieldSource::Default)
         .count()
         .min(SCAN_FIRST);
+    assert!(defaults > 0);
     assert_eq!(defaults, all_defaults, "{:?}", what_ifs.scan_first);
     // Within each kind, the bigger loss comes first.
     for pair in what_ifs.scan_first[defaults..].windows(2) {
-        assert!(pair[0].isk_lost_per_month >= pair[1].isk_lost_per_month);
+        assert!(pair[0].isk_per_month >= pair[1].isk_per_month);
     }
     assert!(what_ifs
         .scan_first
         .iter()
-        .all(|entry| entry.isk_lost_per_month >= 0.0));
+        .all(|entry| entry.isk_per_month >= 0.0));
+}
+
+#[test]
+fn without_estimates_scan_first_prices_the_unscanned_readings() {
+    // Nobody has read Base Metals anywhere.
+    let mut planets = neighbourhood();
+    for planet in &mut planets {
+        planet.densities.remove(&BASE_METALS);
+    }
+    let scanned_only = RankScenario {
+        estimate_unscanned: false,
+        ..scenario(vec![character(5), character(5)])
+    };
+    let (plan, what_ifs) = run(&scanned_only, &planets);
+    assert!(plan
+        .inputs
+        .iter()
+        .all(|input| input.source != YieldSource::Default));
+    let defaults = what_ifs
+        .scan_first
+        .iter()
+        .take_while(|entry| entry.source == YieldSource::Default)
+        .collect::<Vec<_>>();
+    assert!(!defaults.is_empty(), "{:?}", what_ifs.scan_first);
+    assert!(defaults.iter().any(|entry| entry.isk_per_month > 0.0));
+    assert!(defaults
+        .windows(2)
+        .all(|pair| pair[0].isk_per_month >= pair[1].isk_per_month));
 }
