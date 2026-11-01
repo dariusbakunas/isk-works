@@ -40,9 +40,12 @@ describe("PlanPanel", () => {
     expect(within(colonies).getAllByText("Extract + refine")).toHaveLength(2);
     expect(within(colonies).getByText("+1 storage")).toBeInTheDocument();
     // Both extractors on Q-3HS5 IV share the Base Metals hotspot.
-    expect(
-      within(colonies).getAllByLabelText("Shared hotspot: another character extracts this resource here"),
-    ).toHaveLength(2);
+    expect(within(colonies).getByText("shared with Alt").closest("[title]")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Alt also extracts Base Metals on this planet"),
+    );
+    expect(within(colonies).getByText("shared with Valka")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("On 1 planet more than one of your characters extracts the same resource");
   });
 
   test("hovering a colony lights its flow node", () => {
