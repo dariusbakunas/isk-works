@@ -1,4 +1,37 @@
-import type { PlanColony, PlannerSolution } from "../../../../../api/pi-planner";
+import type { ColonyTemplate, PlanColony, PlannerSolution } from "../../../../../api/pi-planner";
+
+/** A hub, one factory and one extractor. */
+export const TEMPLATE: ColonyTemplate = {
+  json: '{"CmdCtrLv":5,"Cmt":"ISK Works · Reactive Metals","Diam":10000.0,"L":[{"D":1,"Lv":0,"S":2},{"D":1,"Lv":0,"S":3}],"P":[],"Pln":2016,"R":[]}',
+  pins: [
+    { kind: "launchpad", typeId: 2544, name: "Barren Launchpad", product: null, heads: 0, xKm: "0", yKm: "0" },
+    {
+      kind: "factory",
+      typeId: 2473,
+      name: "Barren Basic Industry Facility",
+      product: { typeId: 2398, name: "Reactive Metals" },
+      heads: 0,
+      xKm: "-30",
+      yKm: "-52",
+    },
+    {
+      kind: "extractor",
+      typeId: 2848,
+      name: "Barren Extractor Control Unit",
+      product: { typeId: 2267, name: "Base Metals" },
+      heads: 10,
+      xKm: "30",
+      yKm: "-52",
+    },
+  ],
+  links: [
+    [1, 0],
+    [2, 0],
+  ],
+  cpuUsed: "0.31",
+  powerUsed: "0.95",
+  fits: true,
+};
 
 function colony(overrides: Partial<PlanColony> & Pick<PlanColony, "index" | "character" | "planetId" | "planetName">): PlanColony {
   return {
@@ -14,6 +47,7 @@ function colony(overrides: Partial<PlanColony> & Pick<PlanColony, "index" | "cha
     powerUsed: "0.81",
     onPlanetM3: "4378",
     skyhookM3: "10214",
+    template: TEMPLATE,
     ...overrides,
   };
 }
