@@ -47,29 +47,26 @@ describe("NavigationRail", () => {
     expect(within(nav).getByRole("link", { name: "Assets" })).not.toHaveAttribute("aria-current");
   });
 
-  test("expanded, sub-pages sit under their parent and actions stay out", () => {
+  test("expanded or not, it lists the same rows: sub-pages and actions stay out", () => {
+    const { unmount } = renderRail("/inventory");
+    const collapsedRows = within(screen.getByRole("navigation", { name: "Primary navigation" }))
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    unmount();
+
     renderRail("/inventory", { pinned: true });
-
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("link", { name: "Blueprints" })).toHaveAttribute("href", "/builds/blueprints");
-    expect(within(nav).getByRole("link", { name: "Runway" })).toHaveAttribute("href", "/inventory/runway");
-    expect(within(nav).queryByRole("link", { name: "New build" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "New price source" })).not.toBeInTheDocument();
+    expect(within(nav).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(collapsedRows);
+    for (const name of ["Blueprints", "Runway", "New build", "New price source"]) {
+      expect(within(nav).queryByRole("link", { name })).not.toBeInTheDocument();
+    }
   });
 
-  test("collapsed, sub-pages are left out", () => {
-    renderRail();
-
-    expect(screen.queryByRole("link", { name: "Blueprints" })).not.toBeInTheDocument();
-  });
-
-  test("expanded, the sub-page row is the current page and its parent stays lit", () => {
+  test("on a sub-page, the parent row is the current page", () => {
     renderRail("/builds/blueprints", { pinned: true });
 
-    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("link", { name: "Blueprints" })).toHaveAttribute("aria-current", "page");
-    const builds = within(nav).getByRole("link", { name: "Builds" });
-    expect(builds).not.toHaveAttribute("aria-current");
+    const builds = within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("link", { name: "Builds" });
+    expect(builds).toHaveAttribute("aria-current", "page");
     expect(builds).toHaveClass("text-primary");
   });
 
