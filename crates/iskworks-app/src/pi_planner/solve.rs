@@ -3,8 +3,12 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use iskworks_core::pi_planner::{solve, what_ifs, ColonyRole, FlowEnd, PiPlan, ScanFirst, WhatIfs};
+use iskworks_core::pi_planner::{
+    colony_template, solve, what_ifs, ColonyRole, ColonyTemplate, FlowEnd, PiPlan, PlannedColony,
+    ScanFirst, WhatIfs,
+};
 use iskworks_core::{MarketScope, WorkspaceId};
+use iskworks_sde::PlanetPinKind;
 use serde::Serialize;
 
 use super::{
@@ -104,6 +108,46 @@ pub struct ColonyDto {
     pub power_used: String,
     pub on_planet_m3: String,
     pub skyhook_m3: String,
+    /// EVE's colony template for this colony; `None` when the planet type
+    /// has no launchpad.
+    pub template: Option<ColonyTemplateDto>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TemplatePinKindDto {
+    Launchpad,
+    Storage,
+    Factory,
+    Extractor,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplatePinDto {
+    pub kind: TemplatePinKindDto,
+    pub type_id: i64,
+    pub name: String,
+    /// A factory's output or an extractor's resource.
+    pub product: Option<NamedTypeDto>,
+    pub heads: u32,
+    /// Offset from the hub launchpad, km.
+    pub x_km: String,
+    pub y_km: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColonyTemplateDto {
+    /// What the player pastes into Save from Clipboard.
+    pub json: String,
+    pub pins: Vec<TemplatePinDto>,
+    /// Pin positions, 0-based.
+    pub links: Vec<[usize; 2]>,
+    /// Measured with the template's link lengths; 0–1 of the command center.
+    pub cpu_used: String,
+    pub power_used: String,
+    pub fits: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -180,7 +224,71 @@ fn rates(catalogue: &Catalogue, rates: impl IntoIterator<Item = (i64, f64)>) -> 
         .collect()
 }
 
-fn plan_dto(catalogue: &Catalogue, area: &Neighbourhood, plan: PiPlan) -> PlanDto {
+/// EVE truncates long template comments; stay well inside.
+const TEMPLATE_COMMENT_CHARS: usize = 60;
+
+fn template_comment(catalogue: &Catalogue, colony: &PlannedColony) -> String {
+    let products = colony
+        .recipes
+        .keys()
+        .map(|type_id| catalogue.name(*type_id))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let comment = format!("ISK Works · {products}");
+    if comment.chars().count() <= TEMPLATE_COMMENT_CHARS {
+        comment
+    } else {
+        let mut short = comment
+            .chars()
+            .take(TEMPLATE_COMMENT_CHARS - 1)
+            .collect::<String>();
+        short.push('…');
+        short
+    }
+}
+
+fn template_dto(catalogue: &Catalogue, template: &ColonyTemplate) -> ColonyTemplateDto {
+    let share = |used: f64, output: f64| if output > 0.0 { used / output } else { 0.0 };
+    ColonyTemplateDto {
+        json: template.to_json(),
+        pins: template
+            .pins
+            .iter()
+            .map(|pin| TemplatePinDto {
+                kind: match pin.kind {
+                    PlanetPinKind::Storage => TemplatePinKindDto::Storage,
+                    PlanetPinKind::Processor => TemplatePinKindDto::Factory,
+                    PlanetPinKind::ExtractorControlUnit => TemplatePinKindDto::Extractor,
+                    _ => TemplatePinKindDto::Launchpad,
+                },
+                type_id: pin.type_id,
+                name: catalogue.name(pin.type_id),
+                product: pin.product.map(|type_id| NamedTypeDto {
+                    type_id,
+                    name: catalogue.name(type_id),
+                }),
+                heads: pin.heads,
+                x_km: fmt_f64(pin.x_km, 1),
+                y_km: fmt_f64(pin.y_km, 1),
+            })
+            .collect(),
+        links: template
+            .links
+            .iter()
+            .map(|link| [link.from, link.to])
+            .collect(),
+        cpu_used: fmt_f64(share(template.cpu, template.cpu_output), 3),
+        power_used: fmt_f64(share(template.power, template.power_output), 3),
+        fits: template.fits(),
+    }
+}
+
+fn plan_dto(
+    catalogue: &Catalogue,
+    area: &Neighbourhood,
+    plan: PiPlan,
+    templates: &[Option<ColonyTemplate>],
+) -> PlanDto {
     let planet_name = |planet_id: i64| area.planet_name(planet_id);
     let jumps = |planet_id: i64| {
         area.planets
@@ -244,6 +352,10 @@ fn plan_dto(catalogue: &Catalogue, area: &Neighbourhood, plan: PiPlan) -> PlanDt
             power_used: fmt_f64(colony.power_used, 3),
             on_planet_m3: fmt_f64(colony.on_planet_m3, 0),
             skyhook_m3: fmt_f64(colony.skyhook_m3, 0),
+            template: templates
+                .get(index)
+                .and_then(Option::as_ref)
+                .map(|template| template_dto(catalogue, template)),
         })
         .collect();
     let end = |end: FlowEnd| match end {
@@ -374,16 +486,38 @@ impl PiPlannerService {
                 total_ms = started.elapsed().as_millis() as u64,
                 "pi planner solved"
             );
-            Ok::<_, PiPlannerError>((catalogue, plan, what_ifs))
+            let program_hours = f64::from(scenario.effort.reset_days) * 24.0;
+            let templates = plan
+                .colonies
+                .iter()
+                .map(|colony| {
+                    let planet = candidates
+                        .iter()
+                        .find(|planet| planet.planet_id == colony.planet_id)?;
+                    let level = scenario
+                        .characters
+                        .get(colony.character)
+                        .map_or(0, |character| character.command_center_upgrades);
+                    colony_template(
+                        &catalogue.catalogue,
+                        planet,
+                        colony,
+                        level,
+                        program_hours,
+                        template_comment(&catalogue, colony),
+                    )
+                })
+                .collect::<Vec<_>>();
+            Ok::<_, PiPlannerError>((catalogue, plan, what_ifs, templates))
         });
-        let (catalogue, plan, what_ifs) = tokio::time::timeout(SOLVE_DEADLINE, work)
+        let (catalogue, plan, what_ifs, templates) = tokio::time::timeout(SOLVE_DEADLINE, work)
             .await
             .map_err(|_| PiPlannerError::SolveTimeout)?
             .map_err(|error| PiPlannerError::Solver(error.to_string()))??;
         Ok(PlannerSolutionDto {
             price_observed_at,
             available_colonies,
-            plan: plan_dto(&catalogue, &area, plan),
+            plan: plan_dto(&catalogue, &area, plan, &templates),
             what_ifs: what_ifs_dto(&catalogue, &area, what_ifs),
         })
     }

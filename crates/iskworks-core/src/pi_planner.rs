@@ -11,6 +11,7 @@ mod effort;
 mod inputs;
 mod rank;
 mod solve;
+mod template;
 mod what_if;
 mod yields;
 
@@ -37,6 +38,9 @@ pub use rank::{
 };
 pub use solve::{
     solve, ColonyRole, FlowEnd, PiPlan, PlannedColony, PlannedFlow, SharedHotspot, SolveError,
+};
+pub use template::{
+    colony_template, ColonyTemplate, TemplateLink, TemplatePin, TemplateRoute, TEMPLATE_PITCH_RAD,
 };
 pub use what_if::{
     what_ifs, EffortCell, ScanFirst, WhatIfs, GRID_HAUL_DAYS, GRID_RESET_DAYS, SCAN_FIRST,
