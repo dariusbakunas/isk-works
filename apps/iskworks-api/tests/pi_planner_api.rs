@@ -689,6 +689,37 @@ async fn solve_for_a_target_sells_only_that_product() {
 }
 
 #[tokio::test]
+async fn every_planned_colony_carries_its_template() {
+    let harness = harness(true);
+    let mut estimated = scenario();
+    estimated["estimateUnscanned"] = json!(true);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &estimated),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let colonies = body["plan"]["colonies"].as_array().unwrap();
+    assert!(!colonies.is_empty(), "{body}");
+    for colony in colonies {
+        let template = &colony["template"];
+        let setup = &colony["setup"];
+        let pins = template["pins"].as_array().unwrap();
+        assert_eq!(pins[0]["kind"], "launchpad");
+        let extractors = pins.iter().filter(|pin| pin["kind"] == "extractor").count();
+        assert_eq!(extractors as u64, setup["ecus"].as_u64().unwrap());
+        assert_eq!(template["links"].as_array().unwrap().len(), pins.len() - 1);
+        let exported: Value = serde_json::from_str(template["json"].as_str().unwrap()).unwrap();
+        assert_eq!(exported["P"].as_array().unwrap().len(), pins.len());
+        assert_eq!(exported["P"][0]["T"], pins[0]["typeId"]);
+        assert!(exported["Cmt"]
+            .as_str()
+            .unwrap()
+            .starts_with("ISK Works · "));
+    }
+}
+
+#[tokio::test]
 async fn solve_validates_the_scenario() {
     let harness = harness(true);
     let mut bad = scenario();
