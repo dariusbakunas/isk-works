@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { AlertTriangle, Globe2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Construction, Globe2, RefreshCw, X } from "lucide-react";
 
 import {
   getPlannerPlanets,
@@ -181,6 +181,7 @@ export function PlannerPage() {
           Estimates
         </span>
       </header>
+      <WorkInProgressNote />
       <PlanetarySectionTabs />
       <ScenarioBar
         characters={characters}
@@ -331,5 +332,52 @@ export function PlannerPage() {
         </>
       )}
     </>
+  );
+}
+
+const WIP_DISMISSED_KEY = "iskworks.piPlanner.wipNoteDismissed";
+
+function wipDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(WIP_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** A quiet note that the planner is still being tuned; dismissed per browser. */
+function WorkInProgressNote() {
+  const [dismissed, setDismissed] = useState(wipDismissed);
+  if (dismissed) {
+    return null;
+  }
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      window.localStorage.setItem(WIP_DISMISSED_KEY, "1");
+    } catch {
+      // Storage unavailable: hidden for this visit only.
+    }
+  };
+  return (
+    <div
+      aria-label="Work in progress"
+      className="mb-3 flex items-center gap-2 rounded-md border border-border bg-background/35 px-3 py-1.5 text-xs text-muted"
+      role="note"
+    >
+      <Construction aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-warning" />
+      <span className="min-w-0 flex-1">
+        The PI Planner is a work in progress: yields, rankings and colony templates are still being tuned, so check
+        them in game before you commit to a setup.
+      </span>
+      <button
+        aria-label="Dismiss"
+        className="rounded-sm p-0.5 text-muted hover:text-foreground"
+        onClick={dismiss}
+        type="button"
+      >
+        <X aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
