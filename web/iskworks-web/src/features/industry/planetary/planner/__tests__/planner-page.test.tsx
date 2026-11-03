@@ -125,6 +125,19 @@ describe("PlannerPage", () => {
     expect(api.getPlannerPlanets).not.toHaveBeenCalled();
   });
 
+  test("says the planner is a work in progress until dismissed", async () => {
+    const { unmount } = renderPage("/planetary/planner");
+    const note = screen.getByRole("note", { name: "Work in progress" });
+    expect(note).toHaveTextContent("still being tuned");
+
+    await userEvent.click(within(note).getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("note", { name: "Work in progress" })).not.toBeInTheDocument();
+
+    unmount();
+    renderPage("/planetary/planner");
+    expect(screen.queryByRole("note", { name: "Work in progress" })).not.toBeInTheDocument();
+  });
+
   test("ranks the products with effort, inputs and confidence", async () => {
     renderPage();
     const products = await screen.findByRole("table", { name: "Products" });
