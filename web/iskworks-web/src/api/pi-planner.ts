@@ -226,6 +226,32 @@ export interface PlanColony {
   powerUsed: string;
   onPlanetM3: string;
   skyhookM3: string;
+  /** EVE's colony template; `null` when the planet type has no launchpad. */
+  template: ColonyTemplate | null;
+}
+
+export interface TemplatePin {
+  kind: "launchpad" | "storage" | "factory" | "extractor";
+  typeId: number;
+  name: string;
+  /** A factory's output or an extractor's resource. */
+  product: { typeId: number; name: string } | null;
+  heads: number;
+  /** Offset from the hub launchpad, km; north is positive y. */
+  xKm: string;
+  yKm: string;
+}
+
+export interface ColonyTemplate {
+  /** What the player pastes into Save from Clipboard. */
+  json: string;
+  pins: TemplatePin[];
+  /** Pin positions, 0-based. */
+  links: [number, number][];
+  /** 0–1 of the command center, measured with the template's links. */
+  cpuUsed: string;
+  powerUsed: string;
+  fits: boolean;
 }
 
 export interface PlanFlow {

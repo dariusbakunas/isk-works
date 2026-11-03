@@ -48,6 +48,15 @@ describe("PlanPanel", () => {
     expect(screen.getByRole("note")).toHaveTextContent("On 1 planet more than one of your characters extracts the same resource");
   });
 
+  test("the magnifier opens a colony's template", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getAllByRole("button", { name: "Show the template for Q-3HS5 IV" })[0]);
+    expect(screen.getByRole("dialog", { name: "Q-3HS5 IV template" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   test("hovering a colony lights its flow node", () => {
     renderPanel();
     const node = () => document.querySelector('[data-colony="1"] rect');

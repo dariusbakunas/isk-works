@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Info, RefreshCw } from "lucide-react";
+import { AlertTriangle, Info, RefreshCw, Search } from "lucide-react";
 
 import type { PlanColony, PlannerSolution, ScanFirst } from "../../../../api/pi-planner";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
@@ -10,6 +10,7 @@ import {
   type OperationalColumn,
 } from "../../../../components/operational-table";
 import { formatQuantity } from "../planetary-format";
+import { ColonyTemplateDialog } from "./colony-template-dialog";
 import { FlowDiagram } from "./flow-diagram";
 
 const GRID_RESET = [1, 3, 7];
@@ -22,7 +23,7 @@ const COLUMNS: OperationalColumn[] = [
   { key: "in", label: "In", width: "9rem" },
   { key: "out", label: "Out", width: "9rem" },
   { key: "tax", label: "Tax/mo", width: "4.5rem", align: "right", numeric: true },
-  { key: "info", label: "", width: "2rem" },
+  { key: "info", label: "", width: "3.5rem" },
 ];
 
 function Isk({ value }: { value: string }) {
@@ -113,6 +114,7 @@ export function PlanPanel({
   solving: boolean;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
+  const [templateFor, setTemplateFor] = useState<PlanColony | null>(null);
   const { plan, whatIfs } = solution;
   const logins = plan.effort.loginsPerWeekByCharacter.map(Number);
   const averageLogins = logins.length ? logins.reduce((sum, value) => sum + value, 0) / logins.length : 0;
@@ -157,6 +159,13 @@ export function PlanPanel({
 
   return (
     <div aria-busy={solving || undefined} className="relative">
+      {templateFor?.template ? (
+        <ColonyTemplateDialog
+          onClose={() => setTemplateFor(null)}
+          planetName={templateFor.planetName}
+          template={templateFor.template}
+        />
+      ) : null}
       {solving ? (
         <div className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-md border border-primary/50 bg-panel px-3 py-2 text-xs shadow-xl" role="status">
           <RefreshCw aria-hidden="true" className="h-3.5 w-3.5 animate-spin text-primary" />
@@ -276,6 +285,18 @@ export function PlanPanel({
                               </span>
                             ),
                             info: (
+                              <span className="flex items-center gap-2">
+                                {colony.template ? (
+                                  <button
+                                    aria-label={`Show the template for ${colony.planetName}`}
+                                    className="text-muted hover:text-primary"
+                                    onClick={() => setTemplateFor(colony)}
+                                    title="Structure layout and EVE template"
+                                    type="button"
+                                  >
+                                    <Search aria-hidden="true" className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               <span
                                 title={`Planet ${Number(colony.onPlanetM3).toLocaleString("en-US")} m³ between logins · skyhook ${Number(
                                   colony.skyhookM3,
@@ -285,6 +306,7 @@ export function PlanPanel({
                                   aria-label={`CPU ${percent(colony.cpuUsed)}, power ${percent(colony.powerUsed)}`}
                                   className="h-3.5 w-3.5 text-muted"
                                 />
+                              </span>
                               </span>
                             ),
                           }}
