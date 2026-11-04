@@ -188,6 +188,77 @@ fn a_factory_colony_cycles_each_recipe_through_the_hub() {
 }
 
 #[test]
+fn factories_take_turns_between_the_launchpad_and_storage() {
+    let factory = colony(
+        ColonyRole::Factory,
+        ColonyLayout {
+            launchpads: 1,
+            extra_storage: 1,
+            ..ColonyLayout::default()
+        },
+        &[(MECHANICAL_PARTS, 2.0)],
+    );
+    let result = template(&factory, 5);
+    let storage = result
+        .pins
+        .iter()
+        .position(|pin| pin.kind == PlanetPinKind::Storage)
+        .expect("a storage facility");
+    let factories = result
+        .pins
+        .iter()
+        .enumerate()
+        .filter(|(_, pin)| pin.kind == PlanetPinKind::Processor)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let recipe = catalogue().recipe(MECHANICAL_PARTS).cloned().unwrap();
+    let routes = |factory: usize| {
+        result
+            .routes
+            .iter()
+            .filter(|route| route.path.contains(&factory))
+            .collect::<Vec<_>>()
+    };
+    // The first works from the launchpad, the second from storage via the hub.
+    for route in routes(factories[0]) {
+        assert_eq!(route.path.len(), 2, "{route:?}");
+    }
+    let second = routes(factories[1]);
+    assert_eq!(second.len(), recipe.inputs.len() + 1);
+    for route in second {
+        if route.type_id == MECHANICAL_PARTS {
+            assert_eq!(route.path, vec![factories[1], 0, storage]);
+        } else {
+            assert_eq!(route.path, vec![storage, 0, factories[1]]);
+        }
+    }
+}
+
+#[test]
+fn goods_made_and_used_on_the_colony_stay_on_the_hub() {
+    let result = template(&extraction(), 5);
+    let storage = result
+        .pins
+        .iter()
+        .position(|pin| pin.kind == PlanetPinKind::Storage)
+        .expect("a storage facility");
+    // Raw resources come from the ECUs and feed the factories through the hub;
+    // only the finished P1 may wait in storage.
+    let p1s = [REACTIVE_METALS, PRECIOUS_METALS];
+    assert!(result
+        .routes
+        .iter()
+        .any(|route| route.path.contains(&storage)));
+    for route in result
+        .routes
+        .iter()
+        .filter(|route| route.path.contains(&storage))
+    {
+        assert!(p1s.contains(&route.type_id), "{route:?}");
+    }
+}
+
+#[test]
 fn the_json_reads_like_a_player_export() {
     let result = template(&extraction(), 5);
     let json = result.to_json();
