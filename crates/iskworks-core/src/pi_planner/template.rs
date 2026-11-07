@@ -6,6 +6,12 @@
 //! ECU's resource), heads `H` and a position (`La` colatitude, `Lo`
 //! longitude, radians). Links `L` join pins `S`–`D`; routes `R` move `Q` of
 //! `T` along a path of linked pins. The command center is not a pin.
+//!
+//! A storage facility only holds what a route sends it, so factories take
+//! turns between the launchpad and the storage facilities. Goods made and used
+//! on the colony stay on the hub, where every factory can reach them.
+
+use std::collections::BTreeSet;
 
 use iskworks_sde::PlanetPinKind;
 use serde_json::{json, Value};
@@ -239,23 +245,55 @@ pub fn colony_template(
         })
         .collect::<Vec<_>>();
 
+    let stores = pins
+        .iter()
+        .enumerate()
+        .filter(|(index, pin)| *index == 0 || pin.kind == PlanetPinKind::Storage)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let inputs_used = colony
+        .recipes
+        .keys()
+        .filter_map(|output| catalogue.recipe(*output))
+        .flat_map(|recipe| recipe.inputs.iter().map(|(input, _)| *input))
+        .collect::<BTreeSet<_>>();
+    let on_hub = |type_id: i64| {
+        inputs_used.contains(&type_id)
+            && (colony.recipes.contains_key(&type_id)
+                || colony
+                    .extracts
+                    .iter()
+                    .any(|(resource, _)| *resource == type_id))
+    };
+    // From `from` to `to`, by way of the hub when neither end is it.
+    let via_hub = |from: usize, to: usize| {
+        if from == 0 || to == 0 {
+            vec![from, to]
+        } else {
+            vec![from, 0, to]
+        }
+    };
+
     let mut routes = Vec::new();
     let mut ecu_index = 0;
+    let mut factory_index = 0;
     for (index, pin) in pins.iter().enumerate().skip(1) {
         match (pin.kind, pin.product) {
             (PlanetPinKind::Processor, Some(output)) => {
                 let Some(recipe) = catalogue.recipe(output) else {
                     continue;
                 };
+                let store = stores[factory_index % stores.len()];
+                factory_index += 1;
                 for (input, quantity) in &recipe.inputs {
                     routes.push(TemplateRoute {
-                        path: vec![0, index],
+                        path: via_hub(if on_hub(*input) { 0 } else { store }, index),
                         type_id: *input,
                         quantity: quantity.round() as i64,
                     });
                 }
                 routes.push(TemplateRoute {
-                    path: vec![index, 0],
+                    path: via_hub(index, if on_hub(output) { 0 } else { store }),
                     type_id: output,
                     quantity: recipe.output_quantity.round() as i64,
                 });

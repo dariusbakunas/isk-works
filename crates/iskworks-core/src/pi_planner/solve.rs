@@ -7,7 +7,8 @@
 //!   extracting one raw resource (one or two ECUs) and refining it to P1,
 //!   sized for capacity and buffers like the ranking does;
 //! - a factory site is a colony on one planet with its CPU and power left
-//!   for processors after a launchpad.
+//!   for processors after a launchpad; storage facilities are one more whole
+//!   count, pooled across the sites like the factories.
 //!
 //! Characters with the same skills form a group, so the solver never
 //! branches on which of two identical characters gets a colony. Factory
@@ -22,7 +23,9 @@ use good_lp::{
 
 use super::capacity::{ColonyBudget, ColonyLayout};
 use super::catalogue::{PiCatalogue, Recipe};
-use super::effort::{buffers, effort, ColonyVisit, Effort, LAUNCHPAD_M3, SKYHOOK_M3};
+use super::effort::{
+    buffers, effort, storage_needed, ColonyVisit, Effort, LAUNCHPAD_M3, SKYHOOK_M3, STORAGE_M3,
+};
 use super::rank::{
     customs_rate, size_extraction, CandidatePlanet, Prices, RankScenario, RankedInput,
     HOURS_PER_MONTH,
@@ -33,8 +36,11 @@ use super::yields::resolve_yield;
 const EXTRACTION_CANDIDATES: usize = 5;
 /// Factory planets kept per group, lowest tax and nearest first.
 const FACTORY_CANDIDATES: usize = 6;
-/// ISK/hour charged per colony, so the solver leaves idle colonies out.
+/// ISK/hour charged per colony or storage facility, so the solver leaves idle
+/// ones out.
 const COLONY_PENALTY: f64 = 1.0;
+/// Upper bound on the storage count; CPU and power run out long before it.
+const MAX_STORAGE: f64 = 1_000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColonyRole {
@@ -430,6 +436,24 @@ fn recipe_cost(
         .reduce(|a, b| (a.0.max(b.0), a.1.max(b.1)))
 }
 
+/// One more storage facility's CPU and power, link included: the dearest
+/// across the sites.
+fn storage_cost(catalogue: &PiCatalogue, sites: &[FactorySite]) -> (f64, f64) {
+    let base = factory_base();
+    let with = ColonyLayout {
+        extra_storage: 1,
+        ..base.clone()
+    };
+    sites
+        .iter()
+        .map(|site| {
+            let (cpu, power) = site.budget.usage(catalogue, &with);
+            let (base_cpu, base_power) = site.budget.usage(catalogue, &base);
+            (cpu - base_cpu, power - base_power)
+        })
+        .fold((0.0, 0.0), |a, b| (a.0.max(b.0), a.1.max(b.1)))
+}
+
 /// m³ per hour through a factory per unit of output per hour: the output
 /// plus its inputs.
 fn recipe_m3(catalogue: &PiCatalogue, recipe: &Recipe) -> f64 {
@@ -456,10 +480,12 @@ struct Model<'a> {
     sites: Vec<FactorySite>,
     upper: Vec<&'a Recipe>,
     costs: BTreeMap<i64, (f64, f64)>,
+    storage_cost: (f64, f64),
     traded: BTreeSet<i64>,
 }
 
-/// One LP relaxation: colony counts (patterns, then sites) and flows.
+/// One LP relaxation: whole counts (patterns, sites, then factory storage
+/// facilities) and flows.
 #[derive(Clone)]
 struct Relaxed {
     objective: f64,
@@ -499,6 +525,7 @@ impl<'a> Model<'a> {
             .recipes()
             .map(|recipe| recipe.output_type_id)
             .collect::<BTreeSet<_>>();
+        let storage_cost = storage_cost(catalogue, &sites);
         Self {
             catalogue,
             scenario,
@@ -509,18 +536,20 @@ impl<'a> Model<'a> {
             sites,
             upper,
             costs,
+            storage_cost,
             traded,
         }
     }
 
-    /// Each colony count's bounds before branching: none up to the group's
-    /// size.
+    /// Each whole count's bounds before branching: colonies from none up to
+    /// the group's size, and the storage facilities.
     fn bounds(&self) -> Vec<(f64, f64)> {
         self.patterns
             .iter()
             .map(|pattern| pattern.group)
             .chain(self.sites.iter().map(|site| site.group))
             .map(|group| (0.0, self.groups[group].characters.len() as f64))
+            .chain(std::iter::once((0.0, MAX_STORAGE)))
             .collect()
     }
 
@@ -537,6 +566,7 @@ impl<'a> Model<'a> {
             sites,
             upper,
             costs,
+            storage_cost,
             traded,
         } = self;
         let mut vars = ProblemVariables::new();
@@ -547,6 +577,7 @@ impl<'a> Model<'a> {
         };
         let x: Vec<Variable> = patterns.iter().map(|_| count_var(&mut vars)).collect();
         let y: Vec<Variable> = sites.iter().map(|_| count_var(&mut vars)).collect();
+        let storage = count_var(&mut vars);
         let extracted: Vec<Vec<Variable>> = patterns
             .iter()
             .map(|pattern| {
@@ -608,7 +639,7 @@ impl<'a> Model<'a> {
                 .sum::<f64>();
             objective -= per_unit_tax * made[&recipe.output_type_id];
         }
-        for var in x.iter().chain(&y) {
+        for var in x.iter().chain(&y).chain(std::iter::once(&storage)) {
             objective -= COLONY_PENALTY * *var;
         }
 
@@ -695,9 +726,18 @@ impl<'a> Model<'a> {
                 }
                 room += (if axis == 0 { site.room.0 } else { site.room.1 }) * *var;
             }
+            // Storage is paid from the general pool; P4 only needs its own sites.
+            if !pool_high_tech {
+                used += (if axis == 0 {
+                    storage_cost.0
+                } else {
+                    storage_cost.1
+                }) * storage;
+            }
             problem = problem.with((used - room).leq(0.0));
         }
-        // Factory buffers: the launchpad between logins, the skyhook between hauls.
+        // Factory buffers: the launchpad and storage between logins, the skyhook
+        // between hauls.
         let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort);
         let mut through = Expression::from(0.0);
         for recipe in upper.iter() {
@@ -705,7 +745,10 @@ impl<'a> Model<'a> {
         }
         let factories = y.iter().fold(Expression::from(0.0), |sum, var| sum + *var);
         problem = problem.with(
-            (held.on_planet_m3 * through.clone() - LAUNCHPAD_M3 * factories.clone()).leq(0.0),
+            (held.on_planet_m3 * through.clone()
+                - LAUNCHPAD_M3 * factories.clone()
+                - STORAGE_M3 * storage)
+                .leq(0.0),
         );
         if held.skyhook_m3 > 0.0 {
             problem = problem.with((held.skyhook_m3 * through - SKYHOOK_M3 * factories).leq(0.0));
@@ -719,7 +762,12 @@ impl<'a> Model<'a> {
                 .filter(|(_, rate)| *rate > 1e-6)
                 .collect::<BTreeMap<_, _>>()
         };
-        let counts: Vec<f64> = x.iter().chain(&y).map(|var| value(*var)).collect();
+        let counts: Vec<f64> = x
+            .iter()
+            .chain(&y)
+            .chain(std::iter::once(&storage))
+            .map(|var| value(*var))
+            .collect();
         let sold = rates(&sold);
         let bought = rates(&bought);
         let made = rates(&made);
@@ -802,18 +850,36 @@ fn most_fractional(counts: &[f64]) -> Option<(usize, f64)> {
         .map(|(index, value, _)| (index, value))
 }
 
-/// Depth-first branch and bound over the colony counts, nearest rounding
-/// first, pruned by the relaxation's bound. Stops at [`NODE_LIMIT`] with
-/// the best whole plan found, else the root rounded down.
+/// The best plan without factory storage, then the best with it if that
+/// beats it. Allowing storage widens the search, and the node limit could
+/// otherwise leave a plan worse than one that needs none.
 fn branch_and_bound(model: &Model<'_>) -> Result<Relaxed, SolveError> {
-    let root_bounds = model.bounds();
+    let with_storage = model.bounds();
+    let mut without_storage = with_storage.clone();
+    if let Some(storage) = without_storage.last_mut() {
+        storage.1 = 0.0;
+    }
+    let without = search(model, without_storage, None)?;
+    search(model, with_storage, Some(without))
+}
+
+/// Depth-first branch and bound over the whole counts, nearest rounding
+/// first, pruned by the relaxation's bound and by `incumbent`. Stops at
+/// [`NODE_LIMIT`] with the best whole plan found, else the root rounded down.
+fn search(
+    model: &Model<'_>,
+    root_bounds: Vec<(f64, f64)>,
+    incumbent: Option<Relaxed>,
+) -> Result<Relaxed, SolveError> {
     let root = model
         .relax(&root_bounds)
         .ok_or_else(|| SolveError::Solver("the relaxation is infeasible".to_string()))?;
     // Doing nothing is always possible and earns nothing.
-    let mut best: Option<Relaxed> = None;
-    let mut best_objective = 0.0;
-    let mut stack = vec![(root_bounds.clone(), Some(root.clone()))];
+    let mut best_objective = incumbent
+        .as_ref()
+        .map_or(0.0, |plan| plan.objective.max(0.0));
+    let mut best = incumbent;
+    let mut stack = vec![(root_bounds, Some(root.clone()))];
     let mut nodes = 0;
     while let Some((bounds, relaxed)) = stack.pop() {
         if nodes >= NODE_LIMIT {
@@ -1233,6 +1299,9 @@ fn build_plan(
         );
         colony.on_planet_m3 = held.on_planet_m3;
         colony.skyhook_m3 = held.skyhook_m3;
+        if !extracts {
+            colony.layout.extra_storage = storage_needed(held.on_planet_m3);
+        }
         let planet = planets
             .iter()
             .find(|planet| planet.planet_id == colony.planet_id);

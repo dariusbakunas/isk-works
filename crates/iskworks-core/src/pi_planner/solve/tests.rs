@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::super::effort::EffortSettings;
+use super::super::effort::{storage_needed, STORAGE_M3};
 use super::super::fixtures::*;
 use super::super::rank::{rank, PlannerCharacter};
 use super::super::yields::YieldSource;
@@ -154,6 +155,50 @@ fn robotics_needs_a_factory_and_every_p1_flows_to_it() {
                 |colony| colony.role == ColonyRole::Factory && colony.imports.contains_key(&p1)
             ),
             "{p1} never reaches a factory"
+        );
+    }
+}
+
+#[test]
+fn a_factory_colony_adds_storage_for_what_its_launchpad_cannot_hold() {
+    let only_robotics = prices(&[(ROBOTICS, 200_000.0)]);
+    let mut long_hauls = scenario(vec![character(5)]);
+    long_hauls.effort.haul_days = 14;
+    let result = plan(&long_hauls, &q3hs5(), &only_robotics);
+
+    let factory = result
+        .colonies
+        .iter()
+        .find(|colony| colony.role == ColonyRole::Factory)
+        .expect("a factory colony");
+    assert!(factory.layout.extra_storage > 0, "{factory:#?}");
+    assert!(
+        factory.on_planet_m3 <= LAUNCHPAD_M3 + STORAGE_M3 * f64::from(factory.layout.extra_storage),
+        "{factory:#?}"
+    );
+    // The storage is paid for: the colony still fits its command center.
+    assert!(
+        factory.cpu_used <= 1.0 && factory.power_used <= 1.0,
+        "{factory:#?}"
+    );
+}
+
+#[test]
+fn a_factory_colony_without_much_to_hold_adds_no_storage() {
+    let only_robotics = prices(&[(ROBOTICS, 200_000.0)]);
+    let mut short_hauls = scenario(vec![character(5)]);
+    short_hauls.effort.haul_days = 1;
+    let result = plan(&short_hauls, &q3hs5(), &only_robotics);
+
+    for factory in result
+        .colonies
+        .iter()
+        .filter(|colony| colony.role == ColonyRole::Factory)
+    {
+        assert_eq!(
+            factory.layout.extra_storage,
+            storage_needed(factory.on_planet_m3),
+            "{factory:#?}"
         );
     }
 }
