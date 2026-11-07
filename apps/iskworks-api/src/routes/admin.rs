@@ -3,20 +3,31 @@
 //! ...) mount here.
 
 use axum::extract::{Path, State};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use iskworks_core::{
-    generate_invite_code, hash_invite_code_from_raw, validate_new_invite, AppError, FieldErrors,
-    InviteId, InviteSummary, NewInvite,
+    generate_invite_code, hash_invite_code_from_raw, validate_maintenance_notice,
+    validate_new_invite, AppError, FieldErrors, InviteId, InviteSummary, MaintenanceNotice,
+    NewInvite,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{ApiError, AppState, AuthApplicationError, CURRENT_USER};
 
+/// Public, unlike everything else here: visitors see the notice before they
+/// sign in. Separate from `/api/health` so liveness never depends on the database.
+pub(crate) fn public_router() -> Router<AppState> {
+    Router::new().route("/api/maintenance-notice", get(get_maintenance_notice))
+}
+
 pub(crate) fn router() -> Router<AppState> {
     Router::new()
+        .route(
+            "/api/admin/maintenance-notice",
+            put(set_maintenance_notice).delete(clear_maintenance_notice),
+        )
         .route("/api/admin/users", get(list_users))
         .route(
             "/api/admin/orphaned-workspaces",
@@ -414,6 +425,82 @@ async fn disable_invite(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MaintenanceNoticeDto {
+    message: String,
+    starts_at: DateTime<Utc>,
+}
+
+impl From<MaintenanceNotice> for MaintenanceNoticeDto {
+    fn from(notice: MaintenanceNotice) -> Self {
+        Self {
+            message: notice.message,
+            starts_at: notice.starts_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MaintenanceNoticeResponse {
+    notice: Option<MaintenanceNoticeDto>,
+}
+
+async fn get_maintenance_notice(
+    State(state): State<AppState>,
+) -> Result<Json<MaintenanceNoticeResponse>, ApiError> {
+    let Some(repository) = state.maintenance_notice_repository() else {
+        return Ok(Json(MaintenanceNoticeResponse { notice: None }));
+    };
+    let notice = repository
+        .get_maintenance_notice()
+        .await
+        .map_err(AuthApplicationError::Persistence)?
+        .filter(|notice| notice.is_active(Utc::now()))
+        .map(MaintenanceNoticeDto::from);
+    Ok(Json(MaintenanceNoticeResponse { notice }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetMaintenanceNoticeRequest {
+    message: String,
+    starts_at: DateTime<Utc>,
+}
+
+fn maintenance_notice_admin(
+    state: &AppState,
+) -> Result<std::sync::Arc<dyn iskworks_core::MaintenanceNoticeRepository>, ApiError> {
+    state.maintenance_notice_repository().ok_or_else(|| {
+        ApiError::Auth(AuthApplicationError::Configuration(
+            "Maintenance notices are not available.".to_string(),
+        ))
+    })
+}
+
+async fn set_maintenance_notice(
+    State(state): State<AppState>,
+    Json(request): Json<SetMaintenanceNoticeRequest>,
+) -> Result<Json<MaintenanceNoticeDto>, ApiError> {
+    let notice = validate_maintenance_notice(&request.message, request.starts_at, Utc::now())
+        .map_err(|error| validation(error.field, error.message))?;
+    maintenance_notice_admin(&state)?
+        .set_maintenance_notice(&notice)
+        .await
+        .map_err(AuthApplicationError::Persistence)?;
+    Ok(Json(notice.into()))
+}
+
+async fn clear_maintenance_notice(
+    State(state): State<AppState>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    maintenance_notice_admin(&state)?
+        .clear_maintenance_notice()
+        .await
+        .map_err(AuthApplicationError::Persistence)?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

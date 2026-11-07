@@ -1,3 +1,4 @@
+import type { MaintenanceNotice } from "./health";
 import { requestJson } from "./workspace";
 
 export type InviteStatus = "active" | "disabled" | "expired" | "exhausted";
@@ -109,4 +110,16 @@ export async function disableInvite(id: string): Promise<void> {
   await requestJson<null>(`/api/admin/invites/${encodeURIComponent(id)}/disable`, {
     method: "POST",
   });
+}
+
+export function setMaintenanceNotice(notice: MaintenanceNotice): Promise<MaintenanceNotice> {
+  return requestJson<MaintenanceNotice>("/api/admin/maintenance-notice", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(notice),
+  });
+}
+
+export async function clearMaintenanceNotice(): Promise<void> {
+  await requestJson<null>("/api/admin/maintenance-notice", { method: "DELETE" });
 }

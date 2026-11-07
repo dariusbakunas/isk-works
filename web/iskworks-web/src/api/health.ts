@@ -24,3 +24,17 @@ export interface EsiStatusResponse {
 export async function getEsiStatus(): Promise<EsiStatusResponse> {
   return requestJson<EsiStatusResponse>("/api/esi/status");
 }
+
+export interface MaintenanceNotice {
+  message: string;
+  /** ISO timestamp. The API stops returning the notice at this time. */
+  startsAt: string;
+}
+
+/** Public, so the notice also reaches the sign-in screen. */
+export async function getMaintenanceNotice(): Promise<MaintenanceNotice | null> {
+  const response = await requestJson<{ notice?: MaintenanceNotice | null }>(
+    "/api/maintenance-notice",
+  );
+  return response.notice ?? null;
+}

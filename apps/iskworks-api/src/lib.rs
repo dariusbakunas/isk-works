@@ -153,7 +153,8 @@ pub fn build_router(state: AppState) -> Router {
         ])
         .allow_headers([axum::http::header::CONTENT_TYPE]);
 
-    // The complete anonymous allowlist: liveness, readiness, login initiation, the
+    // The complete anonymous allowlist: liveness, readiness, the maintenance
+    // notice (shown on the sign-in screen too), login initiation, the
     // session probe, logout, and the EVE OAuth callback (no session exists
     // yet when it lands). `dev_auth` (feature+debug+env gated, absent from
     // the release image) issues a session, so it belongs here too.
@@ -162,6 +163,7 @@ pub fn build_router(state: AppState) -> Router {
     let public_router = Router::new()
         .route("/api/health", get(health))
         .route("/api/ready", get(readiness::ready))
+        .merge(routes::admin::public_router())
         .merge(routes::auth::router())
         .merge(routes::esi::public_router())
         .merge(dev_auth_router);

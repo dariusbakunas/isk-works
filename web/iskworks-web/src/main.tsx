@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router";
 
 import { installMaintenanceReload } from "./api/maintenance";
 import { App } from "./App";
-import { EnvironmentBanner } from "./components/environment-banner";
+import { SiteBanners } from "./components/site-banners";
 import { initLogRocket } from "./observability/logrocket";
 import "./styles.css";
 
@@ -13,7 +13,7 @@ installMaintenanceReload();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <EnvironmentBanner />
+    <SiteBanners />
     <BrowserRouter>
       <App />
     </BrowserRouter>

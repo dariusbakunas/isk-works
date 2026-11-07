@@ -49,8 +49,10 @@ mod worksheet;
 mod workspace;
 
 pub use admin::{
-    validate_new_invite, AdminConfig, AdminConfigError, AdminUserSummary, AdminUsersRepository,
-    InviteAdminRepository, InviteFieldError, InviteStatus, InviteSummary, NewInvite,
+    validate_maintenance_notice, validate_new_invite, AdminConfig, AdminConfigError,
+    AdminUserSummary, AdminUsersRepository, InviteAdminRepository, InviteFieldError, InviteStatus,
+    InviteSummary, MaintenanceNotice, MaintenanceNoticeFieldError, MaintenanceNoticeRepository,
+    NewInvite,
 };
 pub use application::{
     AppError, CreateWorkspaceCommand, FieldErrors, NewWorkspace, WorkspaceRepository,
