@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use iskworks_core::{AdminUserSummary, AdminUsersRepository, AuthError, UserId};
+use iskworks_core::{
+    AdminUserSummary, AdminUsersRepository, AuthError, MaintenanceNotice,
+    MaintenanceNoticeRepository, UserId,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -199,5 +202,52 @@ impl AdminUsersRepository for PgAdminRepository {
             tx.commit().await.map_err(map_error)?;
         }
         Ok(erased)
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct MaintenanceNoticeRow {
+    message: String,
+    starts_at: DateTime<Utc>,
+}
+
+#[async_trait]
+impl MaintenanceNoticeRepository for PgAdminRepository {
+    async fn get_maintenance_notice(&self) -> Result<Option<MaintenanceNotice>, AuthError> {
+        let row = sqlx::query_as::<_, MaintenanceNoticeRow>(
+            "SELECT message, starts_at FROM maintenance_notice",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_error)?;
+        Ok(row.map(|row| MaintenanceNotice {
+            message: row.message,
+            starts_at: row.starts_at,
+        }))
+    }
+
+    async fn set_maintenance_notice(&self, notice: &MaintenanceNotice) -> Result<(), AuthError> {
+        sqlx::query(
+            "INSERT INTO maintenance_notice (message, starts_at)
+             VALUES ($1, $2)
+             ON CONFLICT (singleton) DO UPDATE
+             SET message = EXCLUDED.message,
+                 starts_at = EXCLUDED.starts_at,
+                 updated_at = now()",
+        )
+        .bind(&notice.message)
+        .bind(notice.starts_at)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        Ok(())
+    }
+
+    async fn clear_maintenance_notice(&self) -> Result<(), AuthError> {
+        sqlx::query("DELETE FROM maintenance_notice")
+            .execute(&self.pool)
+            .await
+            .map_err(map_error)?;
+        Ok(())
     }
 }

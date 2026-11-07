@@ -127,9 +127,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         invite_repository.clone();
     let auth_service =
         AuthService::from_env(user_repository, session_repository, invite_repository)?;
-    let admin_users_repository: Arc<dyn iskworks_core::AdminUsersRepository> = Arc::new(
-        iskworks_storage::PgAdminRepository::new(repository.pool().clone()),
-    );
+    let admin_repository = Arc::new(iskworks_storage::PgAdminRepository::new(
+        repository.pool().clone(),
+    ));
+    let admin_users_repository: Arc<dyn iskworks_core::AdminUsersRepository> =
+        admin_repository.clone();
+    let maintenance_notice_repository: Arc<dyn iskworks_core::MaintenanceNoticeRepository> =
+        admin_repository;
     let admin_config = iskworks_api::admin_config_from_env()?;
     let invite_cipher = match std::env::var("TOKEN_ENCRYPTION_KEY") {
         Ok(key) if !key.trim().is_empty() => Some(iskworks_esi::SecretCipher::from_base64(&key)?),
@@ -177,6 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_admin_config(admin_config)
         .with_invite_admin_repository(invite_admin_repository)
         .with_admin_users_repository(admin_users_repository)
+        .with_maintenance_notice_repository(maintenance_notice_repository)
         .with_web_app_origin(
             std::env::var("WEB_APP_URL")
                 .ok()

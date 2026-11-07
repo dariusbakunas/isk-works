@@ -580,8 +580,8 @@ body {
   :root { --iw-header-h: 0px; }
 }
 
-/* Non-production environment marker (see components/environment-banner.tsx):
-   hazard stripes so it can't be mistaken for ordinary chrome. */
+/* Environment and maintenance banners (see components/site-banners.tsx):
+   hazard stripes so they can't be mistaken for ordinary chrome. */
 .iw-environment-banner {
   background: repeating-linear-gradient(
     -45deg,

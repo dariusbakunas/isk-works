@@ -291,6 +291,78 @@ where
     }
 }
 
+pub const MAX_MAINTENANCE_NOTICE_CHARS: usize = 200;
+pub const MAX_MAINTENANCE_NOTICE_LEAD_DAYS: i64 = 7;
+
+/// Advance warning of planned maintenance, shown to every visitor until
+/// `starts_at`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaintenanceNotice {
+    pub message: String,
+    pub starts_at: DateTime<Utc>,
+}
+
+impl MaintenanceNotice {
+    /// A notice stops showing at its start time, so a forgotten one cannot
+    /// stay up.
+    #[must_use]
+    pub fn is_active(&self, now: DateTime<Utc>) -> bool {
+        self.starts_at > now
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MaintenanceNoticeFieldError {
+    pub field: &'static str,
+    pub message: &'static str,
+}
+
+pub fn validate_maintenance_notice(
+    message: &str,
+    starts_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Result<MaintenanceNotice, MaintenanceNoticeFieldError> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err(MaintenanceNoticeFieldError {
+            field: "message",
+            message: "Message is required.",
+        });
+    }
+    if message.chars().count() > MAX_MAINTENANCE_NOTICE_CHARS {
+        return Err(MaintenanceNoticeFieldError {
+            field: "message",
+            message: "Message must be 200 characters or fewer.",
+        });
+    }
+    if starts_at <= now {
+        return Err(MaintenanceNoticeFieldError {
+            field: "startsAt",
+            message: "Start time must be in the future.",
+        });
+    }
+    if starts_at > now + chrono::Duration::days(MAX_MAINTENANCE_NOTICE_LEAD_DAYS) {
+        return Err(MaintenanceNoticeFieldError {
+            field: "startsAt",
+            message: "Start time must be within the next 7 days.",
+        });
+    }
+    Ok(MaintenanceNotice {
+        message: message.to_string(),
+        starts_at,
+    })
+}
+
+#[async_trait]
+pub trait MaintenanceNoticeRepository: Send + Sync {
+    /// The stored notice, including one whose start time has passed.
+    async fn get_maintenance_notice(&self) -> Result<Option<MaintenanceNotice>, AuthError>;
+    /// Replaces any existing notice.
+    async fn set_maintenance_notice(&self, notice: &MaintenanceNotice) -> Result<(), AuthError>;
+    /// Idempotent.
+    async fn clear_maintenance_notice(&self) -> Result<(), AuthError>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,5 +485,65 @@ mod tests {
         assert_eq!(InviteStatus::Disabled.as_str(), "disabled");
         assert_eq!(InviteStatus::Expired.as_str(), "expired");
         assert_eq!(InviteStatus::Exhausted.as_str(), "exhausted");
+    }
+
+    mod maintenance_notice {
+        use super::super::{validate_maintenance_notice, MaintenanceNotice};
+        use chrono::{Duration, TimeZone, Utc};
+
+        fn now() -> chrono::DateTime<Utc> {
+            Utc.with_ymd_and_hms(2026, 11, 6, 12, 0, 0).unwrap()
+        }
+
+        #[test]
+        fn trims_the_message() {
+            let notice =
+                validate_maintenance_notice("  Back soon. ", now() + Duration::minutes(10), now())
+                    .unwrap();
+            assert_eq!(notice.message, "Back soon.");
+        }
+
+        #[test]
+        fn rejects_a_blank_or_long_message() {
+            let starts_at = now() + Duration::minutes(10);
+            assert_eq!(
+                validate_maintenance_notice("  ", starts_at, now())
+                    .unwrap_err()
+                    .field,
+                "message"
+            );
+            assert_eq!(
+                validate_maintenance_notice(&"x".repeat(201), starts_at, now())
+                    .unwrap_err()
+                    .field,
+                "message"
+            );
+            assert!(validate_maintenance_notice(&"x".repeat(200), starts_at, now()).is_ok());
+        }
+
+        #[test]
+        fn rejects_a_start_time_that_is_past_or_too_far_ahead() {
+            for starts_at in [now(), now() + Duration::days(7) + Duration::seconds(1)] {
+                assert_eq!(
+                    validate_maintenance_notice("Back soon.", starts_at, now())
+                        .unwrap_err()
+                        .field,
+                    "startsAt"
+                );
+            }
+            assert!(
+                validate_maintenance_notice("Back soon.", now() + Duration::days(7), now()).is_ok()
+            );
+        }
+
+        #[test]
+        fn is_active_only_before_it_starts() {
+            let notice = MaintenanceNotice {
+                message: "Back soon.".to_string(),
+                starts_at: now(),
+            };
+            assert!(notice.is_active(now() - Duration::seconds(1)));
+            assert!(!notice.is_active(now()));
+        }
     }
 }

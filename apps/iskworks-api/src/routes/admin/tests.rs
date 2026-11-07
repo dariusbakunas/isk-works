@@ -685,3 +685,160 @@ async fn orphaned_workspaces_are_counted_and_erased_only_with_confirmation() {
     assert_eq!(body["erased"], 2);
     assert_eq!(*users.orphans.lock().unwrap(), 0);
 }
+
+#[derive(Default)]
+struct MemoryNotice {
+    notice: Mutex<Option<iskworks_core::MaintenanceNotice>>,
+}
+
+#[async_trait]
+impl iskworks_core::MaintenanceNoticeRepository for MemoryNotice {
+    async fn get_maintenance_notice(
+        &self,
+    ) -> Result<Option<iskworks_core::MaintenanceNotice>, AuthError> {
+        Ok(self.notice.lock().unwrap().clone())
+    }
+    async fn set_maintenance_notice(
+        &self,
+        notice: &iskworks_core::MaintenanceNotice,
+    ) -> Result<(), AuthError> {
+        *self.notice.lock().unwrap() = Some(notice.clone());
+        Ok(())
+    }
+    async fn clear_maintenance_notice(&self) -> Result<(), AuthError> {
+        *self.notice.lock().unwrap() = None;
+        Ok(())
+    }
+}
+
+fn notice_app(notice: Arc<MemoryNotice>) -> axum::Router {
+    let state = base_state(Arc::default()).with_maintenance_notice_repository(notice);
+    admin_router(state.clone())
+        .merge(super::public_router())
+        .with_state(state)
+}
+
+fn notice_body(minutes_from_now: i64) -> String {
+    let starts_at = chrono::Utc::now() + chrono::Duration::minutes(minutes_from_now);
+    serde_json::json!({ "message": " Please save your work. ", "startsAt": starts_at }).to_string()
+}
+
+#[tokio::test]
+async fn non_admins_cannot_change_the_maintenance_notice() {
+    let body = notice_body(10);
+    for caller in [None, Some(user(1))] {
+        for (method, request_body) in [(Method::PUT, Some(body.as_str())), (Method::DELETE, None)] {
+            let (status, _) = call(
+                notice_app(Arc::default()),
+                caller.clone(),
+                method,
+                "/api/admin/maintenance-notice",
+                request_body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_admin_sets_a_notice_anyone_can_read_and_then_clears_it() {
+    let notice = Arc::new(MemoryNotice::default());
+
+    let (status, saved) = call(
+        notice_app(notice.clone()),
+        Some(user(ADMIN_CHARACTER)),
+        Method::PUT,
+        "/api/admin/maintenance-notice",
+        Some(&notice_body(10)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["message"], "Please save your work.");
+
+    // Anonymous on purpose: the notice also shows on the sign-in screen.
+    let (status, read) = call(
+        notice_app(notice.clone()),
+        None,
+        Method::GET,
+        "/api/maintenance-notice",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["notice"]["message"], "Please save your work.");
+    assert_eq!(read["notice"]["startsAt"], saved["startsAt"]);
+
+    let (status, _) = call(
+        notice_app(notice.clone()),
+        Some(user(ADMIN_CHARACTER)),
+        Method::DELETE,
+        "/api/admin/maintenance-notice",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, read) = call(
+        notice_app(notice),
+        None,
+        Method::GET,
+        "/api/maintenance-notice",
+        None,
+    )
+    .await;
+    assert_eq!(read["notice"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn a_notice_past_its_start_time_is_not_returned() {
+    let notice = Arc::new(MemoryNotice::default());
+    *notice.notice.lock().unwrap() = Some(iskworks_core::MaintenanceNotice {
+        message: "Too late.".to_string(),
+        starts_at: chrono::Utc::now() - chrono::Duration::seconds(1),
+    });
+
+    let (status, read) = call(
+        notice_app(notice),
+        None,
+        Method::GET,
+        "/api/maintenance-notice",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["notice"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn setting_a_notice_validates_input() {
+    for body in [
+        notice_body(-1),
+        notice_body(8 * 24 * 60),
+        serde_json::json!({ "message": "  ", "startsAt": chrono::Utc::now() + chrono::Duration::minutes(10) })
+            .to_string(),
+    ] {
+        let (status, response) = call(
+            notice_app(Arc::default()),
+            Some(user(ADMIN_CHARACTER)),
+            Method::PUT,
+            "/api/admin/maintenance-notice",
+            Some(&body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(response["error"]["code"], "validation_failed");
+    }
+}
+
+#[tokio::test]
+async fn the_public_notice_is_empty_when_no_repository_is_wired_in() {
+    let state = base_state(Arc::default());
+    let router = super::public_router().with_state(state);
+
+    let (status, read) = call(router, None, Method::GET, "/api/maintenance-notice", None).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["notice"], serde_json::Value::Null);
+}

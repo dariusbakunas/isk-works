@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes } from "react-router";
 import { PageHeader } from "../../components/primitives";
 import { InvitesPage } from "./invites-page";
+import { MaintenanceNoticePage } from "./maintenance-notice-page";
 import { UsersPage } from "./users-page";
 
 // Sub-sections of the app-wide Admin area. Future screens (users, ...) add
@@ -8,6 +9,7 @@ import { UsersPage } from "./users-page";
 const sections = [
   { label: "Users", path: "/admin/users" },
   { label: "Invites", path: "/admin/invites" },
+  { label: "Maintenance", path: "/admin/maintenance" },
 ];
 
 export function AdminPage({ isAdmin }: { isAdmin: boolean }) {
@@ -40,6 +42,7 @@ export function AdminPage({ isAdmin }: { isAdmin: boolean }) {
         <Route path="/" element={<Navigate replace to="/admin/users" />} />
         <Route path="/users" element={<UsersPage />} />
         <Route path="/invites" element={<InvitesPage />} />
+        <Route path="/maintenance" element={<MaintenanceNoticePage />} />
         <Route path="*" element={<Navigate replace to="/admin/users" />} />
       </Routes>
     </>

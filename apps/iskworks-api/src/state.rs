@@ -77,6 +77,7 @@ pub struct AppState {
     pub(crate) admin_config: iskworks_core::AdminConfig,
     invite_admin_repository: Option<Arc<dyn iskworks_core::InviteAdminRepository>>,
     admin_users_repository: Option<Arc<dyn iskworks_core::AdminUsersRepository>>,
+    maintenance_notice_repository: Option<Arc<dyn iskworks_core::MaintenanceNoticeRepository>>,
     pub(crate) invite_cipher: Option<iskworks_esi::SecretCipher>,
     pub(crate) web_app_origin: String,
     readiness_check: Option<Arc<dyn ReadinessCheck>>,
@@ -124,6 +125,7 @@ impl AppState {
             admin_config: iskworks_core::AdminConfig::default(),
             invite_admin_repository: None,
             admin_users_repository: None,
+            maintenance_notice_repository: None,
             invite_cipher: None,
             web_app_origin: "http://127.0.0.1:5173".to_string(),
             readiness_check: None,
@@ -455,6 +457,22 @@ impl AppState {
     ) -> Self {
         self.admin_users_repository = Some(repository);
         self
+    }
+
+    #[must_use]
+    pub fn with_maintenance_notice_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::MaintenanceNoticeRepository>,
+    ) -> Self {
+        self.maintenance_notice_repository = Some(repository);
+        self
+    }
+
+    /// `None` when not wired in, which the public endpoint treats as no notice.
+    pub(crate) fn maintenance_notice_repository(
+        &self,
+    ) -> Option<Arc<dyn iskworks_core::MaintenanceNoticeRepository>> {
+        self.maintenance_notice_repository.clone()
     }
 
     pub(crate) fn admin_users_repository(
