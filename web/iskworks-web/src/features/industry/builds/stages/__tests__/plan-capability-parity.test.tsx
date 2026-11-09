@@ -19,14 +19,15 @@ import type {
   WorksheetItem,
 } from "../../../../../api/industry";
 import type { FacilityProfile } from "../../../../../api/industry/facilities";
-import type { RowPricingSlice } from "../../../inspector/inspector-model";
+import type { RowPricingSlice } from "../../inspector/inspector-model";
 import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor";
 import { rootRowEditing, type RootRowEditing } from "../root-row-editing";
-import { StagesInspector, type StagesSelection } from "../stages-inspector";
+import { StagesInspector } from "../stages-inspector";
+import type { StagesSelection } from "../stages-selection";
 
 // About section contents: sections start expanded here (see the double).
-vi.mock("../../../inspector/inspector-collapse", async () => {
-  const { expandedInspectorCollapse } = await import("../../../inspector/__tests__/expanded-inspector-collapse");
+vi.mock("../../inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../../inspector/__tests__/expanded-inspector-collapse");
   return expandedInspectorCollapse();
 });
 

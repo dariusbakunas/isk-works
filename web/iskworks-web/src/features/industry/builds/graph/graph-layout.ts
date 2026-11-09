@@ -7,7 +7,7 @@
 
 import type { GraphWarning } from "../../../../api/industry";
 
-import { coverageSplit } from "../../inspector/sourcing-coverage";
+import { coverageSplit } from "../inspector/sourcing-coverage";
 import { recipeCurrencyChip } from "./recipe-currency";
 import type { BuildGraphNodeData } from "./to-react-flow";
 

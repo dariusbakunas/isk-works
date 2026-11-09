@@ -22,11 +22,11 @@ import type {
 } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { formatIskSummary } from "../../../../components/money";
-import { buildGraphInspector } from "../../inspector/adapters/graph-node";
-import { buildRootInspector } from "../../inspector/adapters/root-build";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
-import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
-import { UnifiedItemInspector } from "../../inspector/unified-item-inspector";
+import { buildGraphInspector } from "../inspector/adapters/graph-node";
+import { buildRootInspector } from "../inspector/adapters/root-build";
+import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
+import { InspectorRow, InspectorSection } from "../inspector/inspector-section";
+import { UnifiedItemInspector } from "../inspector/unified-item-inspector";
 import type { BuildSettings } from "../use-build-settings";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 

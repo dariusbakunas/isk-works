@@ -15,7 +15,7 @@ import { listBlueprintObservations, updateDescendantProductionConfiguration } fr
 import type { FacilityProfile } from "../../../../api/industry/facilities";
 import { apiMessage } from "../../../../api/api-error";
 import { BlueprintSelectionFields } from "../planner/blueprint-selection-section";
-import { InspectorRow } from "../../inspector/inspector-section";
+import { InspectorRow } from "../inspector/inspector-section";
 
 
 

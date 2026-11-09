@@ -15,8 +15,8 @@ import type {
   PlannerPricingSelection,
   WorksheetItem,
 } from "../../../../api/industry";
-import { pricingSlice } from "../../inspector/adapters/material-slices";
-import type { RowPricingSlice } from "../../inspector/inspector-model";
+import { pricingSlice } from "../inspector/adapters/material-slices";
+import type { RowPricingSlice } from "../inspector/inspector-model";
 import { applyFulfillmentScope, applyPricingSelection } from "../components/planner-panels";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 

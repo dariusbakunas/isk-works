@@ -7,8 +7,8 @@ import { App } from "../App";
 import { flatNavItems } from "../components/navigation/registry";
 
 // About section contents: sections start expanded here (see the double).
-vi.mock("../features/industry/inspector/inspector-collapse", async () => {
-  const { expandedInspectorCollapse } = await import("../features/industry/inspector/__tests__/expanded-inspector-collapse");
+vi.mock("../features/industry/builds/inspector/inspector-collapse", async () => {
+  const { expandedInspectorCollapse } = await import("../features/industry/builds/inspector/__tests__/expanded-inspector-collapse");
   return expandedInspectorCollapse();
 });
 

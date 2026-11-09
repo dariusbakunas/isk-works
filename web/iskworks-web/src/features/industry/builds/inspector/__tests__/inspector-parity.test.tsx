@@ -2,10 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Build, WorksheetItem } from "../../../../api/industry";
-import type { ProductionEnrichment } from "../../builds/graph/graph-inspector-enrichment";
-import type { BuildGraphNodeData } from "../../builds/graph/to-react-flow";
-import type { BuildSettings } from "../../builds/use-build-settings";
+import type { Build, WorksheetItem } from "../../../../../api/industry";
+import type { ProductionEnrichment } from "../../graph/graph-inspector-enrichment";
+import type { BuildGraphNodeData } from "../../graph/to-react-flow";
+import type { BuildSettings } from "../../use-build-settings";
 import { buildGraphInspector } from "../adapters/graph-node";
 import { buildWorksheetInspector } from "../adapters/worksheet-item";
 import { INSPECTOR_SECTION_ORDER, type InspectorModel } from "../inspector-model";
@@ -281,7 +281,7 @@ describe("linked Build inspector is identical from Worksheet and Graph", () => {
     role: "manufacturing",
     revision: 4,
     rigs: [],
-  } as unknown as import("../../../../api/industry").FacilityProfile;
+  } as unknown as import("../../../../../api/industry").FacilityProfile;
 
   const ionRow: WorksheetItem = {
     typeId: 900,

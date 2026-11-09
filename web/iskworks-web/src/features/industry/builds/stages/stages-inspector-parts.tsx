@@ -7,7 +7,7 @@ import type {
   AcquisitionLine,
   ExecutionNode,
 } from "../../../../api/industry";
-import { InspectorRow } from "../../inspector/inspector-section";
+import { InspectorRow } from "../inspector/inspector-section";
 
 import type { RootRowEditing } from "./root-row-editing";
 

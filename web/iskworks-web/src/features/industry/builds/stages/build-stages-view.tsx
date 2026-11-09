@@ -39,8 +39,9 @@ import { apiMessage } from "../../../../api/api-error";
 
 import { CostAmount, ExecutionNodeRow, Quantity } from "./execution-node-row";
 import { costWarningLabel } from "./stage-warnings";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
-import { StagesInspector, type StagesSelection } from "./stages-inspector";
+import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
+import { StagesInspector } from "./stages-inspector";
+import type { StagesSelection } from "./stages-selection";
 import { useBuildExecutionPlan } from "./use-build-execution-plan";
 import { usePlanInspector } from "./use-plan-inspector";
 

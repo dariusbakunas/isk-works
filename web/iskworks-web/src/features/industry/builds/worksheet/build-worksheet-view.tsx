@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import type { BuildWorksheetRow } from "../../../../api/industry";
 import { EmptyState, InlineAlert, Panel } from "../../../../components/primitives";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
+import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
 import { focusExecutionPlan } from "../focused-producer-projection";
 import { StagesInspector } from "../stages/stages-inspector";
 import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";

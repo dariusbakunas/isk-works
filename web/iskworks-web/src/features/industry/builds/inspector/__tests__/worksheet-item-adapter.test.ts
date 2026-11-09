@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorksheetItem } from "../../../../api/industry";
-import { formatIskSummary } from "../../../../components/money";
+import type { WorksheetItem } from "../../../../../api/industry";
+import { formatIskSummary } from "../../../../../components/money";
 import { worksheetItemToInspectorModel } from "../adapters/worksheet-item";
 
 function item(overrides: Partial<WorksheetItem> = {}): WorksheetItem {

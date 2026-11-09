@@ -8,7 +8,7 @@ import type {
   BuildWorksheetRow,
   ExecutionPlanProjection,
 } from "../../../../api/industry";
-import type { StagesSelection } from "../stages/stages-inspector";
+import type { StagesSelection } from "../stages/stages-selection";
 
 export type WorksheetTarget =
   | { kind: "producer"; buildId: string }

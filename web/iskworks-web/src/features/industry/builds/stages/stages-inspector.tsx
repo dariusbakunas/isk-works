@@ -36,12 +36,13 @@ import type { FacilityProfile } from "../../../../api/industry/facilities";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { MoneyAmount } from "../../../../components/money";
 import { Badge } from "../../../../components/primitives";
-import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
+import { InspectorRow, InspectorSection } from "../inspector/inspector-section";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
-import { PricingBody } from "../../inspector/unified-item-inspector";
+import { PricingBody } from "../inspector/unified-item-inspector";
 import { apiMessage } from "../../../../api/api-error";
 
 import type { RootRowEditing } from "./root-row-editing";
+import type { StagesSelection } from "./stages-selection";
 
 import { CreateOperationTicket, SourcingSwitch } from "./plan-actions";
 import { OperationRequirements } from "./operation-requirements";
@@ -50,10 +51,6 @@ import { edgeKey, type PlanSourcing, type SourcingChoice } from "./use-plan-sour
 import { AcquisitionInspector } from "./acquisition-inspector";
 import { DescendantConfigurationEditor } from "./descendant-configuration-editor";
 import { MissingFacilityWarning, qty, ScopeRow, SourcingSplit } from "./stages-inspector-parts";
-
-export type StagesSelection =
-  | { kind: "production"; nodeId: string }
-  | { kind: "acquisition"; typeId: number };
 
 const money = (value: string | null) => (value != null ? <MoneyAmount value={value} /> : "Incomplete");
 

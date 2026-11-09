@@ -2,13 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { BuildWorksheetEditorModel } from "../../builds/use-build-worksheet-editor";
+import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor";
 import { buildRootInspector } from "../adapters/root-build";
 import { INSPECTOR_SECTION_ORDER, type InspectorModel } from "../inspector-model";
 import { InspectorCollapseProvider } from "../inspector-collapse";
 import { UnifiedItemInspector } from "../unified-item-inspector";
 
-vi.mock("../../../../components/market-scope-selector", () => ({
+vi.mock("../../../../../components/market-scope-selector", () => ({
   MarketScopeSelector: ({ scope }: { scope: { regionId?: number } }) => (
     <button type="button">scope {scope.regionId}</button>
   ),
@@ -38,7 +38,7 @@ const FACILITY = {
   materialReductionPercent: "2.0",
   timeReductionPercent: "30.0",
   rigs: [],
-} as unknown as import("../../../../api/industry").FacilityProfile;
+} as unknown as import("../../../../../api/industry").FacilityProfile;
 
 const OBSERVATION = {
   id: "obs-1",
