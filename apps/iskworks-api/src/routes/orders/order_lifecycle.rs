@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::{EpicReusePreview, ReservationDriftDetail, ReuseLine};
 
 /// Whole-tree Epic freeze. `command` is the *same*
 /// `PreviewBuildPlanCommand` overlay body Materials/Graph/Worksheet/
@@ -74,11 +75,11 @@ pub(super) async fn create_order(
                     });
             let comparison = compare_reuse(&expected, &reuse_by_type(&frozen.requirements));
             if !comparison.decreased.is_empty() {
-                return Ok(reservation_drift_response(
-                    EpicReusePreview::of(&frozen.requirements),
-                    comparison.decreased,
-                    Vec::new(),
-                ));
+                return Err(ApiError::ReservationDrift(ReservationDriftDetail {
+                    preview: EpicReusePreview::of(&frozen.requirements),
+                    decreased: comparison.decreased,
+                    shortfalls: Vec::new(),
+                }));
             }
             comparison.increased
         }
@@ -279,7 +280,11 @@ pub(super) async fn create_order(
     let plan_result = match plan_result {
         Ok(plan_result) => plan_result,
         Err(OrderError::ReservationShortfall(shortfalls)) => {
-            return Ok(reservation_drift_response(preview, Vec::new(), shortfalls));
+            return Err(ApiError::ReservationDrift(ReservationDriftDetail {
+                preview,
+                decreased: Vec::new(),
+                shortfalls,
+            }));
         }
         Err(error) => return Err(error.into()),
     };
@@ -339,22 +344,6 @@ pub(super) struct ExpectedReuse {
     quantity: u64,
 }
 
-/// What an Epic created from this overlay right now would reuse from free
-/// stock, per type.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct EpicReusePreview {
-    reuse: Vec<ReuseLine>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ReuseLine {
-    type_id: i64,
-    type_name: String,
-    quantity: u64,
-}
-
 impl EpicReusePreview {
     fn of(requirements: &[NewOrderRequirement]) -> Self {
         let names: BTreeMap<i64, &str> = requirements
@@ -372,49 +361,6 @@ impl EpicReusePreview {
                 .collect(),
         }
     }
-}
-
-#[derive(Debug, Serialize)]
-struct ReservationDriftEnvelope {
-    error: ReservationDriftBody,
-}
-
-/// 409 when the Epic can't reserve what the user confirmed. Carries the
-/// fresh preview so the client can refresh without another request.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ReservationDriftBody {
-    code: &'static str,
-    message: &'static str,
-    retryable: bool,
-    preview: EpicReusePreview,
-    /// Types the Epic would now reuse less of than previewed.
-    decreased: Vec<ReuseChange>,
-    /// Types another writer reserved or removed since the freeze.
-    shortfalls: Vec<ReservationShortfall>,
-}
-
-fn reservation_drift_response(
-    preview: EpicReusePreview,
-    decreased: Vec<ReuseChange>,
-    shortfalls: Vec<ReservationShortfall>,
-) -> Response {
-    // Same `{ "error": ... }` envelope as every other API error, so
-    // clients read it through their usual error path.
-    (
-        StatusCode::CONFLICT,
-        Json(ReservationDriftEnvelope {
-            error: ReservationDriftBody {
-            code: "reservation_drift",
-            message: "Free inventory changed since the preview. Review the updated reuse and confirm again.",
-            retryable: true,
-            preview,
-            decreased,
-            shortfalls,
-        },
-        }),
-    )
-        .into_response()
 }
 
 /// `POST /api/builds/:build_id/orders/preview`: run the same freeze Create

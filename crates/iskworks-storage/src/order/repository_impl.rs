@@ -173,6 +173,29 @@ impl OrderRepository for PgOrderRepository {
         .into_order()
     }
 
+    async fn get_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<Order>, OrderError> {
+        let ids: Vec<uuid::Uuid> = order_ids.iter().map(|id| id.0).collect();
+        sqlx::query_as::<_, OrderRow>(
+            "SELECT id, workspace_id, owner_id, source_build_id, source_build_revision, \
+             display_name, runs, recipe_fingerprint, price_snapshot_id, estimated_material_cost, \
+             expected_revenue, estimated_margin, missing_price_count, created_at, updated_at, \
+             started_at, completed_at, canceled_at, archived_at, planning_snapshot_version \
+             FROM orders WHERE workspace_id = $1 AND id = ANY($2)",
+        )
+        .bind(workspace_id.0)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?
+        .into_iter()
+        .map(OrderRow::into_order)
+        .collect()
+    }
+
     async fn list_orders(
         &self,
         workspace_id: WorkspaceId,

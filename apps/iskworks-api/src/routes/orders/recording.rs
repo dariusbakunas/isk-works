@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::{HolderView, InsufficientAvailableDetail, ShortageView};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,48 +143,26 @@ pub(super) struct TakeFromRequest {
     type_id: i64,
 }
 
-/// 409 body when recording would use stock other Epics reserved: per short
-/// item, what it needs, what the ticket's Epic holds, what's free, and who
-/// holds the rest -- enough for "Take N from EP-x?".
-#[derive(Debug, Serialize)]
-struct InsufficientAvailableEnvelope {
-    error: InsufficientAvailableBody,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct InsufficientAvailableBody {
-    code: &'static str,
-    message: &'static str,
-    retryable: bool,
-    shortages: Vec<ShortageView>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ShortageView {
-    type_id: i64,
-    type_name: String,
-    needed: u64,
-    own: u64,
-    free: u64,
-    holders: Vec<HolderView>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HolderView {
-    order_id: iskworks_core::order::OrderId,
-    display_name: String,
-    quantity: u64,
-}
-
-async fn insufficient_available_response(
+/// `ApiError::InsufficientAvailable` for `shortages`, with each item's
+/// name and each holding Epic's display name (one read for all of them).
+async fn insufficient_available(
     state: &AppState,
     workspace_id: iskworks_core::WorkspaceId,
     ticket_id: iskworks_core::order::TicketId,
     shortages: Vec<iskworks_core::order::AvailabilityShortage>,
-) -> Result<axum::response::Response, ApiError> {
+) -> ApiError {
+    match shortage_views(state, workspace_id, ticket_id, shortages).await {
+        Ok(shortages) => ApiError::InsufficientAvailable(InsufficientAvailableDetail { shortages }),
+        Err(error) => error,
+    }
+}
+
+async fn shortage_views(
+    state: &AppState,
+    workspace_id: iskworks_core::WorkspaceId,
+    ticket_id: iskworks_core::order::TicketId,
+    shortages: Vec<iskworks_core::order::AvailabilityShortage>,
+) -> Result<Vec<ShortageView>, ApiError> {
     let repository = state.order_repository()?;
     let names: HashMap<i64, String> = repository
         .list_ticket_prerequisites(ticket_id)
@@ -191,41 +170,42 @@ async fn insufficient_available_response(
         .into_iter()
         .map(|prerequisite| (prerequisite.type_id, prerequisite.captured_name))
         .collect();
-    let mut views = Vec::with_capacity(shortages.len());
-    for shortage in shortages {
-        let mut holders = Vec::with_capacity(shortage.holders.len());
-        for holder in shortage.holders {
-            let display_name = match repository.get_order(workspace_id, holder.order_id).await {
-                Ok(order) => order.display_name,
-                Err(_) => "Another reservation".to_string(),
-            };
-            holders.push(HolderView {
-                order_id: holder.order_id,
-                display_name,
-                quantity: holder.quantity,
-            });
-        }
-        views.push(ShortageView {
+    let holder_ids: Vec<iskworks_core::order::OrderId> = shortages
+        .iter()
+        .flat_map(|shortage| shortage.holders.iter().map(|holder| holder.order_id))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let holder_names: HashMap<iskworks_core::order::OrderId, String> = repository
+        .get_orders(workspace_id, &holder_ids)
+        .await?
+        .into_iter()
+        .map(|order| (order.id, order.display_name))
+        .collect();
+    Ok(shortages
+        .into_iter()
+        .map(|shortage| ShortageView {
             type_id: shortage.type_id,
             type_name: names.get(&shortage.type_id).cloned().unwrap_or_default(),
             needed: shortage.needed,
             own: shortage.own,
             free: shortage.free,
-            holders,
-        });
-    }
-    Ok((
-        StatusCode::CONFLICT,
-        Json(InsufficientAvailableEnvelope {
-            error: InsufficientAvailableBody {
-                code: "insufficient_available",
-                message: "Other Epics have reserved stock this recording needs.",
-                retryable: false,
-                shortages: views,
-            },
-        }),
-    )
-        .into_response())
+            holders: shortage
+                .holders
+                .into_iter()
+                .map(|holder| HolderView {
+                    order_id: holder.order_id,
+                    // A reservation always names an Epic in this workspace;
+                    // the fallback only covers one deleted meanwhile.
+                    display_name: holder_names
+                        .get(&holder.order_id)
+                        .cloned()
+                        .unwrap_or_else(|| "Another reservation".to_string()),
+                    quantity: holder.quantity,
+                })
+                .collect(),
+        })
+        .collect())
 }
 
 #[derive(Debug, Serialize)]
@@ -291,7 +271,7 @@ pub(super) async fn preview_ticket_production_route(
     {
         Ok(preview) => Ok(Json(preview).into_response()),
         Err(OrderError::InsufficientAvailable(shortages)) => {
-            insufficient_available_response(&state, workspace_id, ticket_id, shortages).await
+            Err(insufficient_available(&state, workspace_id, ticket_id, shortages).await)
         }
         Err(error) => Err(error.into()),
     }
@@ -319,8 +299,7 @@ pub(super) async fn record_ticket_production_route(
     {
         Ok(outcome) => outcome,
         Err(OrderError::InsufficientAvailable(shortages)) => {
-            return insufficient_available_response(&state, workspace_id, ticket_id, shortages)
-                .await;
+            return Err(insufficient_available(&state, workspace_id, ticket_id, shortages).await);
         }
         Err(error) => return Err(error.into()),
     };

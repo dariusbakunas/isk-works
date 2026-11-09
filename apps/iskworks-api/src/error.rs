@@ -46,6 +46,29 @@ pub struct ErrorBody {
     pub correlation_id: Option<String>,
 }
 
+/// Extra fields a few errors add after `retryable`, inside the same
+/// `{ "error": ... }` envelope, so clients read them through their usual
+/// error path.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum ErrorDetail {
+    ReservationDrift(ReservationDriftDetail),
+    InsufficientAvailable(InsufficientAvailableDetail),
+}
+
+#[derive(Debug, Serialize)]
+struct DetailedErrorEnvelope {
+    error: DetailedErrorBody,
+}
+
+#[derive(Debug, Serialize)]
+struct DetailedErrorBody {
+    #[serde(flatten)]
+    body: ErrorBody,
+    #[serde(flatten)]
+    detail: ErrorDetail,
+}
+
 pub enum ApiError {
     Application(AppError),
     StaticData(SdeError),
@@ -97,6 +120,12 @@ pub enum ApiError {
     /// refetch the plan and let the user retry against the current
     /// operation, never silently apply the edit to a different member set.
     DescendantOperationMembershipStale,
+    /// Create Epic can't reserve the reuse the user confirmed. A 409 that
+    /// carries the fresh preview, so the client can refresh in place.
+    ReservationDrift(ReservationDriftDetail),
+    /// Recording production would use stock other Epics reserved. A 409
+    /// naming each short item and who holds it.
+    InsufficientAvailable(InsufficientAvailableDetail),
 }
 
 impl From<AppError> for ApiError {
@@ -609,12 +638,17 @@ use inventory::*;
 use market::*;
 use opportunity::*;
 use order::*;
+pub(crate) use order::{
+    EpicReusePreview, HolderView, InsufficientAvailableDetail, ReservationDriftDetail, ReuseLine,
+    ShortageView,
+};
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         // Classify before `self` is moved into the match: an internal
         // implementation failure must never ship its diagnostic text.
         let internal = self.internal_failure();
+        let mut detail = None;
         let (status, mut body) = match self {
             Self::Application(AppError::Validation(errors)) => (
                 StatusCode::BAD_REQUEST,
@@ -873,6 +907,14 @@ impl IntoResponse for ApiError {
                 },
             ),
             Self::Auth(error) => auth_response(error),
+            Self::ReservationDrift(payload) => {
+                detail = Some(ErrorDetail::ReservationDrift(payload));
+                reservation_drift_response()
+            }
+            Self::InsufficientAvailable(payload) => {
+                detail = Some(ErrorDetail::InsufficientAvailable(payload));
+                insufficient_available_response()
+            }
         };
 
         // A curated domain error passes through untouched. An internal
@@ -888,7 +930,16 @@ impl IntoResponse for ApiError {
             body.correlation_id = Some(correlation_id.to_string());
         }
 
-        (status, Json(ErrorEnvelope { error: body })).into_response()
+        match detail {
+            Some(detail) => (
+                status,
+                Json(DetailedErrorEnvelope {
+                    error: DetailedErrorBody { body, detail },
+                }),
+            )
+                .into_response(),
+            None => (status, Json(ErrorEnvelope { error: body })).into_response(),
+        }
     }
 }
 
