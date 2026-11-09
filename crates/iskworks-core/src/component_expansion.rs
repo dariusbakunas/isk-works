@@ -223,7 +223,7 @@ impl ComponentExpansionService {
         available_quantities: &BTreeMap<i64, u64>,
         effective_root_requirements: &BTreeMap<i64, u64>,
     ) -> Result<ComponentExpansion, ComponentExpansionError> {
-        if !(1..=1_000_000).contains(&root_runs) {
+        if !crate::runs_in_bounds(root_runs) {
             return Err(ComponentExpansionError::InvalidRuns);
         }
         let resolutions_by_type: HashMap<i64, ComponentResolution> =

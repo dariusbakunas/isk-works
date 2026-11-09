@@ -310,7 +310,7 @@ async fn get_blueprint_automatic_eiv(
     Path(blueprint_type_id): Path<i64>,
     Query(query): Query<AutomaticEivQuery>,
 ) -> Result<Json<AutomaticEiv>, ApiError> {
-    if !(1..=1_000_000).contains(&query.runs) {
+    if !iskworks_core::runs_in_bounds(query.runs) {
         return Err(BuildPlanningError::InvalidRuns.into());
     }
     let active = state
@@ -337,7 +337,7 @@ async fn get_reaction_formula_automatic_eiv(
     Path(reaction_formula_type_id): Path<i64>,
     Query(query): Query<AutomaticEivQuery>,
 ) -> Result<Json<AutomaticEiv>, ApiError> {
-    if !(1..=1_000_000).contains(&query.runs) {
+    if !iskworks_core::runs_in_bounds(query.runs) {
         return Err(BuildPlanningError::InvalidRuns.into());
     }
     let active = state

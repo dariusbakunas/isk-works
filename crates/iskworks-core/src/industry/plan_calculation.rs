@@ -795,7 +795,7 @@ pub(super) fn estimated_profit(
 }
 
 pub(super) fn validate_runs(runs: u64) -> Result<(), IndustryError> {
-    if !(1..=MAX_RUNS).contains(&runs) {
+    if !crate::runs_in_bounds(runs) {
         return Err(IndustryError::Validation(
             "Runs must be between 1 and 1,000,000.".to_string(),
         ));

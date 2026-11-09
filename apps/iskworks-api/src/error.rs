@@ -667,7 +667,9 @@ impl IntoResponse for ApiError {
                     correlation_id: None,
                 },
             ),
-            Self::BuildPlanning(BuildPlanningError::InvalidRuns) => (
+            Self::BuildPlanning(BuildPlanningError::InvalidRuns)
+            | Self::ReactionPlanning(ReactionPlanningError::InvalidRuns)
+            | Self::ComponentExpansion(ComponentExpansionError::InvalidRuns) => (
                 StatusCode::BAD_REQUEST,
                 ErrorBody {
                     code: "invalid_runs",
@@ -697,16 +699,6 @@ impl IntoResponse for ApiError {
                     correlation_id: None,
                 },
             ),
-            Self::ReactionPlanning(ReactionPlanningError::InvalidRuns) => (
-                StatusCode::BAD_REQUEST,
-                ErrorBody {
-                    code: "invalid_runs",
-                    message: "Runs must be between 1 and 1,000,000.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
-            ),
             Self::ReactionPlanning(ReactionPlanningError::ReactionFormulaNotFound(_)) => (
                 StatusCode::NOT_FOUND,
                 ErrorBody {
@@ -724,16 +716,6 @@ impl IntoResponse for ApiError {
                     message: error.to_string(),
                     fields: None,
                     retryable: true,
-                    correlation_id: None,
-                },
-            ),
-            Self::ComponentExpansion(ComponentExpansionError::InvalidRuns) => (
-                StatusCode::BAD_REQUEST,
-                ErrorBody {
-                    code: "invalid_runs",
-                    message: "Runs must be between 1 and 1,000,000.".to_string(),
-                    fields: None,
-                    retryable: false,
                     correlation_id: None,
                 },
             ),
