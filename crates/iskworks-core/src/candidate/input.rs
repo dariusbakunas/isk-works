@@ -260,7 +260,7 @@ pub(super) fn normalize_blueprint(
             // Requesting more runs than one copy licenses is never an
             // error: the planner splits it into one job per copy
             // (`BlueprintSnapshot::max_runs_per_job`).
-            if kind == BlueprintKind::Copy && licensed_runs.map_or(true, |runs| runs == 0) {
+            if kind == BlueprintKind::Copy && licensed_runs.is_none_or(|runs| runs == 0) {
                 return Err(crate::BlueprintError::CopyRunsRequired.into());
             }
             Ok(CandidateBlueprintSelection::Manual {

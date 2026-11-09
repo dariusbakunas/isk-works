@@ -85,9 +85,7 @@ fn matches(entry: &CatalogueEntry, query: Option<&str>) -> bool {
     query
         .map(str::trim)
         .filter(|query| !query.is_empty())
-        .map_or(true, |query| {
-            entry.name.to_lowercase().contains(&query.to_lowercase())
-        })
+        .is_none_or(|query| entry.name.to_lowercase().contains(&query.to_lowercase()))
 }
 
 impl FitCatalogue {
@@ -166,9 +164,9 @@ impl FitCatalogue {
                 .values()
                 .filter(|entry| entry.kind == CatalogueKind::Module)
                 .filter(|entry| {
-                    entry.slot.is_some_and(|kind| {
-                        slot.map_or(true, |slot| slot == kind) && has_rack(kind)
-                    })
+                    entry
+                        .slot
+                        .is_some_and(|kind| slot.is_none_or(|slot| slot == kind) && has_rack(kind))
                 })
                 .filter(|entry| {
                     entry.slot != Some(SlotKind::Rig) || entry.rig_size == ship.rig_size
@@ -195,7 +193,7 @@ impl FitCatalogue {
                 .filter(|entry| {
                     module
                         .charge_size
-                        .map_or(true, |size| entry.charge_size == Some(size))
+                        .is_none_or(|size| entry.charge_size == Some(size))
                 })
                 .collect(),
         )

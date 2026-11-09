@@ -508,9 +508,7 @@ fn rank_product(
         .characters
         .iter()
         .enumerate()
-        .flat_map(|(index, character)| {
-            std::iter::repeat(index).take(character.colonies() as usize)
-        });
+        .flat_map(|(index, character)| std::iter::repeat_n(index, character.colonies() as usize));
     for chain in &chains {
         for colony in &chain.extraction {
             visits.push(ColonyVisit {

@@ -72,13 +72,13 @@ impl ErrorLimitGuard {
         let reset = header_number(headers, "x-esi-error-limit-reset").map(Duration::from_secs);
         let exhausted = status.as_u16() == ERROR_LIMITED_STATUS;
         record_budget(remain, reset, exhausted);
-        if !exhausted && remain.map_or(true, |remain| remain > ERROR_LIMIT_FLOOR) {
+        if !exhausted && remain.is_none_or(|remain| remain > ERROR_LIMIT_FLOOR) {
             return;
         }
         let pause = reset.unwrap_or(DEFAULT_PAUSE).min(MAX_PAUSE);
         let until = now + pause;
         let mut blocked_until = self.blocked_until.lock().expect("error limit lock");
-        if blocked_until.map_or(true, |current| current < until) {
+        if blocked_until.is_none_or(|current| current < until) {
             *blocked_until = Some(until);
             tracing::warn!(
                 status = status.as_u16(),

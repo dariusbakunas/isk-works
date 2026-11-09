@@ -75,7 +75,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         Ok(row.map_or_else(
             iskworks_core::EvidenceRefreshOverlay::default,
             |(state, next, error)| iskworks_core::EvidenceRefreshOverlay {
-                pending: state == "refreshing" || next.map_or(true, |due| due <= Utc::now()),
+                pending: state == "refreshing" || next.is_none_or(|due| due <= Utc::now()),
                 last_error: error,
             },
         ))
@@ -117,7 +117,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         Ok(row.map_or_else(
             iskworks_core::EvidenceRefreshOverlay::default,
             |(state, next, error)| iskworks_core::EvidenceRefreshOverlay {
-                pending: state == "refreshing" || next.map_or(true, |due| due <= Utc::now()),
+                pending: state == "refreshing" || next.is_none_or(|due| due <= Utc::now()),
                 last_error: error,
             },
         ))

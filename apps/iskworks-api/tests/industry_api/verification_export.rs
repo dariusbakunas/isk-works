@@ -295,7 +295,7 @@ fn all_worksheet_xml(bytes: &[u8]) -> String {
     let mut out = String::new();
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
-        if file.name().starts_with("xl/worksheets/sheet") {
+        if file.name().unwrap().starts_with("xl/worksheets/sheet") {
             let mut buf = String::new();
             file.read_to_string(&mut buf).unwrap();
             out.push_str(&buf);

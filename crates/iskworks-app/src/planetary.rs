@@ -509,7 +509,7 @@ impl PlanetaryService {
             alerts.starved += character_rollup.starved_count;
             planet_count += views.len();
             if let Some((planet_id, at)) = character_rollup.next_expiry {
-                if next_action.as_ref().map_or(true, |current| at < current.at) {
+                if next_action.as_ref().is_none_or(|current| at < current.at) {
                     next_action = Some(NextActionDto {
                         character_name: character.name.clone(),
                         planet_name: planet_name(planet_refs.get(&planet_id), planet_id),

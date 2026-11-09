@@ -681,7 +681,7 @@ fn category_change(inputs: &InsightInputs<'_>) -> Result<Option<Insight>, Financ
             let magnitude = (row.total.0 - previous.0).abs();
             if best
                 .as_ref()
-                .map_or(true, |(current, _)| magnitude > *current)
+                .is_none_or(|(current, _)| magnitude > *current)
             {
                 best = Some((
                     magnitude,

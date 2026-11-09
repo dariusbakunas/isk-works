@@ -15,12 +15,12 @@ members = [
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.88"
 license = "AGPL-3.0-or-later"
 
 [workspace.dependencies]
-# PI Planner optimiser. Pinned: later good_lp/microlp need a newer Rust than
-# the workspace MSRV (1.78); 1.12.0 resolves microlp 0.2.x, which builds on it.
+# PI Planner optimiser. Pinned while the workspace MSRV was 1.78 (1.12.0
+# resolves microlp 0.2.x); unpinning is a separate change.
 good_lp = { version = "=1.12.0", default-features = false, features = ["microlp"] }
 async-trait = "0.1"
 aes-gcm = "0.10"
@@ -33,7 +33,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 rust_decimal = { version = "1", features = ["serde-str"] }
-rust_xlsxwriter = "0.99"
+rust_xlsxwriter = "0.102"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate", "rust_decimal", "json"] }
 thiserror = "1"
 log = "0.4"
@@ -45,7 +45,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 url = "2"
-zip = "2"
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false, features = ["http-listener"] }
 metrics-util = { version = "0.20", default-features = false, features = ["debugging"] }
