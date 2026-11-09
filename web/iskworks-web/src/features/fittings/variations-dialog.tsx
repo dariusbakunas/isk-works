@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 
 import { getFitVariations, type CatalogueItem, type FitItemView, type PilotChoice } from "../../api/fittings";
 import { formatStat } from "./fittings-format";
+import { apiMessage } from "../../api/api-error";
 
 /** A module's variations (Tech I, Tech II, meta, faction, …) to swap it for. */
 export function VariationsDialog({
@@ -26,7 +27,7 @@ export function VariationsDialog({
     getFitVariations(item.typeId, pilot, controller.signal)
       .then((view) => setEntries(view.entries))
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Couldn't load variations.");
+        if (!controller.signal.aborted) setError(apiMessage(reason));
       });
     return () => controller.abort();
   }, [item.typeId, pilot]);

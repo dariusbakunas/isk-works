@@ -13,7 +13,7 @@ import {
 import { ApiError } from "../../../../api/workspace";
 import { InlineAlert } from "../../../../components/primitives";
 import { useLoad } from "../../../../hooks/use-load";
-import { apiMessage } from "../../inventory/shared";
+import { apiMessage } from "../../../../api/api-error";
 import { PlanetsPanel, type PlanetFilter } from "./planets-panel";
 import {
   loadCharacters,

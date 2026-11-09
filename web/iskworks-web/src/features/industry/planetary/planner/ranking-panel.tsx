@@ -290,7 +290,7 @@ export function RankingPanel({
                   </span>
                 ),
                 isk: (
-                  <span className="font-mono font-semibold" title={`${formatIskSummary(product.iskPerMonth)} ISK/mo`}>
+                  <span className="font-mono font-semibold" title={`${formatIskSummary(product.iskPerMonth)}/mo`}>
                     {formatIskCompact(product.iskPerMonth)}
                   </span>
                 ),

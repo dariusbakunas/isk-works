@@ -40,6 +40,7 @@ import {
   TraitsSection,
   hasBasics,
 } from "./type-info-sections";
+import { apiMessage } from "../../api/api-error";
 
 export type TypeInfoTab = "Description" | "Attributes" | "Traits" | "Requirements" | "Variations" | "Used with" | "Industry";
 
@@ -70,7 +71,7 @@ type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status:
 
 function failure(reason: unknown): Load<never> {
   if (reason instanceof ApiError && reason.status === 404) return { status: "missing" };
-  return { status: "failed", message: reason instanceof Error ? reason.message : "Couldn't load this item." };
+  return { status: "failed", message: apiMessage(reason) };
 }
 
 /** Loads `fetcher` whenever `key` changes; `null` key loads nothing. */

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 
 import { searchFitCatalogue, type CatalogueItem, type PilotChoice } from "../../api/fittings";
 import { EveTypeImage } from "../../components/eve-type-image";
+import { apiMessage } from "../../api/api-error";
 
 /** The charges a module loads, by module type, for this page's life. */
 const chargesByModule = new Map<number, Promise<CatalogueItem[]>>();
@@ -91,7 +92,7 @@ export function ChargePicker({
         const current = loaded.find((charge) => charge.typeId === chargeTypeId);
         setExpanded(current?.metaGroupId === FACTION_META_GROUP ? current.variationParent : null);
       })
-      .catch((reason: unknown) => live && setError(reason instanceof Error ? reason.message : "Couldn't load charges."));
+      .catch((reason: unknown) => live && setError(apiMessage(reason)));
     const close = () => setOpen(false);
     const outside = (event: PointerEvent) => {
       const target = event.target as Node;

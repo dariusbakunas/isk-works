@@ -25,7 +25,8 @@ import {
 } from "../../../components/operational-table";
 import { EmptyState, InlineAlert, Panel } from "../../../components/primitives";
 import { formatRelativeAge } from "../../characters/characters-formatters";
-import { apiMessage, type LoadState } from "../inventory/shared";
+import { apiMessage } from "../../../api/api-error";
+import type { LoadState } from "../inventory/shared";
 import {
   CcBadge,
   ExcludedCell,

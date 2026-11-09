@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { apiMessage } from "../features/industry/shared/api-error";
+import { apiMessage } from "../api/api-error";
 
 export interface AsyncActionState {
   busy: boolean;

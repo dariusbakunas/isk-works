@@ -11,6 +11,7 @@ import {
 } from "../../api/fittings";
 import { capacitorLabel, formatDistance, formatPercent, formatResist, formatStat } from "./fittings-format";
 import { useFitParams } from "./use-fittings";
+import { apiMessage } from "../../api/api-error";
 
 /** A stat the "Why?" view can explain: its label and dogma attribute. */
 interface Explainable {
@@ -72,7 +73,7 @@ function WhyPopover({ fitId, explain, onClose }: { fitId: string; explain: Expla
     explainFitAttribute(fitId, { attribute: explain.attribute, pilot, profile }, controller.signal)
       .then(setView)
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Couldn't explain it.");
+        if (!controller.signal.aborted) setError(apiMessage(reason));
       });
     return () => controller.abort();
   }, [fitId, explain.attribute, pilot, profile]);

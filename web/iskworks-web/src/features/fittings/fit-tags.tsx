@@ -3,6 +3,7 @@ import { useId, useState, type KeyboardEvent } from "react";
 
 import { setFitTags } from "../../api/fittings";
 import { PRIVATE_ATTR } from "../../observability/private";
+import { apiMessage } from "../../api/api-error";
 
 const sameTag = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
@@ -124,7 +125,7 @@ export function FitTagsEditor({
       setTags(await setFitTags(fitId, next));
       onChanged();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Couldn't save the tags.");
+      setError(apiMessage(reason));
     }
   };
 

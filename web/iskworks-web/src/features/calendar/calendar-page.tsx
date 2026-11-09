@@ -15,6 +15,7 @@ import { CalendarScopeHint } from "./calendar-scope-hint";
 import { parseCalendarUrlState, serializeCalendarUrlState, type CalendarUrlState } from "./calendar-url-state";
 import { CalendarWeekView } from "./calendar-week";
 import { CalendarYearView } from "./calendar-year";
+import { apiMessage } from "../../api/api-error";
 
 export function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,7 +68,7 @@ export function CalendarPage() {
       })
       .catch((caught: unknown) => {
         if (sequence !== requestSequence.current) return;
-        setError(caught instanceof Error ? caught.message : "Calendar request failed.");
+        setError(apiMessage(caught));
         setLoading(false);
       });
   }, [from.getTime(), to.getTime()]);
@@ -94,7 +95,7 @@ export function CalendarPage() {
       if (started.fixtureMode) window.location.reload();
       else window.location.assign(started.authorizationUrl);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not start EVE authorization.");
+      setError(apiMessage(caught));
     }
   }
 
