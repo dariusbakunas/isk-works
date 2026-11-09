@@ -336,15 +336,8 @@ pub fn project_create_coverage(
             required,
         });
         let average = balance.and_then(|item| item.average_unit_cost);
-        let projected_historical_cost = if owned >= required {
-            average
-                .map(|cost| cost.checked_mul_quantity(required))
-                .transpose()
-                .map_err(|_| ProductionError::ArithmeticOverflow)?
-        } else {
-            None
-        };
-        let quality = if owned < required {
+        let projected_historical_cost = projected_historical_cost(&figures, average, required)?;
+        let quality = if !figures.cost_resolvable {
             MaterialCostQuality::Unresolved
         } else if balance.is_some_and(|item| item.total_historical_cost == Money::zero()) {
             MaterialCostQuality::ZeroCost
@@ -383,7 +376,7 @@ pub fn project_create_coverage(
     let complete_quantity_coverage = lines.iter().all(|line| line.missing_quantity == 0);
     let complete_cost_coverage = lines
         .iter()
-        .all(|line| line.accounted_owned_quantity >= line.required_quantity);
+        .all(|line| line.available_to_this_build >= line.required_quantity);
     Ok(BuildCoverageReport {
         build_id,
         owner_id,
@@ -454,11 +447,67 @@ mod candidate_coverage_tests {
         assert_eq!(line.available_to_this_build, 900);
         assert_eq!(line.covered_quantity, 900);
         assert_eq!(line.missing_quantity, 100);
+        // 900 free units cannot cost a 1,000-unit line: the 300 reserved
+        // elsewhere are not this Build's, as on the saved Build's coverage.
+        assert_eq!(line.projected_historical_cost, None);
+        assert_eq!(line.cost_quality, MaterialCostQuality::Unresolved);
+        assert!(!coverage.complete_quantity_coverage);
+        assert!(!coverage.complete_cost_coverage);
+    }
+
+    #[test]
+    fn create_requirement_costs_a_line_free_stock_covers() {
+        let workspace_id = WorkspaceId::new();
+        let owner_id = OwnerId::new();
+        let balances = vec![crate::InventoryBalance {
+            key: crate::InventoryItemKey {
+                workspace_id,
+                owner_id,
+                type_id: 34,
+            },
+            type_name: "Tritanium".into(),
+            quantity: 1_200,
+            total_historical_cost: Money::parse("6000").unwrap(),
+            average_unit_cost: Some(Money::parse("5").unwrap()),
+            revision: 9,
+            last_activity_at: None,
+        }];
+        let requirements = vec![crate::PlannedMaterialLine {
+            type_id: 34,
+            type_name: "Tritanium".into(),
+            quantity_per_run: 800,
+            total_quantity: 800,
+            unit_price: Some(Money::parse("4").unwrap()),
+            line_total: Some(Money::parse("3200").unwrap()),
+            missing: false,
+            contributions: Vec::new(),
+            is_build_resolved: false,
+            installation_cost: None,
+            reused_quantity: None,
+            missing_quantity: None,
+            reused_line_total: None,
+            planning_evidence: None,
+        }];
+        let reservations = BTreeMap::from([(34, 300)]);
+
+        let coverage = project_create_coverage(
+            BuildId::new(),
+            owner_id,
+            "recipe",
+            1,
+            &requirements,
+            &balances,
+            &reservations,
+        )
+        .unwrap();
+
+        let line = &coverage.material_lines[0];
         assert_eq!(
             line.projected_historical_cost,
-            Some(Money::parse("5000").unwrap())
+            Some(Money::parse("4000").unwrap())
         );
-        assert!(!coverage.complete_quantity_coverage);
+        assert_eq!(line.cost_quality, MaterialCostQuality::Known);
+        assert!(coverage.complete_quantity_coverage);
         assert!(coverage.complete_cost_coverage);
     }
 }
