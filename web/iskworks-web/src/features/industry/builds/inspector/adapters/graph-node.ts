@@ -14,7 +14,7 @@ import {
   coverageSplit,
   fulfillmentSentence,
   sourcingSummary,
-} from "../sourcing-coverage";
+} from "../../../../../lib/sourcing-coverage";
 import { warningLabel } from "../../graph/graph-warnings";
 import type { BuildGraphNodeData } from "../../graph/to-react-flow";
 import type { BuildSettings } from "../../use-build-settings";

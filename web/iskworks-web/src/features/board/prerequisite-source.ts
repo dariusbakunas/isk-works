@@ -25,7 +25,7 @@
 
 import type { RequirementKind } from "../../api/industry";
 import type { Tone } from "../../components/primitives";
-import { coverageSplit, sourcingSummary } from "../industry/builds/inspector/sourcing-coverage";
+import { coverageSplit, sourcingSummary } from "../../lib/sourcing-coverage";
 import { requirementKindMeta } from "./order-meta";
 
 // The base word `sourcingSummary` accepts (its union spells reactions

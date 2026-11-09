@@ -13,7 +13,7 @@ import {
   sortEntries,
   type RosterFilter,
   type RosterSort,
-} from "./characters-formatters";
+} from "../../lib/characters-formatters";
 
 type LoadState =
   | { status: "loading" }

@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { skillLevelNumeral } from "./characters-formatters";
+import { skillLevelNumeral } from "../../lib/characters-formatters";
 import type { LevelCellState } from "./skill-queue-summary";
 
 // Five flat level tiles, drawn to read like EVE's in-client skill queue

@@ -12,7 +12,7 @@ import {
 import { MoneyAmount, formatIskForSentence } from "../../components/money";
 import { ConfirmDialog, KV } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
-import { InventoryPreviewPanel } from "../industry/inventory/inventory-posting-panel";
+import { InventoryPreviewPanel } from "../../components/inventory-preview-panel";
 
 interface Props {
   row: FinanceTransaction;

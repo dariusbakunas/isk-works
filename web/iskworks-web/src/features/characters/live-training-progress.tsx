@@ -1,5 +1,5 @@
 import type { SkillQueueEntry } from "../../api/characters";
-import { formatRelativeAge, formatRemainingMs, formatTrainingSkillLabel } from "./characters-formatters";
+import { formatRelativeAge, formatRemainingMs, formatTrainingSkillLabel } from "../../lib/characters-formatters";
 import { useTrainingCountdown } from "./use-training-countdown";
 
 const STALE_OBSERVATION_MS = 2 * 60 * 60 * 1000;

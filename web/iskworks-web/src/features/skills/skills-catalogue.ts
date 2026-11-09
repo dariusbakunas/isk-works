@@ -1,5 +1,5 @@
 import type { CatalogueSkill, SkillProgress, SkillState } from "../../api/skills";
-import { formatRemainingMs, skillLevelNumeral } from "../characters/characters-formatters";
+import { formatRemainingMs, skillLevelNumeral } from "../../lib/characters-formatters";
 
 // The client's own catalogue filters. "My skills" is everything injected;
 // "Can train now" is injected and below V (or queued/training); "Have

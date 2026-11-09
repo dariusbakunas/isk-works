@@ -24,7 +24,7 @@ import {
   type OperationalColumn,
 } from "../../../components/operational-table";
 import { EmptyState, InlineAlert, Panel } from "../../../components/primitives";
-import { formatRelativeAge } from "../../characters/characters-formatters";
+import { formatRelativeAge } from "../../../lib/characters-formatters";
 import { apiMessage } from "../../../api/api-error";
 import type { LoadState } from "../inventory/shared";
 import {

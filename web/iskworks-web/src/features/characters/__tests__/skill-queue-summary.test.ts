@@ -6,7 +6,7 @@ import {
   SKILL_QUEUE_CAPACITY,
   type SkillQueueSummaryInput,
 } from "../skill-queue-summary";
-import { formatRemainingMs } from "../characters-formatters";
+import { formatRemainingMs } from "../../../lib/characters-formatters";
 
 const NOW = Date.parse("2026-09-09T12:00:00Z");
 const MIN = 60_000;

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { CharacterDetail, IndustryJob } from "../../api/characters";
 import type { Tone } from "../../components/primitives";
 import { textToneClasses } from "../../components/primitives";
-import { industryCategoryStats, missingScopeFrom, type IndustryCategoryStat } from "./characters-formatters";
+import { industryCategoryStats, missingScopeFrom, type IndustryCategoryStat } from "../../lib/characters-formatters";
 import { industryActivityBadge, industryJobLocation, industryJobName, industryJobProgress } from "./industry-jobs";
 
 // The inspector's Industry tab: three skill-derived slot cards over a

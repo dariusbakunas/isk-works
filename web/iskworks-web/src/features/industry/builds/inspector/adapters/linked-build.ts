@@ -33,7 +33,7 @@ import {
   coverageSplit,
   fulfillmentSentence as sourcingFulfillmentSentence,
   sourcingSummary,
-} from "../sourcing-coverage";
+} from "../../../../../lib/sourcing-coverage";
 import type { BuildSettings } from "../../use-build-settings";
 import type {
   CostState,

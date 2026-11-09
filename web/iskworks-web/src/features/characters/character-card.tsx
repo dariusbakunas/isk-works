@@ -5,7 +5,7 @@ import { StatusDot, textToneClasses } from "../../components/primitives";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import { CharacterName } from "../../observability/private";
-import { formatRelativeAge, healthBorderClass, healthMeta, industryCategoryStats, securityStatusTone } from "./characters-formatters";
+import { formatRelativeAge, healthBorderClass, healthMeta, industryCategoryStats, securityStatusTone } from "../../lib/characters-formatters";
 import { LiveTrainingProgress } from "./live-training-progress";
 
 export function CharacterCard({

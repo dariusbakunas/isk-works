@@ -9,7 +9,7 @@ import {
   type SkillPlanDetail,
 } from "../../api/skills";
 import { InlineAlert } from "../../components/primitives";
-import { skillLevelNumeral } from "../characters/characters-formatters";
+import { skillLevelNumeral } from "../../lib/characters-formatters";
 import { errorMessage } from "./skill-plans";
 
 const REASONS = {

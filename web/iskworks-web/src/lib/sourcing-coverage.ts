@@ -1,7 +1,7 @@
 // Neutral, pure sourcing-presentation helper -- ONE interpretation of
 // `required` + `remaining` + fulfillment scope + sourcing kind, shared by
 // the Build Graph cards, the Graph inspector adapter and the shared
-// linked-Build inspector (Worksheet + Graph).
+// linked-Build inspector (Worksheet + Graph), and the Board's prerequisite source.
 //
 // PRESENTATION ONLY. Callers pass the *live* "remaining after inventory"
 // quantity for their surface -- an acquisition node's `missingQuantity`, a

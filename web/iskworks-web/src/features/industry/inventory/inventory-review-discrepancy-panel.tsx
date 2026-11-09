@@ -11,7 +11,7 @@ import { formatIskSummary } from "../../../components/money";
 import { MoneyInput, type MoneyInputResult } from "../../../components/money-input";
 import { InlineAlert } from "../../../components/primitives";
 import { apiMessage } from "./shared";
-import { InventoryPreviewPanel } from "./inventory-posting-panel";
+import { InventoryPreviewPanel } from "../../../components/inventory-preview-panel";
 
 /**
  * The Overview tab's "Review discrepancy" flow -- an inline panel, not a

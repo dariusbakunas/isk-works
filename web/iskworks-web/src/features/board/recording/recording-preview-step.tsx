@@ -1,7 +1,7 @@
 import type { RecordingPreview, RecordingPreviewLine } from "../../../api/industry";
 import { Badge, InlineAlert } from "../../../components/primitives";
 import { formatIskSummary } from "../../../components/money";
-import { AverageCostChange } from "../../industry/inventory/inventory-posting-panel";
+import { AverageCostChange } from "../../../components/inventory-preview-panel";
 
 function Change({ label, from, to }: { label: string; from: string; to: string }) {
   return (
