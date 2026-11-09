@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { type AutomaticEiv, type FacilityProfile, type FacilityRole } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 /**
  * One role-filtered facility slot (manufacturing or reaction), sliced from

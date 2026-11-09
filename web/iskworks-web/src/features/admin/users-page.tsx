@@ -21,8 +21,8 @@ import {
   StatusBadge,
 } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
-import { apiMessage } from "../industry/shared/api-error";
-import { formatDate } from "../industry/shared/formatting";
+import { apiMessage } from "../../api/api-error";
+import { formatDate } from "../../lib/formatting";
 import { TypeToConfirmDialog } from "./type-to-confirm-dialog";
 
 type AsyncState<T> =

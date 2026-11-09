@@ -21,7 +21,7 @@ import {
   type TicketSummary,
 } from "../../api/industry";
 import { Badge, InlineAlert, LoadingState, PageHeader, StatusDot, type Tone } from "../../components/primitives";
-import { apiMessage } from "../industry/shared/api-error";
+import { apiMessage } from "../../api/api-error";
 import {
   boardEpicCardIsVisible,
   filterBoardTickets,

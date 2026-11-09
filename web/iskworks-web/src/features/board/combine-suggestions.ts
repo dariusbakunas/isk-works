@@ -1,5 +1,5 @@
 import type { FacilityProfile, Order, Ticket } from "../../api/industry";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { sumDecimalStrings } from "../../lib/decimal";
 import { isCombinableTicket } from "./ticket-selection";
 
 // Groups of Board tickets the user could Combine in one go: unstarted

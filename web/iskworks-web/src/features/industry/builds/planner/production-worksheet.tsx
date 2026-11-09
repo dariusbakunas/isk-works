@@ -10,7 +10,7 @@ import {
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
-import { effectiveUnitCost } from "../../shared/decimal";
+import { effectiveUnitCost } from "../../../../lib/decimal";
 import { PRODUCTION_WORKSHEET_COLUMNS } from "./worksheet-columns";
 
 export function ProductionWorksheet({

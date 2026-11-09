@@ -3,7 +3,7 @@ import { MapPin, Tag } from "lucide-react";
 import type { AcquisitionRun, Ticket } from "../../api/industry";
 import { Badge, ProgressBar } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { sumDecimalStrings } from "../../lib/decimal";
 import { acquisitionPricingIdentity } from "./acquisition-pricing";
 import { acquisitionRunStatusMeta } from "./ticket-meta";
 import { consolidateOrderTicketsByType } from "./order-ticket-consolidation";

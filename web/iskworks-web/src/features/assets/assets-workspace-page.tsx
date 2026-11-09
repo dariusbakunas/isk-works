@@ -5,8 +5,8 @@ import { exportAssets, syncAssets, type AssetBlueprintKindFilter, type AssetColu
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { CharacterName } from "../../observability/private";
-import { FinanceCheckbox, FinanceFilterSection } from "../finance/finance-filter-controls";
-import { ExportColumnsDialog } from "../industry/shared/export-columns-dialog";
+import { FinanceCheckbox, FinanceFilterSection } from "../../components/finance-filter-controls";
+import { ExportColumnsDialog } from "../../components/export-columns-dialog";
 import { formatAssetDecimal } from "./asset-format";
 import { AssetInspector } from "./asset-inspector";
 import { useAssetsQuery } from "./use-assets-query";

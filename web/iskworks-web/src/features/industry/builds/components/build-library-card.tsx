@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 
 import type { Build } from "../../../../api/industry";
 import { DropdownMenu } from "../../../../components/dropdown-menu";
-import { formatDate, formatRelativeAge } from "../../shared/formatting";
+import { formatDate, formatRelativeAge } from "../../../../lib/formatting";
 import { BlueprintThumbnail } from "./blueprint-thumbnail";
 
 function outputName(build: Build): string {

@@ -10,7 +10,7 @@ import {
 import { MoneyInput } from "../../../components/money-input/money-input";
 import type { MoneyInputResult } from "../../../components/money-input/parse-money-input";
 import { InlineAlert } from "../../../components/primitives";
-import { apiMessage } from "../../industry/shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { newIdempotencyKey } from "./recording-meta";
 import { RecordingPreviewStep } from "./recording-preview-step";
 

@@ -35,7 +35,7 @@ import { EmptyState, InlineAlert, Panel } from "../../../../components/primitive
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { focusExecutionPlan } from "../focused-producer-projection";
 import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 import { CostAmount, ExecutionNodeRow, Quantity } from "./execution-node-row";
 import { costWarningLabel } from "./stage-warnings";

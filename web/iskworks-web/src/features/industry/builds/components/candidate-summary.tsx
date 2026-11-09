@@ -4,8 +4,8 @@ import { useRef, useState, type ReactNode } from "react";
 import type { CreateBuildPlanPreview } from "../../../../api/industry";
 import { WarningBadge } from "../../../../components/warning-badge";
 import { CalculationEvidenceModal } from "../planner/calculation-evidence-modal";
-import { effectiveUnitCost } from "../../shared/decimal";
-import { formatMoney } from "../../shared/formatting";
+import { effectiveUnitCost } from "../../../../lib/decimal";
+import { formatMoney } from "../../../../lib/formatting";
 
 type CandidatePreview = CreateBuildPlanPreview;
 

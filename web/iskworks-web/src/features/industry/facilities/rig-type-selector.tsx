@@ -9,8 +9,8 @@ import {
   searchStructureRigs,
   type TypeSearchResult,
 } from "../../../api/sde";
-import { apiMessage } from "../shared/api-error";
-import { Field } from "../shared/field";
+import { apiMessage } from "../../../api/api-error";
+import { Field } from "../../../components/field";
 
 /** Human-readable summary of which jobs a rig's bonuses reach. `null`/`null`
  * means the rig has no target filter in the SDE -- it applies to every job

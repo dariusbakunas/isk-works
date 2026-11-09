@@ -7,8 +7,8 @@ import { EveTypeImage } from "../../../components/eve-type-image";
 import { MoneyInput, type MoneyInputResult } from "../../../components/money-input";
 import { ConfirmDialog, EmptyState, InlineAlert, PageHeader, Panel } from "../../../components/primitives";
 import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
-import { apiMessage } from "../shared/api-error";
-import { Field } from "../shared/field";
+import { apiMessage } from "../../../api/api-error";
+import { Field } from "../../../components/field";
 import { PriceItemsOperationalTable } from "./price-items-operational-table";
 
 export function PriceSourceDetailPage() {

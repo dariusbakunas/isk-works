@@ -5,7 +5,7 @@ import type { AnalyticsGranularity } from "../../../api/finance-analytics";
 import type { FinanceCharacter } from "../../../api/finance";
 import { CharacterName, PRIVATE_ATTR } from "../../../observability/private";
 import { Segment } from "../../calendar/calendar-filters";
-import { FinanceDateField } from "../finance-filter-controls";
+import { FinanceDateField } from "../../../components/finance-filter-controls";
 import type { AnalyticsUrlState, RangePreset } from "./analytics-url-state";
 
 const PRESET_OPTIONS = [

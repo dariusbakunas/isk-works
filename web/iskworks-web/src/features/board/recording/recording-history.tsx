@@ -5,7 +5,7 @@ import {
   type TicketInventoryRecording,
 } from "../../../api/industry";
 import { Badge, ConfirmDialog, InlineAlert } from "../../../components/primitives";
-import { apiMessage } from "../../industry/shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 
 function signed(quantity: number): string {
   return `${quantity >= 0 ? "+" : ""}${quantity.toLocaleString()}`;

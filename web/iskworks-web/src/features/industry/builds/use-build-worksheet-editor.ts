@@ -42,7 +42,7 @@ import {
   type ReactionFormulaSearchResult,
   type ReactionPlan,
 } from "../../../api/sde";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
 import { automaticPricingRetryDelay, MAX_MARKET_SYNC_RETRIES } from "./planner/preview-retry";
 import { useFacilitySelection } from "./planner/use-facility-selection";

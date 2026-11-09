@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { getBuild, type Build } from "../../../api/industry";
 import { InlineAlert, Panel } from "../../../components/primitives";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { BuildWorksheetEditor } from "./build-worksheet-editor";
 
 type LoadState =

@@ -11,7 +11,7 @@ import {
 } from "../../api/industry";
 import { InlineAlert } from "../../components/primitives";
 import { IndustryJobRow } from "../characters/character-industry-tab";
-import { apiMessage } from "../industry/shared/api-error";
+import { apiMessage } from "../../api/api-error";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted">{children}</h3>;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import type { BlueprintLibraryRow } from "../../../../api/industry";
 import { BLUEPRINT_EXPORT_COLUMNS, blueprintLibraryCsv, DEFAULT_EXPORT_COLUMNS, EXPORT_COLUMNS_STORAGE_KEY } from "../blueprint-export";
-import { readStoredColumns, storeColumns } from "../../shared/export-columns-dialog";
+import { readStoredColumns, storeColumns } from "../../../../components/export-columns-dialog";
 
 const base: BlueprintLibraryRow = {
   observationId: "obs-1",

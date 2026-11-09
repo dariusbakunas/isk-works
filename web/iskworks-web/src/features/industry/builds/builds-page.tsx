@@ -12,8 +12,8 @@ import {
   PageHeader,
   Panel,
 } from "../../../components/primitives";
-import { apiMessage } from "../shared/api-error";
-import { Field } from "../shared/field";
+import { apiMessage } from "../../../api/api-error";
+import { Field } from "../../../components/field";
 import {
   activeFilterChips,
   categoryOptions,

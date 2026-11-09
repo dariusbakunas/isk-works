@@ -4,8 +4,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import type { BlueprintObservation } from "../../../../api/industry";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { EmptyState, Panel } from "../../../../components/primitives";
-import { Field } from "../../shared/field";
-import { formatDate, splitCamel } from "../../shared/formatting";
+import { Field } from "../../../../components/field";
+import { formatDate, splitCamel } from "../../../../lib/formatting";
 import { jobCount } from "./job-split";
 
 export interface BlueprintSelectionFieldsProps {

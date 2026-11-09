@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBuild, type Build } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 import type { BuildGraphNode } from "./to-react-flow";
 

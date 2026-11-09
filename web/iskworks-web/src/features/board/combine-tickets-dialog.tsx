@@ -4,8 +4,8 @@ import { combineTickets, type Ticket } from "../../api/industry";
 import { InlineAlert } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { CharacterName } from "../../observability/private";
-import { apiMessage } from "../industry/shared/api-error";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { apiMessage } from "../../api/api-error";
+import { sumDecimalStrings } from "../../lib/decimal";
 
 // The Epic a step ticket serves (a selectable step has exactly one).
 function epicOf(ticket: Ticket): string | null {

@@ -18,7 +18,7 @@ import type {
 } from "../../../../api/industry";
 import type { BuildPlanLine } from "../../../../api/sde";
 import { MoneyInput } from "../../../../components/money-input";
-import { formatDate, formatMoney } from "../../shared/formatting";
+import { formatDate, formatMoney } from "../../../../lib/formatting";
 export { BlueprintSelectionSection, BlueprintPlanningDialog } from "../planner/blueprint-selection-section";
 
 export function pricingPolicyLabel(policy: MarketPricingPolicy | null): string {

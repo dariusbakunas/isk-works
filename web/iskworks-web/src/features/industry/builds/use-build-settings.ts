@@ -10,7 +10,7 @@ import {
   type MarketPricingPolicy,
   type MarketScope,
 } from "../../../api/industry";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 
 export interface BuildFacilityPatch {
   facilityProfileId: string | null;

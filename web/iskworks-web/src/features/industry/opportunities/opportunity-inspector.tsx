@@ -4,7 +4,7 @@ import type { FacilityProfile, MarketScope } from "../../../api/industry";
 import type { OpportunityCandidate, OpportunityExcludedCost, OpportunityValuation } from "../../../api/opportunities";
 import { formatIskCompact, formatIskSummary } from "../../../components/money";
 import { PlannerInspectorShell } from "../../../components/planner-inspector-shell";
-import { formatDuration } from "../shared/formatting";
+import { formatDuration } from "../../../lib/formatting";
 import { EvidenceQualityBadge } from "./opportunity-badges";
 import { describeMarketScope, formatEvidenceAge, formatOpportunityPercent } from "./opportunity-formatters";
 import { WarningCard } from "./opportunity-warnings";

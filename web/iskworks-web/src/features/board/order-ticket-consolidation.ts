@@ -1,5 +1,5 @@
 import type { AcquisitionRunItem, Ticket } from "../../api/industry";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { sumDecimalStrings } from "../../lib/decimal";
 
 export interface ConsolidatedOrderItem {
   typeId: number;

@@ -4,9 +4,9 @@ import { Link, useNavigate } from "react-router";
 import { createPriceSource, listPriceSources, type PriceSource } from "../../../api/industry";
 import { ButtonLink, EmptyState, InlineAlert, PageHeader, Panel, StatusBadge } from "../../../components/primitives";
 import { Private } from "../../../observability/private";
-import { apiMessage } from "../shared/api-error";
-import { Field } from "../shared/field";
-import { formatDate } from "../shared/formatting";
+import { apiMessage } from "../../../api/api-error";
+import { Field } from "../../../components/field";
+import { formatDate } from "../../../lib/formatting";
 
 type AsyncState<T> =
   | { status: "loading" }

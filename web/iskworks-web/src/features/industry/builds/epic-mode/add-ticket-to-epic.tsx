@@ -2,7 +2,7 @@ import { useState } from "react";
 import { listCharacters, type CharacterRosterEntry } from "../../../../api/characters";
 import { listBuilds, listOrders, type Build, type OrderSummary } from "../../../../api/industry";
 import { TicketEditor } from "../../../board/ticket-editor";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 interface EditorData {
   orders: OrderSummary[];

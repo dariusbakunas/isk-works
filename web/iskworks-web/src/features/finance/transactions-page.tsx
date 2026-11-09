@@ -33,7 +33,7 @@ import {
 } from "../../api/finance";
 import { MoneyAmount, formatIskCompact } from "../../components/money";
 import { CharacterName, Private } from "../../observability/private";
-import { FinanceCheckbox, FinanceDateField, FinanceFilterSection } from "./finance-filter-controls";
+import { FinanceCheckbox, FinanceDateField, FinanceFilterSection } from "../../components/finance-filter-controls";
 import { InventoryRecordingCell } from "./inventory-recording-cell";
 import { parseTransactionsUrlFilter, parseTransactionsUrlLabels } from "./transactions-url-state";
 import { useFinanceTransactions } from "./use-finance-transactions";

@@ -23,8 +23,8 @@ import type {
 } from "../../../../api/industry";
 import { formatIskSummary } from "../../../../components/money";
 import { reconcileObservedSelection } from "../../builds/planner/available-blueprint";
-import { sumDecimalStrings } from "../../shared/decimal";
-import { formatPercent } from "../../shared/formatting";
+import { sumDecimalStrings } from "../../../../lib/decimal";
+import { formatPercent } from "../../../../lib/formatting";
 import {
   recipeCurrencyChip,
   recipeCurrencyExplanation,

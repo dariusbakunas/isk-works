@@ -5,7 +5,7 @@ import {
   type ExecutionPlanProjection,
   type PreviewBuildPlanCommand,
 } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 // Mirrors `useBuildMaterials` exactly (same debounce/abort/error shape) --
 // Stages is another live projection of the same unsaved editor overlay, not

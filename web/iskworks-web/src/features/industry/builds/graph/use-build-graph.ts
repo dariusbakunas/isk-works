@@ -6,7 +6,7 @@ import {
   type GraphWarning,
   type PreviewBuildPlanCommand,
 } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 import {
   applyGraphCollapse,

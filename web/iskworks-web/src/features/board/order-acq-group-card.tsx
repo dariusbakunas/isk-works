@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import type { TicketStatus } from "../../api/industry";
 import { Badge, type Tone } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { sumDecimalStrings } from "../../lib/decimal";
 import { acquisitionPricingIdentity, type AcquisitionPricingIcon } from "./acquisition-pricing";
 import type { OrderAcquisitionGroup } from "./order-acq-group";
 import { isBatchableOrderTicket } from "./ticket-selection";

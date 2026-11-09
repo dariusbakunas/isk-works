@@ -9,7 +9,7 @@ import {
   type ReuseChange,
 } from "../../../../api/industry/orders";
 import type { PreviewBuildPlanCommand } from "../../../../api/industry/builds";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 import { InlineAlert } from "../../../../components/primitives";
 
 /**

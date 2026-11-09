@@ -16,9 +16,9 @@ import {
 import { getStructureManufacturingModifiers, searchStructureTypes } from "../../../api/sde";
 import { ButtonLink, InlineAlert } from "../../../components/primitives";
 import { MoneyInput, type MoneyInputResult } from "../../../components/money-input";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { parseStructureReference } from "../shared/structure-reference";
-import { Field } from "../shared/field";
+import { Field } from "../../../components/field";
 import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
 import { RigTypeSelector } from "./rig-type-selector";
 
