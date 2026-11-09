@@ -1,5 +1,5 @@
 import type { PriceSourceItem } from "../../../api/industry";
-import { formatIskCompact, formatIskSummary } from "../../../components/money";
+import { IskCompact } from "../../../components/money";
 import { EveTypeImage } from "../../../components/eve-type-image";
 import {
   OperationalTable,
@@ -48,18 +48,11 @@ function PriceRow({ item }: { item: PriceSourceItem }) {
     ),
     typeId: <span className="text-muted">{item.typeId}</span>,
     updated: <span className="text-muted">{formatDate(item.updatedAt)}</span>,
-    price: <Money value={item.price} />,
+    price: <IskCompact value={item.price} />,
   };
   return <OperationalTableRow cells={cells} rowKey={rowKey(item)} />;
 }
 
-function Money({ value }: { value: string }) {
-  return (
-    <span className="whitespace-nowrap font-mono tabular-nums" title={formatIskSummary(value)}>
-      {formatIskCompact(value)}
-    </span>
-  );
-}
 
 export function rowKey(item: PriceSourceItem): string {
   return rowKeyForTypeId(item.typeId);

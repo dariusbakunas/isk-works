@@ -1,7 +1,8 @@
 import type { Build } from "../../../../api/industry";
 import { InlineAlert, Panel } from "../../../../components/primitives";
 import { focusExecutionPlan } from "../focused-producer-projection";
-import { CostAmount, Quantity } from "../stages/execution-node-row";
+import { Quantity } from "../stages/execution-node-row";
+import { IskCompact } from "../../../../components/money";
 import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 
@@ -58,5 +59,5 @@ export function FocusedProducerSummary({
 }
 
 function money(value: string | null) {
-  return value == null ? <span className="text-xs text-muted">Incomplete</span> : <CostAmount value={value} />;
+  return value == null ? <span className="text-xs text-muted">Incomplete</span> : <IskCompact value={value} />;
 }

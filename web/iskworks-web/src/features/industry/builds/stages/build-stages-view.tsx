@@ -37,7 +37,8 @@ import { focusExecutionPlan } from "../focused-producer-projection";
 import { useEpicExecutionPlan } from "../epic-mode/use-epic-execution-plan";
 import { apiMessage } from "../../../../api/api-error";
 
-import { CostAmount, ExecutionNodeRow, Quantity } from "./execution-node-row";
+import { ExecutionNodeRow, Quantity } from "./execution-node-row";
+import { IskCompact } from "../../../../components/money";
 import { costWarningLabel } from "./stage-warnings";
 import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
 import { StagesInspector } from "./stages-inspector";
@@ -516,7 +517,7 @@ function AcquisitionSection({
                 // The fresh (to-buy) price and cost for the shortage, from the
                 // cost projection -- "Unpriced" rather than a fabricated 0.
                 unitPrice: line.freshUnitPrice ? (
-                  <CostAmount value={line.freshUnitPrice} />
+                  <IskCompact value={line.freshUnitPrice} />
                 ) : (
                   <span className="text-xs text-muted">—</span>
                 ),
@@ -550,7 +551,7 @@ function freshCostCell(line: AcquisitionLine): ReactNode {
   if (line.freshCost == null) return <span className="text-xs text-warning">Unpriced</span>;
   return (
     <span className="inline-flex items-center gap-1">
-      <CostAmount value={line.freshCost} />
+      <IskCompact value={line.freshCost} />
       {line.freshPriceStale ? (
         <span className="text-[10px] uppercase text-warning" title="At least one price is stale">
           stale

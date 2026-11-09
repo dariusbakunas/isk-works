@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import type { EpicNodeProgress, ExecutionNode, ExecutionPlanProjection, TicketStatus } from "../../../../api/industry";
 import { Badge } from "../../../../components/primitives";
 import { EveTypeImage } from "../../../../components/eve-type-image";
-import { formatIskCompact, formatIskSummary } from "../../../../components/money";
+import { IskCompact } from "../../../../components/money";
 import { OperationalTableRow } from "../../../../components/operational-table";
 
 const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
@@ -103,7 +103,7 @@ function executionNodeCells(
     cells.install = moneyOrIncomplete(node.ownInstallationCost);
     cells.total =
       node.costComplete && node.totalProductionCost != null ? (
-        <CostAmount value={node.totalProductionCost} />
+        <IskCompact value={node.totalProductionCost} />
       ) : (
         <span className="text-xs text-muted">Incomplete</span>
       );
@@ -141,16 +141,6 @@ export function Quantity({ value, className = "" }: { value: number; className?:
 }
 
 function moneyOrIncomplete(value: string | null): ReactNode {
-  return value != null ? <CostAmount value={value} /> : <span className="text-xs text-muted">Incomplete</span>;
+  return value != null ? <IskCompact value={value} /> : <span className="text-xs text-muted">Incomplete</span>;
 }
 
-/** Compact-in-cell, exact-on-hover -- the shared ISK table-cell convention
- * (see `price-items-operational-table.tsx`), not `MoneyAmount`'s full-digit
- * display, so a large production cost never crowds this dense row. */
-export function CostAmount({ value }: { value: string }) {
-  return (
-    <span className="whitespace-nowrap font-mono tabular-nums" title={formatIskSummary(value)}>
-      {formatIskCompact(value)}
-    </span>
-  );
-}
