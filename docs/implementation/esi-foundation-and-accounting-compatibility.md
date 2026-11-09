@@ -81,7 +81,7 @@ WEB_APP_URL
 
 `TOKEN_ENCRYPTION_KEY` is standard base64 for exactly 32 random bytes. Official protocol URLs have defaults and can be overridden with `EVE_SSO_AUTHORIZATION_URL`, `EVE_SSO_TOKEN_URL`, `EVE_SSO_JWKS_URL`, `EVE_SSO_ISSUER`, and `EVE_ESI_BASE_URL`.
 
-`ISKWORKS_ESI_MOCK=1` explicitly enables deterministic local fixture mode. It is disabled by default and bypasses external authorization only to exercise the same encrypted-token, refresh, synchronization, storage, reconciliation, proposal, and accounting paths.
+`ISKWORKS_ESI_MOCK=1` explicitly enables deterministic local fixture mode. It is disabled by default and bypasses external authorization only to exercise the same encrypted-token, refresh, synchronization, storage, reconciliation, proposal, and accounting paths. The fixture transport is compiled only with the `esi-fixture` cargo feature (enabled by `make api` and `make worker`, never by release builds), so a release image started with `ISKWORKS_ESI_MOCK=1` refuses to start. Fixture mode needs a `TOKEN_ENCRYPTION_KEY` like real mode; there is no built-in key.
 
 ## Verification
 

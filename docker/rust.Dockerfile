@@ -26,6 +26,10 @@ COPY scripts/fitting-data.sh ./scripts/
 RUN bash scripts/fitting-data.sh /fitting
 
 FROM ${BASE_REGISTRY}/rust:1-bookworm AS builder
+# Extra cargo features, for local builds only (the root docker-compose.yml
+# passes `iskworks-worker/esi-fixture` when asked). Release builds leave it
+# empty, so release images have no fixture ESI mode.
+ARG CARGO_FEATURES=""
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
@@ -46,7 +50,7 @@ COPY migrations ./migrations
 RUN --mount=type=cache,id=iskworks-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=iskworks-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=iskworks-cargo-target,target=/app/target,sharing=locked \
-    cargo build --release --locked \
+    cargo build --release --locked ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} \
       -p iskworks-api -p iskworks-admin -p iskworks-worker -p iskworks-sde-import \
     && mkdir -p /out \
     && cp target/release/iskworks-api target/release/iskworks-admin \

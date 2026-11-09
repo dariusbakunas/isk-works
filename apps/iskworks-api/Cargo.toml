@@ -11,6 +11,9 @@ license.workspace = true
 default-run = "iskworks-api"
 
 [features]
+# Local-development-only fixture ESI data (`ISKWORKS_ESI_MOCK=1`); see
+# iskworks-app's `esi-fixture`. Never enabled by release builds.
+esi-fixture = ["iskworks-app/esi-fixture"]
 # Local/agent-verification-only login bypass — see routes/dev_auth.rs.
 # Never enable in a release build: absent from `default`, and the Dockerfile
 # builds with a bare `cargo build --release` that never passes --features.

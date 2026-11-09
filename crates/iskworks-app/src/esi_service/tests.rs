@@ -1496,3 +1496,15 @@ async fn a_blueprint_turning_invalid_keeps_its_last_good_row(pool: sqlx::PgPool)
     // Item 1 keeps its last good values; item 2 is gone for real.
     assert_eq!(stored_blueprints(&pool).await, vec![(1, 5, 10)]);
 }
+
+#[test]
+fn fixture_mode_is_refused_by_a_build_without_the_fixture_transport() {
+    assert!(matches!(
+        fixture_mode_requested(Some("1"), false),
+        Err(EsiApplicationError::Configuration(message)) if message.contains("esi-fixture")
+    ));
+    assert!(fixture_mode_requested(Some("1"), true).unwrap());
+    for unset in [None, Some("0"), Some("")] {
+        assert!(!fixture_mode_requested(unset, false).unwrap());
+    }
+}
