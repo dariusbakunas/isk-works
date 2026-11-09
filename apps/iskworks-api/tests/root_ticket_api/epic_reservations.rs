@@ -1428,6 +1428,141 @@ async fn recording_alone_does_not_complete_the_epic(pool: PgPool) {
     assert!(epic_completed_at(&fx, &order_id).await.is_null());
 }
 
+/// Makes every Epic completion fail inside Postgres, so a test can check
+/// that the ticket write that triggered it rolled back with it.
+async fn refuse_epic_completion(pool: &PgPool) {
+    sqlx::query(
+        "CREATE FUNCTION test_refuse_epic_completion() RETURNS trigger AS $$ \
+         BEGIN \
+           IF NEW.completed_at IS NOT NULL AND OLD.completed_at IS NULL THEN \
+             RAISE EXCEPTION 'Epic completion refused by test'; \
+           END IF; \
+           RETURN NEW; \
+         END $$ LANGUAGE plpgsql",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER test_refuse_epic_completion BEFORE UPDATE ON orders \
+         FOR EACH ROW EXECUTE FUNCTION test_refuse_epic_completion()",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn ticket_status(pool: &PgPool, ticket_id: &str) -> String {
+    sqlx::query_scalar("SELECT status FROM tickets WHERE id = $1::uuid")
+        .bind(ticket_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+async fn production_recording_count(pool: &PgPool, ticket_id: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM ticket_inventory_recordings \
+         WHERE ticket_id = $1::uuid AND kind = 'production'",
+    )
+    .bind(ticket_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn patch_ticket_status(fx: &Fixture, ticket_id: &str, status: &str) -> (StatusCode, Value) {
+    let response = fx
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/tickets/{ticket_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "status": status }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, body_json(response).await)
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_failed_epic_completion_rolls_back_the_ticket_completion(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 450), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket}/start"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    refuse_epic_completion(&pool).await;
+
+    let (status, body) = post_json(
+        &fx.app,
+        &format!("/api/tickets/{ticket}/complete"),
+        Value::Null,
+    )
+    .await;
+
+    assert!(status.is_server_error(), "{status}: {body}");
+    assert_eq!(ticket_status(&pool, &ticket).await, "in_progress");
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+    assert!(!active_allocations(&pool).await.is_empty());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_failed_epic_completion_rolls_back_the_status_update(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 450), (35, 200)], serde_json::json!([])).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {body}");
+    let before = ticket_status(&pool, &ticket).await;
+    refuse_epic_completion(&pool).await;
+
+    let (status, body) = patch_ticket_status(&fx, &ticket, "complete").await;
+
+    assert!(status.is_server_error(), "{status}: {body}");
+    assert_eq!(ticket_status(&pool, &ticket).await, before);
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_failed_epic_completion_rolls_back_the_recording(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+    seed_balance(&pool, &fx, 35, "Pyerite", 200, 200).await;
+    let ticket = root_ticket_id(&fx, &order_id).await;
+    finish_ticket_workflow(&fx, &ticket).await;
+    let inventory_before = inventory_fingerprint(&pool).await;
+    refuse_epic_completion(&pool).await;
+
+    let (status, body) =
+        record_rifter(&fx, &ticket, &[(34, 600), (35, 200)], serde_json::json!([])).await;
+
+    assert!(status.is_server_error(), "{status}: {body}");
+    assert_eq!(production_recording_count(&pool, &ticket).await, 0);
+    assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // One purchase per item: every use of a bought item shares one ticket.
 // ─────────────────────────────────────────────────────────────────────────

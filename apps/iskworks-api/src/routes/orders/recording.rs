@@ -324,8 +324,6 @@ pub(super) async fn record_ticket_production_route(
         }
         Err(error) => return Err(error.into()),
     };
-    let ticket = repository.get_ticket(workspace_id, ticket_id).await?;
-    complete_epic_if_root_finished(&*repository, workspace_id, &ticket).await?;
     let status = if outcome.created {
         StatusCode::CREATED
     } else {

@@ -1256,34 +1256,6 @@ impl OrderRepository for PgOrderRepository {
         self.get_order(workspace_id, order_id).await
     }
 
-    async fn complete_finished_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Option<Order>, OrderError> {
-        let now = crate::db_now();
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let result = sqlx::query(
-            "UPDATE orders SET started_at = COALESCE(started_at, $1), completed_at = $1, \
-             updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 \
-             AND completed_at IS NULL AND canceled_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            tx.rollback().await.map_err(map_error)?;
-            return Ok(None);
-        }
-        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
-        tx.commit().await.map_err(map_error)?;
-        self.get_order(workspace_id, order_id).await.map(Some)
-    }
-
     async fn start_ticket(
         &self,
         workspace_id: WorkspaceId,
@@ -1314,6 +1286,7 @@ impl OrderRepository for PgOrderRepository {
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError> {
         let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
         let result = sqlx::query(
             "UPDATE tickets SET status = 'complete', completed_at = $1, updated_at = $1 \
              WHERE workspace_id = $2 AND id = $3 AND status = 'in_progress'",
@@ -1321,10 +1294,11 @@ impl OrderRepository for PgOrderRepository {
         .bind(now)
         .bind(workspace_id.0)
         .bind(ticket_id.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_error)?;
         if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
             return Err(self
                 .ticket_precondition_error(
                     workspace_id,
@@ -1333,6 +1307,9 @@ impl OrderRepository for PgOrderRepository {
                 )
                 .await?);
         }
+        super::epic_completion::complete_epic_if_finished(&mut tx, workspace_id, ticket_id, now)
+            .await?;
+        tx.commit().await.map_err(map_error)?;
         self.get_ticket(workspace_id, ticket_id).await
     }
 
@@ -1988,87 +1965,72 @@ impl OrderRepository for PgOrderRepository {
         Ok(())
     }
 
-    /// Bare workflow-status write -- see `OrderRepository::set_ticket_status`'s
-    /// own doc. One `UPDATE`, no transaction, no `FOR UPDATE`, no cascade,
-    /// no inventory: `tickets.status`/`completed_at`/`updated_at` and
-    /// nothing else (`completed_at` is stamped on entering Complete, kept
-    /// on a repeated Complete write, cleared on leaving it). Every
-    /// transition is legal (no `AND status IN (...)` guard, unlike
-    /// `start_ticket`/`cancel_ticket`), so Board drags move both
-    /// directions. A same-status write still matches its row, so it
-    /// returns the ticket rather than a spurious `TicketNotFound`.
     async fn set_ticket_status(
         &self,
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
         status: TicketStatus,
     ) -> Result<Ticket, OrderError> {
-        super::combine::guard_merged_status(&self.pool, workspace_id, ticket_id, status).await?;
-        let now = crate::db_now();
-        let result = sqlx::query(
-            // The right-hand `status` is the pre-update value.
-            "UPDATE tickets SET status = $1, updated_at = $2, \
-             completed_at = CASE WHEN $1 <> 'complete' THEN NULL \
-                                 WHEN status = 'complete' THEN completed_at \
-                                 ELSE $2 END \
-             WHERE workspace_id = $3 AND id = $4",
+        self.update_ticket(
+            workspace_id,
+            ticket_id,
+            TicketMetadataUpdate::default(),
+            Some(status),
         )
-        .bind(ticket_status_str(status))
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .execute(&self.pool)
         .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(OrderError::TicketNotFound);
-        }
-        self.get_ticket(workspace_id, ticket_id).await
     }
 
-    /// A bare metadata write -- see `TicketMetadataUpdate`'s own doc for
-    /// the omitted/clear/set three-value semantics per field. Builds one
-    /// dynamic `UPDATE` (only the fields actually present), never touches
-    /// `status`/`recording`/`execution_snapshot`/`source_build_id`/
-    /// requirement fulfillments/AcquisitionRun membership. An
-    /// entirely-omitted update is still a valid call (a no-op that just
-    /// validates the ticket exists in this workspace), matching
-    /// `set_ticket_status`'s own "only failure is TicketNotFound" contract.
     async fn update_ticket_metadata(
         &self,
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
         update: TicketMetadataUpdate,
     ) -> Result<Ticket, OrderError> {
-        if update.captured_name.is_none()
-            && update.notes.is_none()
-            && update.assignee_character_id.is_none()
-        {
-            return self.get_ticket(workspace_id, ticket_id).await;
-        }
+        self.update_ticket(workspace_id, ticket_id, update, None)
+            .await
+    }
 
-        let mut query = sqlx::QueryBuilder::<Postgres>::new("UPDATE tickets SET updated_at = ");
-        query.push_bind(crate::db_now());
-        if let Some(captured_name) = update.captured_name {
-            query.push(", captured_name = ").push_bind(captured_name);
+    /// Metadata, then status, then the Epic auto-completion a status write
+    /// may trigger, in one transaction. See `ticket_updates` for each write.
+    async fn update_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        metadata: TicketMetadataUpdate,
+        status: Option<TicketStatus>,
+    ) -> Result<Ticket, OrderError> {
+        if let Some(status) = status {
+            super::combine::guard_merged_status(&self.pool, workspace_id, ticket_id, status)
+                .await?;
         }
-        if let Some(notes) = update.notes {
-            query.push(", notes = ").push_bind(notes);
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        super::ticket_updates::write_ticket_metadata(
+            &mut tx,
+            workspace_id,
+            ticket_id,
+            metadata,
+            now,
+        )
+        .await?;
+        if let Some(status) = status {
+            super::ticket_updates::write_ticket_status(
+                &mut tx,
+                workspace_id,
+                ticket_id,
+                status,
+                now,
+            )
+            .await?;
+            super::epic_completion::complete_epic_if_finished(
+                &mut tx,
+                workspace_id,
+                ticket_id,
+                now,
+            )
+            .await?;
         }
-        if let Some(assignee_character_id) = update.assignee_character_id {
-            query
-                .push(", assignee_character_id = ")
-                .push_bind(assignee_character_id.map(|id| id.0));
-        }
-        query
-            .push(" WHERE workspace_id = ")
-            .push_bind(workspace_id.0);
-        query.push(" AND id = ").push_bind(ticket_id.0);
-
-        let result = query.build().execute(&self.pool).await.map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(OrderError::TicketNotFound);
-        }
+        tx.commit().await.map_err(map_error)?;
         self.get_ticket(workspace_id, ticket_id).await
     }
 
@@ -2510,6 +2472,15 @@ impl PgOrderRepository {
             find_ticket_recording_by_key(&mut tx, ticket_id, input.idempotency_key).await?
         {
             let recorded = recorded_runs_sum(&mut tx, ticket_id).await?;
+            if preview.is_none() {
+                super::epic_completion::complete_epic_if_finished(
+                    &mut tx,
+                    workspace_id,
+                    ticket_id,
+                    crate::db_now(),
+                )
+                .await?;
+            }
             tx.commit().await.map_err(map_error)?;
             return Ok(RecordProductionOutcome {
                 recording: existing,
@@ -2728,7 +2699,16 @@ impl PgOrderRepository {
                 capture.read_after(&mut tx).await?;
                 tx.rollback().await.map_err(map_error)?;
             }
-            None => tx.commit().await.map_err(map_error)?,
+            None => {
+                super::epic_completion::complete_epic_if_finished(
+                    &mut tx,
+                    workspace_id,
+                    ticket_id,
+                    crate::db_now(),
+                )
+                .await?;
+                tx.commit().await.map_err(map_error)?;
+            }
         }
 
         Ok(RecordProductionOutcome {

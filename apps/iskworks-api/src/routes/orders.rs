@@ -17,7 +17,7 @@ use iskworks_core::order::{
     OperationTicketCreation, Order, OrderError, OrderId, OrderRepository, OrderRequirement,
     OrderRequirementFulfillment, OrderRequirementId, OrderRequirementRollup, OrderStatus,
     PlanOperation, RecordAcquisitionInput, RecordProductionInput, RecordProductionInputLine,
-    RecordingState, RequirementFulfillmentState, RequirementKind, RequirementReservationTotals,
+    RequirementFulfillmentState, RequirementKind, RequirementReservationTotals,
     RequirementTicketCreation, ReservationShortfall, ReuseChange, TakeFrom, Ticket,
     TicketBlockerRef, TicketId, TicketInventoryRecording, TicketKind, TicketMetadataUpdate,
     TicketPrerequisite, TicketPrerequisiteId, TicketRecordingSummary, TicketStatus,
