@@ -24,6 +24,16 @@ pub struct BuildPlanLine {
     pub total_quantity: u64,
 }
 
+/// The planner's run bound: every Build, reaction and expansion run count
+/// is `1..=MAX_RUNS`.
+pub const MAX_RUNS: u64 = 1_000_000;
+
+/// Whether `runs` is inside the planner's `1..=MAX_RUNS` bound.
+#[must_use]
+pub fn runs_in_bounds(runs: u64) -> bool {
+    (1..=MAX_RUNS).contains(&runs)
+}
+
 #[derive(Debug, Error)]
 pub enum BuildPlanningError {
     #[error("runs must be between 1 and 1,000,000")]
@@ -52,7 +62,7 @@ impl BuildPlanningService {
         blueprint_type_id: i64,
         runs: u64,
     ) -> Result<BuildPlan, BuildPlanningError> {
-        if !(1..=1_000_000).contains(&runs) {
+        if !runs_in_bounds(runs) {
             return Err(BuildPlanningError::InvalidRuns);
         }
         let recipe = self
@@ -159,7 +169,7 @@ impl ReactionPlanningService {
         reaction_formula_type_id: i64,
         runs: u64,
     ) -> Result<ReactionPlan, ReactionPlanningError> {
-        if !(1..=1_000_000).contains(&runs) {
+        if !runs_in_bounds(runs) {
             return Err(ReactionPlanningError::InvalidRuns);
         }
         let recipe = self
@@ -233,6 +243,22 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use iskworks_sde::{ActiveSde, BlueprintSearchResult, RecipeLine, SdeError};
+
+    #[test]
+    fn runs_bound_is_one_to_max_inclusive() {
+        assert!(!runs_in_bounds(0));
+        assert!(runs_in_bounds(1));
+        assert!(runs_in_bounds(MAX_RUNS));
+        assert!(!runs_in_bounds(MAX_RUNS + 1));
+    }
+
+    #[test]
+    fn pooled_runs_clamp_to_the_same_bound() {
+        use crate::build_materials::pooled_production_runs;
+        assert_eq!(pooled_production_runs(0, 10), 0);
+        assert_eq!(pooled_production_runs(25, 10), 3);
+        assert_eq!(pooled_production_runs(u64::MAX, 1), MAX_RUNS);
+    }
 
     struct FixtureRepository;
 

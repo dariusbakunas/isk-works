@@ -289,11 +289,13 @@ pub(super) async fn create_ticket_for_requirement(
             // linked Build's live `runs`: the ticket must yield `quantity` units
             // of `requirement.type_id`, i.e. `intended_runs` runs of a recipe
             // producing `quantity_per_run` each. Clamped to the planner's own
-            // 1..=1_000_000 run bound so an outsized order can't make snapshot
+            // 1..=MAX_RUNS run bound so an outsized order can't make snapshot
             // calculation fail outright (the degenerate cap is a rare,
             // acceptable understatement of a snapshot that has no UI yet).
             let per_run = linked.recipe.primary_product().quantity_per_run.max(1);
-            let intended_runs = quantity.div_ceil(per_run).clamp(1, 1_000_000);
+            // `max(1)`: a zero-quantity requirement still sizes one run.
+            let intended_runs =
+                iskworks_core::build_materials::pooled_production_runs(quantity, per_run).max(1);
             let (prerequisites, snapshot) =
                 linked_build_plan_for_ticket(state, workspace_id, &linked, intended_runs).await?;
             (kind, Some(linked.id), prerequisites, Some(snapshot))

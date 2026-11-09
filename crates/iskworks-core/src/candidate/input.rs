@@ -85,7 +85,7 @@ impl NormalizedBuildPlanCandidate {
 pub fn normalize_candidate(
     input: BuildPlanCandidateInput,
 ) -> Result<NormalizedBuildPlanCandidate, IndustryError> {
-    if input.runs == 0 || input.runs > 1_000_000 {
+    if !crate::runs_in_bounds(input.runs) {
         return Err(IndustryError::Validation(
             "Build runs must be between 1 and 1,000,000.".into(),
         ));
@@ -167,7 +167,7 @@ pub fn normalize_draft_planning(
     mut input: DraftPlanningInput,
     requested_runs: u64,
 ) -> Result<DraftPlanningInput, IndustryError> {
-    if requested_runs == 0 || requested_runs > 1_000_000 {
+    if !crate::runs_in_bounds(requested_runs) {
         return Err(IndustryError::Validation(
             "Build runs must be between 1 and 1,000,000.".into(),
         ));

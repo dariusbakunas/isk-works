@@ -67,8 +67,8 @@ pub use auth::{
 pub use blueprint::*;
 pub use blueprint_library::*;
 pub use build::{
-    BuildPlan, BuildPlanningError, BuildPlanningService, ReactionPlan, ReactionPlanningError,
-    ReactionPlanningService,
+    runs_in_bounds, BuildPlan, BuildPlanningError, BuildPlanningService, ReactionPlan,
+    ReactionPlanningError, ReactionPlanningService, MAX_RUNS,
 };
 pub use build_cost::{
     BoundaryCostKind, BoundaryCostProjection, BuildCostProjection, CostWarning,

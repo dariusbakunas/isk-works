@@ -964,7 +964,7 @@ impl ProductionEvidence {
 
 /// The run count that covers `total_production_demand` at `output_per_run`
 /// per run: `ceil(demand / output_per_run)`, clamped to the planner's
-/// `1..=1_000_000` run bound, and `0` for no demand. The single sizing rule
+/// `1..=MAX_RUNS` run bound, and `0` for no demand. The single sizing rule
 /// shared by the live allocating planner's pooled groups
 /// (`IndustryService::finalize_production_group`) and the canonical-producer
 /// read model (`crate::production_dependency::ProducerDemand::size`).
@@ -975,7 +975,7 @@ pub fn pooled_production_runs(total_production_demand: u64, output_per_run: u64)
     } else {
         total_production_demand
             .div_ceil(output_per_run.max(1))
-            .clamp(1, 1_000_000)
+            .clamp(1, crate::MAX_RUNS)
     }
 }
 
