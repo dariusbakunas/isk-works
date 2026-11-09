@@ -7,6 +7,9 @@ use uuid::Uuid;
 use crate::order::{InventoryAllocationId, OrderId, TicketId, TicketStatus};
 use crate::{BuildId, Money, OwnerId, WorkspaceId};
 
+mod coverage;
+pub use coverage::*;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum QuantityCoverageState {
@@ -307,94 +310,6 @@ pub trait ProductionRepository: Send + Sync {
     }
 }
 
-pub fn project_candidate_coverage(
-    current: &BuildCoverageReport,
-    runs: u64,
-    requirements: &[crate::PlannedMaterialLine],
-) -> Result<BuildCoverageReport, ProductionError> {
-    let current_by_type = current
-        .material_lines
-        .iter()
-        .map(|line| (line.type_id, line))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let mut lines = Vec::with_capacity(requirements.len());
-    for (sort_order, requirement) in requirements.iter().enumerate() {
-        let current_line =
-            current_by_type
-                .get(&requirement.type_id)
-                .ok_or(ProductionError::Persistence(
-                    "Candidate material is absent from current coverage.".into(),
-                ))?;
-        let required = requirement.total_quantity;
-        let here = current_line.reserved_for_this_build;
-        let elsewhere = current_line.reserved_by_other_builds;
-        let owned = current_line.accounted_owned_quantity;
-        let unreserved = owned.saturating_sub(here.saturating_add(elsewhere));
-        let available = here.saturating_add(unreserved);
-        let covered = required.min(available);
-        let missing = required.saturating_sub(covered);
-        let additional = required.saturating_sub(here).min(unreserved);
-        let projected_historical_cost = if current_line.accounted_owned_quantity >= required {
-            current_line
-                .average_historical_unit_cost
-                .map(|cost| cost.checked_mul_quantity(required))
-                .transpose()
-                .map_err(|_| ProductionError::ArithmeticOverflow)?
-        } else {
-            None
-        };
-        let quantity_coverage_state = if owned == 0 {
-            QuantityCoverageState::NoInventory
-        } else if here >= required {
-            QuantityCoverageState::Reserved
-        } else if here > 0 {
-            QuantityCoverageState::ReservedPartially
-        } else if covered >= required {
-            QuantityCoverageState::Covered
-        } else if covered > 0 {
-            QuantityCoverageState::PartiallyCovered
-        } else {
-            QuantityCoverageState::Missing
-        };
-        let mut line = (*current_line).clone();
-        line.type_name = requirement.type_name.clone();
-        line.sort_order =
-            u32::try_from(sort_order).map_err(|_| ProductionError::ArithmeticOverflow)?;
-        line.required_quantity = required;
-        line.unreserved_available_quantity = unreserved;
-        line.available_to_this_build = available;
-        line.reservable_additional_quantity = additional;
-        line.covered_quantity = covered;
-        line.missing_quantity = missing;
-        line.projected_historical_cost = projected_historical_cost;
-        line.cost_quality = if current_line.accounted_owned_quantity >= required {
-            current_line.cost_quality
-        } else {
-            MaterialCostQuality::Unresolved
-        };
-        line.quantity_coverage_state = quantity_coverage_state;
-        line.explanation = format!(
-            "Accounted {owned}; reserved here {here}; reserved elsewhere {elsewhere}; available to this Build {available}; required {required}."
-        );
-        lines.push(line);
-    }
-    let complete_quantity_coverage = lines.iter().all(|line| line.missing_quantity == 0);
-    let complete_cost_coverage = lines
-        .iter()
-        .all(|line| line.accounted_owned_quantity >= line.required_quantity);
-    Ok(BuildCoverageReport {
-        build_id: current.build_id,
-        owner_id: current.owner_id,
-        build_revision: current.build_revision,
-        recipe_fingerprint: current.recipe_fingerprint.clone(),
-        runs,
-        complete_quantity_coverage,
-        complete_cost_coverage,
-        material_lines: lines,
-        warnings: current.warnings.clone(),
-    })
-}
-
 pub fn project_create_coverage(
     build_id: BuildId,
     owner_id: OwnerId,
@@ -413,10 +328,13 @@ pub fn project_create_coverage(
         let balance = balances_by_type.get(&requirement.type_id).copied();
         let owned = balance.map_or(0, |item| item.quantity);
         let elsewhere = reservations.get(&requirement.type_id).copied().unwrap_or(0);
-        let available = owned.saturating_sub(elsewhere);
         let required = requirement.total_quantity;
-        let covered = required.min(available);
-        let missing = required.saturating_sub(covered);
+        let figures = coverage_figures(CoverageQuantities {
+            owned,
+            reserved_here: 0,
+            reserved_elsewhere: elsewhere,
+            required,
+        });
         let average = balance.and_then(|item| item.average_unit_cost);
         let projected_historical_cost = if owned >= required {
             average
@@ -433,15 +351,6 @@ pub fn project_create_coverage(
         } else {
             MaterialCostQuality::Known
         };
-        let quantity_coverage_state = if owned == 0 {
-            QuantityCoverageState::NoInventory
-        } else if covered >= required {
-            QuantityCoverageState::Covered
-        } else if covered > 0 {
-            QuantityCoverageState::PartiallyCovered
-        } else {
-            QuantityCoverageState::Missing
-        };
         lines.push(MaterialCoverage {
             type_id: requirement.type_id,
             type_name: requirement.type_name.clone(),
@@ -451,20 +360,21 @@ pub fn project_create_coverage(
             accounted_owned_quantity: owned,
             reserved_for_this_build: 0,
             reserved_by_other_builds: elsewhere,
-            unreserved_available_quantity: available,
-            available_to_this_build: available,
-            reservable_additional_quantity: covered,
-            covered_quantity: covered,
-            missing_quantity: missing,
+            unreserved_available_quantity: figures.unreserved,
+            available_to_this_build: figures.available,
+            reservable_additional_quantity: figures.reservable_additional,
+            covered_quantity: figures.covered,
+            missing_quantity: figures.missing,
             average_historical_unit_cost: average,
             projected_historical_cost,
             cost_quality: quality,
-            quantity_coverage_state,
+            quantity_coverage_state: figures.state,
             esi_observed_quantity: None,
             esi_reconciliation_difference: None,
             esi_observed_at: None,
             explanation: format!(
-                "Accounted {owned}; reserved elsewhere {elsewhere}; available to this Build {available}; required {required}."
+                "Accounted {owned}; reserved elsewhere {elsewhere}; available to this Build {}; required {required}.",
+                figures.available
             ),
             warnings: Vec::new(),
             inventory_revision: balance.map_or(0, |item| item.revision),
@@ -491,74 +401,6 @@ pub fn project_create_coverage(
 mod candidate_coverage_tests {
     use super::*;
     use std::collections::BTreeMap;
-
-    #[test]
-    fn candidate_requirement_recomputes_shortage_and_historical_cost() {
-        let current = BuildCoverageReport {
-            build_id: BuildId::new(),
-            owner_id: OwnerId::new(),
-            build_revision: 7,
-            recipe_fingerprint: "recipe".into(),
-            runs: 1,
-            complete_quantity_coverage: true,
-            complete_cost_coverage: true,
-            material_lines: vec![MaterialCoverage {
-                type_id: 34,
-                type_name: "Tritanium".into(),
-                sort_order: 0,
-                required_quantity: 28_800,
-                accounted_owned_quantity: 27_500,
-                reserved_for_this_build: 0,
-                reserved_by_other_builds: 0,
-                unreserved_available_quantity: 27_500,
-                available_to_this_build: 27_500,
-                reservable_additional_quantity: 27_500,
-                covered_quantity: 27_500,
-                missing_quantity: 1_300,
-                average_historical_unit_cost: Some(Money::parse("4.0000").unwrap()),
-                projected_historical_cost: None,
-                cost_quality: MaterialCostQuality::Known,
-                quantity_coverage_state: QuantityCoverageState::PartiallyCovered,
-                esi_observed_quantity: None,
-                esi_reconciliation_difference: None,
-                esi_observed_at: None,
-                explanation: String::new(),
-                warnings: vec![],
-                inventory_revision: 2,
-            }],
-            warnings: vec![],
-        };
-        let requirements = vec![crate::PlannedMaterialLine {
-            type_id: 34,
-            type_name: "Tritanium".into(),
-            quantity_per_run: 32_000,
-            total_quantity: 27_075,
-            unit_price: Some(Money::parse("4.1000").unwrap()),
-            line_total: Some(Money::parse("111007.5000").unwrap()),
-            missing: false,
-            contributions: Vec::new(),
-            is_build_resolved: false,
-            installation_cost: None,
-            reused_quantity: None,
-            missing_quantity: None,
-            reused_line_total: None,
-            planning_evidence: None,
-        }];
-
-        let projected = project_candidate_coverage(&current, 1, &requirements).unwrap();
-
-        assert_eq!(projected.material_lines[0].missing_quantity, 0);
-        assert_eq!(
-            projected.material_lines[0]
-                .projected_historical_cost
-                .unwrap()
-                .0
-                .to_string(),
-            "108300.0000"
-        );
-        assert!(projected.complete_quantity_coverage);
-        assert!(projected.complete_cost_coverage);
-    }
 
     #[test]
     fn create_requirement_projects_unreserved_inventory_and_historical_cost() {
