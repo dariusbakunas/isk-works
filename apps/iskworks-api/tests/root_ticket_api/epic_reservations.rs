@@ -369,6 +369,22 @@ async fn create_epic_refuses_less_reuse_than_previewed_with_a_fresh_preview(pool
         serde_json::json!([{"typeId": 34, "expected": 800, "now": 600}])
     );
     assert_eq!(body["error"]["shortfalls"], serde_json::json!([]));
+    assert_eq!(
+        keys_of(&body["error"]),
+        [
+            "code",
+            "decreased",
+            "message",
+            "preview",
+            "retryable",
+            "shortfalls"
+        ]
+    );
+    assert_eq!(
+        body["error"]["message"],
+        "Free inventory changed since the preview. Review the updated reuse and confirm again."
+    );
+    assert_eq!(body["error"]["retryable"], true);
     assert_eq!(order_count(&pool).await, orders_before, "nothing created");
     assert_eq!(allocation_count(&pool).await, 0);
 }
@@ -755,9 +771,20 @@ async fn record_rifter(
     inputs: &[(i64, u64)],
     take_from: Value,
 ) -> (StatusCode, Value) {
+    post_rifter_recording(fx, "record-production", ticket_id, inputs, take_from).await
+}
+
+/// `action` is `record-production` or `record-production/preview`.
+async fn post_rifter_recording(
+    fx: &Fixture,
+    action: &str,
+    ticket_id: &str,
+    inputs: &[(i64, u64)],
+    take_from: Value,
+) -> (StatusCode, Value) {
     post_json(
         &fx.app,
-        &format!("/api/tickets/{ticket_id}/record-production"),
+        &format!("/api/tickets/{ticket_id}/{action}"),
         serde_json::json!({
             "idempotencyKey": Uuid::new_v4(),
             "runsCompleted": 1,
@@ -771,6 +798,21 @@ async fn record_rifter(
         }),
     )
     .await
+}
+
+/// An error body's field names, sorted, to pin its exact shape.
+fn keys_of(value: &serde_json::Value) -> Vec<String> {
+    let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
+async fn epic_display_name(pool: &PgPool, order_id: &str) -> String {
+    sqlx::query_scalar("SELECT display_name FROM orders WHERE id = $1")
+        .bind(Uuid::parse_str(order_id).unwrap())
+        .fetch_one(pool)
+        .await
+        .unwrap()
 }
 
 /// `(quantity, consumed?, released?, reason)` of every Tritanium allocation.
@@ -836,10 +878,53 @@ async fn recording_refuses_to_use_another_epics_reservation(pool: PgPool) {
     assert_eq!(shortage["free"], 0);
     assert_eq!(shortage["holders"][0]["orderId"], b.as_str());
     assert_eq!(shortage["holders"][0]["quantity"], 400);
-    assert!(shortage["holders"][0]["displayName"].is_string());
+    assert_eq!(
+        shortage["holders"][0]["displayName"],
+        epic_display_name(&pool, &b).await
+    );
+    assert_eq!(
+        keys_of(error),
+        ["code", "message", "retryable", "shortages"]
+    );
+    assert_eq!(
+        error["message"],
+        "Other Epics have reserved stock this recording needs."
+    );
+    assert_eq!(error["retryable"], false);
+    assert_eq!(
+        keys_of(shortage),
+        ["free", "holders", "needed", "own", "typeId", "typeName"]
+    );
+    assert_eq!(
+        keys_of(&shortage["holders"][0]),
+        ["displayName", "orderId", "quantity"]
+    );
     // Nothing was recorded.
     assert_eq!(inventory_fingerprint(&pool).await, inventory_before);
     assert_eq!(active_allocations(&pool).await.len(), 3);
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn previewing_a_recording_answers_the_same_shortage(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let (a, _b) = two_epics_sharing_tritanium(&pool, &fx).await;
+    let ticket = root_ticket_id(&fx, &a).await;
+    let inputs = [(34, 1_000), (35, 200)];
+
+    let (preview_status, preview) = post_rifter_recording(
+        &fx,
+        "record-production/preview",
+        &ticket,
+        &inputs,
+        serde_json::json!([]),
+    )
+    .await;
+    let (record_status, record) = record_rifter(&fx, &ticket, &inputs, serde_json::json!([])).await;
+
+    assert_eq!(preview_status, StatusCode::CONFLICT, "body: {preview}");
+    assert_eq!(record_status, StatusCode::CONFLICT);
+    assert_eq!(preview, record);
 }
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
