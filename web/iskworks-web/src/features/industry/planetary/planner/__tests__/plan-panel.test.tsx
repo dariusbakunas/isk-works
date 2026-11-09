@@ -32,6 +32,10 @@ describe("PlanPanel", () => {
     );
     expect(screen.getByText("3 of 4")).toBeInTheDocument();
     expect(screen.getByText("7,800 m³")).toBeInTheDocument();
+    // formatIskSummary already ends in " ISK"; titles must not add another.
+    for (const titled of document.querySelectorAll("[title]")) {
+      expect(titled.getAttribute("title")).not.toMatch(/ISK ISK/);
+    }
 
     const colonies = screen.getByRole("table", { name: "Colonies" });
     expect(within(colonies).getByText("Valka")).toBeInTheDocument();
@@ -81,7 +85,7 @@ describe("PlanPanel", () => {
     const unscanned = screen.getByRole("button", { name: /Q-3HS5 IV · Base Metals/ });
     // An unscanned reading shows what scanning it could add.
     expect(unscanned).toHaveTextContent("+120M");
-    expect(unscanned).toHaveAttribute("title", expect.stringContaining("alone adds 120,000,000"));
+    expect(unscanned).toHaveAttribute("title", expect.stringMatching(/alone adds 120,000,000 ISK\/mo$/));
     await user.click(unscanned);
     expect(onScanFirst).toHaveBeenCalledWith(4, 2267);
   });

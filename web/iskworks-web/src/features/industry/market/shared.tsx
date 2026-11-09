@@ -1,15 +1,13 @@
 import type { ReactNode } from "react";
 
-import { ApiError, withErrorId } from "../../../api/workspace";
+import { apiMessage as sharedApiMessage } from "../../../api/api-error";
 
 export const number = new Intl.NumberFormat("en-US");
 
-// Kept local rather than merged with features/industry/shared/api-error.ts's
-// apiMessage: that one special-cases revision_conflict with different
-// copy and falls back to `error.message` for a generic Error, neither of
-// which this page has ever done.
+// Thin wrapper: this page's fallback for non-API failures is the generic
+// text, never a thrown Error's own message.
 export function apiMessage(error: unknown): string {
-  return error instanceof ApiError ? withErrorId(error, error.body.message) : "ISK Works could not complete the request.";
+  return sharedApiMessage(error, "ISK Works could not complete the request.");
 }
 
 // Kept local: unlike the other formatDate variants elsewhere in the app,

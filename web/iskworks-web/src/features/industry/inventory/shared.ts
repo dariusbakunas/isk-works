@@ -1,4 +1,4 @@
-import { ApiError, withErrorId } from "../../../api/workspace";
+import { apiMessage as sharedApiMessage } from "../../../api/api-error";
 
 export type LoadState<T> =
   | { status: "loading" }
@@ -6,5 +6,5 @@ export type LoadState<T> =
   | { status: "ready"; data: T };
 
 export function apiMessage(error: unknown): string {
-  return error instanceof ApiError ? withErrorId(error, error.body?.message ?? error.message) : "Inventory request failed.";
+  return sharedApiMessage(error, "Inventory request failed.");
 }

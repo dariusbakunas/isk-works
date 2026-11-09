@@ -48,6 +48,7 @@ import { StatsRail } from "./stats-rail";
 import { useFitEditor } from "./use-fit-editor";
 import { useQuickChanges } from "./use-quick-changes";
 import { useFit, useFitAssets, useFitCost, useFitParams, useFitPilots, useFitStats, useWorkspaceTags } from "./use-fittings";
+import { apiMessage } from "../../api/api-error";
 
 const STATUS: Record<FlyabilityStatus | "unknown", { label: string; icon: LucideIcon; className: string }> = {
   canUseAll: { label: "can use all", icon: CircleCheck, className: "text-positive" },
@@ -140,7 +141,7 @@ function Header({
     try {
       await action();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "That didn't work.");
+      setError(apiMessage(reason));
     }
   };
 

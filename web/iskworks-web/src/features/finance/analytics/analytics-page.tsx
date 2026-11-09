@@ -23,6 +23,7 @@ import { ChartCard } from "./chart-card";
 import { downloadBlob } from "./download-blob";
 import { KpiCards } from "./kpi-cards";
 import { useFinanceAnalytics } from "./use-finance-analytics";
+import { apiMessage } from "../../../api/api-error";
 
 export function AnalyticsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,7 +45,7 @@ export function AnalyticsPage() {
     try {
       downloadBlob(await exportFinanceAnalytics(query, section), `isk-works-analytics-${section}.csv`);
     } catch (failure) {
-      setMessage(failure instanceof Error ? failure.message : "Export failed.");
+      setMessage(apiMessage(failure));
     }
   }
 

@@ -5,6 +5,7 @@ import { createFit, searchFitCatalogue, type CatalogueItem } from "../../api/fit
 import { EveTypeImage } from "../../components/eve-type-image";
 import { InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
+import { apiMessage } from "../../api/api-error";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -25,7 +26,7 @@ export function NewFitDialog({ onClose, onCreated }: { onClose: () => void; onCr
       searchFitCatalogue({ kind: "ships" }, { q: query }, controller.signal)
         .then((view) => setShips(view.entries))
         .catch((reason: unknown) => {
-          if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Search failed.");
+          if (!controller.signal.aborted) setError(apiMessage(reason));
         });
     }, SEARCH_DELAY_MS);
     return () => {
@@ -50,7 +51,7 @@ export function NewFitDialog({ onClose, onCreated }: { onClose: () => void; onCr
       const fit = await createFit({ name: name.trim(), description: "", shipTypeId: ship.typeId, items: [] });
       onCreated(fit.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Couldn't create the fit.");
+      setError(apiMessage(reason));
       setSaving(false);
     }
   }
