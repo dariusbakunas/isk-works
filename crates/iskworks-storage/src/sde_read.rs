@@ -117,9 +117,11 @@ impl SdeReadRepository for PgSdeRepository {
               FROM sde_market_groups child JOIN market_tree parent
                 ON child.import_id = parent.import_id AND child.parent_group_id = parent.market_group_id
             ), market_ancestors AS (
-              SELECT import_id, market_group_id leaf_market_group_id,
-                     market_group_id, name_en, parent_group_id, 0 depth
-              FROM sde_market_groups
+              -- Active import only; paths are aggregated once below rather
+              -- than re-scanned per candidate row (that was ~9 s unscoped).
+              SELECT g.import_id, g.market_group_id leaf_market_group_id,
+                     g.market_group_id, g.name_en, g.parent_group_id, 0 depth
+              FROM sde_market_groups g JOIN sde_imports i ON i.id = g.import_id AND i.active
               UNION ALL
               SELECT child.import_id, child.leaf_market_group_id,
                      parent.market_group_id, parent.name_en, parent.parent_group_id,
@@ -128,6 +130,12 @@ impl SdeReadRepository for PgSdeRepository {
               JOIN sde_market_groups parent
                 ON parent.import_id = child.import_id
                AND parent.market_group_id = child.parent_group_id
+            ), market_paths AS (
+              SELECT import_id, leaf_market_group_id,
+                     array_agg(market_group_id ORDER BY depth DESC) ids,
+                     array_agg(name_en ORDER BY depth DESC) names
+              FROM market_ancestors
+              GROUP BY import_id, leaf_market_group_id
             ), recipes AS (
               SELECT 'manufacturing'::text kind, i.id import_id, i.source_version,
                      b.blueprint_type_id recipe_id, b.name_en recipe_name, b.duration_seconds,
@@ -151,20 +159,8 @@ impl SdeReadRepository for PgSdeRepository {
                    categories.name_en category_name, product.meta_group_id,
                    meta.name_en meta_group_name, product.market_group_id,
                    market.name_en market_group_name,
-                   ARRAY(
-                     SELECT ancestor.market_group_id
-                     FROM market_ancestors ancestor
-                     WHERE ancestor.import_id = product.import_id
-                       AND ancestor.leaf_market_group_id = product.market_group_id
-                     ORDER BY ancestor.depth DESC
-                   ) market_group_ancestor_ids,
-                   ARRAY(
-                     SELECT ancestor.name_en
-                     FROM market_ancestors ancestor
-                     WHERE ancestor.import_id = product.import_id
-                       AND ancestor.leaf_market_group_id = product.market_group_id
-                     ORDER BY ancestor.depth DESC
-                   ) market_group_ancestor_names
+                   COALESCE(paths.ids, '{}') market_group_ancestor_ids,
+                   COALESCE(paths.names, '{}') market_group_ancestor_names
             FROM recipes r
             JOIN sde_types product ON product.import_id=r.import_id AND product.type_id=r.product_type_id
             JOIN sde_types recipe_type ON recipe_type.import_id=r.import_id AND recipe_type.type_id=r.recipe_id
@@ -172,6 +168,7 @@ impl SdeReadRepository for PgSdeRepository {
             LEFT JOIN sde_categories categories ON categories.import_id=groups.import_id AND categories.category_id=groups.category_id
             LEFT JOIN sde_meta_groups meta ON meta.import_id=product.import_id AND meta.meta_group_id=product.meta_group_id
             LEFT JOIN sde_market_groups market ON market.import_id=product.import_id AND market.market_group_id=product.market_group_id
+            LEFT JOIN market_paths paths ON paths.import_id=product.import_id AND paths.leaf_market_group_id=product.market_group_id
             WHERE r.position = 0 AND product.published AND recipe_type.published
               AND (cardinality($1::text[]) = 0 OR r.kind = ANY($1))
               AND (cardinality($2::bigint[]) = 0 OR groups.category_id = ANY($2))
