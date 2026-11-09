@@ -558,6 +558,7 @@ pub(super) async fn update_ticket(
     let has_metadata = request.captured_name.is_some()
         || request.notes.is_some()
         || request.assignee_character_id.is_some();
+    let mut metadata = TicketMetadataUpdate::default();
     if has_metadata {
         let captured_name = request
             .captured_name
@@ -574,30 +575,17 @@ pub(super) async fn update_ticket(
                 None,
             )
             .await?;
-        repository
-            .update_ticket_metadata(
-                workspace_id,
-                ticket_id,
-                TicketMetadataUpdate {
-                    captured_name,
-                    notes: request.notes,
-                    assignee_character_id: request
-                        .assignee_character_id
-                        .map(|value| value.map(ConnectedCharacterId)),
-                },
-            )
-            .await?;
+        metadata = TicketMetadataUpdate {
+            captured_name,
+            notes: request.notes,
+            assignee_character_id: request
+                .assignee_character_id
+                .map(|value| value.map(ConnectedCharacterId)),
+        };
     }
-    let ticket = match request.status {
-        Some(status) => {
-            let ticket = repository
-                .set_ticket_status(workspace_id, ticket_id, status)
-                .await?;
-            complete_epic_if_root_finished(&*repository, workspace_id, &ticket).await?;
-            ticket
-        }
-        None => repository.get_ticket(workspace_id, ticket_id).await?,
-    };
+    let ticket = repository
+        .update_ticket(workspace_id, ticket_id, metadata, request.status)
+        .await?;
     Ok(Json(ticket))
 }
 
@@ -623,18 +611,16 @@ pub(super) async fn complete_ticket(
     Path(ticket_id): Path<uuid::Uuid>,
 ) -> Result<Json<iskworks_core::order::Ticket>, ApiError> {
     let (workspace_id, _owner_id) = workspace_context(&state).await?;
-    let repository = state.order_repository()?;
-    let ticket = repository
-        .complete_ticket(workspace_id, iskworks_core::order::TicketId(ticket_id))
-        .await?;
-    complete_epic_if_root_finished(&*repository, workspace_id, &ticket).await?;
-    Ok(Json(ticket))
+    Ok(Json(
+        state
+            .order_repository()?
+            .complete_ticket(workspace_id, iskworks_core::order::TicketId(ticket_id))
+            .await?,
+    ))
 }
 
-/// A Manufacturing/Reaction ticket's recording progress: runs recorded
-/// (reverted recordings excluded) against the runs frozen in its execution
-/// snapshot. A ticket without a snapshot (legacy, or a recreated root)
-/// counts whatever it recorded as the whole.
+/// A Manufacturing/Reaction ticket's recording progress from its
+/// recordings -- see `iskworks_core::order::production_recording_summary`.
 pub(super) fn production_recording_summary(
     ticket: &Ticket,
     recordings: &[TicketInventoryRecording],
@@ -644,57 +630,7 @@ pub(super) fn production_recording_summary(
         .filter(|recording| recording.reverted_at.is_none())
         .filter_map(|recording| recording.runs_completed)
         .sum();
-    let requested = ticket
-        .execution_snapshot
-        .as_ref()
-        .map_or(recorded, |snapshot| snapshot.runs);
-    derive_recording_summary(requested, recorded)
-}
-
-/// Completes a version-3 Epic once its root ticket is finished: Complete
-/// *and* its output fully recorded, whichever happens last. Completing
-/// first and recording later doesn't free the Epic's stock before the
-/// recording uses it. A no-op for any other ticket, or an Epic already
-/// completed or canceled. Called after a ticket is completed or records
-/// production.
-pub(super) async fn complete_epic_if_root_finished(
-    repository: &dyn OrderRepository,
-    workspace_id: iskworks_core::WorkspaceId,
-    ticket: &Ticket,
-) -> Result<(), ApiError> {
-    let Some(order_id) = ticket.order_id else {
-        return Ok(());
-    };
-    let is_root = ticket
-        .occurrence_key
-        .as_deref()
-        .is_some_and(|key| key.starts_with(ROOT_OCCURRENCE_PREFIX));
-    if !is_root
-        || ticket.status != TicketStatus::Complete
-        || !matches!(
-            ticket.kind,
-            TicketKind::Manufacturing | TicketKind::Reaction
-        )
-    {
-        return Ok(());
-    }
-    let order = repository.get_order(workspace_id, order_id).await?;
-    if order.planning_snapshot_version < 3
-        || order.completed_at.is_some()
-        || order.canceled_at.is_some()
-    {
-        return Ok(());
-    }
-    let recordings = repository
-        .list_ticket_inventory_recordings(ticket.id)
-        .await?;
-    if production_recording_summary(ticket, &recordings).state != RecordingState::Recorded {
-        return Ok(());
-    }
-    repository
-        .complete_finished_order(workspace_id, order_id)
-        .await?;
-    Ok(())
+    iskworks_core::order::production_recording_summary(ticket, recorded)
 }
 
 /// Permanently delete a ticket -- including an acquisition ("shopping trip")

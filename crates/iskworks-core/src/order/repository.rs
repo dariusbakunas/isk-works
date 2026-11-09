@@ -926,17 +926,6 @@ pub trait OrderRepository: Send + Sync {
         order_id: OrderId,
     ) -> Result<Order, OrderError>;
 
-    /// Completes an Epic because its work is done: its root ticket is
-    /// Complete with its output recorded. Same effect as `complete_order`
-    /// (stamps `completed_at`, releases what the Epic still holds), but an
-    /// Epic that was never started is allowed -- `started_at` is stamped
-    /// too. `Ok(None)` when the Epic is already completed or canceled.
-    async fn complete_finished_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Option<Order>, OrderError>;
-
     /// `Ready -> InProgress`. Requires `status = 'ready'`.
     async fn start_ticket(
         &self,
@@ -956,10 +945,17 @@ pub trait OrderRepository: Send + Sync {
     /// Deliberately **not** a state machine: unlike `start_ticket`/
     /// `complete_ticket`/`cancel_ticket` -- which remain as separate,
     /// explicitly-invoked convenience commands -- this method has no
-    /// precondition on the current status and no side effect. Its only
-    /// failure is `TicketNotFound` (unknown id, or a
+    /// precondition on the current status and no side effect of its own
+    /// beyond Epic auto-completion (below). Its only failure is
+    /// `TicketNotFound` (unknown id, or a
     /// ticket in another workspace). A no-op same-status write succeeds and
     /// returns the current row.
+    ///
+    /// **Epic auto-completion:** when this write finishes a version-3
+    /// Epic's root ticket (Complete *and* its output fully recorded, see
+    /// `epic_completes_after`), the Epic completes in the same transaction:
+    /// `started_at`/`completed_at` stamped, leftover reservations released.
+    /// If that fails, the ticket write rolls back too.
     async fn set_ticket_status(
         &self,
         workspace_id: WorkspaceId,
@@ -977,6 +973,17 @@ pub trait OrderRepository: Send + Sync {
         update: TicketMetadataUpdate,
     ) -> Result<Ticket, OrderError>;
 
+    /// `update_ticket_metadata` and then, when `status` is given,
+    /// `set_ticket_status` (with its Epic auto-completion), in one
+    /// transaction: either every part commits or none does.
+    async fn update_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        metadata: TicketMetadataUpdate,
+        status: Option<TicketStatus>,
+    ) -> Result<Ticket, OrderError>;
+
     /// `InProgress -> Complete`. Requires `status = 'in_progress'`.
     /// Workflow-only: sets `status`/`updated_at` and **nothing else** --
     /// same no-side-effect contract as `set_ticket_status`, just with this
@@ -990,6 +997,12 @@ pub trait OrderRepository: Send + Sync {
     /// in both directions: recording before or after completion behaves
     /// identically, and completing never requires a recording to exist
     /// first.
+    ///
+    /// **Epic auto-completion:** when this write finishes a version-3
+    /// Epic's root ticket (Complete *and* its output fully recorded, see
+    /// `epic_completes_after`), the Epic completes in the same transaction:
+    /// `started_at`/`completed_at` stamped, leftover reservations released.
+    /// If that fails, the ticket write rolls back too.
     async fn complete_ticket(
         &self,
         workspace_id: WorkspaceId,
@@ -1047,8 +1060,15 @@ pub trait OrderRepository: Send + Sync {
     /// stock (`InsufficientInventory`, whole recording rolled back).
     ///
     /// Touches **nothing organizational**: not `status`, `archived_at`,
-    /// prerequisites, dependent tickets, or any Build/Order/allocation.
+    /// prerequisites or dependent tickets. The one exception is Epic
+    /// auto-completion (below).
     /// Idempotent on `(ticket_id, idempotency_key)`.
+    ///
+    /// **Epic auto-completion:** when this write finishes a version-3
+    /// Epic's root ticket (Complete *and* its output fully recorded, see
+    /// `epic_completes_after`), the Epic completes in the same transaction:
+    /// `started_at`/`completed_at` stamped, leftover reservations released.
+    /// If that fails, the ticket write rolls back too.
     async fn record_ticket_production(
         &self,
         workspace_id: WorkspaceId,

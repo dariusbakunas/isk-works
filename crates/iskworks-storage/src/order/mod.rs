@@ -33,6 +33,7 @@ use crate::inventory::PgInventoryRepository;
 
 mod acquisition;
 mod combine;
+mod epic_completion;
 mod error;
 mod inserts;
 mod inventory_posting;
@@ -43,6 +44,7 @@ mod reservations;
 mod rows;
 mod runway;
 mod ticket_jobs;
+mod ticket_updates;
 
 #[cfg(test)]
 mod tests;
