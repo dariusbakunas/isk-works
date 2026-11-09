@@ -640,6 +640,13 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Order, OrderError>;
+    /// The workspace's Orders among `order_ids`, in one read. Ids that
+    /// match none are left out; order is unspecified.
+    async fn get_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<Order>, OrderError>;
     async fn list_orders(
         &self,
         workspace_id: WorkspaceId,

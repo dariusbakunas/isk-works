@@ -1,4 +1,90 @@
 use super::*;
+use iskworks_core::order::{OrderId, ReservationShortfall, ReuseChange};
+
+/// [`ApiError::ReservationDrift`]'s fields: the fresh preview and what
+/// changed since the one the user confirmed.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReservationDriftDetail {
+    pub preview: EpicReusePreview,
+    /// Types the Epic would now reuse less of than previewed.
+    pub decreased: Vec<ReuseChange>,
+    /// Types another writer reserved or removed since the freeze.
+    pub shortfalls: Vec<ReservationShortfall>,
+}
+
+/// What an Epic created from a Build's overlay right now would reuse from
+/// free stock, per type. Create Epic's preview response, and the fresh
+/// preview a [`ReservationDriftDetail`] carries.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EpicReusePreview {
+    pub reuse: Vec<ReuseLine>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReuseLine {
+    pub type_id: i64,
+    pub type_name: String,
+    pub quantity: u64,
+}
+
+/// [`ApiError::InsufficientAvailable`]'s fields: per short item, what it
+/// needs, what the ticket's Epic holds, what's free, and who holds the rest
+/// -- enough for "Take N from EP-x?".
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsufficientAvailableDetail {
+    pub shortages: Vec<ShortageView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortageView {
+    pub type_id: i64,
+    pub type_name: String,
+    pub needed: u64,
+    pub own: u64,
+    pub free: u64,
+    pub holders: Vec<HolderView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HolderView {
+    pub order_id: OrderId,
+    pub display_name: String,
+    pub quantity: u64,
+}
+
+pub(super) fn reservation_drift_response() -> (StatusCode, ErrorBody) {
+    (
+        StatusCode::CONFLICT,
+        ErrorBody {
+            code: "reservation_drift",
+            message: "Free inventory changed since the preview. Review the updated reuse and \
+                      confirm again."
+                .to_string(),
+            fields: None,
+            retryable: true,
+            correlation_id: None,
+        },
+    )
+}
+
+pub(super) fn insufficient_available_response() -> (StatusCode, ErrorBody) {
+    (
+        StatusCode::CONFLICT,
+        ErrorBody {
+            code: "insufficient_available",
+            message: "Other Epics have reserved stock this recording needs.".to_string(),
+            fields: None,
+            retryable: false,
+            correlation_id: None,
+        },
+    )
+}
 
 pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
     let (status, code, retryable) = match &error {
@@ -52,13 +138,14 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
         OrderError::TicketNotCombined => (StatusCode::CONFLICT, "ticket_not_combined", false),
         OrderError::TicketNotSplittable => (StatusCode::CONFLICT, "ticket_not_splittable", false),
         OrderError::ArithmeticOverflow => (StatusCode::BAD_REQUEST, "arithmetic_overflow", false),
-        // Create Epic answers a shortfall with its own drift body (fresh
-        // preview included); this is the generic fallback.
+        // Create Epic answers a shortfall with `ApiError::ReservationDrift`
+        // (fresh preview included); this is the generic fallback.
         OrderError::ReservationShortfall(_) => {
             (StatusCode::CONFLICT, "reservation_shortfall", true)
         }
-        // `record-production` answers this with its own body (holders and
-        // item names); this is the generic fallback.
+        // `record-production` answers this with
+        // `ApiError::InsufficientAvailable` (holders and item names); this
+        // is the generic fallback.
         OrderError::InsufficientAvailable(_) => {
             (StatusCode::CONFLICT, "insufficient_available", false)
         }

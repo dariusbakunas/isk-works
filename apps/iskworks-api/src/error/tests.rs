@@ -524,3 +524,67 @@ async fn bulk_outcome_messages_redact_internal_failures_but_keep_curated_ones() 
     assert_eq!(curated, "validation failed: Structure ID must be positive.");
     assert!(!curated.contains("Error ID"));
 }
+
+async fn body_text(error: ApiError) -> (StatusCode, String) {
+    let response = error.into_response();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, String::from_utf8(body.to_vec()).unwrap())
+}
+
+/// The exact bytes, field order included: the detail fields follow
+/// `retryable` inside the usual `error` envelope.
+#[tokio::test]
+async fn reservation_drift_is_a_retryable_409_carrying_the_fresh_preview() {
+    let (status, body) = body_text(ApiError::ReservationDrift(ReservationDriftDetail {
+        preview: EpicReusePreview {
+            reuse: vec![ReuseLine {
+                type_id: 34,
+                type_name: "Tritanium".into(),
+                quantity: 600,
+            }],
+        },
+        decreased: vec![iskworks_core::order::ReuseChange {
+            type_id: 34,
+            expected: 800,
+            now: 600,
+        }],
+        shortfalls: vec![iskworks_core::order::ReservationShortfall {
+            type_id: 35,
+            wanted: 200,
+            free: 150,
+        }],
+    }))
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        body,
+        r#"{"error":{"code":"reservation_drift","message":"Free inventory changed since the preview. Review the updated reuse and confirm again.","retryable":true,"preview":{"reuse":[{"typeId":34,"typeName":"Tritanium","quantity":600}]},"decreased":[{"typeId":34,"expected":800,"now":600}],"shortfalls":[{"typeId":35,"wanted":200,"free":150}]}}"#
+    );
+}
+
+#[tokio::test]
+async fn insufficient_available_is_a_409_naming_short_items_and_holders() {
+    let (status, body) = body_text(ApiError::InsufficientAvailable(
+        InsufficientAvailableDetail {
+            shortages: vec![ShortageView {
+                type_id: 34,
+                type_name: "Tritanium".into(),
+                needed: 1_000,
+                own: 600,
+                free: 0,
+                holders: vec![HolderView {
+                    order_id: iskworks_core::order::OrderId(Uuid::nil()),
+                    display_name: "EP-2".into(),
+                    quantity: 400,
+                }],
+            }],
+        },
+    ))
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        body,
+        r#"{"error":{"code":"insufficient_available","message":"Other Epics have reserved stock this recording needs.","retryable":false,"shortages":[{"typeId":34,"typeName":"Tritanium","needed":1000,"own":600,"free":0,"holders":[{"orderId":"00000000-0000-0000-0000-000000000000","displayName":"EP-2","quantity":400}]}]}}"#
+    );
+}
