@@ -41,7 +41,7 @@ One planner. Every Build belongs to a plan through `builds.plan_root_build_id` (
 - `make sde-import SDE_PATH=...` — import an SDE export.
 - `make fitting-data` — download the pinned fitting engine data into `data/fitting/` (the API runs without it, minus fit stats; the engine data tests need it: `cargo test -p iskworks-fitting -- --include-ignored`).
 - `make fmt` / `make clippy` / `make rust-test` — Rust checks.
-- `make web-check` / `make web-test` / `make web-build` — web checks.
+- `make web-check` / `make web-test` / `make web-build` — web checks (`web-check` is `tsc` plus ESLint: Rules of Hooks errors, missing effect dependencies warn).
 - `make verify` — everything above, in order. Run before considering a change done.
 
 Targeted runs during iteration (cheaper than full suite):
