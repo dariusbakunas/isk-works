@@ -923,53 +923,58 @@ pub(super) fn order_detail(
 /// Starting is only valid once every requirement is satisfied
 /// (`OrderStatus::Ready`) -- a *derived* precondition the repository
 /// itself can't check (see `OrderRepository`'s own doc), so this route
-/// computes the same detail view `get_order` would return and guards on
-/// its `status` before calling the repository's purely stored-state
-/// transition.
+/// computes the Epic's detail view and guards on its `status` first.
+///
+/// The stored-state half of the rule (not yet started, completed or
+/// canceled) is enforced again, atomically, by the repository's guarded
+/// `UPDATE`, so two concurrent starts cannot both succeed. The requirement
+/// half is advisory: it reads the requirements as of this request.
+///
+/// Starting changes nothing but the Epic row, so the response is the
+/// detail already loaded, with the started Epic and its new status.
 pub(super) async fn start_order(
     State(state): State<AppState>,
     Path(order_id): Path<uuid::Uuid>,
 ) -> Result<Json<OrderDetailResponse>, ApiError> {
     let (workspace_id, _owner_id) = workspace_context(&state).await?;
     let order_id = OrderId(order_id);
-    let detail = fetch_order_detail(&state, workspace_id, order_id).await?;
+    let mut detail = fetch_order_detail(&state, workspace_id, order_id).await?;
     if detail.status != OrderStatus::Ready {
         return Err(iskworks_core::order::OrderError::OrderNotStartable.into());
     }
-    state
+    let order = state
         .order_repository()?
         .start_order(workspace_id, order_id)
         .await?;
-    Ok(Json(
-        fetch_order_detail(&state, workspace_id, order_id).await?,
-    ))
+    detail.status = iskworks_core::order::derive_order_status(&order, &[]);
+    detail.order = order;
+    Ok(Json(detail))
 }
 
-/// Completing is only valid from `OrderStatus::InProgress` (same
-/// derived-precondition reasoning as `start_order`). It is a **purely
-/// organizational** transition -- it stamps `completed_at` and nothing
-/// else. Final production output is posted by the root Manufacturing
-/// ticket's explicit `record-production`, never by Order completion, so
-/// this route consumes no requirements, does not touch
-/// `inventory_allocations`, and posts no production output. Workflow status and
-/// recording state are independent: a Complete Order may have an unrecorded
-/// root ticket, and a recorded root ticket may sit under a still-open Order.
+/// Completing is only valid from `OrderStatus::InProgress`: started, and
+/// neither completed nor canceled. That is purely stored state, so the
+/// repository's guarded `UPDATE` is the whole check, atomic with the write
+/// (`OrderNotCompletable`, or `OrderNotFound`).
+///
+/// It is a **purely organizational** transition -- it stamps
+/// `completed_at` and releases what the Epic still holds. Final production
+/// output is posted by the root Manufacturing ticket's explicit
+/// `record-production`, never by Order completion, so this route consumes
+/// no requirements and posts no production output. Workflow status and
+/// recording state are independent: a Complete Order may have an
+/// unrecorded root ticket, and a recorded root ticket may sit under a
+/// still-open Order.
 pub(super) async fn complete_order(
     State(state): State<AppState>,
     Path(order_id): Path<uuid::Uuid>,
 ) -> Result<Json<OrderDetailResponse>, ApiError> {
     let (workspace_id, _owner_id) = workspace_context(&state).await?;
     let order_id = OrderId(order_id);
-    let detail = fetch_order_detail(&state, workspace_id, order_id).await?;
-    if detail.status != OrderStatus::InProgress {
-        return Err(iskworks_core::order::OrderError::OrderNotCompletable.into());
-    }
-
     state
         .order_repository()?
         .complete_order(workspace_id, order_id)
         .await?;
-
+    // Completing releases reservations, so the detail is loaded afterwards.
     Ok(Json(
         fetch_order_detail(&state, workspace_id, order_id).await?,
     ))
