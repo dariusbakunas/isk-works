@@ -27,7 +27,7 @@ const COLUMNS: OperationalColumn[] = [
 ];
 
 function Isk({ value }: { value: string }) {
-  return <span title={`${formatIskSummary(value)} ISK`}>{formatIskCompact(value)}</span>;
+  return <span title={formatIskSummary(value)}>{formatIskCompact(value)}</span>;
 }
 
 function percent(share: string): string {
@@ -74,8 +74,8 @@ function ScanFirstList({
             onClick={() => onScanFirst(entry.planetId, entry.resourceTypeId)}
             title={
               entry.source === "default"
-                ? `At a typical density, this reading alone adds ${formatIskSummary(entry.iskPerMonth)} ISK/mo`
-                : `10 points lower costs ${formatIskSummary(entry.iskPerMonth)} ISK/mo`
+                ? `At a typical density, this reading alone adds ${formatIskSummary(entry.iskPerMonth)}/mo`
+                : `10 points lower costs ${formatIskSummary(entry.iskPerMonth)}/mo`
             }
             type="button"
           >
@@ -174,7 +174,7 @@ export function PlanPanel({
       ) : null}
       <div className={solving ? "pointer-events-none opacity-50" : undefined}>
         <div className="grid grid-cols-2 border-b border-border sm:grid-cols-4">
-          <Tile label="ISK/mo" value={formatIskCompact(plan.iskPerMonth)} title={`${formatIskSummary(plan.iskPerMonth)} ISK`} />
+          <Tile label="ISK/mo" value={formatIskCompact(plan.iskPerMonth)} title={formatIskSummary(plan.iskPerMonth)} />
           <Tile label="Colonies" value={`${plan.colonies.length} of ${solution.availableColonies}`} />
           <Tile label="Customs tax/mo" value={`−${formatIskCompact(plan.customsTaxPerMonth)}`} />
           <Tile label="Sales/mo" value={formatIskCompact(plan.salesPerMonth)} />
@@ -357,7 +357,7 @@ export function PlanPanel({
                                 current ? "border-primary bg-primary/15" : "border-border hover:border-primary/60"
                               }`}
                               onClick={() => onCadence(reset, haul)}
-                              title={cell ? `${formatIskSummary(cell.iskPerMonth)} ISK/mo · ${Number(cell.loginsPerWeek).toFixed(1)} logins per week` : undefined}
+                              title={cell ? `${formatIskSummary(cell.iskPerMonth)}/mo · ${Number(cell.loginsPerWeek).toFixed(1)} logins per week` : undefined}
                               type="button"
                             >
                               <b className="block font-mono text-[0.7rem]">{cell ? formatIskCompact(cell.iskPerMonth) : "—"}</b>
