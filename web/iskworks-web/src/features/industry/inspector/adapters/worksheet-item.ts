@@ -10,7 +10,7 @@ import type {
 } from "../../../../api/industry";
 import { formatIskSummary } from "../../../../components/money";
 import { reconcileObservedSelection } from "../../builds/planner/available-blueprint";
-import { formatPercent } from "../../shared/formatting";
+import { formatPercent } from "../../../../lib/formatting";
 import {
   coverageSlice,
   pricingSlice,

@@ -6,7 +6,7 @@ import {
   OperationalTableRow,
   type OperationalColumn,
 } from "../../../components/operational-table";
-import { formatDate } from "../shared/formatting";
+import { formatDate } from "../../../lib/formatting";
 
 const PRICE_COLUMNS: OperationalColumn[] = [
   { key: "item", label: "Item", width: "minmax(220px,1fr)", sticky: true },

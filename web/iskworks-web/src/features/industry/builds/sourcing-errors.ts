@@ -1,5 +1,5 @@
 import { ApiError } from "../../../api/workspace";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 
 /**
  * Sourcing and production-setup write errors in production terms. The

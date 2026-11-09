@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { createAcquisitionRun, type AcquisitionRun, type Ticket } from "../../api/industry";
 import { InlineAlert, TextField } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
-import { apiMessage } from "../industry/shared/api-error";
-import { sumDecimalStrings } from "../industry/shared/decimal";
+import { apiMessage } from "../../api/api-error";
+import { sumDecimalStrings } from "../../lib/decimal";
 import {
   acquisitionPricingIdentity,
   acquisitionPricingKey,

@@ -10,7 +10,7 @@ import {
 } from "../../../api/industry";
 import { ButtonLink, InlineAlert } from "../../../components/primitives";
 import { CharacterName } from "../../../observability/private";
-import { Field } from "../shared/field";
+import { Field } from "../../../components/field";
 import { parseStructureReference } from "../shared/structure-reference";
 import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
 import { apiMessage } from "./shared";

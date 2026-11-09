@@ -4,7 +4,7 @@ import type {
   ExecutionPlanProjection,
   LogisticsDestination,
 } from "../../../api/industry";
-import { sumDecimalStrings } from "../shared/decimal";
+import { sumDecimalStrings } from "../../../lib/decimal";
 
 /**
  * Selects a producer and everything it directly or transitively needs from

@@ -10,7 +10,7 @@ import {
   type FacilityInput,
 } from "../../../api/industry";
 import { InlineAlert, StatusBadge } from "../../../components/primitives";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 
 type ImportState =
   | { status: "select" }

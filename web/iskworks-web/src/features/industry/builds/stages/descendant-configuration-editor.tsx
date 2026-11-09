@@ -13,7 +13,7 @@ import type {
 } from "../../../../api/industry";
 import { listBlueprintObservations, updateDescendantProductionConfiguration } from "../../../../api/industry";
 import type { FacilityProfile } from "../../../../api/industry/facilities";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 import { BlueprintSelectionFields } from "../planner/blueprint-selection-section";
 import { InspectorRow } from "../../inspector/inspector-section";
 

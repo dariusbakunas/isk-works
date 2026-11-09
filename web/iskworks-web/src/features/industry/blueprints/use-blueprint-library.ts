@@ -9,7 +9,7 @@ import {
   type BlueprintLibraryRow,
   type BlueprintLibrarySummary,
 } from "../../../api/industry";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 
 // A workspace rarely owns more than a few hundred blueprints, so the first
 // page usually is everything; "Load more" covers the rest.

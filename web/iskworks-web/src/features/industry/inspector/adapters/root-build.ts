@@ -11,7 +11,7 @@
 
 import { rootFacility } from "../../../../api/industry";
 import { formatIskSummary } from "../../../../components/money";
-import { formatPercent } from "../../shared/formatting";
+import { formatPercent } from "../../../../lib/formatting";
 import { parseRuns } from "../../builds/components/planner-panels";
 import type { BuildWorksheetEditorModel } from "../../builds/use-build-worksheet-editor";
 import { recipeCurrencyChip, recipeCurrencyExplanation } from "../../builds/graph/recipe-currency";

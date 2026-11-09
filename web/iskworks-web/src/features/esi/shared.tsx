@@ -5,7 +5,7 @@ export function apiMessage(error: unknown): string {
   return sharedApiMessage(error, "The EVE integration request could not be completed.");
 }
 
-// Unlike features/industry/shared/formatting.ts's formatDate, this accepts
+// Unlike lib/formatting.ts's formatDate, this accepts
 // a possibly-null timestamp (e.g. a connection that has never synced) and
 // reports "Never" rather than requiring the caller to guard every call site.
 export function formatDate(value: string | null): string {

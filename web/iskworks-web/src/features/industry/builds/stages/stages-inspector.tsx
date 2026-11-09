@@ -39,7 +39,7 @@ import { Badge } from "../../../../components/primitives";
 import { InspectorRow, InspectorSection } from "../../inspector/inspector-section";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { PricingBody } from "../../inspector/unified-item-inspector";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 import type { RootRowEditing } from "./root-row-editing";
 

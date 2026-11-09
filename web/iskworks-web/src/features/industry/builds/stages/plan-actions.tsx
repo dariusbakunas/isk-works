@@ -8,7 +8,7 @@ import { Link } from "react-router";
 
 import type { MaterialActivity, RecipeSelection, Ticket } from "../../../../api/industry";
 import { createTicket } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 import type { SourcingChoice } from "./use-plan-sourcing";
 

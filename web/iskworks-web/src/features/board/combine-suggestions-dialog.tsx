@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { combineTickets } from "../../api/industry";
 import { MoneyAmount } from "../../components/money";
-import { apiMessage } from "../industry/shared/api-error";
+import { apiMessage } from "../../api/api-error";
 import type { CombineSuggestion } from "./combine-suggestions";
 
 type RowResult = { status: "combined" } | { status: "failed"; message: string };

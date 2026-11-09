@@ -19,7 +19,7 @@ import {
   type OperationalColumn,
 } from "../../../components/operational-table";
 import { Badge, EmptyState, InlineAlert, PageHeader, Panel, type Tone } from "../../../components/primitives";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { formatBonusPercent } from "./facility-bonus";
 import { bonusFor, effectiveChoice, suggestionAssignments, targetKey } from "./facility-defaults-model";
 import { FacilitiesSectionTabs } from "./facilities-section-tabs";

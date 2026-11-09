@@ -18,9 +18,9 @@ import {
 import { downloadText } from "../../../components/csv";
 import { Badge } from "../../../components/primitives";
 import { CharacterName } from "../../../observability/private";
-import { FinanceCheckbox, FinanceFilterSection } from "../../finance/finance-filter-controls";
+import { FinanceCheckbox, FinanceFilterSection } from "../../../components/finance-filter-controls";
 import { BuildsSectionTabs } from "../builds/builds-section-tabs";
-import { ExportColumnsDialog } from "../shared/export-columns-dialog";
+import { ExportColumnsDialog } from "../../../components/export-columns-dialog";
 import {
   BLUEPRINT_EXPORT_COLUMNS,
   DEFAULT_EXPORT_COLUMNS,

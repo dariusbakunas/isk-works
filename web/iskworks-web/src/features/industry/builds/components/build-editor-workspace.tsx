@@ -9,8 +9,8 @@ import {
   type PreviewBuildPlanCommand,
 } from "../../../../api/industry";
 import { EmptyState, InlineAlert, PageHeader, Panel, StatusBadge } from "../../../../components/primitives";
-import { apiMessage } from "../../shared/api-error";
-import { Field } from "../../shared/field";
+import { apiMessage } from "../../../../api/api-error";
+import { Field } from "../../../../components/field";
 import { BuildPlanner } from "../planner/build-planner";
 import {
   CreateCandidateResults,

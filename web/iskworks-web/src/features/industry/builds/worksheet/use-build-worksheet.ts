@@ -5,7 +5,7 @@ import {
   type BuildWorksheetProjection,
   type PreviewBuildPlanCommand,
 } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 const REFRESH_DEBOUNCE_MS = 250;
 

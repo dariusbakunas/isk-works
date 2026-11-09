@@ -10,7 +10,7 @@ import {
   type OperationalColumn,
 } from "../../../components/operational-table";
 import { hasEsiDiscrepancy } from "./inventory-filters";
-import { sumDecimalStrings } from "../shared/decimal";
+import { sumDecimalStrings } from "../../../lib/decimal";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
 
 const INVENTORY_COLUMNS: OperationalColumn[] = [

@@ -20,7 +20,8 @@ Rust API + Postgres backend, React/TypeScript frontend.
   - `src/api/<domain>.ts` — typed fetch client per API domain, mirrors `routes/<domain>.rs`.
   - `src/features/<feature>/` and `src/features/industry/<feature>/` — feature UI, hooks and route pages (`*-page.tsx`, wired in `src/App.tsx`), e.g. `board/`, `industry/builds/` (incl. the planner core in `builds/planner/`), `industry/inventory/`.
   - `src/components/` — shared primitives with no feature imports, incl. `operational-table/` (see below) and the inspector side-panel shell.
-  - `src/hooks/` — shared hooks; `src/observability/` — LogRocket integration.
+  - `src/hooks/` — shared hooks; `src/lib/` — pure helpers (`formatting`, `decimal`); `src/observability/` — LogRocket integration.
+  - The shared layer (`api/`, `components/`, `hooks/`, `lib/`, `observability/`) never imports `features/`; ESLint enforces it outside `__tests__/`.
 - `migrations/` — sqlx Postgres migrations.
 - `docs/implementation/` — how individual features work; `docs/security/` — invite codes and session replay; `docs/esi-usage.md` — what ISK Works asks of ESI, for operators.
 - Design docs and TDD plans are not in this repo. Maintainers keep them in the private companion repo, checked out as a sibling: `../isk-works-internal/docs/superpowers/` (`specs/` + `plans/`, dated `YYYY-MM-DD-<slug>`). If you have that checkout, **check it before starting non-trivial work**, since a feature may already be specced and planned, and write new specs/plans there. Never add them to this repo (`docs/superpowers` stays gitignored as a guard).

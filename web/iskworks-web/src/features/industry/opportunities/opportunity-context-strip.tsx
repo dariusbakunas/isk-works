@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import type { FacilityProfile, MarketScope } from "../../../api/industry";
 import { MarketScopeSelector } from "../../../components/market-scope-selector";
-import { Field } from "../shared/field";
+import { Field } from "../../../components/field";
 import { describeMarketScope } from "./opportunity-formatters";
 
 export interface OpportunityContextInput {

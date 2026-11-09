@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { clearMaintenanceNotice, setMaintenanceNotice } from "../../api/admin";
 import { getMaintenanceNotice, type MaintenanceNotice } from "../../api/health";
 import { InlineAlert, Panel } from "../../components/primitives";
-import { apiMessage } from "../industry/shared/api-error";
-import { Field } from "../industry/shared/field";
+import { apiMessage } from "../../api/api-error";
+import { Field } from "../../components/field";
 
 const DEFAULT_MESSAGE = "Please save your work before then.";
 const DEFAULT_LEAD_MINUTES = 10;

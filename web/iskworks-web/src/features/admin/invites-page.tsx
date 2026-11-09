@@ -22,9 +22,9 @@ import {
   StatusBadge,
 } from "../../components/primitives";
 import { Private } from "../../observability/private";
-import { apiMessage } from "../industry/shared/api-error";
-import { Field } from "../industry/shared/field";
-import { formatDate } from "../industry/shared/formatting";
+import { apiMessage } from "../../api/api-error";
+import { Field } from "../../components/field";
+import { formatDate } from "../../lib/formatting";
 
 type AsyncState<T> =
   | { status: "loading" }

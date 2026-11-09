@@ -5,7 +5,6 @@ import { apiMessage as inventoryMessage } from "../../features/industry/inventor
 import { apiMessage as marketMessage } from "../../features/industry/market/shared";
 import { apiMessage as marketBrowserMessage } from "../../features/industry/market-browser/shared";
 import { apiMessage as opportunitiesMessage } from "../../features/industry/opportunities/shared";
-import { apiMessage as industryMessage } from "../../features/industry/shared/api-error";
 import { apiMessage as sharedMessage } from "../api-error";
 import { ApiError } from "../workspace";
 
@@ -23,7 +22,6 @@ const messages = {
   market: marketMessage,
   marketBrowser: marketBrowserMessage,
   opportunities: opportunitiesMessage,
-  industry: industryMessage,
   shared: sharedMessage,
 };
 

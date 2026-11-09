@@ -9,7 +9,7 @@ import {
   type OpportunityRefreshDisposition,
 } from "../../../api/opportunities";
 import { InlineAlert } from "../../../components/primitives";
-import { formatDuration } from "../shared/formatting";
+import { formatDuration } from "../../../lib/formatting";
 import { formatEvidenceAge } from "./opportunity-formatters";
 import { apiMessage } from "./shared";
 

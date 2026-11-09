@@ -18,8 +18,8 @@ import {
 import { Badge, ButtonLink, InlineAlert, ProgressBar } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
-import { apiMessage } from "../industry/shared/api-error";
-import { formatDate } from "../industry/shared/formatting";
+import { apiMessage } from "../../api/api-error";
+import { formatDate } from "../../lib/formatting";
 import { useAsyncAction } from "../../hooks/use-async-action";
 import {
   orderStatusMeta,

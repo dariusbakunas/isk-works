@@ -16,8 +16,8 @@ import { Badge, InlineAlert } from "../../components/primitives";
 import { MoneyAmount } from "../../components/money";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { useDebouncedLookup } from "../../hooks/use-debounced-lookup";
-import { apiMessage } from "../industry/shared/api-error";
-import { formatDuration } from "../industry/shared/formatting";
+import { apiMessage } from "../../api/api-error";
+import { formatDuration } from "../../lib/formatting";
 import { requirementKindMeta } from "./order-meta";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 

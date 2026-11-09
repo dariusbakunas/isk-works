@@ -8,7 +8,7 @@ import { MoneyInput } from "../../../components/money-input";
 import { Badge } from "../../../components/primitives";
 import { BlueprintSelectionFields } from "../builds/planner/blueprint-selection-section";
 import { FacilityEivControl } from "../builds/components/planner-panels";
-import { formatDuration } from "../shared/formatting";
+import { formatDuration } from "../../../lib/formatting";
 
 import {
   INSPECTOR_SECTION_ORDER,

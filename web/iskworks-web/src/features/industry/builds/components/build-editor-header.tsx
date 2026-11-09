@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { CreateBuildPlanPreview } from "../../../../api/industry";
-import { Field } from "../../shared/field";
+import { Field } from "../../../../components/field";
 import { Panel } from "../../../../components/primitives";
 import { CandidateSummary } from "./candidate-summary";
 

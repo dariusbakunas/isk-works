@@ -1,5 +1,5 @@
 import type { OpportunityThinBookReason, OpportunityWarning, OpportunityWarningKind } from "../../../api/opportunities";
-import { formatDuration } from "../shared/formatting";
+import { formatDuration } from "../../../lib/formatting";
 import { formatEvidenceAge } from "./opportunity-formatters";
 
 // Kept in sync with the backend's derive_evidence_quality tiering (crates/iskworks-core/src/opportunity_quality.rs):

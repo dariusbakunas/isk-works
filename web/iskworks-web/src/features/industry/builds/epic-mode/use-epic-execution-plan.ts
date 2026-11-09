@@ -5,7 +5,7 @@ import {
   type EpicExecutionPlan,
   type OrderRequirement,
 } from "../../../../api/industry";
-import { apiMessage } from "../../shared/api-error";
+import { apiMessage } from "../../../../api/api-error";
 
 export interface EpicExecutionPlanState {
   data: EpicExecutionPlan | null;

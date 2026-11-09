@@ -10,7 +10,7 @@ import {
   type FacilityProfile,
 } from "../../../api/industry";
 import { ConfirmDialog, EmptyState, InlineAlert, PageHeader, Panel } from "../../../components/primitives";
-import { apiMessage } from "../shared/api-error";
+import { apiMessage } from "../../../api/api-error";
 import { FacilitiesSectionTabs } from "./facilities-section-tabs";
 import { FacilityCard } from "./facility-card";
 import { defaultsByFacility } from "./facility-defaults-model";

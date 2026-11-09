@@ -1,4 +1,4 @@
-import { formatIskSummary, formatSignedIsk } from "../../../components/money";
+import { formatIskSummary, formatSignedIsk } from "../components/money";
 
 export function formatMoney(value: string | null): string {
   return value === null ? "Incomplete" : formatIskSummary(value);
