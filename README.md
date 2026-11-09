@@ -101,7 +101,9 @@ make sde-import SDE_PATH=/path/to/eve-online-static-data-<version>-jsonl.zip
 ```
 
 Without `EVE_SSO_CLIENT_ID`, the API runs as a single unauthenticated local workspace, which is fine
-for development. `ISKWORKS_ESI_MOCK=1` serves fixture ESI data. To use real EVE sign-in, register an
+for development. `ISKWORKS_ESI_MOCK=1` serves fixture ESI data; it needs a `TOKEN_ENCRYPTION_KEY`
+(`openssl rand -base64 32`) and a build with the `esi-fixture` feature, which `make api` and
+`make worker` enable and release images leave out. To use real EVE sign-in, register an
 application at <https://developers.eveonline.com> and fill in the EVE SSO settings in `.env`.
 
 Checks, the same ones CI runs:

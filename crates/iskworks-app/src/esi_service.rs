@@ -18,33 +18,46 @@ use iskworks_core::{
     FacilityError, InventoryError, OwnerId, WorkspaceId,
 };
 use iskworks_esi::{
-    authorization_url, hash_state, new_pkce, AssetObservation, AuthenticatedToken,
-    BlueprintAssetObservation, CalendarEventDetailObservation, CalendarEventObservation,
-    CalendarEventResponse, CharacterAttributesObservation, CharacterIndustryJobObservation,
-    CharacterLocationObservation, CharacterOrderObservation, CharacterPlanetDetailObservation,
-    CharacterPlanetObservation, CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry,
-    CharacterSkillsObservation, EncryptedSecret, EsiError, EsiResponse, EsiResponseMetadata,
-    EsiTransport, HttpEsiTransport, Identity, MarketOrderObservation, OAuthState, PkceVerifier,
-    PlanetExtractorObservation, PlanetPinContentObservation, PlanetPinObservation, RefreshedToken,
-    SecretCipher, StructureInformation, WalletTransactionObservation, ASSET_SCOPE, BLUEPRINT_SCOPE,
-    CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE, MARKET_ORDERS_SCOPE,
-    MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE, STRUCTURE_SCOPE,
-    WALLET_SCOPE,
+    authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
+    EncryptedSecret, EsiError, EsiResponse, EsiTransport, HttpEsiTransport, Identity,
+    MarketOrderObservation, OAuthState, PkceVerifier, SecretCipher, StructureInformation,
+    ASSET_SCOPE, BLUEPRINT_SCOPE, CALENDAR_SCOPE, INDUSTRY_JOBS_SCOPE, LOCATION_SCOPE,
+    MARKET_ORDERS_SCOPE, MARKET_STRUCTURE_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE, SKILL_QUEUE_SCOPE,
+    STRUCTURE_SCOPE, WALLET_SCOPE,
+};
+// Wire types only the test helpers and the fixture transport build; they
+// reach them through `use super::*`.
+#[cfg(any(test, feature = "test-support", feature = "esi-fixture"))]
+use iskworks_esi::{AuthenticatedToken, RefreshedToken, WalletTransactionObservation};
+#[cfg(any(test, feature = "esi-fixture"))]
+use iskworks_esi::{
+    CalendarEventDetailObservation, CalendarEventObservation, CalendarEventResponse,
+    CharacterAttributesObservation, CharacterIndustryJobObservation, CharacterLocationObservation,
+    CharacterOrderObservation, CharacterPlanetDetailObservation, CharacterPlanetObservation,
+    CharacterPublicInfo, CharacterSkillEntry, CharacterSkillQueueEntry, CharacterSkillsObservation,
+    EsiResponseMetadata, PlanetExtractorObservation, PlanetPinContentObservation,
+    PlanetPinObservation,
 };
 use iskworks_storage::{PendingAuthorization, PgEsiRepository, StoredRefreshToken};
 use rust_decimal::Decimal;
 use serde::Serialize;
+#[cfg(any(test, feature = "esi-fixture"))]
 use serde_json::json;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
 mod authorization;
+// Deterministic local ESI data for `ISKWORKS_ESI_MOCK=1`. Compiled only with
+// the `esi-fixture` feature (and for this crate's own tests), so release
+// images can't be switched into fixture mode by an environment variable.
+#[cfg(any(test, feature = "esi-fixture"))]
 mod fixture;
 mod pricing;
 mod structures;
 mod sync;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
+#[cfg(any(test, feature = "esi-fixture"))]
 use fixture::*;
 use structures::*;
 #[cfg(any(test, feature = "test-support"))]
@@ -341,9 +354,30 @@ impl EsiSyncDispatcher for EsiApplicationService {
     }
 }
 
+/// Whether `ISKWORKS_ESI_MOCK` asks for fixture mode, refusing it in a build
+/// without the fixture transport (`fixture_available` is false) instead of
+/// silently talking to real ESI.
+fn fixture_mode_requested(
+    value: Option<&str>,
+    fixture_available: bool,
+) -> Result<bool, EsiApplicationError> {
+    let requested = value == Some("1");
+    if requested && !fixture_available {
+        return Err(EsiApplicationError::Configuration(
+            "ISKWORKS_ESI_MOCK=1 needs a build with the esi-fixture feature \
+             (`make api` / `make worker` enable it); release builds have no fixture mode."
+                .to_string(),
+        ));
+    }
+    Ok(requested)
+}
+
 impl EsiApplicationService {
     pub fn from_env(repository: Arc<PgEsiRepository>) -> Result<Option<Self>, EsiApplicationError> {
-        let fixture_mode = env::var("ISKWORKS_ESI_MOCK").as_deref() == Ok("1");
+        let fixture_mode = fixture_mode_requested(
+            env::var("ISKWORKS_ESI_MOCK").ok().as_deref(),
+            cfg!(feature = "esi-fixture"),
+        )?;
         let client_id = env::var("EVE_SSO_CLIENT_ID")
             .ok()
             .filter(|value| !value.trim().is_empty());
@@ -355,21 +389,16 @@ impl EsiApplicationService {
             "http://127.0.0.1:8080/api/eve/oauth/callback",
         );
         let web_app_url = env_or_default("WEB_APP_URL", "http://127.0.0.1:5173");
-        let key = if fixture_mode {
-            env::var("TOKEN_ENCRYPTION_KEY")
-                .unwrap_or_else(|_| "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=".to_string())
-        } else {
-            env::var("TOKEN_ENCRYPTION_KEY").map_err(|_| {
-                EsiApplicationError::Configuration(
-                    "TOKEN_ENCRYPTION_KEY is required when ESI is enabled.".to_string(),
-                )
-            })?
-        };
+        // Required in fixture mode too: fixture tokens are stored encrypted
+        // like real ones, and a built-in fallback key would be public.
+        let key = env::var("TOKEN_ENCRYPTION_KEY").map_err(|_| {
+            EsiApplicationError::Configuration(
+                "TOKEN_ENCRYPTION_KEY is required when ESI is enabled.".to_string(),
+            )
+        })?;
         let cipher = SecretCipher::from_base64(&key)?;
         let client_id = client_id.unwrap_or_else(|| "fixture-client".to_string());
-        let transport: Arc<dyn EsiTransport> = if fixture_mode {
-            Arc::new(FixtureEsiTransport)
-        } else {
+        let http = || -> Arc<dyn EsiTransport> {
             Arc::new(HttpEsiTransport::new(
                 client_id.clone(),
                 redirect_uri.clone(),
@@ -379,6 +408,15 @@ impl EsiApplicationService {
                 env_or_default("EVE_SSO_ISSUER", DEFAULT_ISSUER),
             ))
         };
+        #[cfg(any(test, feature = "esi-fixture"))]
+        let transport: Arc<dyn EsiTransport> = if fixture_mode {
+            Arc::new(FixtureEsiTransport)
+        } else {
+            http()
+        };
+        // Without the feature, `fixture_mode` was rejected above.
+        #[cfg(not(any(test, feature = "esi-fixture")))]
+        let transport = http();
         Ok(Some(Self {
             repository,
             transport,

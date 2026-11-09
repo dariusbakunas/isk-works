@@ -22,6 +22,9 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [features]
+# Fixture ESI transport behind `ISKWORKS_ESI_MOCK=1`, for local development.
+# Enabled by `make api` / `make worker`; never by release builds.
+esi-fixture = []
 # Test constructors and fakes used by iskworks-api's tests. Enabled only
 # through [dev-dependencies], so release builds never contain them.
 test-support = ["iskworks-esi/test-support"]

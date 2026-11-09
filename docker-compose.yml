@@ -35,6 +35,10 @@ services:
       context: .
       dockerfile: docker/rust.Dockerfile
       target: iskworks-worker
+      args:
+        # Set to `iskworks-worker/esi-fixture` to use ISKWORKS_ESI_MOCK=1
+        # below; the default build has no fixture mode.
+        CARGO_FEATURES: ${ISKWORKS_WORKER_CARGO_FEATURES:-}
     depends_on:
       db:
         condition: service_healthy
@@ -43,8 +47,9 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       # Optional: only needed to exercise character sync locally. Fixture
       # mode (matching the API's ISKWORKS_ESI_MOCK dev workflow) needs no
-      # real EVE SSO app; real character sync needs the same client ID and
-      # encryption key the API uses, since it decrypts the same tokens.
+      # real EVE SSO app, but does need the esi-fixture build arg above and
+      # a TOKEN_ENCRYPTION_KEY. Real character sync needs the same client ID
+      # and encryption key the API uses, since it decrypts the same tokens.
       ISKWORKS_ESI_MOCK: ${ISKWORKS_ESI_MOCK:-0}
       ISKWORKS_ESI_CONTACT: ${ISKWORKS_ESI_CONTACT:-}
       EVE_SSO_CLIENT_ID: ${EVE_SSO_CLIENT_ID:-}

@@ -36,16 +36,16 @@ db-down:
 	docker compose down
 
 api:
-	cargo run -p iskworks-api
+	cargo run -p iskworks-api --features esi-fixture
 
 # Local/agent-verification-only: mounts POST /api/auth/dev/login, which
 # bypasses the real EVE SSO round-trip. Never used by `make api` or any
 # release build — see apps/iskworks-api/src/routes/dev_auth.rs.
 api-dev:
-	ISKWORKS_DEV_AUTH=1 cargo run -p iskworks-api --features dev-auth
+	ISKWORKS_DEV_AUTH=1 cargo run -p iskworks-api --features dev-auth,esi-fixture
 
 worker:
-	cargo run -p iskworks-worker
+	cargo run -p iskworks-worker --features esi-fixture
 
 worker-dev: worker
 

@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+# Local-development-only fixture ESI data (`ISKWORKS_ESI_MOCK=1`); see
+# iskworks-app's `esi-fixture`. Never enabled by release builds.
+esi-fixture = ["iskworks-app/esi-fixture"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
