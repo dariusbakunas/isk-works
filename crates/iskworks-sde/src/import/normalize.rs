@@ -77,7 +77,7 @@ pub(super) fn normalize_market_groups(
         for value in values {
             if value
                 .parent_group_id
-                .map_or(true, |parent_id| emitted.contains(&parent_id))
+                .is_none_or(|parent_id| emitted.contains(&parent_id))
             {
                 emitted.insert(value.market_group_id);
                 ordered.push(value);

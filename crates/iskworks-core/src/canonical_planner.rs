@@ -491,7 +491,7 @@ impl CanonicalPlanTopology {
                 AdapterDiagnostic::MissingPersistedEdge { consumer, .. }
                 | AdapterDiagnostic::UnmatchedPersistedEdge { consumer, .. } => Some(*consumer),
             };
-            if consumer.map_or(true, |consumer| reachable_set.contains(&consumer.0)) {
+            if consumer.is_none_or(|consumer| reachable_set.contains(&consumer.0)) {
                 return Err(match diagnostic {
                     AdapterDiagnostic::CyclicProducerReference { producer, .. } => {
                         CanonicalGraphError::Cycle {

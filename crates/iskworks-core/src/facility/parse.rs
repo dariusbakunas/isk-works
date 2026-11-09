@@ -89,7 +89,7 @@ pub fn parse_profile(
         ));
     }
     if command.kind == FacilityKind::UpwellStructure
-        && command.structure_id.map_or(true, |value| value <= 0)
+        && command.structure_id.is_none_or(|value| value <= 0)
     {
         return Err(FacilityError::Validation(
             "An Upwell Structure requires a positive EVE structure ID.".to_string(),

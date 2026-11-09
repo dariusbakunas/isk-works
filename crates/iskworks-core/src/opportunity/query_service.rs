@@ -444,9 +444,7 @@ impl OpportunityQueryService {
                 .filter(|item| {
                     market_type_ids.binary_search(&item.type_id).is_ok()
                         && (item.refresh_state == MarketRefreshState::Refreshing
-                            || item
-                                .next_refresh_at
-                                .map_or(true, |due| due <= calculated_at))
+                            || item.next_refresh_at.is_none_or(|due| due <= calculated_at))
                 })
                 .count(),
         )

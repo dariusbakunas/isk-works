@@ -2378,7 +2378,7 @@ impl PgSdeRepository {
         for row in rows {
             if schematics
                 .last()
-                .map_or(true, |last| last.schematic_id != row.schematic_id)
+                .is_none_or(|last| last.schematic_id != row.schematic_id)
             {
                 schematics.push(iskworks_sde::PlanetSchematic {
                     schematic_id: row.schematic_id,

@@ -654,7 +654,7 @@ fn inline_public_work(
         .iter()
         .filter(|item| {
             item.refresh_state != iskworks_core::MarketRefreshState::Refreshing
-                && item.next_refresh_at.map_or(true, |due| due <= now)
+                && item.next_refresh_at.is_none_or(|due| due <= now)
         })
         .take(API_INLINE_REFRESH_LIMIT)
         .cloned()

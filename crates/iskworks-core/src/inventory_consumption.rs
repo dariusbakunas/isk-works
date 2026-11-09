@@ -231,7 +231,7 @@ pub fn build_consumption(
             .map_or(MaterialCategory::Other, |fact| fact.category)
     };
     let in_range = |day: NaiveDate| day >= query.from && day <= query.to;
-    let in_filter = |type_id: i64| query.category.map_or(true, |c| category_of(type_id) == c);
+    let in_filter = |type_id: i64| query.category.is_none_or(|c| category_of(type_id) == c);
 
     // ---- categories (unfiltered) and per-type totals (filtered)
     let mut category_values: BTreeMap<MaterialCategory, Decimal> = BTreeMap::new();

@@ -965,9 +965,8 @@ async fn finished_passes_are_recorded_per_loop() {
                     && key
                         .labels()
                         .any(|l| l.key() == "loop" && l.value() == "test")
-                    && label.map_or(true, |(k, v)| {
-                        key.labels().any(|l| l.key() == k && l.value() == v)
-                    })
+                    && label
+                        .is_none_or(|(k, v)| key.labels().any(|l| l.key() == k && l.value() == v))
             })
             .map(|(.., value)| value)
     };
