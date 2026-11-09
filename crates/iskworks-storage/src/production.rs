@@ -4,10 +4,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::order::{InventoryAllocationId, OrderId, TicketId, TicketStatus};
 use iskworks_core::{
-    BuildCoverageReport, BuildId, EsiHoldingContributor, EsiHoldings, EsiObservation,
-    InventoryBalance, InventoryItemKey, InventoryReservation, InventoryReservationSource,
-    MaterialCostQuality, MaterialCoverage, Money, OrderReservationStatus, OwnerId, ProductionError,
-    ProductionRepository, QuantityCoverageState, SetEsiHoldingReconciliationInclusion, WorkspaceId,
+    coverage_figures, coverage_source_warnings, esi_reconciliation_warning,
+    projected_historical_cost, BuildCoverageReport, BuildId, CoverageQuantities,
+    EsiHoldingContributor, EsiHoldings, EsiObservation, InventoryBalance, InventoryItemKey,
+    InventoryReservation, InventoryReservationSource, MaterialCostQuality, MaterialCoverage, Money,
+    OrderReservationStatus, OwnerId, ProductionError, ProductionRepository,
+    SetEsiHoldingReconciliationInclusion, WorkspaceId,
 };
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres};
@@ -179,14 +181,14 @@ impl PgProductionRepository {
             let required = material.required(runs)?;
             let balance =
                 load_balance(executor, workspace_id, OwnerId(build.owner_id), &material).await?;
-            let here = 0u64;
             let elsewhere = reserved.get(&material.type_id).copied().unwrap_or(0);
             let owned = balance.quantity;
-            let unreserved = owned.saturating_sub(here.saturating_add(elsewhere));
-            let available = here.saturating_add(unreserved);
-            let covered = required.min(available);
-            let missing = required.saturating_sub(covered);
-            let additional = required.saturating_sub(here).min(unreserved);
+            let figures = coverage_figures(CoverageQuantities {
+                owned,
+                reserved_here: 0,
+                reserved_elsewhere: elsewhere,
+                required,
+            });
             let quality = inventory_quality(
                 executor,
                 workspace_id,
@@ -195,15 +197,11 @@ impl PgProductionRepository {
                 &balance,
             )
             .await?;
-            let average = resolvable_average(&balance)?;
-            let projected = if available >= required {
-                average
-                    .map(|value| value.checked_mul_quantity(required))
-                    .transpose()
-                    .map_err(|_| ProductionError::ArithmeticOverflow)?
-            } else {
-                None
-            };
+            let average = balance
+                .total_historical_cost
+                .average_unit_cost(owned)
+                .map_err(|_| ProductionError::ArithmeticOverflow)?;
+            let projected = projected_historical_cost(&figures, average, required)?;
             let observation = load_observation(
                 executor,
                 workspace_id,
@@ -215,40 +213,31 @@ impl PgProductionRepository {
                 row.quantity
                     .saturating_sub(i64::try_from(owned).unwrap_or(i64::MAX))
             });
-            let mut warnings = Vec::new();
-            if let Some(delta) = difference {
-                if delta > 0 {
-                    warnings.push(format!(
-                        "EVE currently reports {delta} more units than ISK Works inventory. These units are not reservable until they are recorded through an Inventory Event."
-                    ));
-                } else if delta < 0 {
-                    warnings.push(format!(
-                        "ISK Works accounts for {} more units than EVE currently reports. Review the discrepancy before relying on the physical quantity.",
-                        delta.unsigned_abs()
-                    ));
-                }
-            }
+            let warnings = difference
+                .and_then(esi_reconciliation_warning)
+                .into_iter()
+                .collect();
             lines.push(MaterialCoverage {
                 type_id: material.type_id,
                 type_name: material.captured_name,
                 sort_order: as_u32(material.sort_order)?,
                 required_quantity: required,
                 accounted_owned_quantity: owned,
-                reserved_for_this_build: here,
+                reserved_for_this_build: 0,
                 reserved_by_other_builds: elsewhere,
-                unreserved_available_quantity: unreserved,
-                available_to_this_build: available,
-                reservable_additional_quantity: additional,
-                covered_quantity: covered,
-                missing_quantity: missing,
+                unreserved_available_quantity: figures.unreserved,
+                available_to_this_build: figures.available,
+                reservable_additional_quantity: figures.reservable_additional,
+                covered_quantity: figures.covered,
+                missing_quantity: figures.missing,
                 average_historical_unit_cost: average,
                 projected_historical_cost: projected,
-                cost_quality: if available < required {
-                    MaterialCostQuality::Unresolved
-                } else {
+                cost_quality: if figures.cost_resolvable {
                     quality
+                } else {
+                    MaterialCostQuality::Unresolved
                 },
-                quantity_coverage_state: quantity_state(owned, here, covered, required),
+                quantity_coverage_state: figures.state,
                 esi_observed_quantity: observation
                     .as_ref()
                     .map(|row| as_u64(row.quantity))
@@ -256,7 +245,8 @@ impl PgProductionRepository {
                 esi_reconciliation_difference: difference,
                 esi_observed_at: observation.map(|row| row.observed_at),
                 explanation: format!(
-                    "Accounted {owned}; available to this Build {available}; required {required}."
+                    "Accounted {owned}; available to this Build {}; required {required}.",
+                    figures.available
                 ),
                 warnings,
                 inventory_revision: balance.revision,
@@ -267,12 +257,10 @@ impl PgProductionRepository {
         let complete_cost = lines
             .iter()
             .all(|line| line.available_to_this_build >= line.required_quantity);
-        let mut warnings = Vec::new();
-        if !connection_exists {
-            warnings.push("No EVE connection is linked to this Owner. Inventory coverage remains fully available from ISK Works accounting records.".to_string());
-        } else if lines.iter().all(|line| line.esi_observed_at.is_none()) {
-            warnings.push("No complete ESI asset snapshot is available for this Owner. Coverage uses ISK Works accounting inventory only.".to_string());
-        }
+        let warnings = coverage_source_warnings(
+            connection_exists,
+            lines.iter().any(|line| line.esi_observed_at.is_some()),
+        );
         Ok(BuildCoverageReport {
             build_id,
             owner_id: OwnerId(build.owner_id),
@@ -654,20 +642,6 @@ fn balance_from_row(
     })
 }
 
-fn resolvable_average(balance: &InventoryBalance) -> Result<Option<Money>, ProductionError> {
-    if balance.quantity == 0 {
-        return Ok(None);
-    }
-    let divisor = Decimal::from_i128_with_scale(i128::from(balance.quantity), 0);
-    let mut average = balance
-        .total_historical_cost
-        .0
-        .checked_div(divisor)
-        .ok_or(ProductionError::ArithmeticOverflow)?;
-    average.rescale(4);
-    Ok(Some(Money(average)))
-}
-
 async fn inventory_quality<'e, E>(
     executor: E,
     workspace_id: WorkspaceId,
@@ -726,22 +700,6 @@ where
     .fetch_optional(executor)
     .await
     .map_err(map_sqlx)
-}
-
-fn quantity_state(owned: u64, here: u64, covered: u64, required: u64) -> QuantityCoverageState {
-    if here == required {
-        QuantityCoverageState::Reserved
-    } else if here > 0 {
-        QuantityCoverageState::ReservedPartially
-    } else if owned == 0 {
-        QuantityCoverageState::NoInventory
-    } else if covered == required {
-        QuantityCoverageState::Covered
-    } else if covered > 0 {
-        QuantityCoverageState::PartiallyCovered
-    } else {
-        QuantityCoverageState::Missing
-    }
 }
 
 fn as_u64(value: i64) -> Result<u64, ProductionError> {

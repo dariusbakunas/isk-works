@@ -54,6 +54,15 @@ impl Money {
         result.rescale(4);
         Ok(Self(result))
     }
+
+    /// The weighted-average unit cost of `quantity` units whose total
+    /// historical cost is `self`, or `None` for an empty balance.
+    pub fn average_unit_cost(self, quantity: u64) -> Result<Option<Self>, IndustryError> {
+        if quantity == 0 {
+            return Ok(None);
+        }
+        self.checked_div_quantity(quantity).map(Some)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]

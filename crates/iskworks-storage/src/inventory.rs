@@ -636,16 +636,9 @@ impl BalanceRow {
     fn into_balance(self) -> Result<InventoryBalance, InventoryError> {
         let quantity =
             u64::try_from(self.quantity).map_err(|_| InventoryError::InvalidProjection)?;
-        let average_unit_cost = if quantity > 0 {
-            let mut average = self
-                .total_historical_cost
-                .checked_div(Decimal::from_i128_with_scale(i128::from(quantity), 0))
-                .ok_or(InventoryError::ArithmeticOverflow)?;
-            average.rescale(4);
-            Some(Money(average))
-        } else {
-            None
-        };
+        let average_unit_cost = Money(self.total_historical_cost)
+            .average_unit_cost(quantity)
+            .map_err(|_| InventoryError::ArithmeticOverflow)?;
         Ok(InventoryBalance {
             key: InventoryItemKey {
                 workspace_id: WorkspaceId(self.workspace_id),

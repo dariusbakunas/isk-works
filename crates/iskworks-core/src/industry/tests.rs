@@ -298,6 +298,25 @@ fn item(type_id: i64, name: &str, price: &str) -> PriceSourceItem {
 }
 
 #[test]
+fn average_unit_cost_rounds_to_four_places_and_is_none_when_empty() {
+    let total = Money(Decimal::new(100, 0));
+    assert_eq!(total.average_unit_cost(0).unwrap(), None);
+    assert_eq!(
+        total.average_unit_cost(3).unwrap().unwrap().0.to_string(),
+        "33.3333"
+    );
+    assert_eq!(
+        Money::zero()
+            .average_unit_cost(5)
+            .unwrap()
+            .unwrap()
+            .0
+            .to_string(),
+        "0.0000"
+    );
+}
+
+#[test]
 fn money_is_exact_and_rejects_invalid_precision() {
     assert_eq!(
         Money::parse("4.1250")
