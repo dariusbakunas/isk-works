@@ -1,9 +1,9 @@
-import { ApiError, withErrorId } from "../../../api/workspace";
+import { apiMessage as sharedApiMessage } from "../../../api/api-error";
 import { formatIskCompact, formatIskSummary } from "../../../components/money";
 import type { Money } from "../../../api/industry";
 
 export function apiMessage(error: unknown): string {
-  return error instanceof ApiError ? withErrorId(error, error.body.message) : "ISK Works could not complete the request.";
+  return sharedApiMessage(error, "ISK Works could not complete the request.");
 }
 
 export function formatAge(value: string | null): string {

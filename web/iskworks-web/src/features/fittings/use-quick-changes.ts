@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { updateFit, type FitDetail, type FitItemView } from "../../api/fittings";
 import { draftFrom, toFitDraft } from "./fit-draft";
+import { apiMessage } from "../../api/api-error";
 
 /**
  * Changes made outside the editor, like a module's state: shown at once and
@@ -35,7 +36,7 @@ export function useQuickChanges({ fit, onSaved }: { fit: FitDetail; onSaved: () 
       } catch (reason) {
         latest.current = null;
         setItems(null);
-        setError(reason instanceof Error ? reason.message : "The fit wasn't saved.");
+        setError(apiMessage(reason));
       }
       pending.current -= 1;
       if (pending.current === 0) onSaved();

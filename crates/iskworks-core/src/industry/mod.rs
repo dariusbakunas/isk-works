@@ -18,8 +18,6 @@ use crate::{
 };
 use crate::{OwnerId, WorkspaceId};
 
-const MAX_RUNS: u64 = 1_000_000;
-
 mod acquisition_run;
 mod build;
 mod canonical;

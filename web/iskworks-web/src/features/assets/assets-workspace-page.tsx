@@ -11,6 +11,7 @@ import { formatAssetDecimal } from "./asset-format";
 import { AssetInspector } from "./asset-inspector";
 import { useAssetsQuery } from "./use-assets-query";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
+import { apiMessage } from "../../api/api-error";
 
 const columns: Array<{ key: AssetColumn; label: string; numeric?: boolean }> = [
   { key: "item", label: "Item" }, { key: "quantity", label: "Quantity", numeric: true },
@@ -55,7 +56,7 @@ export function AssetsWorkspacePage() {
   }, [queryKey]);
   function reset() { setSearchText(""); setSearch(""); setConnectionIds([]); setNoCharacters(false); setLocationIds([]); setNoLocations(false); setKinds([]); setNoKinds(false); setGroupIds([]); setNoGroups(false); setBlueprints([]); setReconciliation([]); setSort("item"); setOrder("asc"); }
   function changeSort(next: AssetSortColumn) { if (next === sort) setOrder((value) => value === "asc" ? "desc" : "asc"); else { setSort(next); setOrder(next === "observed" ? "desc" : "asc"); } }
-  async function handleSync() { setSyncing(true); try { const outcomes = await syncAssets(connectionIds); const failed = outcomes.filter(({ succeeded }) => !succeeded); setMessage(failed.length ? `${outcomes.length - failed.length} synchronized; ${failed.length} failed.` : `Synchronized ${outcomes.length} character${outcomes.length === 1 ? "" : "s"}.`); assets.refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Asset synchronization failed."); } finally { setSyncing(false); } }
+  async function handleSync() { setSyncing(true); try { const outcomes = await syncAssets(connectionIds); const failed = outcomes.filter(({ succeeded }) => !succeeded); setMessage(failed.length ? `${outcomes.length - failed.length} synchronized; ${failed.length} failed.` : `Synchronized ${outcomes.length} character${outcomes.length === 1 ? "" : "s"}.`); assets.refresh(); } catch (error) { setMessage(apiMessage(error)); } finally { setSyncing(false); } }
   async function handleExport(keys: AssetColumn[]) { const blob = await exportAssets(query, keys); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "isk-works-assets.csv"; anchor.click(); URL.revokeObjectURL(url); }
   return (
     <section className="relative -mx-3 -my-3 flex h-[calc(var(--iw-viewport-h)-var(--iw-header-h)-var(--iw-footer-h,0px))] min-h-0 flex-col overflow-clip bg-background text-xs sm:-mx-4 sm:-my-4" data-assets-workspace ref={workspace}>

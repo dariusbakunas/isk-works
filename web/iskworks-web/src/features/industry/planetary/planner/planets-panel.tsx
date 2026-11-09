@@ -17,7 +17,7 @@ import {
   type OperationalColumn,
 } from "../../../../components/operational-table";
 import { InlineAlert } from "../../../../components/primitives";
-import { apiMessage } from "../../inventory/shared";
+import { apiMessage } from "../../../../api/api-error";
 import { PlanetTypeChip } from "../planetary-cells";
 import { securityTone } from "../planetary-format";
 import { DensityCell } from "./density-cell";

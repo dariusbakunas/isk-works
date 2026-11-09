@@ -6,6 +6,7 @@ import { EveTypeImage } from "../../components/eve-type-image";
 import { InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { rackLabel } from "./fittings-format";
+import { apiMessage } from "../../api/api-error";
 
 /** The racks a preview lists, in the client's order. */
 const PREVIEW_RACKS: SlotKind[] = ["high", "med", "low", "rig", "subsystem", "service", "drone_bay", "fighter_bay", "cargo"];
@@ -58,7 +59,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
           if (result.fit && !nameEdited) setName(result.fit.name);
         })
         .catch((reason: unknown) => {
-          if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Preview failed.");
+          if (!controller.signal.aborted) setError(apiMessage(reason));
         });
     }, PREVIEW_DELAY_MS);
     return () => {
@@ -78,7 +79,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
       const fit = await importFitText({ text, name: name.trim() });
       onImported(fit.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Import failed.");
+      setError(apiMessage(reason));
       setSaving(false);
     }
   }

@@ -11,7 +11,7 @@ import {
 } from "../../../../api/pi-planner";
 import { DropdownMenu, type DropdownMenuItem } from "../../../../components/dropdown-menu";
 import { useDebouncedLookup } from "../../../../hooks/use-debounced-lookup";
-import { apiMessage } from "../../inventory/shared";
+import { apiMessage } from "../../../../api/api-error";
 import { SecurityValue } from "./planets-panel";
 import {
   clampLevel,

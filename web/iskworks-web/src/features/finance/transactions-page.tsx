@@ -37,6 +37,7 @@ import { FinanceCheckbox, FinanceDateField, FinanceFilterSection } from "./finan
 import { InventoryRecordingCell } from "./inventory-recording-cell";
 import { parseTransactionsUrlFilter, parseTransactionsUrlLabels } from "./transactions-url-state";
 import { useFinanceTransactions } from "./use-finance-transactions";
+import { apiMessage } from "../../api/api-error";
 
 const allColumns: Array<{ key: FinanceDisplayColumn; label: string; numeric?: boolean }> = [
   { key: "time", label: "Time" },
@@ -492,5 +493,5 @@ function TransactionRow({ columns, row, onInventoryChange }: { columns: FinanceD
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Finance request failed.";
+  return apiMessage(error);
 }

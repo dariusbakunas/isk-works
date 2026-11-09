@@ -6,6 +6,7 @@ import { apiMessage as marketMessage } from "../../features/industry/market/shar
 import { apiMessage as marketBrowserMessage } from "../../features/industry/market-browser/shared";
 import { apiMessage as opportunitiesMessage } from "../../features/industry/opportunities/shared";
 import { apiMessage as industryMessage } from "../../features/industry/shared/api-error";
+import { apiMessage as sharedMessage } from "../api-error";
 import { ApiError } from "../workspace";
 
 const redacted = new ApiError(503, {
@@ -23,6 +24,7 @@ const messages = {
   marketBrowser: marketBrowserMessage,
   opportunities: opportunitiesMessage,
   industry: industryMessage,
+  shared: sharedMessage,
 };
 
 test.each(Object.entries(messages))("%s apiMessage shows the Error ID of a redacted failure", (_, message) => {

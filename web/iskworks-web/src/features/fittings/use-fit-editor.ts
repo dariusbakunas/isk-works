@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { calculateFit, updateFit, type FitDetail, type FitStatsView, type PilotChoice } from "../../api/fittings";
 import { capStates, changeCount, draftFrom, toFitDraft, type Draft } from "./fit-draft";
+import { apiMessage } from "../../api/api-error";
 
 const RECALCULATE_DELAY_MS = 250;
 
@@ -95,7 +96,7 @@ export function useFitEditor({
         })
         .catch((reason: unknown) => {
           if (controller.signal.aborted) return;
-          setError(reason instanceof Error ? reason.message : "Couldn't calculate the draft.");
+          setError(apiMessage(reason));
           setCalculating(false);
         });
     }, RECALCULATE_DELAY_MS);
@@ -145,7 +146,7 @@ export function useFitEditor({
         close();
         onSaved();
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Couldn't save the fit.");
+        setError(apiMessage(reason));
       } finally {
         setSaving(false);
       }
