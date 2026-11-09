@@ -1564,6 +1564,108 @@ async fn a_failed_epic_completion_rolls_back_the_recording(pool: PgPool) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Epic start/complete: the stored-state guard lives in the repository's
+// guarded UPDATE; the routes keep their refusals and response shape.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A Rifter Epic whose every input is reserved from stock, so it is Ready.
+async fn ready_rifter_epic(pool: &PgPool, fx: &Fixture) -> String {
+    let build = rifter(fx).await;
+    seed_balance(pool, fx, 34, "Tritanium", 1_000, 1_000).await;
+    seed_balance(pool, fx, 35, "Pyerite", 200, 200).await;
+    let (status, order) = create_reserving_order(fx, &build, &[(34, 1_000), (35, 200)]).await;
+    assert_eq!(status, StatusCode::CREATED, "body: {order}");
+    order["id"].as_str().unwrap().to_string()
+}
+
+async fn epic_action(fx: &Fixture, order_id: &str, action: &str) -> (StatusCode, Value) {
+    post_json(
+        &fx.app,
+        &format!("/api/orders/{order_id}/{action}"),
+        Value::Null,
+    )
+    .await
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn starting_a_ready_epic_answers_with_its_in_progress_detail(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = ready_rifter_epic(&pool, &fx).await;
+    let (_, before) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(before["status"], "ready", "body: {before}");
+
+    let (status, body) = epic_action(&fx, &order_id, "start").await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["status"], "inProgress");
+    assert!(!body["startedAt"].is_null());
+    let (_, after) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(body, after, "the response is the Epic's detail as stored");
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn an_epic_starts_and_completes_once(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = ready_rifter_epic(&pool, &fx).await;
+
+    let (status, body) = epic_action(&fx, &order_id, "complete").await;
+    assert_eq!(status, StatusCode::CONFLICT, "not started: {body}");
+    assert_eq!(body["error"]["code"], "order_not_completable");
+    assert!(
+        !active_allocations(&pool).await.is_empty(),
+        "nothing released"
+    );
+
+    let (status, body) = epic_action(&fx, &order_id, "start").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let (status, body) = epic_action(&fx, &order_id, "start").await;
+    assert_eq!(status, StatusCode::CONFLICT, "started twice: {body}");
+    assert_eq!(body["error"]["code"], "order_not_startable");
+
+    let (status, body) = epic_action(&fx, &order_id, "complete").await;
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["status"], "complete");
+    assert!(active_allocations(&pool).await.is_empty());
+    let (_, after) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert_eq!(body, after, "the response is the Epic's detail as stored");
+
+    let (status, body) = epic_action(&fx, &order_id, "complete").await;
+    assert_eq!(status, StatusCode::CONFLICT, "completed twice: {body}");
+    assert_eq!(body["error"]["code"], "order_not_completable");
+    let (status, body) = epic_action(&fx, &order_id, "start").await;
+    assert_eq!(status, StatusCode::CONFLICT, "start after complete: {body}");
+    assert_eq!(body["error"]["code"], "order_not_startable");
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn a_blocked_epic_cannot_start(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let order_id = reserved_rifter_epic(&pool, &fx).await;
+
+    let (status, body) = epic_action(&fx, &order_id, "start").await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "blocked: {body}");
+    assert_eq!(body["error"]["code"], "order_not_startable");
+    assert!(epic_completed_at(&fx, &order_id).await.is_null());
+    let (_, order) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
+    assert!(order["startedAt"].is_null());
+}
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn starting_or_completing_an_unknown_epic_is_not_found(pool: PgPool) {
+    let fx = fixture(&pool).await;
+    let unknown = Uuid::new_v4().to_string();
+    for action in ["start", "complete"] {
+        let (status, body) = epic_action(&fx, &unknown, action).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{action}: {body}");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // One purchase per item: every use of a bought item shares one ticket.
 // ─────────────────────────────────────────────────────────────────────────
 
