@@ -442,7 +442,7 @@ pub enum OrderError {
     TicketKindDoesNotMatchBuildRecipe,
     #[error("ticket's type does not match the requirement/prerequisite it would fulfill")]
     TicketTypeMismatch,
-    #[error("order is already started, completed, or canceled")]
+    #[error("order must be ready, and not already started, completed, or canceled, to start")]
     OrderNotStartable,
     #[error("order must be in progress, and not already completed or canceled, to complete")]
     OrderNotCompletable,

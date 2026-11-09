@@ -1734,6 +1734,11 @@ async fn a_blocked_epic_cannot_start(pool: PgPool) {
 
     assert_eq!(status, StatusCode::CONFLICT, "blocked: {body}");
     assert_eq!(body["error"]["code"], "order_not_startable");
+    assert_eq!(
+        body["error"]["message"],
+        "order must be ready, and not already started, completed, or canceled, to start",
+        "names readiness, not only the stored state"
+    );
     assert!(epic_completed_at(&fx, &order_id).await.is_null());
     let (_, order) = get_json(&fx, &format!("/api/orders/{order_id}")).await;
     assert!(order["startedAt"].is_null());
