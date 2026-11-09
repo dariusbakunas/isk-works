@@ -6,6 +6,7 @@ import { createFitSkillPlan, type CreatedSkillPlan, type FitDetail, type FitPilo
 import { formatRemainingMs, skillLevelNumeral } from "../characters/characters-formatters";
 import { PilotPortrait } from "./fit-shared";
 import { capacitorLabel, formatStat } from "./fittings-format";
+import { apiMessage } from "../../api/api-error";
 
 const STATUS_CHIPS = {
   canUseAll: { label: "Can use all", className: "border-positive/60 text-positive" },
@@ -29,7 +30,7 @@ function MissingSkills({ fit, pilot }: { fit: FitDetail; pilot: FitPilot }) {
     try {
       setPlan(await createFitSkillPlan(fit.id, pilot.connectionId));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Couldn't create the plan.");
+      setError(apiMessage(reason));
     } finally {
       setSaving(false);
     }

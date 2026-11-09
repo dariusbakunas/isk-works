@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "../../../../api/workspace";
+import { ApiError } from "../workspace";
 import { apiMessage } from "../api-error";
 
 describe("apiMessage", () => {
@@ -15,6 +15,17 @@ describe("apiMessage", () => {
       code: "revision_conflict",
       message: "Conflict",
     }))).toBe("This record changed after you loaded it. Reload before trying again.");
+  });
+
+  it("prefers a caller's fallback to a non-API failure's own message", () => {
+    expect(apiMessage(new Error("Network failed"), "Inventory request failed.")).toBe("Inventory request failed.");
+    expect(apiMessage(undefined, "Inventory request failed.")).toBe("Inventory request failed.");
+  });
+
+  it("ignores the fallback for API errors", () => {
+    expect(apiMessage(new ApiError(400, { code: "validation_error", message: "Invalid request" }), "Fallback")).toBe(
+      "Invalid request",
+    );
   });
 
   it("preserves Error messages and the unknown fallback", () => {

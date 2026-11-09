@@ -13,6 +13,7 @@ import { fitTagTree, fitTree, pilotsByStatus, type TreeGroup } from "./fittings-
 import { ImportDialog } from "./import-dialog";
 import { NewFitDialog } from "./new-fit-dialog";
 import { useFits } from "./use-fittings";
+import { apiMessage } from "../../api/api-error";
 
 const COLUMNS: OperationalColumn[] = [
   { key: "select", label: "", width: "32px" },
@@ -353,7 +354,7 @@ function BulkBar({
       await editFitTags({ fitIds: selected.map((fit) => fit.id), ...change });
       onChanged();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Couldn't change the tags.");
+      setError(apiMessage(reason));
     } finally {
       setSaving(false);
     }

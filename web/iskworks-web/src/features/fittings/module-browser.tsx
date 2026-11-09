@@ -10,6 +10,7 @@ import {
 } from "../../api/fittings";
 import { searchTypes, type TypeSearchResult } from "../../api/sde";
 import { formatStat } from "./fittings-format";
+import { apiMessage } from "../../api/api-error";
 
 /** What a browser row carries when dragged onto the module table. */
 export const DRAG_TYPE = "application/x-iskworks-type";
@@ -153,7 +154,7 @@ export function ModuleBrowser({
       let live = true;
       searchTypes(debounced)
         .then((results) => live && setCargo(results.filter((result) => result.published)))
-        .catch((reason: unknown) => live && setError(reason instanceof Error ? reason.message : "Search failed."));
+        .catch((reason: unknown) => live && setError(apiMessage(reason)));
       return () => {
         live = false;
       };
@@ -175,7 +176,7 @@ export function ModuleBrowser({
         setTruncated(view.truncated);
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Search failed.");
+        if (!controller.signal.aborted) setError(apiMessage(reason));
       });
     return () => controller.abort();
   }, [tab, debounced, shipTypeId, chargesFor, pilot]);

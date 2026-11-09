@@ -1,11 +1,8 @@
-import { ApiError, withErrorId } from "../../api/workspace";
+import { apiMessage as sharedApiMessage } from "../../api/api-error";
 
-// A fixed, EVE-specific fallback rather than the app-wide apiMessage's
-// generic text -- kept local to this feature rather than merged with
-// features/industry/shared/api-error.ts's apiMessage, which has different
-// fallback copy for the revision-conflict and non-ApiError cases.
+// Thin wrapper: a fixed, EVE-specific fallback for non-API failures.
 export function apiMessage(error: unknown): string {
-  return error instanceof ApiError ? withErrorId(error, error.body.message) : "The EVE integration request could not be completed.";
+  return sharedApiMessage(error, "The EVE integration request could not be completed.");
 }
 
 // Unlike features/industry/shared/formatting.ts's formatDate, this accepts
