@@ -13,7 +13,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::*;
-use crate::SkillsCharacter;
+use crate::{FakeSkillsCharacters, SkillsCharacter};
 
 const HARPY: i64 = 11_381;
 const SCRIPT: i64 = 40_334;
@@ -347,29 +347,6 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
     }
 }
 
-struct FakeCharacters(Vec<SkillsCharacter>);
-
-#[async_trait]
-impl SkillsCharacterSource for FakeCharacters {
-    async fn skills_character(
-        &self,
-        _: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
-        Ok(self
-            .0
-            .iter()
-            .find(|character| character.connection_id == connection_id)
-            .cloned())
-    }
-    async fn skills_characters(
-        &self,
-        _: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
-        Ok(self.0.clone())
-    }
-}
-
 fn now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap()
 }
@@ -396,7 +373,8 @@ fn aura() -> SkillsCharacter {
 }
 
 fn service() -> TypeInfoService {
-    TypeInfoService::new(Arc::new(FakeSde)).with_characters(Arc::new(FakeCharacters(vec![aura()])))
+    TypeInfoService::new(Arc::new(FakeSde))
+        .with_characters(Arc::new(FakeSkillsCharacters(vec![aura()])))
 }
 
 async fn info(type_id: i64, pilot: PilotChoice) -> Result<Option<TypeInfoView>, InventoryError> {

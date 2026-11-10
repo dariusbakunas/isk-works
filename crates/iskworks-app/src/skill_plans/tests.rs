@@ -15,7 +15,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::*;
-use crate::{SkillsCharacter, SkillsCharacterSource};
+use crate::{FakeSkillsCharacters, SkillsCharacter};
 
 const DRONES: i64 = 3_436;
 const SCOUT_DRONES: i64 = 3_437;
@@ -160,29 +160,6 @@ impl SkillPlanRepository for FakePlans {
     }
 }
 
-struct FakeCharacters(Vec<SkillsCharacter>);
-
-#[async_trait]
-impl SkillsCharacterSource for FakeCharacters {
-    async fn skills_character(
-        &self,
-        _workspace_id: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
-        Ok(self
-            .0
-            .iter()
-            .find(|character| character.connection_id == connection_id)
-            .cloned())
-    }
-    async fn skills_characters(
-        &self,
-        _workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
-        Ok(self.0.clone())
-    }
-}
-
 fn character(name: &str, drones_level: i64) -> SkillsCharacter {
     let sp = [0, 250, 1_415, 8_000, 45_255, 256_000][drones_level as usize];
     let skills = if drones_level == 0 {
@@ -223,7 +200,7 @@ fn input(name: &str, entries: Vec<PlanEntry>) -> SkillPlanInput {
 fn service(characters: Vec<SkillsCharacter>) -> SkillPlanService {
     SkillPlanService::new(
         Arc::new(FakePlans::default()),
-        Arc::new(FakeCharacters(characters)),
+        Arc::new(FakeSkillsCharacters(characters)),
         Arc::new(FakeSde),
     )
 }

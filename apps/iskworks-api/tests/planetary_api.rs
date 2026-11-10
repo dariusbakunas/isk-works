@@ -6,7 +6,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use iskworks_api::{build_router, AppState};
-use iskworks_app::{PlanetaryCharacter, PlanetaryCharacterSource};
+use iskworks_app::{FakePlanetaryCharacters, PlanetaryCharacter};
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId, InventoryError,
@@ -80,18 +80,6 @@ fn character(name: &str, eve_id: i64, summary: Option<Value>) -> PlanetaryCharac
         skills_summary: Some(json!({ "skills": [
             { "skill_id": 2_495, "trained_skill_level": 4, "active_skill_level": 4 }
         ]})),
-    }
-}
-
-struct FakeCharacters(Vec<PlanetaryCharacter>);
-
-#[async_trait]
-impl PlanetaryCharacterSource for FakeCharacters {
-    async fn planetary_characters(
-        &self,
-        _: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
-        Ok(self.0.clone())
     }
 }
 
@@ -358,7 +346,10 @@ fn harness(characters: Vec<PlanetaryCharacter>) -> Harness {
         AppState::new(Arc::new(configured_workspace("PI Test")))
             .with_sde_repository(Arc::new(FakeSde))
             .with_market_repository(market.clone())
-            .with_planetary_repositories(Arc::new(FakeCharacters(characters)), preferences.clone()),
+            .with_planetary_repositories(
+                Arc::new(FakePlanetaryCharacters(characters)),
+                preferences.clone(),
+            ),
     );
     Harness {
         app,

@@ -17,7 +17,7 @@ use iskworks_sde::{
 use serde_json::json;
 
 use super::*;
-use crate::PlanetaryCharacter;
+use crate::{FakePlanetaryCharacters, PlanetaryCharacter};
 
 const HOME: i64 = 30_000_001;
 const NEXT_DOOR: i64 = 30_000_002;
@@ -405,18 +405,6 @@ impl PiPlannerInputsRepository for FakeInputs {
     }
 }
 
-struct FakeCharacters(Vec<PlanetaryCharacter>);
-
-#[async_trait]
-impl PlanetaryCharacterSource for FakeCharacters {
-    async fn planetary_characters(
-        &self,
-        _: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
-        Ok(self.0.clone())
-    }
-}
-
 fn workspace() -> WorkspaceId {
     WorkspaceId(uuid::Uuid::from_u128(1))
 }
@@ -700,7 +688,7 @@ async fn characters_prefill_pi_skills_from_the_skills_sync() {
         planets_source: None,
         skills_summary: summary,
     };
-    let service = service.with_characters(Arc::new(FakeCharacters(vec![
+    let service = service.with_characters(Arc::new(FakePlanetaryCharacters(vec![
         character(
             1,
             Some(json!({ "skills": [

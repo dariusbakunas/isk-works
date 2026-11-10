@@ -46,6 +46,33 @@ pub trait SkillsCharacterSource: Send + Sync {
     ) -> Result<Vec<SkillsCharacter>, InventoryError>;
 }
 
+/// A fixed set of connected characters, for tests (`test-support` only).
+#[cfg(any(test, feature = "test-support"))]
+pub struct FakeSkillsCharacters(pub Vec<SkillsCharacter>);
+
+#[cfg(any(test, feature = "test-support"))]
+#[async_trait]
+impl SkillsCharacterSource for FakeSkillsCharacters {
+    async fn skills_character(
+        &self,
+        _workspace_id: WorkspaceId,
+        connection_id: ConnectedCharacterId,
+    ) -> Result<Option<SkillsCharacter>, InventoryError> {
+        Ok(self
+            .0
+            .iter()
+            .find(|character| character.connection_id == connection_id)
+            .cloned())
+    }
+
+    async fn skills_characters(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+        Ok(self.0.clone())
+    }
+}
+
 #[async_trait]
 impl SkillsCharacterSource for PgEsiRepository {
     async fn skills_character(
