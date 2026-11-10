@@ -15,7 +15,7 @@ Rust API + Postgres backend, React/TypeScript frontend.
 - `crates/iskworks-sde` — SDE read repository trait + import parsing (`SdeReadRepository`).
 - `crates/iskworks-esi` — EVE ESI (SSO/API) client.
 - `crates/iskworks-fitting` — fit stats on EVEShip.fit's `esf-dogma-engine` (`EsfFittingEngine`, behind `iskworks_core::fitting::FittingEngine`); its data (`sde.dat`) is pinned in `fitting-data.lock`. See `docs/implementation/fittings.md`.
-- Test-only helpers shared across crates (`SecretCipher::for_tests`, `UnusedEsiTransport`, `EsiApplicationService::new_for_tests`, `FakeLinkTransport`) sit behind each crate's `test-support` feature, enabled only from `[dev-dependencies]`, so release builds never contain them.
+- Test-only helpers shared across crates (`SecretCipher::for_tests`, `UnusedEsiTransport`, `EsiApplicationService::new_for_tests`, `FakeLinkTransport`, `FakeSdeRead`, `FakeMarketRepository`, `FakeSkillsCharacters`, `FakePlanetaryCharacters`) sit behind each crate's `test-support` feature, enabled only from `[dev-dependencies]`, so release builds never contain them.
 - `web/iskworks-web` — Vite + React + TypeScript + Tailwind SPA.
   - `src/api/<domain>.ts` — typed fetch client per API domain, mirrors `routes/<domain>.rs`.
   - `src/features/<feature>/` and `src/features/industry/<feature>/` — feature UI, hooks and route pages (`*-page.tsx`, wired in `src/App.tsx`), e.g. `board/`, `industry/builds/` (incl. the planner core in `builds/planner/`), `industry/inventory/`.
@@ -52,6 +52,7 @@ Targeted runs during iteration (cheaper than full suite):
 ## Testing conventions
 
 - Rust API integration tests (`apps/iskworks-api/tests/*.rs`) prefer lightweight in-memory fakes (fake `WorkspaceRepository`/`InventoryRepository`/`SdeReadRepository` structs implementing the trait) over a real Postgres fixture — no `DATABASE_URL` needed, tests run fast and always. Tests that must exercise a real Postgres pool (via `#[sqlx::test]`) are marked `#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]`.
+- `SdeReadRepository` and `MarketRepository` have no default methods. A fake implements `FakeSdeRead` / `FakeMarketRepository` instead and overrides only what its test reads; anything else panics naming the fake and the method.
 - Web tests use Vitest + Testing Library, colocated under `__tests__/` next to the code, plus `src/__tests__/App.test.tsx` for cross-page integration (mocked `fetch`, `MemoryRouter`).
 - TDD workflow for planned features: write a failing test first, confirm it fails for the right reason, implement, confirm green, then commit — one commit per task in the plan doc.
 

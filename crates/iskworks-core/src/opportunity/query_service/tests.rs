@@ -133,7 +133,7 @@ struct FixtureMarketRepository {
 }
 
 #[async_trait::async_trait]
-impl crate::MarketRepository for FixtureMarketRepository {
+impl crate::FakeMarketRepository for FixtureMarketRepository {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, crate::MarketError> {
         unimplemented!("not used by opportunity evaluation")
     }
@@ -279,6 +279,15 @@ impl crate::MarketRepository for FixtureMarketRepository {
                 sell_order_count: 0,
             })
             .collect())
+    }
+
+    async fn public_market_coverage(
+        &self,
+        region_id: i64,
+        type_ids: &[i64],
+    ) -> Result<Vec<crate::MarketCoverageItem>, crate::MarketError> {
+        let _ = (region_id, type_ids);
+        Ok(Vec::new())
     }
 }
 

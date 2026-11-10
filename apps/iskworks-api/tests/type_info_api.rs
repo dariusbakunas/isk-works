@@ -9,8 +9,8 @@ use axum::http::{Request, StatusCode};
 use chrono::Utc;
 use iskworks_api::{build_router, AppState};
 use iskworks_core::{
-    MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource,
-    MarketRepository, MarketScope, Money, PriceSourceId, WorkspaceId,
+    MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource, MarketScope,
+    Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
@@ -244,7 +244,7 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
 struct FakeMarket;
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn scoped_order_books(
         &self,
         _: WorkspaceId,

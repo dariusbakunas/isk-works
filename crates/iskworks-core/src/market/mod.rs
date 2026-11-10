@@ -16,6 +16,8 @@
 
 mod depth;
 mod errors;
+#[cfg(any(test, feature = "test-support"))]
+mod fake;
 mod import_parse;
 mod repository;
 mod service;
@@ -23,6 +25,8 @@ mod types;
 
 pub use depth::*;
 pub use errors::*;
+#[cfg(any(test, feature = "test-support"))]
+pub use fake::FakeMarketRepository;
 pub use import_parse::*;
 pub use repository::*;
 pub use service::*;

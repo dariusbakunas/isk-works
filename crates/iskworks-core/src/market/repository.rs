@@ -1,6 +1,7 @@
 //! The `MarketRepository` port: every persistence/lookup operation the
-//! market service and callers depend on. Signatures, async behaviour, and
-//! intentional default method bodies are unchanged from the pre-split module.
+//! market service and callers depend on. It has no default methods, so the
+//! Postgres implementation answers every one; test fakes build on
+//! `FakeMarketRepository` (`test-support`) instead.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,11 +19,8 @@ pub trait MarketRepository: Send + Sync {
     /// A type's SDE market group, so the market item detail view can show a
     /// category/group breadcrumb by walking the already-fetched category
     /// tree (`build_market_category_tree`) rather than duplicating group
-    /// ancestry resolution here. Defaults to `None`, matching every other
-    /// optional `MarketRepository` method.
-    async fn resolve_type_market_group(&self, _type_id: i64) -> Result<Option<i64>, MarketError> {
-        Ok(None)
-    }
+    /// ancestry resolution here.
+    async fn resolve_type_market_group(&self, type_id: i64) -> Result<Option<i64>, MarketError>;
     async fn location_names(
         &self,
         workspace_id: WorkspaceId,
@@ -37,15 +35,11 @@ pub trait MarketRepository: Send + Sync {
     /// just batched across many ids instead of resolving one at a time. Ids
     /// with neither are simply absent from the result; callers render their
     /// own graceful fallback (same convention as `location_names`).
-    /// Defaults to empty so existing `MarketRepository` fakes don't need
-    /// updating for this.
     async fn resolve_order_location_names(
         &self,
-        _workspace_id: WorkspaceId,
-        _location_ids: &[i64],
-    ) -> Result<BTreeMap<i64, String>, MarketError> {
-        Ok(BTreeMap::new())
-    }
+        workspace_id: WorkspaceId,
+        location_ids: &[i64],
+    ) -> Result<BTreeMap<i64, String>, MarketError>;
     async fn save_location_names(
         &self,
         workspace_id: WorkspaceId,
@@ -54,31 +48,23 @@ pub trait MarketRepository: Send + Sync {
     /// Known player structures (and their solar system name) within one
     /// region, for the market-scope location list -- reads
     /// `market_location_names` directly, joined through SDE geography, with
-    /// no dependency on any `PriceSource`. Defaults to empty so existing
-    /// `MarketRepository` fakes across the test suite don't need to
-    /// implement it (same pattern as `SdeReadRepository`'s optional
-    /// search methods).
+    /// no dependency on any `PriceSource`.
     async fn known_locations_in_region(
         &self,
-        _workspace_id: WorkspaceId,
-        _region_id: i64,
-    ) -> Result<Vec<KnownMarketLocation>, MarketError> {
-        Ok(Vec::new())
-    }
+        workspace_id: WorkspaceId,
+        region_id: i64,
+    ) -> Result<Vec<KnownMarketLocation>, MarketError>;
     /// Positive-evidence classification of a single `location_id` (ESI
     /// structure market orders) --
     /// `NpcStation` only when found in the SDE's NPC station table,
     /// `Structure` only when resolved into `market_location_names` with a
     /// captured `structure_type_id`, `Unknown` otherwise. Never infers
-    /// `NpcStation` from the absence of structure evidence. Defaults to
-    /// `Unknown`, matching every other optional `MarketRepository` method.
+    /// `NpcStation` from the absence of structure evidence.
     async fn classify_location(
         &self,
-        _workspace_id: WorkspaceId,
-        _location_id: i64,
-    ) -> Result<MarketLocationClassification, MarketError> {
-        Ok(MarketLocationClassification::Unknown)
-    }
+        workspace_id: WorkspaceId,
+        location_id: i64,
+    ) -> Result<MarketLocationClassification, MarketError>;
     /// The connected character last confirmed to have both docking access
     /// and the `esi-markets.structure_markets.v1` scope for a resolved
     /// structure, if any -- a separate concern from
@@ -87,34 +73,28 @@ pub trait MarketRepository: Send + Sync {
     /// checked, or the remembered character no longer qualifies."
     async fn market_access_connection(
         &self,
-        _workspace_id: WorkspaceId,
-        _location_id: i64,
-    ) -> Result<Option<ConnectedCharacterId>, MarketError> {
-        Ok(None)
-    }
+        workspace_id: WorkspaceId,
+        location_id: i64,
+    ) -> Result<Option<ConnectedCharacterId>, MarketError>;
     /// Remembers which character confirmed market access for a structure,
     /// so future refreshes don't need to re-try every eligible character.
     async fn remember_market_access(
         &self,
-        _workspace_id: WorkspaceId,
-        _location_id: i64,
-        _connection_id: ConnectedCharacterId,
-        _checked_at: DateTime<Utc>,
-    ) -> Result<(), MarketError> {
-        Ok(())
-    }
+        workspace_id: WorkspaceId,
+        location_id: i64,
+        connection_id: ConnectedCharacterId,
+        checked_at: DateTime<Utc>,
+    ) -> Result<(), MarketError>;
     /// Clears a remembered connection (e.g. after a 403 on a later
     /// refresh) so the next attempt re-resolves from the eligible-character
     /// list rather than retrying a connection that's known to have lost
     /// access.
     async fn clear_market_access(
         &self,
-        _workspace_id: WorkspaceId,
-        _location_id: i64,
-        _checked_at: DateTime<Utc>,
-    ) -> Result<(), MarketError> {
-        Ok(())
-    }
+        workspace_id: WorkspaceId,
+        location_id: i64,
+        checked_at: DateTime<Utc>,
+    ) -> Result<(), MarketError>;
     /// Workspace-known Upwell structures, enriched with market-access and
     /// freshness state -- the Market Scope Selector's "My Structures" tab
     /// (`query=""`, the whole list) and its global search (`query` set,
@@ -122,15 +102,12 @@ pub trait MarketRepository: Send + Sync {
     /// simpler one). `query=""` matches every structure, mirroring
     /// `SdeReadRepository::search_npc_stations`'s own `$1='' OR ...`
     /// convention -- and like that method, a non-empty `query` matches the
-    /// structure's own name *or* its solar system's name. Defaults to
-    /// empty, matching every other optional `MarketRepository` method.
+    /// structure's own name *or* its solar system's name.
     async fn list_known_structures(
         &self,
-        _workspace_id: WorkspaceId,
-        _query: &str,
-    ) -> Result<Vec<MarketStructureListing>, MarketError> {
-        Ok(Vec::new())
-    }
+        workspace_id: WorkspaceId,
+        query: &str,
+    ) -> Result<Vec<MarketStructureListing>, MarketError>;
     /// Batched freshness for a set of `(region_id, location_id)` scopes --
     /// one query serving the Market Scope Selector's Major Hubs, My
     /// Structures, and Region-locations views alike, so freshness logic
@@ -139,15 +116,12 @@ pub trait MarketRepository: Send + Sync {
     /// single timestamp. A scope with no `market_source_coverage` rows at
     /// all is simply absent from the result map (never an error) --
     /// callers should treat a missing key the same as
-    /// `ScopeFreshness::default()`. Defaults to an empty map, matching
-    /// every other optional `MarketRepository` method.
+    /// `ScopeFreshness::default()`.
     async fn scope_freshness(
         &self,
-        _workspace_id: WorkspaceId,
-        _scopes: &[(i64, i64)],
-    ) -> Result<BTreeMap<(i64, i64), ScopeFreshness>, MarketError> {
-        Ok(BTreeMap::new())
-    }
+        workspace_id: WorkspaceId,
+        scopes: &[(i64, i64)],
+    ) -> Result<BTreeMap<(i64, i64), ScopeFreshness>, MarketError>;
     /// The most recent observation timestamp among `type_ids` within
     /// `scope`, or `None` if none of them have ever completed a refresh --
     /// the cheap "did anything change" signal the Market Browser polls
@@ -160,12 +134,10 @@ pub trait MarketRepository: Send + Sync {
     /// this scope changed."
     async fn item_freshness(
         &self,
-        _workspace_id: WorkspaceId,
-        _scope: MarketScope,
-        _type_ids: &[i64],
-    ) -> Result<Option<DateTime<Utc>>, MarketError> {
-        Ok(None)
-    }
+        workspace_id: WorkspaceId,
+        scope: MarketScope,
+        type_ids: &[i64],
+    ) -> Result<Option<DateTime<Utc>>, MarketError>;
     /// Every requested type's order-book observations within `scope`,
     /// merged across whichever configured market-derived `PriceSource`s
     /// happen to match it (a shim -- `MarketScope` has no
@@ -174,16 +146,12 @@ pub trait MarketRepository: Send + Sync {
     /// no-data state for the caller to render. `location_id: None` merges
     /// every matching source in the region; a region no source is
     /// configured for returns an empty map for every requested type.
-    /// Defaults to empty, matching every other optional `MarketRepository`
-    /// method added so far.
     async fn scoped_order_books(
         &self,
-        _workspace_id: WorkspaceId,
-        _scope: MarketScope,
-        _type_ids: &[i64],
-    ) -> Result<BTreeMap<i64, Vec<MarketOrderView>>, MarketError> {
-        Ok(BTreeMap::new())
-    }
+        workspace_id: WorkspaceId,
+        scope: MarketScope,
+        type_ids: &[i64],
+    ) -> Result<BTreeMap<i64, Vec<MarketOrderView>>, MarketError>;
     /// Every `PriceSource` currently configured for `scope` (via
     /// `market_price_source_configs`) -- the same shim `scoped_order_books`
     /// uses, exposed on its own for "Request market data", which
@@ -193,40 +161,29 @@ pub trait MarketRepository: Send + Sync {
     /// plainly rather than silently doing nothing.
     async fn resolve_scope_price_sources(
         &self,
-        _workspace_id: WorkspaceId,
-        _scope: MarketScope,
-    ) -> Result<Vec<PriceSourceId>, MarketError> {
-        Ok(Vec::new())
-    }
+        workspace_id: WorkspaceId,
+        scope: MarketScope,
+    ) -> Result<Vec<PriceSourceId>, MarketError>;
     /// An `esi_market_orders` `PriceSource`'s own configured scope, read
     /// back from `market_price_source_configs` via `price_source_id` --
     /// lets the ESI fetch/refresh path (`market_esi.rs`) ask "which region
-    /// and location am I fetching for?" instead of a hardcoded constant
-    ///. Defaults to not-found, matching every other optional
-    /// `MarketRepository` method.
+    /// and location am I fetching for?" instead of a hardcoded constant.
     async fn resolve_source_scope(
         &self,
-        _workspace_id: WorkspaceId,
-        _source_id: PriceSourceId,
-    ) -> Result<MarketScope, MarketError> {
-        Err(MarketError::PriceSourceNotFound)
-    }
+        workspace_id: WorkspaceId,
+        source_id: PriceSourceId,
+    ) -> Result<MarketScope, MarketError>;
     /// Get-or-create the workspace's `esi_market_orders` `PriceSource` for
     /// any region/location `scope` --
     /// "Request market data" needs a coverage anchor to register
     /// against for whatever scope the user is browsing, not just Jita.
     /// Idempotent: concurrent calls for the same scope resolve to the same
-    /// source. Defaults to unavailable, matching every other optional
-    /// write-side `MarketRepository` method.
+    /// source.
     async fn ensure_esi_price_source_for_scope(
         &self,
-        _workspace_id: WorkspaceId,
-        _scope: MarketScope,
-    ) -> Result<PriceSourceId, MarketError> {
-        Err(MarketError::Persistence(
-            "automatic market source provisioning is unavailable".to_string(),
-        ))
-    }
+        workspace_id: WorkspaceId,
+        scope: MarketScope,
+    ) -> Result<PriceSourceId, MarketError>;
     async fn imported_file_checksums(
         &self,
         workspace_id: WorkspaceId,
@@ -262,11 +219,7 @@ pub trait MarketRepository: Send + Sync {
         type_id: i64,
         location_id: i64,
         pinned_batch_id: Option<MarketImportBatchId>,
-    ) -> Result<MarketOrderBook, MarketError> {
-        let _ = source_id;
-        self.get_order_book(workspace_id, type_id, location_id, pinned_batch_id)
-            .await
-    }
+    ) -> Result<MarketOrderBook, MarketError>;
     async fn get_source_order_books(
         &self,
         workspace_id: WorkspaceId,
@@ -274,28 +227,7 @@ pub trait MarketRepository: Send + Sync {
         type_ids: &[i64],
         location_id: i64,
         pinned_batch_id: Option<MarketImportBatchId>,
-    ) -> Result<BTreeMap<i64, MarketOrderBook>, MarketError> {
-        let mut books = BTreeMap::new();
-        for type_id in type_ids.iter().copied().collect::<BTreeSet<_>>() {
-            match self
-                .get_source_order_book(
-                    workspace_id,
-                    source_id,
-                    type_id,
-                    location_id,
-                    pinned_batch_id,
-                )
-                .await
-            {
-                Ok(book) => {
-                    books.insert(type_id, book);
-                }
-                Err(MarketError::OrdersUnavailable) => {}
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(books)
-    }
+    ) -> Result<BTreeMap<i64, MarketOrderBook>, MarketError>;
     /// The one by-id `PriceSource` read: `MarketService::preview_price`
     /// (used by Inventory's legacy explicit-`?priceSourceId=` path) and
     /// Opportunities' `evaluate()` (which resolves a scope to a source via
@@ -313,12 +245,7 @@ pub trait MarketRepository: Send + Sync {
         workspace_id: WorkspaceId,
         source_id: PriceSourceId,
         items: Vec<MarketCoverageRegistration>,
-    ) -> Result<Vec<MarketCoverageItem>, MarketError> {
-        let _ = (workspace_id, source_id, items);
-        Err(MarketError::Persistence(
-            "automatic market coverage is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<Vec<MarketCoverageItem>, MarketError>;
     /// Cheaper sibling of `register_market_coverage` for callers that only
     /// need the upsert side effect and never read back a coverage list --
     /// `register_market_coverage` unconditionally re-aggregates *every*
@@ -336,24 +263,14 @@ pub trait MarketRepository: Send + Sync {
         workspace_id: WorkspaceId,
         source_id: PriceSourceId,
         items: Vec<MarketCoverageRegistration>,
-    ) -> Result<(), MarketError> {
-        let _ = (workspace_id, source_id, items);
-        Err(MarketError::Persistence(
-            "automatic market coverage is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<(), MarketError>;
     async fn market_refresh_candidates(
         &self,
         workspace_id: WorkspaceId,
         source_id: PriceSourceId,
         now: DateTime<Utc>,
         limit: i64,
-    ) -> Result<Vec<MarketCoverageItem>, MarketError> {
-        let _ = (workspace_id, source_id, now, limit);
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<Vec<MarketCoverageItem>, MarketError>;
     /// The identity-scoped counterpart to `market_refresh_candidates`: every
     /// row for exactly `type_ids` that isn't currently leased by another
     /// in-flight refresh, with no `ORDER BY`/`LIMIT` and no `next_refresh_at`
@@ -372,24 +289,14 @@ pub trait MarketRepository: Send + Sync {
         source_id: PriceSourceId,
         type_ids: &[i64],
         now: DateTime<Utc>,
-    ) -> Result<Vec<MarketCoverageItem>, MarketError> {
-        let _ = (workspace_id, source_id, type_ids, now);
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<Vec<MarketCoverageItem>, MarketError>;
     async fn prioritize_market_refresh(
         &self,
         workspace_id: WorkspaceId,
         source_id: PriceSourceId,
         type_ids: &[i64],
         now: DateTime<Utc>,
-    ) -> Result<bool, MarketError> {
-        let _ = (workspace_id, source_id, type_ids, now);
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<bool, MarketError>;
     async fn begin_market_refresh(
         &self,
         workspace_id: WorkspaceId,
@@ -397,56 +304,20 @@ pub trait MarketRepository: Send + Sync {
         type_id: i64,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, MarketError> {
-        let _ = (
-            workspace_id,
-            source_id,
-            type_id,
-            attempted_at,
-            lease_expires_at,
-        );
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<Option<DateTime<Utc>>, MarketError>;
     async fn complete_esi_market_refresh(
         &self,
         workspace_id: WorkspaceId,
         claim: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         batch: EsiMarketObservationBatch,
-    ) -> Result<bool, MarketError> {
-        let _ = (workspace_id, claim, next_refresh_at, batch);
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<bool, MarketError>;
     async fn fail_market_refresh(
         &self,
         workspace_id: WorkspaceId,
         source_id: PriceSourceId,
         failure: MarketRefreshFailure,
-    ) -> Result<bool, MarketError> {
-        let MarketRefreshFailure {
-            type_id,
-            claim,
-            attempted_at,
-            next_refresh_at,
-            error_message,
-        } = failure;
-        let _ = (
-            workspace_id,
-            source_id,
-            type_id,
-            claim,
-            attempted_at,
-            next_refresh_at,
-            error_message,
-        );
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<bool, MarketError>;
     /// Records a successful conditional refresh whose ESI response was
     /// `304 Not Modified`: the batch at `last_completed_batch_id` is still
     /// authoritative, so no batch or order rows are written. A single
@@ -465,20 +336,7 @@ pub trait MarketRepository: Send + Sync {
         claim: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
-    ) -> Result<bool, MarketError> {
-        let _ = (
-            workspace_id,
-            source_id,
-            type_id,
-            claim,
-            next_refresh_at,
-            cache_expires_at,
-        );
-        Err(MarketError::Persistence(
-            "automatic market refresh is unavailable".to_string(),
-        ))
-    }
-
+    ) -> Result<bool, MarketError>;
     /// Records that a workspace needs these types' app-wide public books in
     /// `region_id` (`public_market_coverage`); `prioritize` makes them due
     /// now. Demand is a hint, so repositories without app-wide coverage
@@ -489,11 +347,7 @@ pub trait MarketRepository: Send + Sync {
         items: Vec<MarketCoverageRegistration>,
         prioritize: bool,
         now: DateTime<Utc>,
-    ) -> Result<(), MarketError> {
-        let _ = (region_id, items, prioritize, now);
-        Ok(())
-    }
-
+    ) -> Result<(), MarketError>;
     /// Makes existing app-wide rows for `type_ids` due now, ahead of routine
     /// work. `false` when none of them could be prioritized.
     async fn prioritize_public_market_refresh(
@@ -501,22 +355,14 @@ pub trait MarketRepository: Send + Sync {
         region_id: i64,
         type_ids: &[i64],
         now: DateTime<Utc>,
-    ) -> Result<bool, MarketError> {
-        let _ = (region_id, type_ids, now);
-        Ok(false)
-    }
-
+    ) -> Result<bool, MarketError>;
     /// App-wide coverage rows for `type_ids` in `region_id` (any state).
     /// Empty for repositories without app-wide coverage.
     async fn public_market_coverage(
         &self,
         region_id: i64,
         type_ids: &[i64],
-    ) -> Result<Vec<MarketCoverageItem>, MarketError> {
-        let _ = (region_id, type_ids);
-        Ok(Vec::new())
-    }
-
+    ) -> Result<Vec<MarketCoverageItem>, MarketError>;
     /// App-wide counterpart of `begin_market_refresh` for one
     /// `public_market_coverage` row.
     async fn begin_public_market_refresh(
@@ -525,26 +371,14 @@ pub trait MarketRepository: Send + Sync {
         type_id: i64,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, MarketError> {
-        let _ = (region_id, type_id, attempted_at, lease_expires_at);
-        Err(MarketError::Persistence(
-            "public market refresh is unavailable".to_string(),
-        ))
-    }
-
+    ) -> Result<Option<DateTime<Utc>>, MarketError>;
     /// Stores a fetched regional book app-wide; `false` when `claim` is stale.
     async fn complete_public_market_refresh(
         &self,
         claim: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         batch: PublicMarketObservationBatch,
-    ) -> Result<bool, MarketError> {
-        let _ = (claim, next_refresh_at, batch);
-        Err(MarketError::Persistence(
-            "public market refresh is unavailable".to_string(),
-        ))
-    }
-
+    ) -> Result<bool, MarketError>;
     /// A `304 Not Modified` for a public book: coverage-only, no batch write.
     async fn revalidate_public_market_refresh(
         &self,
@@ -553,13 +387,7 @@ pub trait MarketRepository: Send + Sync {
         claim: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
-    ) -> Result<bool, MarketError> {
-        let _ = (region_id, type_id, claim, next_refresh_at, cache_expires_at);
-        Err(MarketError::Persistence(
-            "public market refresh is unavailable".to_string(),
-        ))
-    }
-
+    ) -> Result<bool, MarketError>;
     /// A failed public refresh, with the same backoff as per-workspace rows.
     async fn fail_public_market_refresh(
         &self,
@@ -569,17 +397,5 @@ pub trait MarketRepository: Send + Sync {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: String,
-    ) -> Result<bool, MarketError> {
-        let _ = (
-            region_id,
-            type_id,
-            claim,
-            attempted_at,
-            next_refresh_at,
-            error_message,
-        );
-        Err(MarketError::Persistence(
-            "public market refresh is unavailable".to_string(),
-        ))
-    }
+    ) -> Result<bool, MarketError>;
 }

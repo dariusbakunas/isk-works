@@ -11,7 +11,7 @@ use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesReposit
 use iskworks_core::{
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId, InventoryError,
     MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource,
-    MarketRefreshState, MarketRepository, MarketScope, Money, PriceSourceId, WorkspaceId,
+    MarketRefreshState, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, TypeReference,
@@ -218,7 +218,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn scoped_order_books(
         &self,
         _: WorkspaceId,

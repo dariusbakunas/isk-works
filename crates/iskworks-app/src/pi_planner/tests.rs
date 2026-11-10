@@ -222,7 +222,7 @@ fn order(type_id: i64, side: MarketOrderSide, price: &str) -> MarketOrderView {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!()
     }

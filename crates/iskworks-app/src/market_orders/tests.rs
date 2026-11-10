@@ -188,7 +188,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!()
     }

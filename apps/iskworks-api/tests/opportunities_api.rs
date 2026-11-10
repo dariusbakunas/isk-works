@@ -10,9 +10,9 @@ use iskworks_core::{
     AdjustedPriceRepository, FacilityKind, FacilityProfileId, FacilityRole, IndustryError,
     IndustryFacilityProfile, IndustryRepository, InventoryError, MarketCoverageItem,
     MarketCoverageRegistration, MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView,
-    MarketPriceSource, MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState,
-    MarketRepository, Money, NewWorkspace, PriceSource, PriceSourceId, PriceSourceKind,
-    SecurityClass, WorkspaceId, WorkspaceState,
+    MarketPriceSource, MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState, Money,
+    NewWorkspace, PriceSource, PriceSourceId, PriceSourceKind, SecurityClass, WorkspaceId,
+    WorkspaceState,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, CandidateProductClassification, CandidateRecipeIdentity,
@@ -263,7 +263,7 @@ struct FixtureMarketRepository {
 }
 
 #[async_trait]
-impl MarketRepository for FixtureMarketRepository {
+impl iskworks_core::FakeMarketRepository for FixtureMarketRepository {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!("not used by opportunity evaluation")
     }
@@ -379,6 +379,14 @@ impl MarketRepository for FixtureMarketRepository {
                 sell_order_count: 0,
             })
             .collect())
+    }
+
+    async fn classify_location(
+        &self,
+        _workspace_id: WorkspaceId,
+        _location_id: i64,
+    ) -> Result<iskworks_core::MarketLocationClassification, MarketError> {
+        Ok(iskworks_core::MarketLocationClassification::Unknown)
     }
 }
 
