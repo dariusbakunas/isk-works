@@ -9,7 +9,7 @@ import {
 } from "../../../../components/operational-table";
 import { EveTypeImage } from "../../../../components/eve-type-image";
 import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
-import { formatIskCompact, formatIskSummary } from "../../../../components/money";
+import { formatIskSummary, IskCompact } from "../../../../components/money";
 import { effectiveUnitCost } from "../../../../lib/decimal";
 import { PRODUCTION_WORKSHEET_COLUMNS } from "./worksheet-columns";
 
@@ -113,7 +113,7 @@ function WorksheetRow({ item }: { item: WorksheetItem }) {
     pricing: <span className={`text-xs ${item.pricing.missing ? "text-warning" : "text-muted"}`}>{pricingLabel(item)}</span>,
     unitPrice: <UnitCostCell item={item} />,
     totalValue: item.lineTotal
-      ? <Money className={item.role === "output" ? "text-positive" : ""} value={item.lineTotal} />
+      ? <IskCompact className={item.role === "output" ? "text-positive" : ""} value={item.lineTotal} />
       : <span className="text-xs text-muted">Incomplete</span>,
   };
   return <OperationalTableRow cells={cells} rowKey={rowKey(item)} status={status} />;
@@ -129,13 +129,6 @@ function Quantity({ className = "", value }: { className?: string; value: number
   );
 }
 
-function Money({ className = "", title, value }: { className?: string; title?: string; value: string }) {
-  return (
-    <span className={`whitespace-nowrap font-mono tabular-nums ${className}`} title={title ?? `${Number(value).toLocaleString()} ISK`}>
-      {formatIskCompact(value)}
-    </span>
-  );
-}
 
 /**
  * The "Unit Cost" cell. `item.pricing.unitPrice` is the market-buy unit
@@ -152,12 +145,12 @@ function UnitCostCell({ item }: { item: WorksheetItem }) {
     // "market unit price", here for the *output* rather than an input.
     const outputPrice = item.pricing.unitPrice;
     return outputPrice
-      ? <Money title={`${formatIskSummary(outputPrice)} — expected sale unit price`} value={outputPrice} />
+      ? <IskCompact title={`${formatIskSummary(outputPrice)} — expected sale unit price`} value={outputPrice} />
       : <span className="text-xs text-warning">Missing price</span>;
   }
   if (!item.isBuildResolved) {
     return item.pricing.unitPrice
-      ? <Money value={item.pricing.unitPrice} />
+      ? <IskCompact value={item.pricing.unitPrice} />
       : <span className="text-xs text-warning">Missing price</span>;
   }
   if (item.pricing.missing) {
@@ -169,7 +162,7 @@ function UnitCostCell({ item }: { item: WorksheetItem }) {
   }
   const cost = item.lineTotal ? effectiveUnitCost(item.lineTotal, item.requiredQuantity) : null;
   if (!cost) return <span className="text-muted">—</span>;
-  return <Money title={buildCostEvidenceSentence(item, cost) ?? undefined} value={cost} />;
+  return <IskCompact title={buildCostEvidenceSentence(item, cost) ?? undefined} value={cost} />;
 }
 
 /**

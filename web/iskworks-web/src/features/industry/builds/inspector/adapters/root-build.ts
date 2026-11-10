@@ -9,12 +9,12 @@
 // instance, which both hosts already hold; selection source adds nothing, so
 // the rendered inspector is identical by construction.
 
-import { rootFacility } from "../../../../api/industry";
-import { formatIskSummary } from "../../../../components/money";
-import { formatPercent } from "../../../../lib/formatting";
-import { parseRuns } from "../../builds/components/planner-panels";
-import type { BuildWorksheetEditorModel } from "../../builds/use-build-worksheet-editor";
-import { recipeCurrencyChip, recipeCurrencyExplanation } from "../../builds/graph/recipe-currency";
+import { rootFacility } from "../../../../../api/industry";
+import { formatIskSummary } from "../../../../../components/money";
+import { formatPercent } from "../../../../../lib/formatting";
+import { parseRuns } from "../../components/planner-panels";
+import type { BuildWorksheetEditorModel } from "../../use-build-worksheet-editor";
+import { recipeCurrencyChip, recipeCurrencyExplanation } from "../../graph/recipe-currency";
 import type {
   CostState,
   InspectorActions,
@@ -22,7 +22,7 @@ import type {
   InspectorWarning,
   ProvenanceSlice,
 } from "../inspector-model";
-import { jobSplitLabel } from "../../builds/planner/job-split";
+import { jobSplitLabel } from "../../planner/job-split";
 
 const NUMBER = new Intl.NumberFormat("en-US");
 
@@ -31,7 +31,7 @@ function money(value: string | null | undefined): string | null {
 }
 
 function recipeCurrencyBadge(
-  state: import("../../../../api/industry").RecipeCurrency,
+  state: import("../../../../../api/industry").RecipeCurrency,
 ): ProvenanceSlice["recipeCurrency"] {
   const chip = recipeCurrencyChip(state);
   if (!chip) return null;

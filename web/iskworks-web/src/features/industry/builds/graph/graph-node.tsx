@@ -25,7 +25,7 @@ import { Badge } from "../../../../components/primitives";
 import {
   coveragePercentLabel,
   coverageSplit,
-} from "../../inspector/sourcing-coverage";
+} from "../../../../lib/sourcing-coverage";
 import { nodeSize } from "./graph-layout";
 import { warningChipLabel } from "./graph-warnings";
 import { recipeCurrencyChip, type RecipeCurrencyChip } from "./recipe-currency";

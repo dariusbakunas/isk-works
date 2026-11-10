@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import type { BlueprintObservation } from "../../../../api/industry";
+import type { BlueprintObservation } from "../../../../../api/industry";
 import { InspectorCollapseProvider } from "../inspector-collapse";
 import type { BlueprintSlice, InspectorActions, InspectorModel } from "../inspector-model";
 import { UnifiedItemInspector } from "../unified-item-inspector";

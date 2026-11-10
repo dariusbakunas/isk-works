@@ -1,5 +1,5 @@
 import type { CatalogueSkill, PlanEntry } from "../../api/skills";
-import { formatRemainingMs } from "../characters/characters-formatters";
+import { formatRemainingMs } from "../../lib/characters-formatters";
 
 const key = (skillTypeId: number, level: number) => `${skillTypeId}:${level}`;
 

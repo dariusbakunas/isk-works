@@ -10,7 +10,7 @@ import {
   type SkillPlanSummary,
 } from "../../api/skills";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
-import { skillLevelNumeral } from "../characters/characters-formatters";
+import { skillLevelNumeral } from "../../lib/characters-formatters";
 import { AttributeTags, CatalogueLevelBlocks, SkillStateChip } from "./skill-cells";
 import { errorMessage } from "./skill-plans";
 import { prerequisiteTree, type PrerequisiteNode, type RequiredForEntry } from "./skills-catalogue";

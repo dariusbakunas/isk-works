@@ -153,6 +153,26 @@ export function formatIskCompact(value: string): string {
   }).format(amount);
 }
 
+export interface IskCompactProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+  value: string;
+}
+
+/**
+ * The ISK table-cell convention: compact in the cell, exact on hover. Pass
+ * `title` only to say something other than the exact value.
+ */
+export function IskCompact({ value, className = "", title, ...props }: IskCompactProps) {
+  return (
+    <span
+      className={`whitespace-nowrap font-mono tabular-nums ${className}`.trimEnd()}
+      title={title ?? formatIskSummary(value)}
+      {...props}
+    >
+      {formatIskCompact(value)}
+    </span>
+  );
+}
+
 const ABBREVIATION_UNITS: Array<[number, string, number]> = [
   [1e12, "T", 2],
   [1e9, "B", 2],

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { WithToolWindows } from "../../../../test/tool-windows";
+import { WithToolWindows } from "../../../../../test/tool-windows";
 import { InspectorCollapseProvider } from "../inspector-collapse";
 import type { InspectorActions, InspectorModel } from "../inspector-model";
 import { UnifiedItemInspector } from "../unified-item-inspector";

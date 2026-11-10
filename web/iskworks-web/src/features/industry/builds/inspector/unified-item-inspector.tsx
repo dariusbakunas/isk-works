@@ -1,14 +1,14 @@
 import { X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { PlannerPricingSelection } from "../../../api/industry";
-import { EveTypeImage } from "../../../components/eve-type-image";
-import { MarketScopeSelector } from "../../../components/market-scope-selector";
-import { MoneyInput } from "../../../components/money-input";
-import { Badge } from "../../../components/primitives";
-import { BlueprintSelectionFields } from "../builds/planner/blueprint-selection-section";
-import { FacilityEivControl } from "../builds/components/planner-panels";
-import { formatDuration } from "../../../lib/formatting";
+import type { PlannerPricingSelection } from "../../../../api/industry";
+import { EveTypeImage } from "../../../../components/eve-type-image";
+import { MarketScopeSelector } from "../../../../components/market-scope-selector";
+import { MoneyInput } from "../../../../components/money-input";
+import { Badge } from "../../../../components/primitives";
+import { BlueprintSelectionFields } from "../planner/blueprint-selection-section";
+import { FacilityEivControl } from "../components/planner-panels";
+import { formatDuration } from "../../../../lib/formatting";
 
 import {
   INSPECTOR_SECTION_ORDER,
@@ -30,7 +30,7 @@ import {
   InspectorRow,
   InspectorSection,
 } from "./inspector-section";
-import { TypeInfoButton } from "../../../components/type-info/type-info-button";
+import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 
 /**
  * The single presentation component for a selected planning object. Both the

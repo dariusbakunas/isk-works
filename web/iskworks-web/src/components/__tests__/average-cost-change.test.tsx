@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { AverageCostChange } from "../inventory-posting-panel";
+import { AverageCostChange } from "../inventory-preview-panel";
 
 describe("AverageCostChange", () => {
   test("a dearer purchase shows the exact increase, percent, and prior average", () => {

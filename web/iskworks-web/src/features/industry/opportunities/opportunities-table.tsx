@@ -1,5 +1,5 @@
 import type { OpportunityCandidate } from "../../../api/opportunities";
-import { formatIskCompact, formatIskSummary } from "../../../components/money";
+import { formatIskCompact, IskCompact } from "../../../components/money";
 import { EveTypeImage } from "../../../components/eve-type-image";
 import { OperationalTable, OperationalTableRow, type OperationalColumn } from "../../../components/operational-table";
 import { EvidenceQualityBadge } from "./opportunity-badges";
@@ -159,11 +159,7 @@ function MoneyCell({ value, tone }: { value: string | null; tone?: string }) {
       </span>
     );
   }
-  return (
-    <span className="whitespace-nowrap font-mono tabular-nums" style={tone ? { color: tone } : undefined} title={formatIskSummary(value)}>
-      {formatIskCompact(value)}
-    </span>
-  );
+  return <IskCompact style={tone ? { color: tone } : undefined} value={value} />;
 }
 
 function profitTone(profit: string | null): string | undefined {

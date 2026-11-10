@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Info, RefreshCw, Search } from "lucide-react";
 
 import type { PlanColony, PlannerSolution, ScanFirst } from "../../../../api/pi-planner";
-import { formatIskCompact, formatIskSummary } from "../../../../components/money";
+import { formatIskCompact, formatIskSummary, IskCompact } from "../../../../components/money";
 import {
   OperationalTable,
   OperationalTableGroup,
@@ -26,9 +26,6 @@ const COLUMNS: OperationalColumn[] = [
   { key: "info", label: "", width: "3.5rem" },
 ];
 
-function Isk({ value }: { value: string }) {
-  return <span title={formatIskSummary(value)}>{formatIskCompact(value)}</span>;
-}
 
 function percent(share: string): string {
   return `${Math.round(Number(share) * 100)} %`;
@@ -281,7 +278,7 @@ export function PlanPanel({
                             out: <span className="block text-xs">{rateLines(colony.exports)}</span>,
                             tax: (
                               <span className="font-mono text-xs text-warning">
-                                −<Isk value={colony.taxPerMonth} />
+                                −<IskCompact value={colony.taxPerMonth} />
                               </span>
                             ),
                             info: (
@@ -385,7 +382,7 @@ export function PlanPanel({
                       <i className="block h-full bg-primary" style={{ width: `${(Number(isk) / best) * 100}%` }} />
                     </span>
                     <span className="text-right font-mono">
-                      <Isk value={isk} />
+                      <IskCompact value={isk} />
                     </span>
                   </li>
                 ))}
@@ -396,7 +393,7 @@ export function PlanPanel({
               <div className="flex flex-wrap gap-1">
                 {whatIfs.perRadius.map((entry) => (
                   <span className="rounded-sm border border-border px-1.5 py-0.5 font-mono" key={entry.jumps}>
-                    {entry.jumps}j <Isk value={entry.iskPerMonth} />
+                    {entry.jumps}j <IskCompact value={entry.iskPerMonth} />
                   </span>
                 ))}
               </div>

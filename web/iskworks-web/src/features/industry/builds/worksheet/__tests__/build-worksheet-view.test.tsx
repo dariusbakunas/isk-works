@@ -18,7 +18,7 @@ vi.mock("../../stages/use-plan-inspector", () => ({
 }));
 vi.mock("../../components/production-setup-dialog", () => ({ ProductionSetupDialog: () => null }));
 vi.mock("../../stages/stages-inspector", async () => {
-  const { InspectorSection } = await import("../../../inspector/inspector-section");
+  const { InspectorSection } = await import("../../inspector/inspector-section");
   return {
     // Each selection gets a fresh inspector tree, as the real one does when
     // it swaps between an input and a producer.

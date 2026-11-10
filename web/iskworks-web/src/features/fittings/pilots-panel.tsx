@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router";
 
 import { createFitSkillPlan, type CreatedSkillPlan, type FitDetail, type FitPilot } from "../../api/fittings";
-import { formatRemainingMs, skillLevelNumeral } from "../characters/characters-formatters";
+import { formatRemainingMs, skillLevelNumeral } from "../../lib/characters-formatters";
 import { PilotPortrait } from "./fit-shared";
 import { capacitorLabel, formatStat } from "./fittings-format";
 import { apiMessage } from "../../api/api-error";

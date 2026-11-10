@@ -20,7 +20,7 @@ import {
   OperationalTableRow,
   type OperationalColumn,
 } from "../../components/operational-table";
-import { formatIskCompact, formatIskSummary } from "../../components/money";
+import { IskCompact } from "../../components/money";
 import { formatDistance, formatHeadline, formatStat, rackLabel, stateLabel } from "./fittings-format";
 import { HeldCell } from "./holdings-dialog";
 import { DRAG_TYPE, type DraggedType } from "./module-browser";
@@ -159,7 +159,7 @@ export interface ModuleTableEditor {
 function PriceCell({ unitPrice, quantity }: { unitPrice: string | undefined; quantity: number }) {
   if (unitPrice === undefined) return <span className="text-muted">—</span>;
   const total = (Number(unitPrice) * quantity).toFixed(2);
-  return <span title={formatIskSummary(total)}>{formatIskCompact(total)}</span>;
+  return <IskCompact value={total} />;
 }
 
 function ModuleRow({

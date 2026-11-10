@@ -4,7 +4,7 @@ import type {
   MarketPricingPolicy,
   MarketScope,
   PriceSource,
-} from "../../../api/industry";
+} from "../../../../api/industry";
 
 import type { InspectorTone } from "./inspector-section";
 
@@ -288,7 +288,7 @@ export interface InspectorActions {
     error?: string | null;
   };
   facility?: {
-    options: import("../../../api/industry").FacilityProfile[];
+    options: import("../../../../api/industry").FacilityProfile[];
     onSelect?: (facilityProfileId: string | null) => void;
     /** Root-only EIV controls (paired with `FacilitySlice.eiv`). */
     onEivManual?: (manual: boolean) => void;
@@ -299,12 +299,12 @@ export interface InspectorActions {
   };
   pricing?: {
     /** Row pricing. */
-    onChange?: (selection: import("../../../api/industry").PlannerPricingSelection) => void;
+    onChange?: (selection: import("../../../../api/industry").PlannerPricingSelection) => void;
     /** Root pricing configuration (paired with `RootPricingSlice`). */
-    onMaterialScope?: (scope: import("../../../api/industry").MarketScope) => void;
-    onMaterialPolicy?: (policy: import("../../../api/industry").MarketPricingPolicy) => void;
-    onOutputScope?: (scope: import("../../../api/industry").MarketScope) => void;
-    onOutputPolicy?: (policy: import("../../../api/industry").MarketPricingPolicy) => void;
+    onMaterialScope?: (scope: import("../../../../api/industry").MarketScope) => void;
+    onMaterialPolicy?: (policy: import("../../../../api/industry").MarketPricingPolicy) => void;
+    onOutputScope?: (scope: import("../../../../api/industry").MarketScope) => void;
+    onOutputPolicy?: (policy: import("../../../../api/industry").MarketPricingPolicy) => void;
     onPriceSource?: (sourceId: string) => void;
   };
   /** Secondary navigation to the linked Build's own page. */

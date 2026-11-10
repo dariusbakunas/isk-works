@@ -15,9 +15,9 @@ import {
 } from "../../../../api/industry";
 import { recipeForProduct } from "../../../../api/sde";
 import { formatIskSummary } from "../../../../components/money";
-import { buildWorksheetInspector } from "../../inspector/adapters/worksheet-item";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
-import { UnifiedItemInspector } from "../../inspector/unified-item-inspector";
+import { buildWorksheetInspector } from "../inspector/adapters/worksheet-item";
+import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
+import { UnifiedItemInspector } from "../inspector/unified-item-inspector";
 import { useBuildSettings } from "../use-build-settings";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { rowKey } from "./production-worksheet";

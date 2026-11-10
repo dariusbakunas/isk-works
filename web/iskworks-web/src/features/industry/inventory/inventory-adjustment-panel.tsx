@@ -14,7 +14,7 @@ import { MoneyInput, type MoneyInputResult } from "../../../components/money-inp
 import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
 import { InlineAlert } from "../../../components/primitives";
 import { apiMessage } from "./shared";
-import { InventoryPreviewPanel } from "./inventory-posting-panel";
+import { InventoryPreviewPanel } from "../../../components/inventory-preview-panel";
 
 type Direction = "add" | "remove";
 

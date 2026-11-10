@@ -6,18 +6,18 @@ import type {
   RecipeCurrency,
   RecipeSelection,
   WorksheetItem,
-} from "../../../../api/industry";
+} from "../../../../../api/industry";
 import {
   type ProductionEnrichment,
-} from "../../builds/graph/graph-inspector-enrichment";
+} from "../../graph/graph-inspector-enrichment";
 import {
   coverageSplit,
   fulfillmentSentence,
   sourcingSummary,
-} from "../sourcing-coverage";
-import { warningLabel } from "../../builds/graph/graph-warnings";
-import type { BuildGraphNodeData } from "../../builds/graph/to-react-flow";
-import type { BuildSettings } from "../../builds/use-build-settings";
+} from "../../../../../lib/sourcing-coverage";
+import { warningLabel } from "../../graph/graph-warnings";
+import type { BuildGraphNodeData } from "../../graph/to-react-flow";
+import type { BuildSettings } from "../../use-build-settings";
 import type {
   InspectorActions,
   InspectorModel,
@@ -30,7 +30,7 @@ import {
   valueSlice,
 } from "./material-slices";
 import { linkedBuildInspector, type LinkedBuildInput } from "./linked-build";
-import type { ProductionNode } from "../../../../api/industry/build-graph";
+import type { ProductionNode } from "../../../../../api/industry/build-graph";
 
 const NUMBER = new Intl.NumberFormat("en-US");
 

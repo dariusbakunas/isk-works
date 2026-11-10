@@ -5,7 +5,7 @@ import {
   formatSpCompact,
   missingScopeFrom,
   skillLevelNumeral,
-} from "./characters-formatters";
+} from "../../lib/characters-formatters";
 import { SkillLevelBlocks } from "./skill-level-blocks";
 import {
   deriveSkillQueueSummary,

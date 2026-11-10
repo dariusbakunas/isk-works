@@ -20,21 +20,21 @@ import type {
   RecipeCurrency,
   RecipeSelection,
   WorksheetItem,
-} from "../../../../api/industry";
-import { formatIskSummary } from "../../../../components/money";
-import { reconcileObservedSelection } from "../../builds/planner/available-blueprint";
-import { sumDecimalStrings } from "../../../../lib/decimal";
-import { formatPercent } from "../../../../lib/formatting";
+} from "../../../../../api/industry";
+import { formatIskSummary } from "../../../../../components/money";
+import { reconcileObservedSelection } from "../../planner/available-blueprint";
+import { sumDecimalStrings } from "../../../../../lib/decimal";
+import { formatPercent } from "../../../../../lib/formatting";
 import {
   recipeCurrencyChip,
   recipeCurrencyExplanation,
-} from "../../builds/graph/recipe-currency";
+} from "../../graph/recipe-currency";
 import {
   coverageSplit,
   fulfillmentSentence as sourcingFulfillmentSentence,
   sourcingSummary,
-} from "../sourcing-coverage";
-import type { BuildSettings } from "../../builds/use-build-settings";
+} from "../../../../../lib/sourcing-coverage";
+import type { BuildSettings } from "../../use-build-settings";
 import type {
   CostState,
   InspectorActions,
@@ -43,7 +43,7 @@ import type {
   ProvenanceSlice,
 } from "../inspector-model";
 import { pricingSlice } from "./material-slices";
-import { withJobSplit } from "../../builds/planner/job-split";
+import { withJobSplit } from "../../planner/job-split";
 
 const NUMBER = new Intl.NumberFormat("en-US");
 

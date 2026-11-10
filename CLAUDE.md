@@ -58,7 +58,7 @@ Targeted runs during iteration (cheaper than full suite):
 ## UI conventions
 
 - `OperationalTable` / `OperationalTableGroup` / `OperationalTableRow` (`src/components/operational-table/`) is the shared primitive for dense grouped data tables — used by the Build worksheet and Inventory list. Reuse it for new tabular views rather than building ad-hoc grids; columns are declared as `OperationalColumn[]`, cell content is caller-supplied JSX.
-- Money values: compact display (`formatIskCompact`) in cells with the exact value in the `title` attribute (`formatIskSummary`), not full text inline — see `src/components/money.tsx`.
+- Money values: compact display in cells with the exact value in the `title` attribute, not full text inline. Use `<IskCompact value={...} />` from `src/components/money.tsx` (it pairs `formatIskCompact` with `formatIskSummary`) rather than a local cell.
 
 ## Commit style
 

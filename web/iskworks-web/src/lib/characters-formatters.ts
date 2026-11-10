@@ -1,14 +1,13 @@
-import type { Tone } from "../../components/primitives";
+import type { Tone } from "../components/primitives";
 import type {
   CharacterHealth,
   CharacterRosterEntry,
   CharacterSourceKind,
   SourceRefreshState,
-} from "../../api/characters";
+} from "../api/characters";
 
-// Mirrors opportunity-formatters.ts's formatEvidenceAge shape -- kept local
-// rather than shared, matching this codebase's per-feature formatter
-// convention (see market/shared.tsx's own comment on the same choice).
+// Mirrors opportunity-formatters.ts's formatEvidenceAge shape. Shared here
+// because Characters, Skills, Fittings and Planetary all format pilots.
 export function formatRelativeAge(iso: string | null): string {
   if (iso === null) return "never";
   const ageSeconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

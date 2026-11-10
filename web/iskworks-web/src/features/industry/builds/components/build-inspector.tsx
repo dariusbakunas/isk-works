@@ -1,7 +1,7 @@
 import type { BlueprintSelection, ComponentFacilityOverride } from "../../../../api/industry";
-import { buildRootInspector } from "../../inspector/adapters/root-build";
-import { InspectorCollapseProvider } from "../../inspector/inspector-collapse";
-import { UnifiedItemInspector } from "../../inspector/unified-item-inspector";
+import { buildRootInspector } from "../inspector/adapters/root-build";
+import { InspectorCollapseProvider } from "../inspector/inspector-collapse";
+import { UnifiedItemInspector } from "../inspector/unified-item-inspector";
 import { PlannerContextPanel } from "../planner/planner-context-panel";
 import { PlannerInspectorShell } from "../../../../components/planner-inspector-shell";
 import { rowKey } from "../planner/production-worksheet";

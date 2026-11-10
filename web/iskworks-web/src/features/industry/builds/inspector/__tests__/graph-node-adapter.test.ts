@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GraphWarning, WorksheetItem } from "../../../../api/industry";
-import type { ProductionEnrichment } from "../../builds/graph/graph-inspector-enrichment";
-import type { BuildGraphNodeData } from "../../builds/graph/to-react-flow";
+import type { GraphWarning, WorksheetItem } from "../../../../../api/industry";
+import type { ProductionEnrichment } from "../../graph/graph-inspector-enrichment";
+import type { BuildGraphNodeData } from "../../graph/to-react-flow";
 import { buildGraphInspector } from "../adapters/graph-node";
 import { buildWorksheetInspector } from "../adapters/worksheet-item";
 

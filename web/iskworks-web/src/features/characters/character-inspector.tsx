@@ -16,7 +16,7 @@ import {
   missingScopeFrom,
   sourceKindLabel,
   sourceStateMeta,
-} from "./characters-formatters";
+} from "../../lib/characters-formatters";
 import { CharacterIndustryTab } from "./character-industry-tab";
 import { CharacterSkillQueueTab } from "./skill-queue-tab";
 import { LiveTrainingProgress } from "./live-training-progress";

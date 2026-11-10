@@ -7,10 +7,10 @@ import type {
   PlannerPricingSelection,
   RecipeSelection,
   WorksheetItem,
-} from "../../../../api/industry";
-import { formatIskSummary } from "../../../../components/money";
-import { reconcileObservedSelection } from "../../builds/planner/available-blueprint";
-import { formatPercent } from "../../../../lib/formatting";
+} from "../../../../../api/industry";
+import { formatIskSummary } from "../../../../../components/money";
+import { reconcileObservedSelection } from "../../planner/available-blueprint";
+import { formatPercent } from "../../../../../lib/formatting";
 import {
   coverageSlice,
   pricingSlice,
@@ -18,14 +18,14 @@ import {
   valueSlice,
 } from "./material-slices";
 import { linkedBuildInspector, producingFromRecipe, type LinkedBuildInput } from "./linked-build";
-import type { BuildSettings } from "../../builds/use-build-settings";
+import type { BuildSettings } from "../../use-build-settings";
 import type {
   CostState,
   InspectorActions,
   InspectorModel,
   InspectorWarning,
 } from "../inspector-model";
-import { withJobSplit } from "../../builds/planner/job-split";
+import { withJobSplit } from "../../planner/job-split";
 
 const NUMBER = new Intl.NumberFormat("en-US");
 
@@ -34,7 +34,7 @@ export interface WorksheetInspectorContext {
   /** Row is currently resolved to BUILD. */
   buildResolved: boolean;
   /** The row's active linked Build (editor-owned), or `null`. */
-  linkedBuild: import("../../../../api/industry").Build | null;
+  linkedBuild: import("../../../../../api/industry").Build | null;
   creatingLinkedBuild: boolean;
   linkedBuildError: string;
   /** The parent Build's per-component blueprint override (seeds a not-yet

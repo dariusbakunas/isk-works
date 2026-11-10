@@ -4,9 +4,9 @@ import type {
   ExecutionRequirement,
 } from "../../../../api/industry";
 import { Badge, type Tone } from "../../../../components/primitives";
-import { InspectorRow } from "../../inspector/inspector-section";
+import { InspectorRow } from "../inspector/inspector-section";
 
-import type { StagesSelection } from "./stages-inspector";
+import type { StagesSelection } from "./stages-selection";
 
 interface Props {
   acquisitions: AcquisitionLine[];

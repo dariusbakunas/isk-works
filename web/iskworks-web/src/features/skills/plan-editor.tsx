@@ -15,7 +15,7 @@ import {
 } from "../../api/skills";
 import { ConfirmDialog, InlineAlert, ProgressBar } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
-import { formatRemainingMs, skillLevelNumeral } from "../characters/characters-formatters";
+import { formatRemainingMs, skillLevelNumeral } from "../../lib/characters-formatters";
 import { SkillLevelBlocks } from "../characters/skill-level-blocks";
 import { skillLevelCells } from "../characters/skill-queue-summary";
 import { dependentsOf, errorMessage, planProgressLabel } from "./skill-plans";

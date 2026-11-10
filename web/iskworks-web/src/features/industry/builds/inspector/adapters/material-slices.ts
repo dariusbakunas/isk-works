@@ -4,8 +4,8 @@
 // material selected from either view renders identical sections from the same
 // logic.
 
-import type { WorksheetItem } from "../../../../api/industry";
-import { formatIskSummary } from "../../../../components/money";
+import type { WorksheetItem } from "../../../../../api/industry";
+import { formatIskSummary } from "../../../../../components/money";
 import type {
   CoverageSlice,
   PricingSlice,
