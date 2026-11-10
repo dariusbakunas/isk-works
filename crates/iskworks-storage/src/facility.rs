@@ -9,6 +9,7 @@ use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::sde_read::SECURITY_CLASS_CASE_SQL;
+use crate::sql::like_contains;
 
 mod defaults;
 pub(crate) use defaults::list_defaults;
@@ -41,7 +42,7 @@ impl PgFacilityRepository {
         query: &str,
         limit: u32,
     ) -> Result<Vec<KnownStructure>, FacilityError> {
-        let contains = format!("%{}%", query.trim());
+        let contains = like_contains(query.trim());
         let sql = format!(
             r#"SELECT location.location_id AS structure_id,
                       location.location_name AS structure_name,

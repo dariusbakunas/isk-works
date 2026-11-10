@@ -1,3 +1,4 @@
+use crate::sql::like_contains;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::{
@@ -115,7 +116,7 @@ impl BlueprintLibraryRepository for PgBlueprintLibraryRepository {
         workspace_id: WorkspaceId,
         query: &ValidatedBlueprintLibraryQuery,
     ) -> Result<BlueprintLibraryPage, IndustryError> {
-        let search = format!("%{}%", escape_like(&query.search));
+        let search = like_contains(&query.search);
         let kinds = query
             .kinds
             .iter()
@@ -316,13 +317,6 @@ fn kind_text(kind: BlueprintKind) -> &'static str {
         BlueprintKind::Copy => "copy",
         BlueprintKind::Unknown => "unknown",
     }
-}
-
-fn escape_like(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
 }
 
 fn map_error(error: sqlx::Error) -> IndustryError {

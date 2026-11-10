@@ -323,6 +323,30 @@ async fn region_and_category_reads_are_scoped_correctly_and_never_leak_across_re
     assert_eq!(tree[0].children[0].market_group_id, 1_361);
 }
 
+/// Searches are literal: `%` and `_` in the text match only themselves, not
+/// any run of characters or any one character.
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn search_wildcards_match_only_themselves(pool: PgPool) {
+    let repository = PgSdeRepository::new(pool);
+    import_active(&repository, &fixture_sde("checksum-like", "1")).await;
+
+    let found = repository.search_types("trit", 20).await.unwrap();
+    assert_eq!(found.len(), 1, "a plain search still matches");
+    for literal in ["tr_t", "t%m", "%", "_"] {
+        let found = repository.search_types(literal, 20).await.unwrap();
+        assert!(found.is_empty(), "{literal:?} matched {found:?}");
+    }
+    let blueprints = repository
+        .search_manufacturing_blueprints("r_fter", 20)
+        .await
+        .unwrap();
+    assert!(
+        blueprints.is_empty(),
+        "prefix and contains patterns are both escaped"
+    );
+}
+
 fn gate(stargate_id: i64, from: i64, to: i64) -> iskworks_sde::ImportStargate {
     iskworks_sde::ImportStargate {
         stargate_id,

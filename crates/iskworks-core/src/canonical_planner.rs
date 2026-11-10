@@ -285,6 +285,9 @@ pub fn plan_canonical_edge_writes(
             PlannedProducer::Existing { producer } => Some(producer),
             PlannedProducer::None | PlannedProducer::Create { .. } => None,
         };
+        if let Some(producer) = new_producer {
+            check_producer_reference(graph, producer)?;
+        }
         let unchanged = row.sourcing == sourcing
             && row.fulfillment_scope == intent.fulfillment_scope
             && !matches!(producer, PlannedProducer::Create { .. })
@@ -333,6 +336,31 @@ pub fn canonical_candidates(
         }
     }
     (active, detached)
+}
+
+/// The rule Postgres enforces on every demand edge
+/// (`production_dependencies_producer_check`): a Produce edge references a
+/// producer of its own root plan, never a retired one. The planner only
+/// picks such producers; checking here turns a planning bug into this typed
+/// error before the write, rather than SQLSTATE 23514 during it.
+///
+/// # Errors
+/// [`CanonicalWriteError::CanonicalGraphCorrupt`] when `producer` is retired
+/// or not a build of this root plan.
+pub fn check_producer_reference(
+    graph: &RootPlanDependencyGraph,
+    producer: BuildId,
+) -> Result<(), CanonicalWriteError> {
+    let detail = if graph.is_retired(producer) {
+        "references retired producer"
+    } else if graph.producer(producer).is_none() {
+        "references a producer of another root plan"
+    } else {
+        return Ok(());
+    };
+    Err(CanonicalWriteError::CanonicalGraphCorrupt {
+        detail: format!("production dependency {detail} {}", producer.0),
+    })
 }
 
 // ---------------------------------------------------------------------------

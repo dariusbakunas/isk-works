@@ -1,5 +1,6 @@
 use super::sde_import::PgSdeRepository;
 use super::*;
+use crate::sql::{like_contains, like_prefix};
 
 /// Security classification shared by every query in this crate that needs
 /// it (`search_solar_systems`/`search_npc_stations`/
@@ -252,8 +253,8 @@ impl SdeReadRepository for PgSdeRepository {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let prefix = format!("{query}%");
-        let contains = format!("%{query}%");
+        let prefix = like_prefix(query);
+        let contains = like_contains(query);
         let rows = sqlx::query_as::<_, BlueprintSearchRow>(
             r#"
             SELECT b.blueprint_type_id,
@@ -386,8 +387,8 @@ impl SdeReadRepository for PgSdeRepository {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let prefix = format!("{query}%");
-        let contains = format!("%{query}%");
+        let prefix = like_prefix(query);
+        let contains = like_contains(query);
         let rows = sqlx::query_as::<_, ReactionFormulaSearchRow>(
             r#"
             SELECT f.reaction_formula_type_id,
@@ -639,7 +640,7 @@ impl SdeReadRepository for PgSdeRepository {
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let contains = format!("%{query}%");
+        let contains = like_contains(query);
         sqlx::query_as::<_, TypeSearchRow>(
             r#"
             SELECT t.type_id, t.name_en AS type_name, t.group_name_en AS group_name, t.published
@@ -838,7 +839,7 @@ impl SdeReadRepository for PgSdeRepository {
         const STRUCTURE_GROUP_IDS: [i64; 8] = [1404, 1406, 1408, 1657, 2015, 2016, 2017, 4744];
 
         let query = query.trim();
-        let contains = format!("%{query}%");
+        let contains = like_contains(query);
         sqlx::query_as::<_, TypeSearchRow>(
             r#"
             SELECT t.type_id, t.name_en AS type_name, t.group_name_en AS group_name, t.published
@@ -871,7 +872,7 @@ impl SdeReadRepository for PgSdeRepository {
         structure_type_id: Option<i64>,
     ) -> Result<Vec<TypeSearchResult>, SdeError> {
         let query = query.trim();
-        let contains = format!("%{query}%");
+        let contains = like_contains(query);
         sqlx::query_as::<_, TypeSearchRow>(
             r#"
             SELECT t.type_id, t.name_en AS type_name, t.group_name_en AS group_name, t.published
@@ -976,7 +977,7 @@ impl SdeReadRepository for PgSdeRepository {
         structure_type_id: Option<i64>,
     ) -> Result<Vec<TypeSearchResult>, SdeError> {
         let query = query.trim();
-        let contains = format!("%{query}%");
+        let contains = like_contains(query);
         sqlx::query_as::<_, TypeSearchRow>(
             r#"
             SELECT t.type_id, t.name_en AS type_name, t.group_name_en AS group_name, t.published
@@ -1535,8 +1536,8 @@ impl SdeReadRepository for PgSdeRepository {
         if query.len() < 2 {
             return Ok(Vec::new());
         }
-        let prefix = format!("{query}%");
-        let contains = format!("%{query}%");
+        let prefix = like_prefix(query);
+        let contains = like_contains(query);
         let sql = format!(
             r#"SELECT system.solar_system_id, system.name_en AS solar_system_name,
                       {SECURITY_CLASS_CASE_SQL} AS security_class
@@ -1575,8 +1576,8 @@ impl SdeReadRepository for PgSdeRepository {
         limit: u32,
     ) -> Result<Vec<iskworks_sde::NpcStationSearchResult>, SdeError> {
         let query = query.trim();
-        let contains = format!("%{query}%");
-        let prefix = format!("{query}%");
+        let contains = like_contains(query);
+        let prefix = like_prefix(query);
         let sql = format!(
             r#"SELECT station.station_id, station.name_en AS station_name,
                       station.station_type_id, station_type.name_en AS station_type_name,
@@ -1729,8 +1730,8 @@ impl SdeReadRepository for PgSdeRepository {
         if query.len() < 2 {
             return Ok(Vec::new());
         }
-        let contains = format!("%{query}%");
-        let prefix = format!("{query}%");
+        let contains = like_contains(query);
+        let prefix = like_prefix(query);
         let sql = format!(
             r#"SELECT r.region_id, r.name_en AS region_name
                FROM sde_imports import
@@ -1840,7 +1841,7 @@ impl SdeReadRepository for PgSdeRepository {
         page_size: u32,
     ) -> Result<(Vec<iskworks_sde::MarketItemCandidate>, u64), SdeError> {
         let search = search.trim();
-        let contains = format!("%{search}%");
+        let contains = like_contains(search);
         let offset = i64::from(page.saturating_sub(1)) * i64::from(page_size);
 
         let total_count: i64 = sqlx::query_scalar(

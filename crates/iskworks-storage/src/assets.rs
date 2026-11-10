@@ -1,3 +1,4 @@
+use crate::sql::like_contains;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::{
@@ -5,9 +6,9 @@ use iskworks_core::{
     fitting::{AssetHolding, AssetHoldingsRepository},
     AssetBlueprintSummary, AssetBrowserFacets, AssetBrowserFilters, AssetBrowserItem,
     AssetBrowserQuery, AssetBrowserSummary, AssetFilterOption, AssetLocationPage,
-    AssetLocationSummary, AssetReconciliationSummary, AssetSortColumn, AssetSyncState,
-    ConnectedCharacterId, FlatAssetCursor, FlatAssetPage, FlatAssetRow, InventoryError,
-    ValidatedFlatAssetQuery, WorkspaceId,
+    AssetLocationSummary, AssetReconciliationSummary, AssetSortColumn, AssetSortDirection,
+    AssetSyncState, ConnectedCharacterId, FlatAssetCursor, FlatAssetPage, FlatAssetRow,
+    InventoryError, ValidatedFlatAssetQuery, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -94,7 +95,7 @@ impl PgAssetBrowserRepository {
         workspace_id: WorkspaceId,
         query: &AssetBrowserQuery,
     ) -> Result<Vec<AssetLocationSummary>, InventoryError> {
-        let search = format!("%{}%", query.query.trim());
+        let search = like_contains(query.query.trim());
         let rows = sqlx::query_as::<_, LocationRow>(
             r#"WITH current_assets AS MATERIALIZED (
                  SELECT *
@@ -363,7 +364,7 @@ impl PgAssetBrowserRepository {
             .ok_or(InventoryError::ItemNotFound)?;
         let limit = query.limit.unwrap_or(200).clamp(1, 500);
         let offset = query.offset.unwrap_or(0);
-        let search = format!("%{}%", query.query.trim());
+        let search = like_contains(query.query.trim());
         let rows = sqlx::query_as::<_, ItemRow>(
             r#"WITH current_assets AS MATERIALIZED (
                  SELECT *
@@ -559,7 +560,7 @@ impl PgAssetBrowserRepository {
         limit: Option<i64>,
         offset: i64,
     ) -> Result<Vec<FlatItemRow>, InventoryError> {
-        let search = format!("%{}%", query.search);
+        let search = like_contains(&query.search);
         let asset_kinds = query
             .asset_kinds
             .iter()
@@ -579,11 +580,10 @@ impl PgAssetBrowserRepository {
                 iskworks_core::AssetReconciliationFilter::NoAccountingRecord => "unaccounted",
             })
             .collect::<Vec<_>>();
-        let sort = format!("{:?}", query.sort).to_lowercase();
-        let order = format!("{:?}", query.order).to_lowercase();
+        let order = flat_item_order(query.sort, query.order);
         let sql = match limit {
-            Some(_) => flat_item_page_sql(FlatItemLookups::for_query(query)),
-            None => flat_item_export_sql(),
+            Some(_) => flat_item_page_sql(FlatItemLookups::for_query(query), &order),
+            None => flat_item_export_sql(&order),
         };
         sqlx::query_as::<_, FlatItemRow>(&sql)
             .bind(workspace_id.0)
@@ -595,8 +595,6 @@ impl PgAssetBrowserRepository {
             .bind(&query.group_ids)
             .bind(&blueprint_kinds)
             .bind(&reconciliation_states)
-            .bind(sort)
-            .bind(order)
             .bind(limit)
             .bind(offset)
             .fetch_all(&self.pool)
@@ -646,7 +644,7 @@ impl FlatItemLookups {
 /// lookup out of the SQL text, rather than switching it off with a bound
 /// flag, keeps it out of generic plans too: each combination is its own
 /// prepared statement.
-fn flat_item_page_sql(keys: FlatItemLookups) -> String {
+fn flat_item_page_sql(keys: FlatItemLookups, order: &str) -> String {
     format!(
         r#"{FLAT_ITEM_SOURCES},
                filtered AS (
@@ -655,12 +653,12 @@ fn flat_item_page_sql(keys: FlatItemLookups) -> String {
                ),
                page AS (
                  SELECT connection_id,eve_item_id FROM filtered
-                 ORDER BY {FLAT_ITEM_ORDER}
-                 LIMIT $12 OFFSET $13
+                 ORDER BY {order}
+                 LIMIT $10 OFFSET $11
                )
                SELECT *,(SELECT COUNT(*) FROM filtered)::bigint AS total
                FROM ({page}) page_rows
-               ORDER BY {FLAT_ITEM_ORDER}"#,
+               ORDER BY {order}"#,
         keyed = flat_item_rows_sql("current_assets", keys),
         page = flat_item_rows_sql(
             "(SELECT current_assets.* FROM page
@@ -672,7 +670,7 @@ fn flat_item_page_sql(keys: FlatItemLookups) -> String {
 }
 
 /// Every matching row is returned, so every row needs every lookup: one pass.
-fn flat_item_export_sql() -> String {
+fn flat_item_export_sql(order: &str) -> String {
     format!(
         r#"{FLAT_ITEM_SOURCES},
                filtered AS (
@@ -681,8 +679,8 @@ fn flat_item_export_sql() -> String {
                )
                SELECT *,COUNT(*) OVER()::bigint AS total
                FROM filtered
-               ORDER BY {FLAT_ITEM_ORDER}
-               LIMIT $12 OFFSET $13"#,
+               ORDER BY {order}
+               LIMIT $10 OFFSET $11"#,
         rows = flat_item_rows_sql("current_assets", FlatItemLookups::ALL),
     )
 }
@@ -843,26 +841,33 @@ const FLAT_ITEM_FILTER: &str = r#"($2='' OR COALESCE(type_name,'') ILIKE $3
                    AND (cardinality($8::text[])=0 OR COALESCE(blueprint_kind,'unknown')=ANY($8))
                    AND (cardinality($9::text[])=0 OR reconciliation_state=ANY($9))"#;
 
-const FLAT_ITEM_ORDER: &str = r#"
-                 CASE WHEN $10='item' AND $11='asc' THEN lower(COALESCE(type_name,'')) END ASC,
-                 CASE WHEN $10='item' AND $11='desc' THEN lower(COALESCE(type_name,'')) END DESC,
-                 CASE WHEN $10='quantity' AND $11='asc' THEN quantity END ASC,
-                 CASE WHEN $10='quantity' AND $11='desc' THEN quantity END DESC,
-                 CASE WHEN $10='packagedvolume' AND $11='asc' THEN total_packaged_volume::numeric END ASC NULLS LAST,
-                 CASE WHEN $10='packagedvolume' AND $11='desc' THEN total_packaged_volume::numeric END DESC NULLS LAST,
-                 CASE WHEN $10='character' AND $11='asc' THEN lower(character_name) END ASC,
-                 CASE WHEN $10='character' AND $11='desc' THEN lower(character_name) END DESC,
-                 CASE WHEN $10='location' AND $11='asc' THEN lower(COALESCE(location_name,'')) END ASC,
-                 CASE WHEN $10='location' AND $11='desc' THEN lower(COALESCE(location_name,'')) END DESC,
-                 CASE WHEN $10='container' AND $11='asc' THEN lower(COALESCE(container_name,'')) END ASC,
-                 CASE WHEN $10='container' AND $11='desc' THEN lower(COALESCE(container_name,'')) END DESC,
-                 CASE WHEN $10='group' AND $11='asc' THEN lower(COALESCE(group_name,'')) END ASC,
-                 CASE WHEN $10='group' AND $11='desc' THEN lower(COALESCE(group_name,'')) END DESC,
-                 CASE WHEN $10='status' AND $11='asc' THEN reconciliation_state END ASC,
-                 CASE WHEN $10='status' AND $11='desc' THEN reconciliation_state END DESC,
-                 CASE WHEN $10='observed' AND $11='asc' THEN observed_at END ASC,
-                 CASE WHEN $10='observed' AND $11='desc' THEN observed_at END DESC,
-                 connection_id,eve_item_id"#;
+/// The flat asset `ORDER BY` list for `sort` and `order`, spliced into the SQL
+/// text (as Finance does) rather than chosen at run time by bound `CASE`
+/// arms, so the planner sees the one sort key it orders by.
+fn flat_item_order(sort: AssetSortColumn, order: AssetSortDirection) -> String {
+    let column = match sort {
+        AssetSortColumn::Item => "lower(COALESCE(type_name,''))",
+        AssetSortColumn::Quantity => "quantity",
+        AssetSortColumn::PackagedVolume => "total_packaged_volume::numeric",
+        AssetSortColumn::Character => "lower(character_name)",
+        AssetSortColumn::Location => "lower(COALESCE(location_name,''))",
+        AssetSortColumn::Container => "lower(COALESCE(container_name,''))",
+        AssetSortColumn::Group => "lower(COALESCE(group_name,''))",
+        AssetSortColumn::Status => "reconciliation_state",
+        AssetSortColumn::Observed => "observed_at",
+    };
+    let direction = match order {
+        AssetSortDirection::Asc => "ASC",
+        AssetSortDirection::Desc => "DESC",
+    };
+    // Unpriced volumes sort last either way.
+    let nulls = if sort == AssetSortColumn::PackagedVolume {
+        " NULLS LAST"
+    } else {
+        ""
+    };
+    format!("{column} {direction}{nulls},connection_id,eve_item_id")
+}
 
 #[derive(sqlx::FromRow)]
 struct SummaryRow {
@@ -1383,6 +1388,45 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![5001]
         );
+    }
+
+    /// Each sort orders by its own column in the asked direction, ties break
+    /// by item id, and stacks without a packaged volume come last either way.
+    #[sqlx::test(migrations = "../../migrations")]
+    #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+    async fn flat_assets_sort_by_the_requested_column_and_direction(pool: PgPool) {
+        let (workspace_id, _) = seed_flat_assets(&pool).await;
+        let repository = PgAssetBrowserRepository::new(pool);
+        // 5001: Station Container x1, 10 m3; 5002: Tritanium x27,075,
+        // 270.75 m3; 5003: unknown type (named after its id, so last by
+        // name) x1, no volume.
+        for (sort, order, expected) in [
+            ("quantity", "desc", [5002, 5001, 5003]),
+            ("quantity", "asc", [5001, 5003, 5002]),
+            ("item", "asc", [5001, 5002, 5003]),
+            ("item", "desc", [5003, 5002, 5001]),
+            ("packagedVolume", "asc", [5001, 5002, 5003]),
+            ("packagedVolume", "desc", [5002, 5001, 5003]),
+        ] {
+            let query: FlatAssetQuery =
+                serde_json::from_value(serde_json::json!({ "sort": sort, "order": order }))
+                    .expect("query");
+            let query = query.validate().expect("valid query");
+            for rows in [
+                repository
+                    .flat_assets(workspace_id, &query)
+                    .await
+                    .expect("page")
+                    .rows,
+                repository
+                    .all_flat_assets(workspace_id, &query)
+                    .await
+                    .expect("export"),
+            ] {
+                let ids = rows.iter().map(|row| row.eve_item_id).collect::<Vec<_>>();
+                assert_eq!(ids, expected, "{sort} {order}");
+            }
+        }
     }
 
     #[sqlx::test(migrations = "../../migrations")]
