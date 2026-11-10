@@ -1,6 +1,7 @@
 use super::sync_runs::{checksum, finalize_run};
 use super::*;
 use async_trait::async_trait;
+use iskworks_core::{EsiAssetSnapshotRepository, StructureNameRepository};
 
 /// Rows per batched `esi_asset_observations` INSERT. Each row binds 11
 /// parameters, and Postgres allows 65,535 per statement.
@@ -539,8 +540,11 @@ impl PgEsiRepository {
         }
         Ok(())
     }
+}
 
-    pub async fn complete_assets(
+#[async_trait]
+impl EsiAssetSnapshotRepository for PgEsiRepository {
+    async fn complete_assets(
         &self,
         run: &EsiSyncRun,
         pages: u32,
@@ -664,21 +668,7 @@ impl PgEsiRepository {
         })
     }
 
-    /// One durable row per `(workspace_id, owner_id, eve_item_id)`: upsert
-    /// every blueprint ESI reports and delete the rows for any this
-    /// connection no longer reports (sold / moved / consumed). The row `id`
-    /// is preserved across syncs, so a Build's frozen
-    /// `blueprintSelection.observationId` keeps resolving; `observed_at`
-    /// tracks the last confirming sync while `imported_at` stays the
-    /// first-seen time. The full blueprint list is always present when this
-    /// runs -- `EsiSyncService` fetches every page before calling it and
-    /// propagates any page error first -- so an absent blueprint is a real
-    /// disappearance, not a partial sync.
-    ///
-    /// `retained_item_ids` are blueprints ESI did report but the caller
-    /// could not use (e.g. out-of-range ME/TE): their existing rows are kept
-    /// as they were rather than deleted as gone.
-    pub async fn complete_blueprints(
+    async fn complete_blueprints(
         &self,
         connection: &ConnectedCharacter,
         observations: &[iskworks_core::BlueprintAssetObservation],
@@ -751,7 +741,40 @@ impl PgEsiRepository {
         tx.commit().await.map_err(map_sqlx)
     }
 
-    pub async fn cache_structure_names(
+    async fn mark_incomplete_asset_sync(
+        &self,
+        run: &EsiSyncRun,
+        pages: u32,
+        observations: &[AssetObservation],
+        summary: &str,
+    ) -> Result<(), InventoryError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let snapshot_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO esi_asset_snapshots (id, connection_id, sync_run_id, observed_at, completed_at, status, page_count, row_count, active) VALUES ($1,$2,$3,now(),now(),'incomplete',$4,$5,false)",
+        )
+        .bind(snapshot_id)
+        .bind(run.connection_id.0)
+        .bind(run.id.0)
+        .bind(i32::try_from(pages.max(1)).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .bind(i64::try_from(observations.len()).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        sqlx::query("UPDATE esi_sync_runs SET status = 'failed', phase = 'Failed', completed_at = now(), error_count = 1, error_code = 'pagination_incomplete', summary = $2 WHERE id = $1")
+            .bind(run.id.0)
+            .bind(summary)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl StructureNameRepository for PgEsiRepository {
+    async fn cache_structure_names(
         &self,
         connection: &ConnectedCharacter,
         structures: &[StructureInformation],
@@ -786,9 +809,7 @@ impl PgEsiRepository {
         tx.commit().await.map_err(map_sqlx)
     }
 
-    /// Remembers that this character can't look these structures up (ESI
-    /// answered 403 or 404) until `denied_until`.
-    pub async fn record_structure_lookup_denials(
+    async fn record_structure_lookup_denials(
         &self,
         connection: &ConnectedCharacter,
         structure_ids: &[i64],
@@ -812,11 +833,7 @@ impl PgEsiRepository {
         .map_err(map_sqlx)
     }
 
-    /// Which of `structure_ids` this character should look up now: those
-    /// without a workspace name resolved since `stale_before` (pass `None`
-    /// to ignore names entirely) and not denied to this character as of
-    /// `now`.
-    pub async fn structures_to_look_up(
+    async fn structures_to_look_up(
         &self,
         connection: &ConnectedCharacter,
         structure_ids: &[i64],
@@ -851,7 +868,7 @@ impl PgEsiRepository {
         .map_err(map_sqlx)
     }
 
-    pub async fn unresolved_structure_ids(
+    async fn unresolved_structure_ids(
         &self,
         connection: &ConnectedCharacter,
     ) -> Result<Vec<i64>, InventoryError> {
@@ -885,35 +902,5 @@ impl PgEsiRepository {
         .fetch_all(&self.pool)
         .await
         .map_err(map_sqlx)
-    }
-
-    pub async fn mark_incomplete_asset_sync(
-        &self,
-        run: &EsiSyncRun,
-        pages: u32,
-        observations: &[AssetObservation],
-        summary: &str,
-    ) -> Result<(), InventoryError> {
-        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
-        let snapshot_id = Uuid::new_v4();
-        sqlx::query(
-            "INSERT INTO esi_asset_snapshots (id, connection_id, sync_run_id, observed_at, completed_at, status, page_count, row_count, active) VALUES ($1,$2,$3,now(),now(),'incomplete',$4,$5,false)",
-        )
-        .bind(snapshot_id)
-        .bind(run.connection_id.0)
-        .bind(run.id.0)
-        .bind(i32::try_from(pages.max(1)).map_err(|_| InventoryError::ArithmeticOverflow)?)
-        .bind(i64::try_from(observations.len()).map_err(|_| InventoryError::ArithmeticOverflow)?)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        sqlx::query("UPDATE esi_sync_runs SET status = 'failed', phase = 'Failed', completed_at = now(), error_count = 1, error_code = 'pagination_incomplete', summary = $2 WHERE id = $1")
-            .bind(run.id.0)
-            .bind(summary)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_sqlx)?;
-        tx.commit().await.map_err(map_sqlx)?;
-        Ok(())
     }
 }

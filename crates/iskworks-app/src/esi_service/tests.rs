@@ -1897,3 +1897,152 @@ async fn an_unchanged_asset_page_completes_the_run_without_a_new_snapshot() {
         ]
     );
 }
+
+/// Asset snapshot writes, recorded; a complete snapshot must never be
+/// written by the tests that use this.
+struct RecordingAssetSnapshots {
+    incomplete: std::sync::Mutex<Vec<(u32, Vec<i64>, String)>>,
+}
+
+#[async_trait::async_trait]
+impl EsiAssetSnapshotRepository for RecordingAssetSnapshots {
+    async fn complete_assets(
+        &self,
+        _run: &EsiSyncRun,
+        _pages: u32,
+        _observations: &[AssetObservation],
+        _etag: Option<&str>,
+        _skipped_blueprints: u64,
+    ) -> Result<iskworks_core::SyncCompletion, InventoryError> {
+        panic!("a sync whose pages changed must not store a complete snapshot")
+    }
+
+    async fn complete_blueprints(
+        &self,
+        _connection: &ConnectedCharacter,
+        _observations: &[BlueprintAssetObservation],
+        _retained_item_ids: &[i64],
+    ) -> Result<(), InventoryError> {
+        panic!("a sync whose pages changed never reaches blueprints")
+    }
+
+    async fn mark_incomplete_asset_sync(
+        &self,
+        _run: &EsiSyncRun,
+        pages: u32,
+        observations: &[AssetObservation],
+        summary: &str,
+    ) -> Result<(), InventoryError> {
+        self.incomplete.lock().unwrap().push((
+            pages,
+            observations.iter().map(|asset| asset.item_id).collect(),
+            summary.to_string(),
+        ));
+        Ok(())
+    }
+}
+
+/// Reports two asset pages on page 1, then three on page 2, as if the
+/// character's assets changed mid-sync.
+struct PageCountChangingTransport;
+
+#[async_trait::async_trait]
+impl EsiTransport for PageCountChangingTransport {
+    async fn exchange_code(
+        &self,
+        _code: &str,
+        _verifier: &PkceVerifier,
+    ) -> Result<AuthenticatedToken, EsiError> {
+        unimplemented!("test never exchanges an OAuth code")
+    }
+
+    async fn refresh(&self, _refresh_token: &str) -> Result<RefreshedToken, EsiError> {
+        unimplemented!("test syncs with a token it already has")
+    }
+
+    async fn assets(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        page: u32,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<AssetObservation>, EsiError> {
+        let (pages, item_id) = match page {
+            1 => (2, 1),
+            2 => (3, 2),
+            _ => panic!("the sync stops at the page whose count changed"),
+        };
+        Ok(EsiResponse {
+            records: vec![asset(item_id, 60_003_760, "station")],
+            not_modified: false,
+            metadata: iskworks_core::EsiResponseMetadata {
+                pages: Some(pages),
+                ..Default::default()
+            },
+        })
+    }
+
+    async fn wallet_transactions(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _from_id: Option<i64>,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<WalletTransactionObservation>, EsiError> {
+        unimplemented!("test syncs assets only")
+    }
+
+    async fn structure(
+        &self,
+        _access_token: &str,
+        _structure_id: i64,
+    ) -> Result<StructureInformation, EsiError> {
+        unimplemented!("the connection has no structure scope")
+    }
+
+    async fn industry_systems(
+        &self,
+    ) -> Result<EsiResponse<iskworks_esi::IndustrySystemCostIndex>, EsiError> {
+        unimplemented!("test syncs assets only")
+    }
+}
+
+/// When ESI's page count changes between pages, the sync keeps the pages
+/// fetched so far only as an incomplete snapshot and fails, so the last
+/// complete snapshot stays active. Runs on fakes, no database.
+#[tokio::test]
+async fn an_asset_page_count_change_mid_sync_stores_an_incomplete_snapshot() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .expect("a well-formed URL");
+    let mut service = EsiApplicationService::new_for_tests(
+        Arc::new(PgEsiRepository::new(pool)),
+        Arc::new(PageCountChangingTransport),
+    );
+    service.sync_runs = Arc::new(RecordingSyncRuns {
+        calls: std::sync::Mutex::new(Vec::new()),
+    });
+    let snapshots = Arc::new(RecordingAssetSnapshots {
+        incomplete: std::sync::Mutex::new(Vec::new()),
+    });
+    service.asset_snapshots = snapshots.clone();
+    let connection = RacedRefreshConnections::connection(None);
+
+    let error = service
+        .sync_assets(&connection, "access")
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(
+            error,
+            EsiApplicationError::Protocol(EsiError::InvalidResponse)
+        ),
+        "{error:?}"
+    );
+    let incomplete = snapshots.incomplete.lock().unwrap();
+    assert_eq!(incomplete.len(), 1);
+    let (pages, item_ids, summary) = &incomplete[0];
+    assert_eq!((*pages, item_ids.as_slice()), (2, [1].as_slice()));
+    assert!(summary.contains("page count changed"), "{summary}");
+}

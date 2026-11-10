@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use iskworks_core::EncryptedSecret;
+use iskworks_core::SyncCompletion;
 use iskworks_core::{
     AssetObservation, EveEntityName, StructureInformation, WalletJournalObservation,
     WalletTransactionObservation,
@@ -43,12 +44,6 @@ pub use retention::EsiObservationPruneOutcome;
 #[derive(Clone)]
 pub struct PgEsiRepository {
     pool: PgPool,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SyncCompletion {
-    pub imported: u64,
-    pub unchanged: u64,
 }
 
 /// A best-effort display label for an industry-job facility id, assembled

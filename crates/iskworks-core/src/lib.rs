@@ -15,6 +15,7 @@ pub mod canonical_planner;
 mod character_sources;
 mod component_expansion;
 mod encrypted_secret;
+mod esi_asset_snapshot;
 mod esi_connection;
 mod esi_observation;
 pub mod esi_scope;
@@ -93,6 +94,7 @@ pub use component_expansion::{
 };
 /// Workspace default facility per EVE industry target filter.
 pub use encrypted_secret::EncryptedSecret;
+pub use esi_asset_snapshot::{EsiAssetSnapshotRepository, StructureNameRepository, SyncCompletion};
 pub use esi_connection::{EsiConnectionRepository, PendingAuthorization, StoredRefreshToken};
 pub use esi_observation::{
     AdjustedPrice, AssetObservation, BlueprintAssetObservation, CharacterIndustryJobObservation,
