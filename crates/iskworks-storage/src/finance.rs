@@ -9,6 +9,7 @@ use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
+use crate::sql::like_contains;
 use crate::wallet_recording::{RecordingColumns, RECORDING_COLUMNS, RECORDING_JOINS};
 
 #[derive(Clone)]
@@ -295,7 +296,7 @@ fn transaction_query<'a>(
         query.push_bind(type_id);
     }
     if let Some(search) = &filter.search {
-        let pattern = format!("%{}%", search.to_lowercase());
+        let pattern = like_contains(&search.to_lowercase());
         query.push(" AND (lower(c.character_name) LIKE ");
         query.push_bind(pattern.clone());
         query.push(" OR lower(COALESCE(t.name_en, '')) LIKE ");

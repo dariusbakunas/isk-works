@@ -67,6 +67,7 @@ mod sde_import;
 mod sde_read;
 mod sde_type_info;
 mod skill_plans;
+mod sql;
 mod wallet_recording;
 mod workspace;
 pub use fits::PgFitRepository;

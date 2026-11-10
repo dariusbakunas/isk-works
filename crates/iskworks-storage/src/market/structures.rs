@@ -16,6 +16,7 @@ use super::convert::*;
 use super::rows::*;
 use super::PgMarketRepository;
 use crate::sde_read::SECURITY_CLASS_CASE_SQL;
+use crate::sql::like_contains;
 
 impl PgMarketRepository {
     pub(super) async fn location_names(
@@ -246,7 +247,7 @@ impl PgMarketRepository {
         workspace_id: WorkspaceId,
         query: &str,
     ) -> Result<Vec<MarketStructureListing>, MarketError> {
-        let contains = format!("%{}%", query.trim());
+        let contains = like_contains(query.trim());
         let sql = format!(
             r#"
             SELECT location.location_id, location.location_name,

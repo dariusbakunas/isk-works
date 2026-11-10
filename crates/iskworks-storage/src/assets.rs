@@ -1,3 +1,4 @@
+use crate::sql::like_contains;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use iskworks_core::{
@@ -94,7 +95,7 @@ impl PgAssetBrowserRepository {
         workspace_id: WorkspaceId,
         query: &AssetBrowserQuery,
     ) -> Result<Vec<AssetLocationSummary>, InventoryError> {
-        let search = format!("%{}%", query.query.trim());
+        let search = like_contains(query.query.trim());
         let rows = sqlx::query_as::<_, LocationRow>(
             r#"WITH current_assets AS MATERIALIZED (
                  SELECT *
@@ -363,7 +364,7 @@ impl PgAssetBrowserRepository {
             .ok_or(InventoryError::ItemNotFound)?;
         let limit = query.limit.unwrap_or(200).clamp(1, 500);
         let offset = query.offset.unwrap_or(0);
-        let search = format!("%{}%", query.query.trim());
+        let search = like_contains(query.query.trim());
         let rows = sqlx::query_as::<_, ItemRow>(
             r#"WITH current_assets AS MATERIALIZED (
                  SELECT *
@@ -559,7 +560,7 @@ impl PgAssetBrowserRepository {
         limit: Option<i64>,
         offset: i64,
     ) -> Result<Vec<FlatItemRow>, InventoryError> {
-        let search = format!("%{}%", query.search);
+        let search = like_contains(&query.search);
         let asset_kinds = query
             .asset_kinds
             .iter()
