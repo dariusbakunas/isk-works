@@ -1,8 +1,12 @@
 use super::connections::parse_esi_expiry;
+use async_trait::async_trait;
+use iskworks_core::EsiSyncRunRepository;
+
 use super::*;
 
-impl PgEsiRepository {
-    pub async fn start_sync(
+#[async_trait]
+impl EsiSyncRunRepository for PgEsiRepository {
+    async fn start_sync(
         &self,
         connection: &ConnectedCharacter,
         kind: EsiSyncKind,
@@ -44,7 +48,7 @@ impl PgEsiRepository {
         Ok(run)
     }
 
-    pub async fn fail_sync(
+    async fn fail_sync(
         &self,
         run_id: EsiSyncRunId,
         code: &str,
@@ -62,7 +66,7 @@ impl PgEsiRepository {
         self.get_sync_run(run_id).await
     }
 
-    pub async fn record_sync_metadata(
+    async fn record_sync_metadata(
         &self,
         run_id: EsiSyncRunId,
         metadata: &iskworks_core::EsiResponseMetadata,
@@ -76,7 +80,7 @@ impl PgEsiRepository {
         Ok(())
     }
 
-    pub async fn checkpoint_etag(
+    async fn checkpoint_etag(
         &self,
         connection_id: ConnectedCharacterId,
         endpoint_kind: &str,
@@ -92,7 +96,7 @@ impl PgEsiRepository {
         .map(Option::flatten)
     }
 
-    pub async fn complete_unchanged_sync(
+    async fn complete_unchanged_sync(
         &self,
         run: &EsiSyncRun,
         endpoint_kind: &str,
@@ -112,7 +116,7 @@ impl PgEsiRepository {
         self.get_sync_run(run.id).await
     }
 
-    pub async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError> {
+    async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError> {
         sqlx::query_as::<_, SyncRunRow>(
             "SELECT id, connection_id, requested_kind, status, phase, started_at, completed_at, rate_limit_metadata, imported_count, unchanged_count, skipped_count, error_count, error_code, summary FROM esi_sync_runs WHERE id = $1",
         )
@@ -124,7 +128,7 @@ impl PgEsiRepository {
         .into_domain()
     }
 
-    pub async fn list_sync_runs(
+    async fn list_sync_runs(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<EsiSyncRun>, InventoryError> {

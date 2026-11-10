@@ -4,7 +4,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use iskworks_core::{
     CharacterConnectionReader, ConnectedCharacter, ConnectedCharacterId, EsiConnectionRepository,
-    EsiSyncKind, EsiSyncRun, EsiSyncRunId, InventoryError, WorkspaceId,
+    EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncRunRepository, InventoryError, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 

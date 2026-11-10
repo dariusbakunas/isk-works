@@ -1,7 +1,7 @@
 use super::authorization::{authorization_scopes, require_requested_scopes};
 use super::sync::{lookup_entity_names, NAME_LOOKUP_ERROR_BUDGET};
 use super::*;
-use iskworks_core::CharacterConnectionReader;
+use iskworks_core::{CharacterConnectionReader, EsiSyncRunId};
 
 #[test]
 fn structure_candidates_exclude_nested_asset_containers() {
@@ -1696,4 +1696,204 @@ async fn a_refresh_that_loses_the_token_race_uses_the_winners_access_token() {
     assert_eq!(access_token, "winner-access");
     assert_eq!(*connections.saved_revisions.lock().unwrap(), [1]);
     assert_eq!(*connections.loads.lock().unwrap(), 2);
+}
+
+/// Sync runs for one asset sync whose endpoint has a stored ETag; records
+/// what the service asked of them.
+struct RecordingSyncRuns {
+    calls: std::sync::Mutex<Vec<String>>,
+}
+
+impl RecordingSyncRuns {
+    fn record(&self, call: impl Into<String>) {
+        self.calls.lock().unwrap().push(call.into());
+    }
+}
+
+#[async_trait::async_trait]
+impl EsiSyncRunRepository for RecordingSyncRuns {
+    async fn start_sync(
+        &self,
+        connection: &ConnectedCharacter,
+        kind: EsiSyncKind,
+    ) -> Result<EsiSyncRun, InventoryError> {
+        self.record(format!("start {kind:?}"));
+        Ok(EsiSyncRun {
+            id: EsiSyncRunId(uuid::Uuid::nil()),
+            connection_id: connection.id,
+            requested_kind: kind,
+            status: iskworks_core::EsiSyncStatus::Running,
+            phase: "Refreshing authorization".to_string(),
+            started_at: Utc::now(),
+            completed_at: None,
+            cache_expires_at: None,
+            imported_count: 0,
+            unchanged_count: 0,
+            skipped_count: 0,
+            error_count: 0,
+            error_code: None,
+            summary: String::new(),
+        })
+    }
+
+    async fn fail_sync(
+        &self,
+        _run_id: EsiSyncRunId,
+        _code: &str,
+        _summary: &str,
+    ) -> Result<EsiSyncRun, InventoryError> {
+        unimplemented!("an unchanged sync does not fail")
+    }
+
+    async fn record_sync_metadata(
+        &self,
+        _run_id: EsiSyncRunId,
+        metadata: &iskworks_core::EsiResponseMetadata,
+    ) -> Result<(), InventoryError> {
+        self.record(format!("metadata etag={:?}", metadata.etag));
+        Ok(())
+    }
+
+    async fn checkpoint_etag(
+        &self,
+        _connection_id: ConnectedCharacterId,
+        endpoint_kind: &str,
+    ) -> Result<Option<String>, InventoryError> {
+        self.record(format!("checkpoint {endpoint_kind}"));
+        Ok(Some("\"stored-etag\"".to_string()))
+    }
+
+    async fn complete_unchanged_sync(
+        &self,
+        run: &EsiSyncRun,
+        endpoint_kind: &str,
+        _summary: &str,
+    ) -> Result<EsiSyncRun, InventoryError> {
+        self.record(format!("unchanged {endpoint_kind}"));
+        Ok(EsiSyncRun {
+            status: iskworks_core::EsiSyncStatus::Succeeded,
+            unchanged_count: 1,
+            completed_at: Some(Utc::now()),
+            ..run.clone()
+        })
+    }
+
+    async fn get_sync_run(&self, _id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError> {
+        unimplemented!("the service returns the completed run it was given")
+    }
+
+    async fn list_sync_runs(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<EsiSyncRun>, InventoryError> {
+        unimplemented!("syncing never lists runs")
+    }
+}
+
+/// Answers the first asset page 304 Not Modified when asked with the
+/// stored ETag, and records the ETags it was sent.
+struct NotModifiedAssetsTransport {
+    sent_etags: std::sync::Mutex<Vec<Option<String>>>,
+}
+
+#[async_trait::async_trait]
+impl EsiTransport for NotModifiedAssetsTransport {
+    async fn exchange_code(
+        &self,
+        _code: &str,
+        _verifier: &PkceVerifier,
+    ) -> Result<AuthenticatedToken, EsiError> {
+        unimplemented!("test never exchanges an OAuth code")
+    }
+
+    async fn refresh(&self, _refresh_token: &str) -> Result<RefreshedToken, EsiError> {
+        unimplemented!("test syncs with a token it already has")
+    }
+
+    async fn assets(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        page: u32,
+        etag: Option<&str>,
+    ) -> Result<EsiResponse<AssetObservation>, EsiError> {
+        assert_eq!(page, 1, "an unchanged first page ends the sync");
+        self.sent_etags
+            .lock()
+            .unwrap()
+            .push(etag.map(str::to_string));
+        Ok(EsiResponse {
+            records: Vec::new(),
+            not_modified: etag == Some("\"stored-etag\""),
+            metadata: iskworks_core::EsiResponseMetadata {
+                etag: Some("\"stored-etag\"".to_string()),
+                ..Default::default()
+            },
+        })
+    }
+
+    async fn wallet_transactions(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _from_id: Option<i64>,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<WalletTransactionObservation>, EsiError> {
+        unimplemented!("test syncs assets only")
+    }
+
+    async fn structure(
+        &self,
+        _access_token: &str,
+        _structure_id: i64,
+    ) -> Result<StructureInformation, EsiError> {
+        unimplemented!("the connection has no structure scope")
+    }
+
+    async fn industry_systems(
+        &self,
+    ) -> Result<EsiResponse<iskworks_esi::IndustrySystemCostIndex>, EsiError> {
+        unimplemented!("test syncs assets only")
+    }
+}
+
+/// An asset sync sends the stored ETag, and a 304 completes the run as
+/// unchanged without writing a snapshot: the Postgres repository behind
+/// the service has no database, so any snapshot write would fail the
+/// test. Runs on fake sync runs, no database.
+#[tokio::test]
+async fn an_unchanged_asset_page_completes_the_run_without_a_new_snapshot() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .expect("a well-formed URL");
+    let transport = Arc::new(NotModifiedAssetsTransport {
+        sent_etags: std::sync::Mutex::new(Vec::new()),
+    });
+    let mut service = EsiApplicationService::new_for_tests(
+        Arc::new(PgEsiRepository::new(pool)),
+        transport.clone(),
+    );
+    let sync_runs = Arc::new(RecordingSyncRuns {
+        calls: std::sync::Mutex::new(Vec::new()),
+    });
+    service.sync_runs = sync_runs.clone();
+    let connection = RacedRefreshConnections::connection(None);
+
+    let run = service.sync_assets(&connection, "access").await.unwrap();
+
+    assert_eq!(run.status, iskworks_core::EsiSyncStatus::Succeeded);
+    assert_eq!(run.unchanged_count, 1);
+    assert_eq!(
+        *transport.sent_etags.lock().unwrap(),
+        [Some("\"stored-etag\"".to_string())]
+    );
+    assert_eq!(
+        *sync_runs.calls.lock().unwrap(),
+        [
+            "start Assets",
+            "checkpoint assets",
+            "metadata etag=Some(\"\\\"stored-etag\\\"\")",
+            "unchanged assets",
+        ]
+    );
 }

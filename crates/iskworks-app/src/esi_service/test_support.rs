@@ -11,6 +11,7 @@ impl EsiApplicationService {
     ) -> Self {
         Self {
             connections: repository.clone(),
+            sync_runs: repository.clone(),
             repository,
             transport,
             cipher: SecretCipher::for_tests(),
