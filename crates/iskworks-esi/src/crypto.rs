@@ -3,21 +3,14 @@ use aes_gcm::{
     AeadCore, Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde::{Deserialize, Serialize};
+
+pub use iskworks_core::EncryptedSecret;
 
 use crate::EsiError;
 
 #[derive(Clone)]
 pub struct SecretCipher {
     key: [u8; 32],
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct EncryptedSecret {
-    pub version: u8,
-    pub key_id: String,
-    pub nonce: String,
-    pub ciphertext: String,
 }
 
 impl SecretCipher {

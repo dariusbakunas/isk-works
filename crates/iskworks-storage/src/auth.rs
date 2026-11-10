@@ -7,7 +7,7 @@ use iskworks_core::{
 };
 
 use crate::invite::consume_invite_in_tx;
-use iskworks_esi::EncryptedSecret;
+use iskworks_core::EncryptedSecret;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
