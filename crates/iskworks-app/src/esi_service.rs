@@ -15,8 +15,8 @@ use crate::manual_sync_gate::ManualSyncGate;
 use iskworks_core::{
     calculate_adjusted_price_eiv, AdjustedPriceEiv, AdjustedPriceRepository, CapturedRecipeLine,
     ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EsiConnectionRepository,
-    EsiSyncKind, EsiSyncRun, FacilityError, InventoryError, OwnerId, PendingAuthorization,
-    StoredRefreshToken, WorkspaceId,
+    EsiSyncKind, EsiSyncRun, EsiSyncRunRepository, FacilityError, InventoryError, OwnerId,
+    PendingAuthorization, StoredRefreshToken, WorkspaceId,
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
@@ -96,6 +96,7 @@ const MAX_JOURNAL_PAGES: u32 = 100;
 pub struct EsiApplicationService {
     repository: Arc<PgEsiRepository>,
     connections: Arc<dyn EsiConnectionRepository>,
+    sync_runs: Arc<dyn EsiSyncRunRepository>,
     transport: Arc<dyn EsiTransport>,
     cipher: SecretCipher,
     client_id: String,
@@ -421,6 +422,7 @@ impl EsiApplicationService {
         let transport = http();
         Ok(Some(Self {
             connections: repository.clone(),
+            sync_runs: repository.clone(),
             repository,
             transport,
             cipher,

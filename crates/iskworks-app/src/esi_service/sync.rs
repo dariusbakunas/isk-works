@@ -34,7 +34,7 @@ impl EsiApplicationService {
         token: &str,
     ) -> Result<EsiSyncRun, EsiApplicationError> {
         let run = self
-            .repository
+            .sync_runs
             .start_sync(connection, EsiSyncKind::Assets)
             .await?;
         if connection
@@ -47,7 +47,7 @@ impl EsiApplicationService {
                 .await?;
         }
         let checkpoint_etag = self
-            .repository
+            .sync_runs
             .checkpoint_etag(connection.id, "assets")
             .await?;
         let first = match self
@@ -62,18 +62,18 @@ impl EsiApplicationService {
         {
             Ok(value) => value,
             Err(error) => {
-                self.repository
+                self.sync_runs
                     .fail_sync(run.id, error_code(&error), &error.to_string())
                     .await?;
                 return Err(error.into());
             }
         };
         if first.not_modified {
-            self.repository
+            self.sync_runs
                 .record_sync_metadata(run.id, &first.metadata)
                 .await?;
             return self
-                .repository
+                .sync_runs
                 .complete_unchanged_sync(
                     &run,
                     "assets",
@@ -83,7 +83,7 @@ impl EsiApplicationService {
                 .map_err(Into::into);
         }
         let pages = first.metadata.pages.unwrap_or(1).max(1);
-        self.repository
+        self.sync_runs
             .record_sync_metadata(run.id, &first.metadata)
             .await?;
         let etag = first.metadata.etag.clone();
@@ -186,7 +186,7 @@ impl EsiApplicationService {
                 invalid.len() as u64,
             ))
             .await?;
-        self.repository
+        self.sync_runs
             .get_sync_run(run.id)
             .await
             .map_err(Into::into)
@@ -198,7 +198,7 @@ impl EsiApplicationService {
         token: &str,
     ) -> Result<EsiSyncRun, EsiApplicationError> {
         let run = self
-            .repository
+            .sync_runs
             .start_sync(connection, EsiSyncKind::WalletTransactions)
             .await?;
         match self
@@ -207,7 +207,7 @@ impl EsiApplicationService {
             .await
         {
             Ok(response) => {
-                self.repository
+                self.sync_runs
                     .record_sync_metadata(run.id, &response.metadata)
                     .await?;
                 let balance = response
@@ -237,7 +237,7 @@ impl EsiApplicationService {
         let mut records = Vec::new();
         let mut from_id = None;
         let mut etag = self
-            .repository
+            .sync_runs
             .checkpoint_etag(connection.id, "wallet_transactions")
             .await?;
         for _ in 0..MAX_WALLET_REQUESTS {
@@ -248,18 +248,18 @@ impl EsiApplicationService {
             {
                 Ok(value) => value,
                 Err(error) => {
-                    self.repository
+                    self.sync_runs
                         .fail_sync(run.id, error_code(&error), &error.to_string())
                         .await?;
                     return Err(error.into());
                 }
             };
             if response.not_modified {
-                self.repository
+                self.sync_runs
                     .record_sync_metadata(run.id, &response.metadata)
                     .await?;
                 let completed = self
-                    .repository
+                    .sync_runs
                     .complete_unchanged_sync(
                         &run,
                         "wallet_transactions",
@@ -270,7 +270,7 @@ impl EsiApplicationService {
                 self.enrich_wallet_client_names(connection).await;
                 return Ok(completed);
             }
-            self.repository
+            self.sync_runs
                 .record_sync_metadata(run.id, &response.metadata)
                 .await?;
             etag = response.metadata.etag;
@@ -292,7 +292,7 @@ impl EsiApplicationService {
             .await?;
         self.ingest_wallet_journal(connection, token).await;
         self.enrich_wallet_client_names(connection).await;
-        self.repository
+        self.sync_runs
             .get_sync_run(run.id)
             .await
             .map_err(Into::into)
