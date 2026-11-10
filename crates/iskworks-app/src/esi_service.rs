@@ -16,8 +16,9 @@ use iskworks_core::{
     calculate_adjusted_price_eiv, AdjustedPriceEiv, AdjustedPriceRepository, CapturedRecipeLine,
     ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EntityNameRepository,
     EsiAssetSnapshotRepository, EsiConnectionRepository, EsiSyncKind, EsiSyncRun,
-    EsiSyncRunRepository, EsiWalletRepository, FacilityError, InventoryError, OwnerId,
-    PendingAuthorization, StoredRefreshToken, StructureNameRepository, WorkspaceId,
+    EsiSyncRunRepository, EsiWalletRepository, EvidenceRefreshRepository, FacilityError,
+    InventoryError, OwnerId, PendingAuthorization, StoredRefreshToken, StructureNameRepository,
+    WorkspaceId,
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
@@ -95,13 +96,14 @@ const MAX_JOURNAL_PAGES: u32 = 100;
 
 #[derive(Clone)]
 pub struct EsiApplicationService {
-    repository: Arc<PgEsiRepository>,
     connections: Arc<dyn EsiConnectionRepository>,
     sync_runs: Arc<dyn EsiSyncRunRepository>,
     asset_snapshots: Arc<dyn EsiAssetSnapshotRepository>,
     structure_names: Arc<dyn StructureNameRepository>,
     wallet: Arc<dyn EsiWalletRepository>,
     entity_names: Arc<dyn EntityNameRepository>,
+    adjusted_prices: Arc<dyn AdjustedPriceRepository>,
+    evidence_refresh: Arc<dyn EvidenceRefreshRepository>,
     transport: Arc<dyn EsiTransport>,
     cipher: SecretCipher,
     client_id: String,
@@ -432,7 +434,8 @@ impl EsiApplicationService {
             structure_names: repository.clone(),
             wallet: repository.clone(),
             entity_names: repository.clone(),
-            repository,
+            adjusted_prices: repository.clone(),
+            evidence_refresh: repository,
             transport,
             cipher,
             client_id,

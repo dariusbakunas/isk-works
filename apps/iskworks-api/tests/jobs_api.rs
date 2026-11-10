@@ -170,6 +170,15 @@ impl IndustryJobRepository for FakeJobs {
             })
             .collect())
     }
+
+    async fn record_industry_jobs(
+        &self,
+        _connection_id: iskworks_core::ConnectedCharacterId,
+        _jobs: &[iskworks_core::CharacterIndustryJobObservation],
+        _observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        unimplemented!("the Jobs page never records jobs")
+    }
 }
 
 fn app(jobs: Arc<FakeJobs>) -> axum::Router {

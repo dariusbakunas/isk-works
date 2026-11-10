@@ -323,6 +323,8 @@ impl iskworks_esi::EsiTransport for PanicTransport {
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn empty_market_and_system_polls_make_no_esi_request(pool: sqlx::PgPool) {
+    use iskworks_core::{AdjustedPriceRepository, EvidenceRefreshRepository};
+
     let now = chrono::Utc::now();
     let esi_repository = std::sync::Arc::new(iskworks_storage::PgEsiRepository::new(pool.clone()));
     esi_repository
@@ -688,7 +690,8 @@ fn fake_sync_run(
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn worker_syncs_every_due_character_connection_exactly_once(pool: sqlx::PgPool) {
     use iskworks_core::{
-        CharacterConnectionReader, ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId,
+        CharacterConnectionReader, CharacterSourceRefreshRepository, ConnectedCharacterId,
+        MarketRefreshState, OwnerId, WorkspaceId,
     };
 
     let now = chrono::Utc::now();
@@ -797,7 +800,8 @@ async fn worker_syncs_every_due_character_connection_exactly_once(pool: sqlx::Pg
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn character_sync_fan_out_stops_queued_connections_on_cancel(pool: sqlx::PgPool) {
     use iskworks_core::{
-        CharacterConnectionReader, ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId,
+        CharacterConnectionReader, CharacterSourceRefreshRepository, ConnectedCharacterId,
+        MarketRefreshState, OwnerId, WorkspaceId,
     };
 
     let now = chrono::Utc::now();

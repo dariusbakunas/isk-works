@@ -1,6 +1,7 @@
 use super::authorization::{authorization_scopes, require_requested_scopes};
 use super::sync::{lookup_entity_names, NAME_LOOKUP_ERROR_BUDGET};
 use super::*;
+use chrono::Timelike;
 use iskworks_core::{CharacterConnectionReader, EsiSyncRunId, EveEntityName};
 
 #[test]
@@ -2152,4 +2153,253 @@ async fn wallet_client_enrichment_caches_names_and_records_misses() {
     let mut misses = names.misses.lock().unwrap().clone();
     misses.sort_unstable();
     assert_eq!(misses, [UNNAMED_ID, invalid]);
+}
+
+/// Stored adjusted prices, keyed by type id. Counts its reads.
+#[derive(Default)]
+struct StoredAdjustedPrices {
+    prices: std::collections::BTreeMap<i64, Decimal>,
+    reads: std::sync::Mutex<usize>,
+}
+
+#[async_trait::async_trait]
+impl AdjustedPriceRepository for StoredAdjustedPrices {
+    async fn latest_adjusted_prices(
+        &self,
+        type_ids: &[i64],
+        _as_of: DateTime<Utc>,
+    ) -> Result<std::collections::BTreeMap<i64, Decimal>, InventoryError> {
+        *self.reads.lock().unwrap() += 1;
+        Ok(type_ids
+            .iter()
+            .filter_map(|id| self.prices.get(id).map(|price| (*id, *price)))
+            .collect())
+    }
+}
+
+/// Records each `save_adjusted_prices` call: the prices, the expiry and the
+/// ETag. Pricing never runs the worker's refresh, so the rest panics.
+#[derive(Default)]
+struct RecordingPriceSaves {
+    saves: std::sync::Mutex<Vec<PriceSave>>,
+}
+
+/// The saved type ids, `expires_at` and ETag of one save.
+type PriceSave = (Vec<i64>, DateTime<Utc>, Option<String>);
+
+#[async_trait::async_trait]
+impl EvidenceRefreshRepository for RecordingPriceSaves {
+    async fn adjusted_price_refresh_due(
+        &self,
+        _now: DateTime<Utc>,
+    ) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+    async fn begin_adjusted_price_refresh(
+        &self,
+        _attempted_at: DateTime<Utc>,
+        _lease_expires_at: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+        unimplemented!()
+    }
+    async fn complete_adjusted_price_refresh(
+        &self,
+        _claim: DateTime<Utc>,
+        _prices: &[iskworks_core::AdjustedPrice],
+        _observed_at: DateTime<Utc>,
+        _next_refresh_at: DateTime<Utc>,
+        _cache_expires_at: Option<DateTime<Utc>>,
+        _etag: Option<&str>,
+    ) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+    async fn fail_adjusted_price_refresh(
+        &self,
+        _claim: DateTime<Utc>,
+        _attempted_at: DateTime<Utc>,
+        _next_refresh_at: DateTime<Utc>,
+        _error_message: &str,
+    ) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+    async fn save_adjusted_prices(
+        &self,
+        prices: &[iskworks_core::AdjustedPrice],
+        _observed_at: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+        etag: Option<&str>,
+    ) -> Result<(), InventoryError> {
+        self.saves.lock().unwrap().push((
+            prices.iter().map(|price| price.type_id).collect(),
+            expires_at,
+            etag.map(ToString::to_string),
+        ));
+        Ok(())
+    }
+    async fn system_cost_index_refresh_candidates(
+        &self,
+        _now: DateTime<Utc>,
+        _limit: i64,
+    ) -> Result<Vec<i64>, InventoryError> {
+        unimplemented!()
+    }
+    async fn begin_system_cost_index_refresh(
+        &self,
+        _solar_system_id: i64,
+        _attempted_at: DateTime<Utc>,
+        _lease_expires_at: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+        unimplemented!()
+    }
+    async fn complete_system_cost_index_refresh(
+        &self,
+        _solar_system_id: i64,
+        _claim: DateTime<Utc>,
+        _cost_index: Decimal,
+        _observed_at: DateTime<Utc>,
+        _next_refresh_at: DateTime<Utc>,
+        _cache_expires_at: Option<DateTime<Utc>>,
+        _etag: Option<&str>,
+    ) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+    async fn fail_system_cost_index_refresh(
+        &self,
+        _solar_system_id: i64,
+        _claim: DateTime<Utc>,
+        _attempted_at: DateTime<Utc>,
+        _next_refresh_at: DateTime<Utc>,
+        _error_message: &str,
+    ) -> Result<bool, InventoryError> {
+        unimplemented!()
+    }
+}
+
+/// Serves `/markets/prices/` with an ETag and an `Expires` header, and
+/// counts the requests.
+struct MarketPricesTransport {
+    prices: Vec<iskworks_core::AdjustedPrice>,
+    expires: DateTime<Utc>,
+    requests: std::sync::Mutex<usize>,
+}
+
+#[async_trait::async_trait]
+impl EsiTransport for MarketPricesTransport {
+    async fn exchange_code(
+        &self,
+        _code: &str,
+        _verifier: &PkceVerifier,
+    ) -> Result<AuthenticatedToken, EsiError> {
+        unimplemented!()
+    }
+    async fn refresh(&self, _refresh_token: &str) -> Result<RefreshedToken, EsiError> {
+        unimplemented!()
+    }
+    async fn assets(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _page: u32,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<AssetObservation>, EsiError> {
+        unimplemented!()
+    }
+    async fn wallet_transactions(
+        &self,
+        _access_token: &str,
+        _character_id: i64,
+        _from_id: Option<i64>,
+        _etag: Option<&str>,
+    ) -> Result<EsiResponse<WalletTransactionObservation>, EsiError> {
+        unimplemented!()
+    }
+    async fn structure(
+        &self,
+        _access_token: &str,
+        _structure_id: i64,
+    ) -> Result<StructureInformation, EsiError> {
+        unimplemented!()
+    }
+    async fn industry_systems(
+        &self,
+    ) -> Result<EsiResponse<iskworks_esi::IndustrySystemCostIndex>, EsiError> {
+        unimplemented!()
+    }
+    async fn market_prices(&self) -> Result<EsiResponse<iskworks_core::AdjustedPrice>, EsiError> {
+        *self.requests.lock().unwrap() += 1;
+        Ok(EsiResponse {
+            records: self.prices.clone(),
+            not_modified: false,
+            metadata: EsiResponseMetadata {
+                etag: Some("\"prices-etag\"".to_string()),
+                expires: Some(self.expires.to_rfc2822()),
+                ..Default::default()
+            },
+        })
+    }
+}
+
+/// Adjusted prices come from the store when it has every type; otherwise
+/// one ESI fetch fills the gap, is saved with ESI's ETag and expiry, and
+/// serves later lookups from memory. A type ESI doesn't price is reported
+/// missing, never invented. Runs on fakes, no database.
+#[tokio::test]
+async fn adjusted_prices_fall_back_to_one_saved_esi_fetch() {
+    let (stored, fetched, unpriced) = (34, 35, 36);
+    let expires = (Utc::now() + Duration::minutes(30))
+        .with_nanosecond(0)
+        .unwrap();
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .expect("a well-formed URL");
+    let transport = Arc::new(MarketPricesTransport {
+        prices: vec![
+            iskworks_core::AdjustedPrice {
+                type_id: stored,
+                adjusted_price: Decimal::new(5, 0),
+            },
+            iskworks_core::AdjustedPrice {
+                type_id: fetched,
+                adjusted_price: Decimal::new(7, 0),
+            },
+        ],
+        expires,
+        requests: std::sync::Mutex::new(0),
+    });
+    let mut service = EsiApplicationService::new_for_tests(
+        Arc::new(PgEsiRepository::new(pool)),
+        transport.clone(),
+    );
+    let store = Arc::new(StoredAdjustedPrices {
+        prices: std::collections::BTreeMap::from([(stored, Decimal::new(4, 0))]),
+        ..Default::default()
+    });
+    service.adjusted_prices = store.clone();
+    let saves = Arc::new(RecordingPriceSaves::default());
+    service.evidence_refresh = saves.clone();
+
+    let from_store = service.adjusted_prices(&[stored]).await.unwrap();
+    assert_eq!(from_store.values[&stored], Decimal::new(4, 0));
+    assert_eq!(*transport.requests.lock().unwrap(), 0);
+
+    let fetched_set = service
+        .adjusted_prices(&[stored, fetched, unpriced])
+        .await
+        .unwrap();
+    assert_eq!(fetched_set.values[&fetched], Decimal::new(7, 0));
+    assert_eq!(fetched_set.missing_type_ids, [unpriced]);
+    assert_eq!(*transport.requests.lock().unwrap(), 1);
+    assert_eq!(
+        *saves.saves.lock().unwrap(),
+        [(
+            vec![stored, fetched],
+            expires,
+            Some("\"prices-etag\"".to_string())
+        )]
+    );
+
+    let reads_before = *store.reads.lock().unwrap();
+    service.adjusted_prices(&[fetched]).await.unwrap();
+    assert_eq!(*transport.requests.lock().unwrap(), 1);
+    assert_eq!(*store.reads.lock().unwrap(), reads_before);
 }

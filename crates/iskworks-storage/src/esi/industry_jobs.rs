@@ -1,5 +1,5 @@
-//! Reads of `character_industry_jobs` (the Jobs history) and the Board
-//! ticket each job is linked to.
+//! The Jobs history (`character_industry_jobs`): what each jobs sync
+//! records, and the reads of it, plus the Board ticket each job is linked to.
 
 use std::collections::HashMap;
 
@@ -125,5 +125,63 @@ impl IndustryJobRepository for PgEsiRepository {
                 )
             })
             .collect())
+    }
+
+    async fn record_industry_jobs(
+        &self,
+        connection_id: ConnectedCharacterId,
+        jobs: &[iskworks_core::CharacterIndustryJobObservation],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        let mut query = sqlx::QueryBuilder::new(
+            "INSERT INTO character_industry_jobs (workspace_id, connection_id, job_id, \
+             activity_id, blueprint_id, blueprint_type_id, product_type_id, facility_id, \
+             station_id, runs, licensed_runs, successful_runs, probability, cost, status, \
+             start_date, end_date, pause_date, completed_date, completed_character_id, \
+             first_seen_at, last_seen_at) ",
+        );
+        query.push_values(jobs, |mut row, job| {
+            row.push("(SELECT workspace_id FROM eve_connections WHERE id = ")
+                .push_bind_unseparated(connection_id.0)
+                .push_unseparated(")")
+                .push_bind(connection_id.0)
+                .push_bind(job.job_id)
+                .push_bind(job.activity_id)
+                .push_bind(job.blueprint_id)
+                .push_bind(job.blueprint_type_id)
+                .push_bind(job.product_type_id)
+                .push_bind(job.facility_id)
+                .push_bind(job.station_id)
+                .push_bind(job.runs)
+                .push_bind(job.licensed_runs)
+                .push_bind(job.successful_runs)
+                .push_bind(job.probability)
+                .push_bind(job.cost)
+                .push_bind(&job.status)
+                .push_bind(job.start_date)
+                .push_bind(job.end_date)
+                .push_bind(job.pause_date)
+                .push_bind(job.completed_date)
+                .push_bind(job.completed_character_id)
+                .push_bind(observed_at)
+                .push_bind(observed_at);
+        });
+        query.push(
+            " ON CONFLICT (workspace_id, job_id) DO UPDATE SET \
+             connection_id = EXCLUDED.connection_id, \
+             blueprint_id = COALESCE(EXCLUDED.blueprint_id, character_industry_jobs.blueprint_id), \
+             product_type_id = EXCLUDED.product_type_id, runs = EXCLUDED.runs, \
+             licensed_runs = EXCLUDED.licensed_runs, successful_runs = EXCLUDED.successful_runs, \
+             probability = EXCLUDED.probability, cost = EXCLUDED.cost, status = EXCLUDED.status, \
+             end_date = EXCLUDED.end_date, pause_date = EXCLUDED.pause_date, \
+             completed_date = EXCLUDED.completed_date, \
+             completed_character_id = EXCLUDED.completed_character_id, \
+             last_seen_at = EXCLUDED.last_seen_at",
+        );
+        query.build().execute(&self.pool).await.map_err(map_sqlx)?;
+        Ok(())
     }
 }
