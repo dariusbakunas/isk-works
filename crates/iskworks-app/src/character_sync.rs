@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use iskworks_core::EntityNameRepository;
 use iskworks_core::{
     calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
     is_running_job_status,
@@ -218,11 +219,11 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
     }
 
     async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError> {
-        self.entity_names(ids).await
+        EntityNameRepository::entity_names(self, ids).await
     }
 
     async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
-        self.cache_entity_names(names).await
+        EntityNameRepository::cache_entity_names(self, names).await
     }
 
     async fn character_source_state(

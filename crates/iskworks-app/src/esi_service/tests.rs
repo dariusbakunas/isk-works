@@ -1,7 +1,7 @@
 use super::authorization::{authorization_scopes, require_requested_scopes};
 use super::sync::{lookup_entity_names, NAME_LOOKUP_ERROR_BUDGET};
 use super::*;
-use iskworks_core::{CharacterConnectionReader, EsiSyncRunId};
+use iskworks_core::{CharacterConnectionReader, EsiSyncRunId, EveEntityName};
 
 #[test]
 fn structure_candidates_exclude_nested_asset_containers() {
@@ -2045,4 +2045,111 @@ async fn an_asset_page_count_change_mid_sync_stores_an_incomplete_snapshot() {
     let (pages, item_ids, summary) = &incomplete[0];
     assert_eq!((*pages, item_ids.as_slice()), (2, [1].as_slice()));
     assert!(summary.contains("page count changed"), "{summary}");
+}
+
+/// A wallet whose only use here is naming its clients: it reports
+/// `client_ids` as unresolved.
+struct UnresolvedClientsWallet {
+    client_ids: Vec<i64>,
+}
+
+#[async_trait::async_trait]
+impl EsiWalletRepository for UnresolvedClientsWallet {
+    async fn complete_wallet(
+        &self,
+        _run: &EsiSyncRun,
+        _observations: &[WalletTransactionObservation],
+        _etag: Option<&str>,
+    ) -> Result<iskworks_core::SyncCompletion, InventoryError> {
+        unimplemented!("enrichment never stores transactions")
+    }
+
+    async fn save_wallet_journal(
+        &self,
+        _connection_id: ConnectedCharacterId,
+        _entries: &[iskworks_esi::WalletJournalObservation],
+    ) -> Result<u64, InventoryError> {
+        unimplemented!("enrichment never stores the journal")
+    }
+
+    async fn save_wallet_balance(
+        &self,
+        _run: &EsiSyncRun,
+        _balance: Decimal,
+        _observed_at: chrono::DateTime<Utc>,
+        _source_checksum: &str,
+    ) -> Result<(), InventoryError> {
+        unimplemented!("enrichment never stores the balance")
+    }
+
+    async fn unresolved_wallet_client_ids(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<i64>, InventoryError> {
+        Ok(self.client_ids.clone())
+    }
+}
+
+/// The entity-name cache, recording what it was asked to store.
+#[derive(Default)]
+struct RecordingEntityNames {
+    cached: std::sync::Mutex<Vec<i64>>,
+    misses: std::sync::Mutex<Vec<i64>>,
+}
+
+#[async_trait::async_trait]
+impl EntityNameRepository for RecordingEntityNames {
+    async fn entity_names(
+        &self,
+        _ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, String>, InventoryError> {
+        unimplemented!("enrichment only writes names")
+    }
+
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+        self.cached
+            .lock()
+            .unwrap()
+            .extend(names.iter().map(|name| name.id));
+        Ok(())
+    }
+
+    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError> {
+        self.misses.lock().unwrap().extend_from_slice(ids);
+        Ok(())
+    }
+}
+
+/// Wallet client enrichment caches the names ESI gives and records the
+/// ids it can't name (omitted, or invalid) as misses, so they aren't asked
+/// for again on every sync. Runs on fakes, no database.
+#[tokio::test]
+async fn wallet_client_enrichment_caches_names_and_records_misses() {
+    let named = 90_000_001;
+    let invalid = 90_000_003;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .expect("a well-formed URL");
+    let mut service = EsiApplicationService::new_for_tests(
+        Arc::new(PgEsiRepository::new(pool)),
+        Arc::new(NamesTransport {
+            invalid: BTreeSet::from([invalid]),
+            requests: std::sync::Mutex::new(Vec::new()),
+            fail_with: None,
+        }),
+    );
+    service.wallet = Arc::new(UnresolvedClientsWallet {
+        client_ids: vec![named, UNNAMED_ID, invalid],
+    });
+    let names = Arc::new(RecordingEntityNames::default());
+    service.entity_names = names.clone();
+
+    service
+        .enrich_wallet_client_names(&RacedRefreshConnections::connection(None))
+        .await;
+
+    assert_eq!(*names.cached.lock().unwrap(), [named]);
+    let mut misses = names.misses.lock().unwrap().clone();
+    misses.sort_unstable();
+    assert_eq!(misses, [UNNAMED_ID, invalid]);
 }

@@ -14,10 +14,10 @@ use chrono::{DateTime, Duration, Utc};
 use crate::manual_sync_gate::ManualSyncGate;
 use iskworks_core::{
     calculate_adjusted_price_eiv, AdjustedPriceEiv, AdjustedPriceRepository, CapturedRecipeLine,
-    ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EsiAssetSnapshotRepository,
-    EsiConnectionRepository, EsiSyncKind, EsiSyncRun, EsiSyncRunRepository, FacilityError,
-    InventoryError, OwnerId, PendingAuthorization, StoredRefreshToken, StructureNameRepository,
-    WorkspaceId,
+    ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EntityNameRepository,
+    EsiAssetSnapshotRepository, EsiConnectionRepository, EsiSyncKind, EsiSyncRun,
+    EsiSyncRunRepository, EsiWalletRepository, FacilityError, InventoryError, OwnerId,
+    PendingAuthorization, StoredRefreshToken, StructureNameRepository, WorkspaceId,
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
@@ -100,6 +100,8 @@ pub struct EsiApplicationService {
     sync_runs: Arc<dyn EsiSyncRunRepository>,
     asset_snapshots: Arc<dyn EsiAssetSnapshotRepository>,
     structure_names: Arc<dyn StructureNameRepository>,
+    wallet: Arc<dyn EsiWalletRepository>,
+    entity_names: Arc<dyn EntityNameRepository>,
     transport: Arc<dyn EsiTransport>,
     cipher: SecretCipher,
     client_id: String,
@@ -428,6 +430,8 @@ impl EsiApplicationService {
             sync_runs: repository.clone(),
             asset_snapshots: repository.clone(),
             structure_names: repository.clone(),
+            wallet: repository.clone(),
+            entity_names: repository.clone(),
             repository,
             transport,
             cipher,

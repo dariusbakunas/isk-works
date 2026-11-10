@@ -489,7 +489,8 @@ fn split_values(value: Option<&str>) -> impl Iterator<Item = &str> {
 mod tests {
     use chrono::{TimeZone, Utc};
     use iskworks_core::{
-        EsiConnectionRepository, EsiSyncRunRepository, FinanceSummary, FinanceTransaction, Money,
+        EsiConnectionRepository, EsiSyncRunRepository, EsiWalletRepository, FinanceSummary,
+        FinanceTransaction, Money,
     };
 
     use super::*;

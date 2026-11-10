@@ -14,6 +14,8 @@ impl EsiApplicationService {
             sync_runs: repository.clone(),
             asset_snapshots: repository.clone(),
             structure_names: repository.clone(),
+            wallet: repository.clone(),
+            entity_names: repository.clone(),
             repository,
             transport,
             cipher: SecretCipher::for_tests(),

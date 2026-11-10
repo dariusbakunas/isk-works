@@ -20,6 +20,7 @@ mod esi_connection;
 mod esi_observation;
 pub mod esi_scope;
 mod esi_sync_run;
+mod esi_wallet;
 pub mod execution_plan;
 mod facility;
 mod finance;
@@ -102,6 +103,7 @@ pub use esi_observation::{
     WalletTransactionObservation,
 };
 pub use esi_sync_run::EsiSyncRunRepository;
+pub use esi_wallet::{EntityNameRepository, EsiWalletRepository};
 pub use facility::defaults as facility_defaults;
 pub use facility::{
     calculate_adjusted_price_eiv, decide_facility_import, export_command, facility_identity,

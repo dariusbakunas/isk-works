@@ -219,7 +219,7 @@ impl EsiApplicationService {
                     .next()
                     .ok_or(EsiError::InvalidResponse)?;
                 let observed_at = Utc::now();
-                self.repository
+                self.wallet
                     .save_wallet_balance(
                         &run,
                         balance.balance,
@@ -290,7 +290,7 @@ impl EsiApplicationService {
             from_id = next;
             etag = None;
         }
-        self.repository
+        self.wallet
             .complete_wallet(&run, &records, etag.as_deref())
             .await?;
         self.ingest_wallet_journal(connection, token).await;
@@ -337,7 +337,7 @@ impl EsiApplicationService {
             return;
         }
         match self
-            .repository
+            .wallet
             .save_wallet_journal(connection.id, &entries)
             .await
         {
@@ -355,9 +355,9 @@ impl EsiApplicationService {
         }
     }
 
-    async fn enrich_wallet_client_names(&self, connection: &ConnectedCharacter) {
+    pub(super) async fn enrich_wallet_client_names(&self, connection: &ConnectedCharacter) {
         let ids = match self
-            .repository
+            .wallet
             .unresolved_wallet_client_ids(connection.workspace_id)
             .await
         {
@@ -380,7 +380,7 @@ impl EsiApplicationService {
                 "wallet client name enrichment stopped early"
             );
         }
-        if let Err(error) = self.repository.cache_entity_names(&lookup.names).await {
+        if let Err(error) = self.entity_names.cache_entity_names(&lookup.names).await {
             tracing::warn!(
                 workspace_id = %connection.workspace_id.0,
                 resolved_count = lookup.names.len(),
@@ -389,7 +389,7 @@ impl EsiApplicationService {
             );
         }
         if let Err(error) = self
-            .repository
+            .entity_names
             .record_entity_name_misses(&lookup.misses)
             .await
         {
