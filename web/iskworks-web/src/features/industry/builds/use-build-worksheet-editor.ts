@@ -1,28 +1,15 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 
 import {
-  createBuild,
-  createLinkedBuild,
   getBlueprintAutomaticEiv,
   getReactionFormulaAutomaticEiv,
-  listBlueprintObservations,
   listFacilities,
   listPriceSources,
-  previewCreateBuildCandidate,
   renameBuild,
-  updateBuild,
   type Build,
-  type BlueprintObservation,
-  type BlueprintSelection,
   type DraftPlanningInput,
   type FulfillmentScope,
-  type CreateBuildPlanPreview,
   type MarketPricingPolicy,
   type FacilityProfile,
   type ManufacturingFacilityCommand,
@@ -30,29 +17,24 @@ import {
   type ReactionFacilityCommand,
   type PriceSource,
 } from "../../../api/industry";
-import { selectAvailableBlueprint } from "./planner/available-blueprint";
-import {
-  getSdeStatus,
-  planBuild,
-  planReaction,
-  searchBlueprints,
-  searchReactionFormulas,
-  type BlueprintSearchResult,
-  type BuildPlan,
-  type ReactionFormulaSearchResult,
-  type ReactionPlan,
-} from "../../../api/sde";
+import { getSdeStatus, type BuildPlan, type ReactionPlan } from "../../../api/sde";
 import { apiMessage } from "../../../api/api-error";
-import { useDebouncedLookup } from "../../../hooks/use-debounced-lookup";
-import { automaticPricingRetryDelay, MAX_MARKET_SYNC_RETRIES } from "./planner/preview-retry";
+import {
+  buildPricingSelections,
+  buildComponentResolutions,
+  buildFulfillmentScopes,
+  type ComponentResolutionState,
+  parseRuns,
+} from "./components/planner-panels";
+import { useBuildPreviewSync } from "./editor/use-build-preview-sync";
+import { useBuildSaveQueue } from "./editor/use-build-save-queue";
+import { useLinkedBuilds } from "./editor/use-linked-builds";
+import { useRecipeSelection } from "./editor/use-recipe-selection";
 import { useFacilitySelection } from "./planner/use-facility-selection";
-
 
 // Jita 4-4 -- the market scope a build starts from until the user picks
 // otherwise via the Material Acquisition / Output Valuation scope pickers.
 export const DEFAULT_SCOPE: MarketScope = { regionId: 10_000_002, locationId: 60_003_760 };
-
-type RecipeStatus = "idle" | "loading" | "ready" | "error";
 
 /**
  * The single Build-editor right-rail inspector state. Build Settings and the
@@ -67,58 +49,17 @@ export type BuildInspectorMode =
   | { kind: "buildSettings" }
   | { kind: "selectedItem"; rowKey: string };
 
-import type { ProductSearchResult } from "./builds-page";
-import {
-  buildPricingSelections,
-  buildComponentResolutions,
-  buildFulfillmentScopes,
-  type ComponentResolutionState,
-  parseRuns,
-  createManualBlueprintSelection,
-} from "./components/planner-panels";
-
-type SelectedProduct =
-  | { kind: "manufacturing"; result: BlueprintSearchResult }
-  | { kind: "reaction"; result: ReactionFormulaSearchResult };
-
+/**
+ * The Build editor's model. It owns the planning inputs (name, runs,
+ * pricing, scopes, facilities, sourcing) and composes four seams around
+ * them: what the Build makes (`useRecipeSelection`), saving
+ * (`useBuildSaveQueue`), the linked producer Builds (`useLinkedBuilds`) and
+ * the worksheet preview (`useBuildPreviewSync`).
+ */
 export function useBuildWorksheetEditor(initialBuild: Build | null) {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const initialDraft = initialBuild?.draftPlanning?.input;
-  const initialBlueprint = initialDraft?.blueprintSelection;
-  const initialProduct = initialBuild?.recipe.products[0];
   const [sdeReady, setSdeReady] = useState<boolean | null>(null);
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<SelectedProduct | null>(() => {
-    if (!initialBuild || !initialProduct) return null;
-    return initialBuild.recipe.kind === "manufacturing" ? {
-      kind: "manufacturing",
-      result: {
-        blueprintTypeId: initialBuild.recipe.blueprintTypeId,
-        blueprintName: initialBuild.recipe.blueprintName,
-        productTypeId: initialProduct.typeId,
-        productName: initialProduct.typeName,
-        groupName: null,
-        published: true,
-        manufacturingAvailable: true,
-      },
-    } : {
-      kind: "reaction",
-      result: {
-        reactionFormulaTypeId: initialBuild.recipe.reactionFormulaTypeId,
-        reactionFormulaName: initialBuild.recipe.reactionFormulaName,
-        productTypeId: initialProduct.typeId,
-        productName: initialProduct.typeName,
-        groupName: null,
-        published: true,
-      },
-    };
-  });
-  const [recipe, setRecipe] = useState<BuildPlan | ReactionPlan | null>(null);
-  const [recipeStatus, setRecipeStatus] = useState<RecipeStatus>(
-    initialBuild && selected ? "loading" : "idle",
-  );
-  const initializingExistingBuild = Boolean(initialBuild && recipeStatus === "loading");
   const [sources, setSources] = useState<PriceSource[]>([]);
   const [sourceId, setSourceId] = useState(initialDraft?.manualPriceListId ?? "");
   const [name, setName] = useState(initialBuild?.name ?? "");
@@ -129,16 +70,6 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       .filter((item) => item.selection.kind === "manual")
       .map((item) => [item.typeId, item.selection.kind === "manual" ? item.selection.unit_price : ""]),
   ));
-  const [estimate, setEstimate] = useState<CreateBuildPlanPreview | null>(null);
-  const [previewUpdating, setPreviewUpdating] = useState(false);
-  const [previewRetryAttempt, setPreviewRetryAttempt] = useState(0);
-  const [previewRetryToken, setPreviewRetryToken] = useState(0);
-  const [appliedPreviewKey, setAppliedPreviewKey] = useState("");
-  const previewRetry = useRef({ key: "", attempts: 0 });
-  const previewSequence = useRef(0);
-  const recipeSequence = useRef(0);
-  const routeBlueprintLoaded = useRef(false);
-  const [blueprintDialogOpen, setBlueprintDialogOpen] = useState(false);
   // Bumped when a linked Build's own settings are patched out-of-band (the
   // unified inspector editing a linked Build by id). Folded into `previewKey`
   // so the candidate preview re-runs and the worksheet reflects the change.
@@ -169,32 +100,32 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   const [fulfillmentScopes, setFulfillmentScopes] = useState<Record<number, FulfillmentScope>>(() => Object.fromEntries(
     (initialDraft?.fulfillmentScopes ?? []).map((item) => [item.typeId, item.scope]),
   ));
-  const [blueprintMode, setBlueprintMode] = useState<"manual" | "observedAsset">(initialBlueprint?.mode ?? "manual");
-  const [blueprintKind, setBlueprintKind] = useState<"original" | "copy">(initialBlueprint?.mode === "manual" ? initialBlueprint.kind : "original");
-  const [blueprintMe, setBlueprintMe] = useState(String(initialBlueprint?.mode === "manual" ? initialBlueprint.materialEfficiency : 0));
-  const [blueprintTe, setBlueprintTe] = useState(String(initialBlueprint?.mode === "manual" ? initialBlueprint.timeEfficiency : 0));
-  const [licensedRuns, setLicensedRuns] = useState(initialBlueprint?.mode === "manual" && initialBlueprint.licensedRuns !== null ? String(initialBlueprint.licensedRuns) : "");
-  const [blueprintNotes, setBlueprintNotes] = useState(initialBlueprint?.mode === "manual" ? initialBlueprint.notes : "");
-  const [observedBlueprints, setObservedBlueprints] = useState<BlueprintObservation[]>([]);
-  const [selectedObservationId, setSelectedObservationId] = useState(initialBlueprint?.mode === "observedAsset" ? initialBlueprint.observationId : "");
-  const [buildRevision, setBuildRevisionState] = useState(initialBuild?.revision ?? null);
-  // Mirrors `buildRevision` for a queued save that runs before the next
-  // render: it must send the latest revision.
-  const buildRevisionRef = useRef<number | null>(initialBuild?.revision ?? null);
-  const setBuildRevision = useCallback((revision: number | null) => {
-    buildRevisionRef.current = revision;
-    setBuildRevisionState(revision);
-  }, []);
-  const [, setBusy] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState("");
   const [allFacilities, setAllFacilities] = useState<FacilityProfile[]>([]);
-  const parsedRunsForEiv = parseRuns(runs);
+
+  const selection = useRecipeSelection({
+    initialBuild,
+    sdeReady,
+    runs,
+    name,
+    setName,
+    setError,
+    onProductSelected: () => {
+      // Read at selection time, after this render has defined them.
+      preview.resetPreview();
+      setItemPricingPolicies({});
+      manufacturing.reset();
+      reaction.reset();
+    },
+  });
+  const { selected, recipe, initializingExistingBuild, createBlueprintSelection } = selection;
+
+  const parsedRuns = parseRuns(runs);
   const rootKind = selected?.kind;
   const manufacturing = useFacilitySelection({
     allFacilities,
     role: "manufacturing",
-    runs: parsedRunsForEiv,
+    runs: parsedRuns,
     enabled: Boolean(selected),
     fetchAutomaticEiv: selected?.kind === "manufacturing"
       ? (eivRuns) => getBlueprintAutomaticEiv(selected.result.blueprintTypeId, eivRuns)
@@ -206,7 +137,7 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   const reaction = useFacilitySelection({
     allFacilities,
     role: "reaction",
-    runs: parsedRunsForEiv,
+    runs: parsedRuns,
     enabled: Boolean(selected),
     fetchAutomaticEiv: selected?.kind === "reaction"
       ? (eivRuns) => getReactionFormulaAutomaticEiv(selected.result.reactionFormulaTypeId, eivRuns)
@@ -224,8 +155,8 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     return {
       manufacturingFacility: manufacturing.selectedFacility ? {
         facilityProfileId: manufacturing.selectedFacility.id,
-        blueprintMe: rootKind === "manufacturing" ? Number(blueprintMe) : 0,
-        blueprintTe: rootKind === "manufacturing" ? Number(blueprintTe) : 0,
+        blueprintMe: rootKind === "manufacturing" ? Number(selection.blueprintMe) : 0,
+        blueprintTe: rootKind === "manufacturing" ? Number(selection.blueprintTe) : 0,
         estimatedItemValue: manufacturing.estimatedItemValue || null,
       } : null,
       reactionFacility: reaction.selectedFacility ? {
@@ -286,411 +217,20 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
   }, []);
 
   const source = sources.find((item) => item.id === sourceId);
-  const blueprintLookup = useDebouncedLookup<BlueprintSearchResult>(
-    query,
-    searchBlueprints,
-    (requestError) => setError(apiMessage(requestError)),
-  );
-  const reactionFormulaLookup = useDebouncedLookup<ReactionFormulaSearchResult>(
-    query,
-    searchReactionFormulas,
-    (requestError) => setError(apiMessage(requestError)),
-  );
-  const productResults: ProductSearchResult[] = [
-    ...blueprintLookup.results.map((result) => ({ kind: "manufacturing" as const, result })),
-    ...reactionFormulaLookup.results.map((result) => ({ kind: "reaction" as const, result })),
-  ].sort((a, b) => a.result.productName.localeCompare(b.result.productName));
 
-  useEffect(() => {
-    if (initialBuild || !sdeReady || routeBlueprintLoaded.current) return;
-    routeBlueprintLoaded.current = true;
-    // `?reactionFormulaTypeId=` (the Type Info window's "Plan a build" for a
-    // reaction product) starts a reaction build the same way.
-    const reactionFormulaTypeId = Number(searchParams.get("reactionFormulaTypeId"));
-    if (Number.isSafeInteger(reactionFormulaTypeId) && reactionFormulaTypeId > 0) {
-      planReaction(reactionFormulaTypeId, 1)
-        .then((loadedRecipe) => {
-          const product = loadedRecipe.products[0];
-          if (!product) {
-            setSearchParams({}, { replace: true });
-            return;
-          }
-          return selectProduct("reaction", {
-            reactionFormulaTypeId: loadedRecipe.reactionFormulaTypeId,
-            reactionFormulaName: loadedRecipe.reactionFormulaName,
-            productTypeId: product.typeId,
-            productName: product.typeName,
-            groupName: null,
-            published: true,
-          });
-        })
-        .catch(() => setSearchParams({}, { replace: true }));
-      return;
-    }
-    const blueprintTypeId = Number(searchParams.get("blueprintTypeId"));
-    if (!Number.isSafeInteger(blueprintTypeId) || blueprintTypeId <= 0) return;
-    const observationId = searchParams.get("observationId") ?? "";
+  const recipeRequest = selected?.kind === "manufacturing"
+    ? { mode: "manufacturing" as const, blueprintTypeId: selected.result.blueprintTypeId }
+    : selected
+      ? { mode: "reaction" as const, reactionFormulaTypeId: selected.result.reactionFormulaTypeId }
+      : null;
 
-    planBuild(blueprintTypeId, 1)
-      .then((loadedRecipe) => {
-        const product = loadedRecipe.products[0];
-        if (!product) {
-          setSearchParams({}, { replace: true });
-          return;
-        }
-        return selectProduct("manufacturing", {
-          blueprintTypeId: loadedRecipe.blueprintTypeId,
-          blueprintName: loadedRecipe.blueprintName,
-          productTypeId: product.typeId,
-          productName: product.typeName,
-          groupName: null,
-          published: true,
-          manufacturingAvailable: true,
-        }, observationId);
-      })
-      .catch(() => setSearchParams({}, { replace: true }));
-  }, [initialBuild, sdeReady, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (!initialBuild || !selected || selected.kind !== "manufacturing") return;
-    listBlueprintObservations(selected.result.blueprintTypeId)
-      .then(setObservedBlueprints)
-      .catch((requestError) => setError(apiMessage(requestError)));
-  }, [initialBuild, selected]);
-
-  async function selectProduct(
-    kind: "manufacturing",
-    result: BlueprintSearchResult,
-    preferredObservationId?: string,
-  ): Promise<void>;
-  async function selectProduct(
-    kind: "reaction",
-    result: ReactionFormulaSearchResult,
-  ): Promise<void>;
-  async function selectProduct(
-    kind: "manufacturing" | "reaction",
-    result: BlueprintSearchResult | ReactionFormulaSearchResult,
-    // A specific owned blueprint to start from (the Blueprints library's
-    // "Plan build"); ignored when it is no longer listed for this type.
-    preferredObservationId = "",
-  ) {
-    const parsedRuns = parseRuns(runs);
-    if (!parsedRuns) {
-      setError("Runs must be a whole number between 1 and 1,000,000.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    setSelected({ kind, result } as SelectedProduct);
-    setEstimate(null);
-    setAppliedPreviewKey("");
-    setItemPricingPolicies({});
-    manufacturing.reset();
-    reaction.reset();
-    setBlueprintMode("manual");
-    setBlueprintKind("original");
-    setBlueprintMe("0");
-    setBlueprintTe("0");
-    setLicensedRuns("");
-    setBlueprintNotes("");
-    setObservedBlueprints([]);
-    setSelectedObservationId("");
-    if (!name) setName(`${result.productName} build`);
-    if (kind === "reaction") {
-      setBusy(false);
-      return;
-    }
-    try {
-      const observations = await listBlueprintObservations((result as BlueprintSearchResult).blueprintTypeId);
-      const availableBlueprint = selectAvailableBlueprint(observations, parsedRuns, preferredObservationId);
-      setObservedBlueprints(observations);
-      setSelectedObservationId(availableBlueprint?.id ?? "");
-      setBlueprintMode(availableBlueprint ? "observedAsset" : "manual");
-    } catch (requestError) {
-      setError(apiMessage(requestError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function selectFromDialog(entry: ProductSearchResult) {
-    if (entry.kind === "manufacturing") {
-      setSearchParams({ blueprintTypeId: String(entry.result.blueprintTypeId) }, { replace: true });
-      void selectProduct("manufacturing", entry.result);
-    } else {
-      setSearchParams({ reactionFormulaTypeId: String(entry.result.reactionFormulaTypeId) }, { replace: true });
-      void selectProduct("reaction", entry.result);
-    }
-  }
-
-  useEffect(() => {
-    const parsedRuns = parseRuns(runs);
-    if (!selected || !parsedRuns) {
-      setRecipe(null);
-      setRecipeStatus("idle");
-      return;
-    }
-    setRecipeStatus("loading");
-    const sequence = ++recipeSequence.current;
-    const timer = window.setTimeout(() => {
-      const loadRecipe = selected.kind === "manufacturing"
-        ? planBuild(selected.result.blueprintTypeId, parsedRuns)
-        : planReaction(selected.result.reactionFormulaTypeId, parsedRuns);
-      void loadRecipe
-        .then((loadedRecipe) => {
-          if (sequence === recipeSequence.current) {
-            setRecipe(loadedRecipe);
-            setRecipeStatus("ready");
-          }
-        })
-        .catch((requestError) => {
-          if (sequence === recipeSequence.current) {
-            setRecipe(null);
-            setRecipeStatus("error");
-            setError(apiMessage(requestError));
-          }
-        });
-    }, 120);
-    return () => window.clearTimeout(timer);
-  }, [runs, selected]);
-
-  useEffect(() => {
-    if (blueprintMode !== "observedAsset") {
-      return;
-    }
-
-    const parsedRuns = parseRuns(runs);
-    if (!parsedRuns || observedBlueprints.length === 0) {
-      return;
-    }
-
-    const availableBlueprint = selectAvailableBlueprint(
-      observedBlueprints,
-      parsedRuns,
-      selectedObservationId,
-    );
-    if (availableBlueprint) {
-      if (selectedObservationId !== availableBlueprint.id) {
-        setSelectedObservationId(availableBlueprint.id);
-      }
-      return;
-    }
-
-    setSelectedObservationId("");
-    setBlueprintMode("manual");
-  }, [blueprintMode, observedBlueprints, runs, selectedObservationId]);
-
-  async function save(): Promise<Build | null> {
-    const parsedRuns = parseRuns(runs);
-    if (!selected || !recipe || !parsedRuns || !name.trim()) {
-      setError("Name, blueprint, and valid runs are required.");
-      return null;
-    }
-    setSaveStatus("saving");
-    setError("");
-    let draft: Build | null = null;
-    try {
-      const draftPlanning: DraftPlanningInput = buildDraftPlanning(recipe);
-      const draftInput = {
-        name,
-        recipe: selected.kind === "manufacturing"
-          ? {
-              mode: "manufacturing" as const,
-              blueprintTypeId: selected.result.blueprintTypeId,
-            }
-          : {
-              mode: "reaction" as const,
-              reactionFormulaTypeId: selected.result.reactionFormulaTypeId,
-            },
-        runs: parsedRuns,
-        notes,
-        draftPlanning,
-      };
-      const expectedRevision = buildRevisionRef.current ?? buildRevision;
-      draft = initialBuild && expectedRevision !== null
-        ? await updateBuild(initialBuild.id, {
-            ...draftInput,
-            expectedRevision,
-          })
-        : await createBuild(draftInput);
-      setBuildRevision(draft.revision);
-      setSaveStatus("saved");
-      if (!initialBuild) {
-        navigate(`/builds/${draft.id}`, { replace: true });
-      }
-    } catch (requestError) {
-      setSaveStatus("idle");
-      setError(
-        draft
-          ? `Build saved, but commit did not finish. ${apiMessage(requestError)}`
-          : apiMessage(requestError),
-      );
-    }
-    return draft;
-  }
-
-  // Serializes every save request (autosave, "Build this component") through
-  // one queue, always invoking the freshest `save` closure -- so a save
-  // requested while another is still in flight waits its turn instead of
-  // racing it with a stale `expectedRevision`.
-  const saveRef = useRef(save);
-  saveRef.current = save;
-  // The draft as last persisted (see `autosaveSnapshot` below), and the one
-  // the latest render would save. Equal means a save would only bump the
-  // revision.
-  const lastSavedSnapshotRef = useRef("");
-  const currentSnapshotRef = useRef("");
-  const buildIdRef = useRef(initialBuild?.id);
-  buildIdRef.current = initialBuild?.id;
-  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  function enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const queued = saveQueueRef.current.catch(() => null).then(task);
-    saveQueueRef.current = queued;
-    return queued;
-  }
-  async function saveRecordingSnapshot(): Promise<Build | null> {
-    const snapshot = currentSnapshotRef.current;
-    const draft = await saveRef.current();
-    if (draft) lastSavedSnapshotRef.current = snapshot;
-    return draft;
-  }
-  function queueSave(): Promise<Build | null> {
-    return enqueue(saveRecordingSnapshot);
-  }
-  // Like `queueSave`, but an existing build with nothing unsaved is not
-  // re-saved: resolves to its id either way, or null if the save failed.
-  function queueSaveIfChanged(): Promise<string | null> {
-    return enqueue(async () => {
-      const buildId = buildIdRef.current;
-      const snapshot = currentSnapshotRef.current;
-      if (buildId && snapshot && snapshot === lastSavedSnapshotRef.current) return buildId;
-      return (await saveRecordingSnapshot())?.id ?? null;
-    });
-  }
-
-  async function buildLinkedComponent(typeId: number): Promise<Build> {
-    const buildId = await queueSaveIfChanged();
-    if (!buildId) throw new Error("Save the build before creating a linked build.");
-    return createLinkedBuild(buildId, { componentTypeId: typeId });
-  }
-
-  // ---- Active linked-build lifecycle (editor-owned) --------------------
-  //
-  // Every direct material currently resolved to "Build" needs a real linked
-  // Build. This lives here, on editor state, rather than in an effect inside
-  // `AcquisitionControl`, so it runs whether or not the inspector /
-  // `AcquisitionControl` is mounted.
-  // `AcquisitionControl` is purely presentational with respect to this
-  // lifecycle -- it reads `linkedBuildsByTypeId` / `linkedBuildPending` /
-  // `linkedBuildErrors` and never issues the calls itself.
-  const [linkedBuildsByTypeId, setLinkedBuildsByTypeId] = useState<Record<number, Build>>({});
-  const [linkedBuildPending, setLinkedBuildPending] = useState<Record<number, boolean>>({});
-  const linkedBuildsSettling = Object.keys(linkedBuildPending).length > 0;
-  const [linkedBuildErrors, setLinkedBuildErrors] = useState<Record<number, string>>({});
-  // Per-type in-flight guard -- a ref, so effect reruns / StrictMode double
-  // invokes can't launch a second create/resync for the same component.
-  const linkedBuildInFlightRef = useRef<Set<number>>(new Set());
-
-  // The one call that create-or-reuses (and, server-side, resyncs `runs` on)
-  // a linked Build. `buildLinkedComponent` saves the parent through the
-  // shared queue first, then hits `create_or_reuse_linked_build`, which
-  // reuses a retained/inactive linked Build rather than duplicating it.
-  function runLinkedBuildCall(typeId: number) {
-    if (!initialBuild?.id) return;
-    if (linkedBuildInFlightRef.current.has(typeId)) return;
-    linkedBuildInFlightRef.current.add(typeId);
-    setLinkedBuildPending((current) => ({ ...current, [typeId]: true }));
-    setLinkedBuildErrors((current) => {
-      if (!(typeId in current)) return current;
-      const next = { ...current };
-      delete next[typeId];
-      return next;
-    });
-    buildLinkedComponent(typeId)
-      .then((build) => {
-        setLinkedBuildsByTypeId((current) => ({ ...current, [typeId]: build }));
-      })
-      .catch(() => {
-        setLinkedBuildErrors((current) => ({
-          ...current,
-          [typeId]: "Could not create the linked build. Try again.",
-        }));
-      })
-      .finally(() => {
-        linkedBuildInFlightRef.current.delete(typeId);
-        setLinkedBuildPending((current) => {
-          const next = { ...current };
-          delete next[typeId];
-          return next;
-        });
-      });
-  }
-  function ensureLinkedBuild(typeId: number) {
-    if (linkedBuildsByTypeId[typeId]) return;
-    runLinkedBuildCall(typeId);
-  }
-  const ensureLinkedBuildRef = useRef(ensureLinkedBuild);
-  ensureLinkedBuildRef.current = ensureLinkedBuild;
-
-  // Adopt a freshly-loaded producer Build into the map -- e.g. after the
-  // Graph inspector patches that Build's own settings by id. Keeps the
-  // Worksheet inspector (which reads this map) in step with a cross-view
-  // edit. Only a producer already in the map is replaced.
-  const adoptLinkedBuild = useCallback((build: Build) => {
-    setLinkedBuildsByTypeId((current) => {
-      const entry = Object.entries(current).find(([, linked]) => linked.id === build.id);
-      if (!entry || entry[1] === build) return current;
-      return { ...current, [entry[0]]: build };
-    });
-  }, []);
-
-  // Ensure + prune: keep the linked-Build map in step with which direct
-  // materials are currently Build-resolved.
-  useEffect(() => {
-    if (!initialBuild?.id || initializingExistingBuild) return;
-    const activeTypeIds = new Set(Object.keys(componentResolutions).map(Number));
-
-    const stale = Object.keys(linkedBuildsByTypeId)
-      .map(Number)
-      .filter((typeId) => !activeTypeIds.has(typeId));
-    if (stale.length > 0) {
-      // Build -> Buy: forget the linked Build locally. Nothing is deleted
-      // server-side -- it stays retained/inactive and is reused if the row
-      // flips back to Build.
-      setLinkedBuildsByTypeId((current) => {
-        const next = { ...current };
-        for (const typeId of stale) delete next[typeId];
-        return next;
-      });
-      setLinkedBuildErrors((current) => {
-        if (!stale.some((typeId) => typeId in current)) return current;
-        const next = { ...current };
-        for (const typeId of stale) delete next[typeId];
-        return next;
-      });
-    }
-
-    for (const typeId of activeTypeIds) ensureLinkedBuildRef.current(typeId);
-    // `linkedBuildPending`/`linkedBuildErrors` are deliberately *not* deps:
-    // updating them must not re-run this effect (that would auto-retry a
-    // just-failed creation in a loop). A genuine Buy->Build toggle changes
-    // `componentResolutions` and does re-run it, so retry stays possible.
-  }, [initialBuild?.id, initializingExistingBuild, componentResolutions, linkedBuildsByTypeId]);
-
-  // Autosave: debounces ~800ms after any change to the fields that make up
-  // the draft, then persists via the same queue everything else uses. The
-  // first time this becomes computable for an *existing* build is just the
-  // already-saved data settling in from `initialBuild`, not an edit, so it
-  // seeds the baseline instead of triggering a save; a brand new build has
-  // no such baseline (its `name` starts empty, so the first valid snapshot
-  // already reflects a real keystroke) and saves immediately.
-  const parsedRunsForAutosave = parseRuns(runs);
+  // What autosave compares: "" until the draft is complete enough to save.
   const autosaveSnapshot = (() => {
-    if (!(selected && recipe && parsedRunsForAutosave && name.trim())) return "";
+    if (!(selected && recipe && parsedRuns && name.trim())) return "";
     try {
       return JSON.stringify({
         name,
-        runs: parsedRunsForAutosave,
+        runs: parsedRuns,
         notes,
         selected,
         draftPlanning: buildDraftPlanning(recipe),
@@ -702,34 +242,33 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       return "";
     }
   })();
-  currentSnapshotRef.current = autosaveSnapshot;
-  const hasSeededSnapshotRef = useRef(false);
+  const saving = useBuildSaveQueue({
+    initialBuild,
+    complete: Boolean(recipeRequest && recipe && parsedRuns && name.trim()),
+    draftInput: () => ({
+      name,
+      recipe: recipeRequest!,
+      runs: parsedRuns!,
+      notes,
+      draftPlanning: buildDraftPlanning(recipe!),
+    }),
+    snapshot: autosaveSnapshot,
+    onCreated: (draft) => navigate(`/builds/${draft.id}`, { replace: true }),
+    setError,
+  });
 
-  useEffect(() => {
-    if (!autosaveSnapshot) return;
-    if (!hasSeededSnapshotRef.current) {
-      hasSeededSnapshotRef.current = true;
-      if (initialBuild) {
-        lastSavedSnapshotRef.current = autosaveSnapshot;
-        return;
-      }
-    }
-    if (autosaveSnapshot === lastSavedSnapshotRef.current) return;
-    const timer = window.setTimeout(() => {
-      void queueSave();
-    }, 800);
-    return () => window.clearTimeout(timer);
-    // Only a snapshot change schedules an autosave; `queueSave` and `initialBuild` are read fresh and must not retrigger it.
-  }, [autosaveSnapshot]);
+  const linked = useLinkedBuilds({
+    buildId: initialBuild?.id,
+    initializing: initializingExistingBuild,
+    componentResolutions,
+    queueSaveIfChanged: saving.queueSaveIfChanged,
+  });
 
   const previewKey = (() => {
-    const parsedRuns = parseRuns(runs);
-    if (!selected || !recipe || !parsedRuns) return "";
+    if (!recipeRequest || !recipe || !parsedRuns) return "";
     try {
       return JSON.stringify({
-        recipe: selected.kind === "manufacturing"
-          ? { mode: "manufacturing" as const, blueprintTypeId: selected.result.blueprintTypeId }
-          : { mode: "reaction" as const, reactionFormulaTypeId: selected.result.reactionFormulaTypeId },
+        recipe: recipeRequest,
         runs: parsedRuns,
         materialScope,
         outputScope,
@@ -743,112 +282,16 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
       return "";
     }
   })();
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setAppliedPreviewKey(previewKey);
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [previewKey]);
-  const previewPending = previewKey !== appliedPreviewKey;
-  const previewSyncMessage = previewRetryAttempt > 0
-    ? `Waiting for fresh market prices to sync (attempt ${previewRetryAttempt} of ${MAX_MARKET_SYNC_RETRIES})...`
-    : null;
-  useEffect(() => {
-    if (!appliedPreviewKey) {
-      setEstimate(null);
-      return;
-    }
-    const sequence = ++previewSequence.current;
-    const controller = new AbortController();
-    if (previewRetry.current.key !== appliedPreviewKey) {
-      previewRetry.current = { key: appliedPreviewKey, attempts: 0 };
-      setPreviewRetryAttempt(0);
-    }
-    let retryTimer: number | undefined;
-    let retryScheduled = false;
-    setPreviewUpdating(true);
-    const timer = window.setTimeout(() => {
-      void previewCreateBuildCandidate(JSON.parse(appliedPreviewKey), controller.signal)
-        .then((plan) => {
-          if (sequence !== previewSequence.current) return;
-          setEstimate(plan);
-          setError("");
-          // Every build prices from market scope first (a manual list is
-          // only ever an optional fallback), so the "wait for ESI data to
-          // sync" retry always applies, regardless of which PriceSource
-          // is selected in the (manual-only) dropdown.
-          const retryDelay = automaticPricingRetryDelay(
-            "esiMarketOrders",
-            plan,
-            previewRetry.current.attempts,
-          );
-          if (retryDelay !== null) {
-            retryScheduled = true;
-            previewRetry.current.attempts += 1;
-            setPreviewRetryAttempt(previewRetry.current.attempts);
-            retryTimer = window.setTimeout(
-              () => setPreviewRetryToken((current) => current + 1),
-              retryDelay,
-            );
-          } else {
-            previewRetry.current.attempts = 0;
-            setPreviewRetryAttempt(0);
-          }
-        })
-        .catch((requestError) => {
-          if (controller.signal.aborted || sequence !== previewSequence.current) return;
-          // A transient preview failure (market sync, a rejected edit)
-          // surfaces the error but must NOT discard the last worksheet that
-          // did compute -- nulling `estimate` here would unmount the whole
-          // results view and the Selected Item inspector mid-edit. The
-          // estimate is only cleared deliberately elsewhere (product
-          // switch, no selection).
-          setError(apiMessage(requestError));
-          setPreviewRetryAttempt(0);
-        })
-        .finally(() => {
-          if (sequence === previewSequence.current && !retryScheduled) setPreviewUpdating(false);
-        });
-    }, 180);
-    return () => {
-      window.clearTimeout(timer);
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-      controller.abort();
-    };
-  }, [appliedPreviewKey, previewRetryToken]);
-
-  function createBlueprintSelection(): BlueprintSelection {
-    if (blueprintMode === "observedAsset") {
-      if (!selectedObservationId) throw new Error("Select an observed blueprint or use manual assumptions.");
-      return { mode: "observedAsset", observationId: selectedObservationId };
-    }
-    return createManualBlueprintSelection(
-      blueprintKind,
-      blueprintMe,
-      blueprintTe,
-      licensedRuns,
-      blueprintNotes,
-    );
-  }
-
-  // A recipe in the URL (`?blueprintTypeId=` or `?reactionFormulaTypeId=`)
-  // keeps the product picker closed while it loads.
-  const hasRouteBlueprint = ["blueprintTypeId", "reactionFormulaTypeId"].some((key) => {
-    const typeId = Number(searchParams.get(key));
-    return Number.isSafeInteger(typeId) && typeId > 0;
-  });
-  const selectedName = selected
-    ? (selected.kind === "manufacturing" ? selected.result.blueprintName : selected.result.reactionFormulaName)
-    : null;
+  const preview = useBuildPreviewSync(previewKey, setError);
 
   return {
     initialBuild,
     sdeReady,
-    query,
-    setQuery,
+    query: selection.query,
+    setQuery: selection.setQuery,
     selected,
     recipe,
-    recipeStatus,
+    recipeStatus: selection.recipeStatus,
     initializingExistingBuild,
     sources,
     sourceId,
@@ -862,18 +305,18 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     setNotes,
     prices,
     setPrices,
-    estimate,
-    previewUpdating,
-    previewPending,
-    previewSyncMessage,
+    estimate: preview.estimate,
+    previewUpdating: preview.previewUpdating,
+    previewPending: preview.previewPending,
+    previewSyncMessage: preview.previewSyncMessage,
     previewKey,
-    productResults,
-    productSearching: blueprintLookup.searching || reactionFormulaLookup.searching,
-    hasRouteBlueprint,
-    selectFromDialog,
-    selectedName,
-    blueprintDialogOpen,
-    setBlueprintDialogOpen,
+    productResults: selection.productResults,
+    productSearching: selection.productSearching,
+    hasRouteBlueprint: selection.hasRouteBlueprint,
+    selectFromDialog: selection.selectFromDialog,
+    selectedName: selection.selectedName,
+    blueprintDialogOpen: selection.blueprintDialogOpen,
+    setBlueprintDialogOpen: selection.setBlueprintDialogOpen,
     inspectorMode,
     openBuildSettings,
     selectWorksheetRow,
@@ -892,39 +335,39 @@ export function useBuildWorksheetEditor(initialBuild: Build | null) {
     setComponentResolutions,
     fulfillmentScopes,
     setFulfillmentScopes,
-    linkedBuildsByTypeId,
-    linkedBuildPending,
-    linkedBuildsSettling,
-    linkedBuildErrors,
-    adoptLinkedBuild,
-    blueprintMode,
-    setBlueprintMode,
-    blueprintKind,
-    setBlueprintKind,
-    blueprintMe,
-    setBlueprintMe,
-    blueprintTe,
-    setBlueprintTe,
-    licensedRuns,
-    setLicensedRuns,
-    blueprintNotes,
-    setBlueprintNotes,
-    observedBlueprints,
-    selectedObservationId,
-    setSelectedObservationId,
-    saveStatus,
+    linkedBuildsByTypeId: linked.linkedBuildsByTypeId,
+    linkedBuildPending: linked.linkedBuildPending,
+    linkedBuildsSettling: linked.linkedBuildsSettling,
+    linkedBuildErrors: linked.linkedBuildErrors,
+    adoptLinkedBuild: linked.adoptLinkedBuild,
+    blueprintMode: selection.blueprintMode,
+    setBlueprintMode: selection.setBlueprintMode,
+    blueprintKind: selection.blueprintKind,
+    setBlueprintKind: selection.setBlueprintKind,
+    blueprintMe: selection.blueprintMe,
+    setBlueprintMe: selection.setBlueprintMe,
+    blueprintTe: selection.blueprintTe,
+    setBlueprintTe: selection.setBlueprintTe,
+    licensedRuns: selection.licensedRuns,
+    setLicensedRuns: selection.setLicensedRuns,
+    blueprintNotes: selection.blueprintNotes,
+    setBlueprintNotes: selection.setBlueprintNotes,
+    observedBlueprints: selection.observedBlueprints,
+    selectedObservationId: selection.selectedObservationId,
+    setSelectedObservationId: selection.setSelectedObservationId,
+    saveStatus: saving.saveStatus,
     setError,
     error,
     allFacilities,
     manufacturing,
     reaction,
     rootFacilitySelection,
-    buildLinkedComponent,
-    queueSave,
+    buildLinkedComponent: linked.buildLinkedComponent,
+    queueSave: saving.queueSave,
     bumpPreview,
     navigate,
     renameBuild,
-    setBuildRevision,
+    setBuildRevision: saving.setBuildRevision,
   };
 }
 
