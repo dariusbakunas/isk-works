@@ -14,8 +14,9 @@ use chrono::{DateTime, Duration, Utc};
 use crate::manual_sync_gate::ManualSyncGate;
 use iskworks_core::{
     calculate_adjusted_price_eiv, AdjustedPriceEiv, AdjustedPriceRepository, CapturedRecipeLine,
-    ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EsiSyncKind, EsiSyncRun,
-    FacilityError, InventoryError, OwnerId, WorkspaceId,
+    ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EsiConnectionRepository,
+    EsiSyncKind, EsiSyncRun, FacilityError, InventoryError, OwnerId, PendingAuthorization,
+    StoredRefreshToken, WorkspaceId,
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
@@ -38,7 +39,7 @@ use iskworks_esi::{
     EsiResponseMetadata, PlanetExtractorObservation, PlanetPinContentObservation,
     PlanetPinObservation,
 };
-use iskworks_storage::{PendingAuthorization, PgEsiRepository, StoredRefreshToken};
+use iskworks_storage::PgEsiRepository;
 use rust_decimal::Decimal;
 use serde::Serialize;
 #[cfg(any(test, feature = "esi-fixture"))]
@@ -94,6 +95,7 @@ const MAX_JOURNAL_PAGES: u32 = 100;
 #[derive(Clone)]
 pub struct EsiApplicationService {
     repository: Arc<PgEsiRepository>,
+    connections: Arc<dyn EsiConnectionRepository>,
     transport: Arc<dyn EsiTransport>,
     cipher: SecretCipher,
     client_id: String,
@@ -279,7 +281,7 @@ impl MarketAccessResolver for EsiApplicationService {
             }
         }
 
-        let connections = self.repository.list_connections(workspace_id).await?;
+        let connections = self.connections.list_connections(workspace_id).await?;
         let eligible = connections
             .iter()
             .filter(|connection| {
@@ -418,6 +420,7 @@ impl EsiApplicationService {
         #[cfg(not(any(test, feature = "esi-fixture")))]
         let transport = http();
         Ok(Some(Self {
+            connections: repository.clone(),
             repository,
             transport,
             cipher,

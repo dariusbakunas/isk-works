@@ -1,6 +1,8 @@
 use super::*;
 use iskworks_core::BlueprintAssetObservation;
-use iskworks_core::{AdjustedPriceRepository, IndustryRepository};
+use iskworks_core::{
+    AdjustedPriceRepository, CharacterConnectionReader, EsiConnectionRepository, IndustryRepository,
+};
 use iskworks_esi::SecretCipher;
 use serde_json::json;
 use sqlx::PgPool;

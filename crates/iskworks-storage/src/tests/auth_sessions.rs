@@ -1,4 +1,5 @@
 use super::*;
+use iskworks_core::EsiConnectionRepository;
 
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 #[sqlx::test(migrations = "../../migrations")]

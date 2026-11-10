@@ -9,7 +9,7 @@ impl EsiApplicationService {
         let scopes = authorization_scopes();
         if self.fixture_mode {
             let connection = self
-                .repository
+                .connections
                 .mock_connect(
                     workspace_id,
                     owner_id,
@@ -27,7 +27,7 @@ impl EsiApplicationService {
         }
         let state = OAuthState::generate();
         let (verifier, challenge) = new_pkce();
-        self.repository
+        self.connections
             .begin_authorization(
                 hash_state(state.expose()),
                 workspace_id,
@@ -63,7 +63,7 @@ impl EsiApplicationService {
         state: &str,
     ) -> Result<Option<PendingAuthorization>, EsiApplicationError> {
         match self
-            .repository
+            .connections
             .consume_authorization(&hash_state(state))
             .await
         {
@@ -81,7 +81,7 @@ impl EsiApplicationService {
         let verifier = PkceVerifier::from_secret(self.cipher.decrypt(&pending.verifier)?)?;
         let token = self.transport.exchange_code(code, &verifier).await?;
         require_requested_scopes(&token.identity)?;
-        self.repository
+        self.connections
             .complete_connection(
                 &pending,
                 token.identity.character_id,
@@ -102,11 +102,11 @@ impl EsiApplicationService {
         &self,
         id: ConnectedCharacterId,
     ) -> Result<ConnectedCharacter, EsiApplicationError> {
-        let refresh_token = match self.repository.load_refresh_token(id).await {
+        let refresh_token = match self.connections.load_refresh_token(id).await {
             Ok(stored) => self.cipher.decrypt(&stored.envelope).ok(),
             Err(_) => None,
         };
-        let connection = self.repository.disconnect(id).await?;
+        let connection = self.connections.disconnect(id).await?;
         if let Some(refresh_token) = refresh_token {
             if let Err(error) = self.transport.revoke_refresh_token(&refresh_token).await {
                 tracing::warn!(
@@ -134,7 +134,7 @@ impl EsiApplicationService {
                     _ => "esi_failure",
                 };
                 if let Err(mark_error) = self
-                    .repository
+                    .connections
                     .mark_connection_unrefreshable(id, status, code)
                     .await
                 {
@@ -154,7 +154,7 @@ impl EsiApplicationService {
         id: ConnectedCharacterId,
     ) -> Result<(ConnectedCharacter, String), EsiApplicationError> {
         for _ in 0..2 {
-            let stored = self.repository.load_refresh_token(id).await?;
+            let stored = self.connections.load_refresh_token(id).await?;
             // EVE already rejected this grant (or it lacks scopes); only a
             // reconnect fixes that, so don't ask SSO again on every click.
             match stored.connection.status {
@@ -180,7 +180,7 @@ impl EsiApplicationService {
                 .map(|value| self.cipher.encrypt(value))
                 .transpose()?;
             if self
-                .repository
+                .connections
                 .save_refreshed_token(
                     id,
                     stored.token_revision,
@@ -197,7 +197,7 @@ impl EsiApplicationService {
                 .await?
             {
                 return Ok((
-                    self.repository.get_connection(id).await?,
+                    self.connections.get_connection(id).await?,
                     refreshed.access_token,
                 ));
             }

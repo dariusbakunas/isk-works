@@ -7,7 +7,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use iskworks_core::{
     AssetBlueprintKindFilter, AssetKindFilter, AssetReconciliationFilter, AssetSortColumn,
-    AssetSortDirection, ConnectedCharacterId, EsiSyncKind, FlatAssetQuery, InventoryError,
+    AssetSortDirection, CharacterConnectionReader, ConnectedCharacterId, EsiSyncKind,
+    FlatAssetQuery, InventoryError,
 };
 use serde::{Deserialize, Serialize};
 

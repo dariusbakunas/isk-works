@@ -687,7 +687,9 @@ fn fake_sync_run(
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn worker_syncs_every_due_character_connection_exactly_once(pool: sqlx::PgPool) {
-    use iskworks_core::{ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId};
+    use iskworks_core::{
+        CharacterConnectionReader, ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId,
+    };
 
     let now = chrono::Utc::now();
     let workspace_id = WorkspaceId::new();
@@ -794,7 +796,9 @@ async fn worker_syncs_every_due_character_connection_exactly_once(pool: sqlx::Pg
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn character_sync_fan_out_stops_queued_connections_on_cancel(pool: sqlx::PgPool) {
-    use iskworks_core::{ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId};
+    use iskworks_core::{
+        CharacterConnectionReader, ConnectedCharacterId, MarketRefreshState, OwnerId, WorkspaceId,
+    };
 
     let now = chrono::Utc::now();
     let workspace_id = WorkspaceId::new();

@@ -7,10 +7,10 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDate;
 use iskworks_core::{
-    ConnectedCharacterId, EsiSyncKind, FinanceColumn, FinanceDirection, FinanceError,
-    FinanceInventoryRecording, FinanceSortColumn, FinanceTransactionFilter, FinanceTransactionPage,
-    FinanceTransactionSort, FinanceTransactionType, InventoryPreview, SavedFinanceFilter,
-    SavedFinanceFilterId, SortDirection,
+    CharacterConnectionReader, ConnectedCharacterId, EsiSyncKind, FinanceColumn, FinanceDirection,
+    FinanceError, FinanceInventoryRecording, FinanceSortColumn, FinanceTransactionFilter,
+    FinanceTransactionPage, FinanceTransactionSort, FinanceTransactionType, InventoryPreview,
+    SavedFinanceFilter, SavedFinanceFilterId, SortDirection,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -488,7 +488,7 @@ fn split_values(value: Option<&str>) -> impl Iterator<Item = &str> {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
-    use iskworks_core::{FinanceSummary, FinanceTransaction, Money};
+    use iskworks_core::{EsiConnectionRepository, FinanceSummary, FinanceTransaction, Money};
 
     use super::*;
 

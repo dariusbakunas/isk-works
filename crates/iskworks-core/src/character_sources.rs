@@ -21,6 +21,12 @@ pub trait CharacterConnectionReader: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<ConnectedCharacter>, InventoryError>;
 
+    /// One connection, disconnected or not.
+    async fn get_connection(
+        &self,
+        id: ConnectedCharacterId,
+    ) -> Result<ConnectedCharacter, InventoryError>;
+
     /// The sync state of each of a connection's sources.
     async fn character_source_state(
         &self,

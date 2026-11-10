@@ -10,6 +10,7 @@ impl EsiApplicationService {
         transport: Arc<dyn EsiTransport>,
     ) -> Self {
         Self {
+            connections: repository.clone(),
             repository,
             transport,
             cipher: SecretCipher::for_tests(),
