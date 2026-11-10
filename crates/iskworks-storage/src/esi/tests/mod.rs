@@ -10,6 +10,7 @@ use crate::industry::PgIndustryRepository;
 mod asset_snapshots;
 mod blueprints;
 mod calendar_events;
+mod character_read_ports;
 mod character_sources;
 mod industry_jobs;
 mod market_orders;

@@ -15,40 +15,19 @@ use iskworks_core::planetary::{
     SchematicRecipe, StorageKind, TypeFacts,
 };
 use iskworks_core::{
-    summarize_scoped_orders, CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId,
-    InventoryError, MarketRefreshState, MarketRepository, MarketScope, WorkspaceId,
+    summarize_scoped_orders, ConnectedCharacterId, InventoryError, MarketRefreshState,
+    MarketRepository, MarketScope, WorkspaceId,
 };
-use iskworks_esi::PLANETS_SCOPE;
 use iskworks_sde::{PlanetReference, SdeReadRepository};
-use iskworks_storage::PgEsiRepository;
 use rust_decimal::Decimal;
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::character_roster::current_trained_level;
 
+pub use iskworks_core::{PlanetaryCharacter, PlanetaryCharacterSource};
+
 /// Interplanetary Consolidation: how many planets a character may colonize.
 const INTERPLANETARY_CONSOLIDATION_SKILL_ID: i64 = 2_495;
-
-/// One connected character's PI-relevant sync state.
-#[derive(Debug, Clone)]
-pub struct PlanetaryCharacter {
-    pub connection_id: ConnectedCharacterId,
-    pub eve_character_id: i64,
-    pub name: String,
-    pub scope_granted: bool,
-    pub planets_source: Option<CharacterSourceSyncState>,
-    pub skills_summary: Option<Value>,
-}
-
-#[async_trait]
-pub trait PlanetaryCharacterSource: Send + Sync {
-    /// Connected (not disconnected) characters in the workspace.
-    async fn planetary_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError>;
-}
 
 /// A fixed set of connected characters, for tests (`test-support` only).
 #[cfg(any(test, feature = "test-support"))]
@@ -62,41 +41,6 @@ impl PlanetaryCharacterSource for FakePlanetaryCharacters {
         _workspace_id: WorkspaceId,
     ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
         Ok(self.0.clone())
-    }
-}
-
-#[async_trait]
-impl PlanetaryCharacterSource for PgEsiRepository {
-    async fn planetary_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
-        let connections = self.list_connections(workspace_id).await?;
-        let mut characters = Vec::with_capacity(connections.len());
-        for connection in connections
-            .into_iter()
-            .filter(|connection| connection.disconnected_at.is_none())
-        {
-            let sources = self.character_source_state(connection.id).await?;
-            let find = |kind| {
-                sources
-                    .iter()
-                    .find(|source| source.source_kind == kind)
-                    .cloned()
-            };
-            characters.push(PlanetaryCharacter {
-                connection_id: connection.id,
-                eve_character_id: connection.eve_character_id,
-                name: connection.character_name.clone(),
-                scope_granted: connection
-                    .granted_scopes
-                    .iter()
-                    .any(|scope| scope == PLANETS_SCOPE),
-                planets_source: find(CharacterSourceKind::Planets),
-                skills_summary: find(CharacterSourceKind::Skills).and_then(|state| state.summary),
-            });
-        }
-        Ok(characters)
     }
 }
 

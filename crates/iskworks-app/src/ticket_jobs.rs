@@ -12,8 +12,8 @@ use iskworks_core::order::{
     job_fits_ticket, plan_ticket_job_sync, ticket_job_choices, ObservedIndustryJob, OrderError,
     TicketId, TicketIndustryJob, TicketJobChoice, TicketJobRepository,
 };
+use iskworks_core::CharacterConnectionReader;
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
-use iskworks_storage::PgEsiRepository;
 use thiserror::Error;
 
 use crate::character_roster::workspace_job_observations;
@@ -34,13 +34,16 @@ pub trait IndustryJobsSynced: Send + Sync {
 
 #[derive(Clone)]
 pub struct TicketJobService {
-    esi: Arc<PgEsiRepository>,
+    esi: Arc<dyn CharacterConnectionReader>,
     links: Arc<dyn TicketJobRepository>,
 }
 
 impl TicketJobService {
     #[must_use]
-    pub fn new(esi: Arc<PgEsiRepository>, links: Arc<dyn TicketJobRepository>) -> Self {
+    pub fn new(
+        esi: Arc<dyn CharacterConnectionReader>,
+        links: Arc<dyn TicketJobRepository>,
+    ) -> Self {
         Self { esi, links }
     }
 
@@ -126,7 +129,7 @@ impl TicketJobService {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<(HashSet<ConnectedCharacterId>, Vec<ObservedIndustryJob>), TicketJobError> {
-        let observations = workspace_job_observations(&self.esi, workspace_id).await?;
+        let observations = workspace_job_observations(self.esi.as_ref(), workspace_id).await?;
         let connections = observations
             .iter()
             .map(|(connection, _)| *connection)

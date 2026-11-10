@@ -11,40 +11,11 @@ use iskworks_core::skills::{
     build_catalogue, parse_skills_summary, CharacterAttributes, CloneState, SkillCatalogue,
     TrainingRate,
 };
-use iskworks_core::{
-    CharacterSourceKind, ConnectedCharacter, ConnectedCharacterId, InventoryError, WorkspaceId,
-};
-use iskworks_esi::SKILLS_SCOPE;
+use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
 use iskworks_sde::SdeReadRepository;
-use iskworks_storage::PgEsiRepository;
 use serde::Serialize;
-use serde_json::Value;
 
-/// One connected character's skills source.
-#[derive(Debug, Clone)]
-pub struct SkillsCharacter {
-    pub connection_id: ConnectedCharacterId,
-    pub name: String,
-    pub skills_scope_granted: bool,
-    pub skills_summary: Option<Value>,
-    pub observed_at: Option<DateTime<Utc>>,
-}
-
-#[async_trait]
-pub trait SkillsCharacterSource: Send + Sync {
-    /// The character if it is connected (not disconnected) in the workspace.
-    async fn skills_character(
-        &self,
-        workspace_id: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError>;
-
-    /// Every connected (not disconnected) character in the workspace.
-    async fn skills_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError>;
-}
+pub use iskworks_core::{SkillsCharacter, SkillsCharacterSource};
 
 /// A fixed set of connected characters, for tests (`test-support` only).
 #[cfg(any(test, feature = "test-support"))]
@@ -71,64 +42,6 @@ impl SkillsCharacterSource for FakeSkillsCharacters {
     ) -> Result<Vec<SkillsCharacter>, InventoryError> {
         Ok(self.0.clone())
     }
-}
-
-#[async_trait]
-impl SkillsCharacterSource for PgEsiRepository {
-    async fn skills_character(
-        &self,
-        workspace_id: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
-        let Some(connection) =
-            self.list_connections(workspace_id)
-                .await?
-                .into_iter()
-                .find(|connection| {
-                    connection.id == connection_id && connection.disconnected_at.is_none()
-                })
-        else {
-            return Ok(None);
-        };
-        Ok(Some(skills_character(self, connection).await?))
-    }
-
-    async fn skills_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
-        let mut characters = Vec::new();
-        for connection in self
-            .list_connections(workspace_id)
-            .await?
-            .into_iter()
-            .filter(|connection| connection.disconnected_at.is_none())
-        {
-            characters.push(skills_character(self, connection).await?);
-        }
-        Ok(characters)
-    }
-}
-
-async fn skills_character(
-    repository: &PgEsiRepository,
-    connection: ConnectedCharacter,
-) -> Result<SkillsCharacter, InventoryError> {
-    let skills = repository
-        .character_source_state(connection.id)
-        .await?
-        .into_iter()
-        .find(|source| source.source_kind == CharacterSourceKind::Skills);
-    Ok(SkillsCharacter {
-        connection_id: connection.id,
-        name: connection.character_name,
-        skills_scope_granted: connection
-            .granted_scopes
-            .iter()
-            .any(|scope| scope == SKILLS_SCOPE),
-        observed_at: skills.as_ref().and_then(|source| source.observed_at),
-        skills_summary: skills.and_then(|source| source.summary),
-    })
 }
 
 /// The selected character, for the page header.

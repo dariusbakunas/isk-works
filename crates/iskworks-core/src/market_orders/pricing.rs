@@ -99,6 +99,22 @@ pub fn sales_tax_rate(accounting_level: u8) -> Decimal {
     BASE_SALES_TAX * (Decimal::ONE - ACCOUNTING_REDUCTION_PER_LEVEL * level)
 }
 
+/// The character's trained Accounting level from its synced skills summary;
+/// `None` before the skills source has synced.
+#[must_use]
+pub fn accounting_level(skills_summary: Option<&serde_json::Value>) -> Option<u8> {
+    let skills = skills_summary?.get("skills")?.as_array()?;
+    let level = skills
+        .iter()
+        .find(|skill| {
+            skill.get("skill_id").and_then(serde_json::Value::as_i64) == Some(ACCOUNTING_SKILL_ID)
+        })
+        .and_then(|skill| skill.get("active_skill_level"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    Some(u8::try_from(level.min(5)).unwrap_or(5))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

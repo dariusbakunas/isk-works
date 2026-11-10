@@ -4,10 +4,10 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use iskworks_core::order::ObservedIndustryJob;
 use iskworks_core::{
-    character_health, industry_job_slot_max, CharacterHealth, CharacterSourceKind,
-    CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId, ConnectionStatus,
-    IndustryActivity, IndustrySlotBucket, InventoryError, MarketRefreshState, Money, WorkspaceId,
-    ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
+    character_health, industry_job_slot_max, CharacterConnectionReader, CharacterHealth,
+    CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
+    ConnectionStatus, IndustryActivity, IndustrySlotBucket, InventoryError, MarketRefreshState,
+    Money, WorkspaceId, ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
     ADVANCED_MASS_REACTIONS_SKILL_ID, LABORATORY_OPERATION_SKILL_ID, MASS_PRODUCTION_SKILL_ID,
     MASS_REACTIONS_SKILL_ID,
 };
@@ -612,7 +612,7 @@ fn collect_industry_job_ids(jobs_summary: Option<&Value>) -> (Vec<i64>, Vec<i64>
 /// synced their jobs are absent; one with no running jobs is present with
 /// an empty list.
 pub(crate) async fn workspace_job_observations(
-    repository: &PgEsiRepository,
+    repository: &dyn CharacterConnectionReader,
     workspace_id: WorkspaceId,
 ) -> Result<Vec<(ConnectedCharacterId, Vec<IndustryJobDto>)>, InventoryError> {
     let mut observations = Vec::new();
