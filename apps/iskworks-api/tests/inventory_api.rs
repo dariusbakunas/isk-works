@@ -12,7 +12,7 @@ use iskworks_core::{
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, SdeError, SdeInventoryTypeMetadata,
-    SdeReadRepository, TypeSearchResult,
+    TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -222,7 +222,7 @@ struct RecordingSdeRepository {
 }
 
 #[async_trait]
-impl SdeReadRepository for RecordingSdeRepository {
+impl iskworks_sde::FakeSdeRead for RecordingSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -281,9 +281,8 @@ impl SdeReadRepository for RecordingSdeRepository {
 /// regardless of `type_ids` -- good enough for asserting the default-scope
 /// pricing path resolves at all and reads the right scope, not for
 /// exercising the real scope-merge query itself (that's `#[ignore]`d
-/// Postgres-backed coverage in `iskworks-storage`). Every other
-/// `MarketRepository` method keeps the trait's own default (empty/no-op)
-/// body -- none of them are exercised by the Inventory route.
+/// Postgres-backed coverage in `iskworks-storage`). The Inventory route
+/// uses no other `MarketRepository` method.
 #[derive(Clone, Default)]
 struct FixtureMarketRepository {
     orders: BTreeMap<i64, Vec<iskworks_core::MarketOrderView>>,
@@ -291,7 +290,7 @@ struct FixtureMarketRepository {
 }
 
 #[async_trait]
-impl iskworks_core::MarketRepository for FixtureMarketRepository {
+impl iskworks_core::FakeMarketRepository for FixtureMarketRepository {
     async fn resolve_type_name(
         &self,
         _: i64,

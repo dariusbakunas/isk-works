@@ -73,6 +73,8 @@ pub use pi_planner::{
     PlanetSettingsWriteDto, PlannerCharacterSkillsDto, PlannerPlanetsDto, PlannerRankingDto,
     PlannerScenarioDto, PlannerSolutionDto, MAX_PLANNER_RADIUS,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use planetary::FakePlanetaryCharacters;
 pub use planetary::{
     PlanetaryCharacter, PlanetaryCharacterSource, PlanetaryOverview, PlanetaryService,
 };
@@ -81,6 +83,8 @@ pub use skill_plans::{
     CharacterPlanProgress, ImportedSkillPlan, PlanTextPreview, SkillPlanDetail, SkillPlanEntryView,
     SkillPlanHeader, SkillPlanProgress, SkillPlanService, SkillPlanSummary,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use skills_catalogue::FakeSkillsCharacters;
 pub use skills_catalogue::{
     SkillCatalogueCharacter, SkillCatalogueResponse, SkillCatalogueService, SkillsCharacter,
     SkillsCharacterSource,

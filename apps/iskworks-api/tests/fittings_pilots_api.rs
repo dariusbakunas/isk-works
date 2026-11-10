@@ -10,7 +10,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
-use iskworks_app::{SkillsCharacter, SkillsCharacterSource};
+use iskworks_app::{FakeSkillsCharacters, SkillsCharacter};
 use iskworks_core::fitting::{
     AttributeExplanation, DamageProfile, EftError, ExplainTarget, Fit, FitCalculation, FitDraft,
     FitId, FitInput, FitItem, FitRepository, FitStats, FittingEngine, FittingEngineInfo,
@@ -19,8 +19,8 @@ use iskworks_core::fitting::{
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository};
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
-    SdeReadRepository, SkillAttribute, SkillDefinition, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
+    SkillDefinition, TypeSearchResult,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -63,7 +63,7 @@ fn skill(type_id: i64, name: &str, rank: i32, prerequisites: Vec<(i64, i16)>) ->
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -150,29 +150,6 @@ impl SdeReadRepository for FakeSde {
 }
 
 // --- Characters.
-
-struct FakeCharacters(Vec<SkillsCharacter>);
-
-#[async_trait]
-impl SkillsCharacterSource for FakeCharacters {
-    async fn skills_character(
-        &self,
-        _: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
-        Ok(self
-            .0
-            .iter()
-            .find(|character| character.connection_id == connection_id)
-            .cloned())
-    }
-    async fn skills_characters(
-        &self,
-        _: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
-        Ok(self.0.clone())
-    }
-}
 
 /// `(skill, trained, active)`; SP is exactly the trained level's.
 fn character(id: u128, name: &str, skills: &[(i64, i16, i16)]) -> SkillsCharacter {
@@ -497,7 +474,7 @@ fn test_app(engine: bool) -> TestApp {
         .with_sde_repository(Arc::new(FakeSde))
         .with_fit_repository(fits.clone())
         .with_skill_plan_repository(plans.clone())
-        .with_skills_characters(Arc::new(FakeCharacters(characters())));
+        .with_skills_characters(Arc::new(FakeSkillsCharacters(characters())));
     let state = if engine {
         state.with_fitting_engine(Arc::new(FakeEngine))
     } else {

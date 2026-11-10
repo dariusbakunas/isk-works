@@ -75,7 +75,7 @@ fn sde_recipe(blueprint_type_id: i64) -> Option<(Vec<RecipeLine>, RecipeLine)> {
 }
 
 #[async_trait]
-impl SdeReadRepository for CanonicalSde {
+impl iskworks_sde::FakeSdeRead for CanonicalSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: uuid::Uuid::nil(),
@@ -143,6 +143,23 @@ impl SdeReadRepository for CanonicalSde {
                 products: vec![ln(F, "F", 200)],
             }),
         )
+    }
+
+    async fn inventory_type_metadata(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::SdeInventoryTypeMetadata>, SdeError>
+    {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
+    }
+
+    async fn type_reference(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::TypeReference>, SdeError> {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
     }
 }
 

@@ -14,8 +14,8 @@ use iskworks_core::fitting::{
 };
 use iskworks_core::{InventoryError, WorkspaceId};
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError,
-    SdeReadRepository, TypeReference, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError, TypeReference,
+    TypeSearchResult,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -27,7 +27,7 @@ use support::workspace::configured_workspace;
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: Uuid::new_v4(),

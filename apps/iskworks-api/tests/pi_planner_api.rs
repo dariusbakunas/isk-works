@@ -15,12 +15,11 @@ use iskworks_core::pi_planner::{
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
     ConnectedCharacterId, InventoryError, MarketError, MarketOrderBook, MarketOrderSide,
-    MarketOrderView, MarketPriceSource, MarketRepository, MarketScope, Money, PriceSourceId,
-    WorkspaceId,
+    MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, PlanetCommodity, PlanetPinType, PlanetSchematic, PlannerPlanet, SdeError,
-    SdeReadRepository, SystemDistance, TypeReference,
+    SystemDistance, TypeReference,
 };
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
@@ -43,7 +42,7 @@ struct FakeSde {
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -155,7 +154,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn scoped_order_books(
         &self,
         _: WorkspaceId,

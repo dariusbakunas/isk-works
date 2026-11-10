@@ -30,9 +30,10 @@ esi-fixture = []
 test-support = ["iskworks-esi/test-support"]
 
 [dev-dependencies]
-metrics-util.workspace = true
 iskworks-core = { path = "../iskworks-core", features = ["test-support"] }
 iskworks-esi = { path = "../iskworks-esi", features = ["test-support"] }
+iskworks-sde = { path = "../iskworks-sde", features = ["test-support"] }
+metrics-util.workspace = true
 sqlx.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true

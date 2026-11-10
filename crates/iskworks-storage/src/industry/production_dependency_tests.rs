@@ -960,7 +960,7 @@ fn s4_recipe(blueprint_type_id: i64) -> Option<ManufacturingRecipe> {
 }
 
 #[async_trait]
-impl SdeReadRepository for CanonicalWriteSde {
+impl iskworks_sde::FakeSdeRead for CanonicalWriteSde {
     async fn active_sde(&self) -> Result<Option<iskworks_sde::ActiveSde>, iskworks_sde::SdeError> {
         Ok(Some(iskworks_sde::ActiveSde {
             import_id: self.import_id,

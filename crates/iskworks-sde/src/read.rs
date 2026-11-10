@@ -513,12 +513,7 @@ pub trait SdeReadRepository: Send + Sync {
     async fn manufacturable_candidates(
         &self,
         scope: &ManufacturableCandidateScope,
-    ) -> Result<Vec<ManufacturableCandidateRecipe>, SdeError> {
-        let _ = scope;
-        Err(SdeError::Storage(
-            "candidate discovery is unsupported by this repository".into(),
-        ))
-    }
+    ) -> Result<Vec<ManufacturableCandidateRecipe>, SdeError>;
     async fn search_manufacturing_blueprints(
         &self,
         query: &str,
@@ -532,55 +527,29 @@ pub trait SdeReadRepository: Send + Sync {
         &self,
         query: &str,
         limit: u32,
-    ) -> Result<Vec<ReactionFormulaSearchResult>, SdeError> {
-        let _ = (query, limit);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<ReactionFormulaSearchResult>, SdeError>;
     async fn reaction_formula(
         &self,
         reaction_formula_type_id: i64,
-    ) -> Result<Option<ReactionFormulaRecipe>, SdeError> {
-        let _ = reaction_formula_type_id;
-        Ok(None)
-    }
+    ) -> Result<Option<ReactionFormulaRecipe>, SdeError>;
     /// Reverse lookup: does a manufacturing blueprint produce this type as
     /// output? Returns the blueprint's type ID if so.
     async fn manufacturing_blueprint_for_product(
         &self,
         product_type_id: i64,
-    ) -> Result<Option<i64>, SdeError> {
-        let _ = product_type_id;
-        Ok(None)
-    }
+    ) -> Result<Option<i64>, SdeError>;
     /// Reverse lookup: does a reaction formula produce this type as output?
     /// Returns the formula's type ID if so.
     async fn reaction_formula_for_product(
         &self,
         product_type_id: i64,
-    ) -> Result<Option<i64>, SdeError> {
-        let _ = product_type_id;
-        Ok(None)
-    }
+    ) -> Result<Option<i64>, SdeError>;
     /// Bulk [`ProductRecipeRefs`] for `product_type_ids` -- one entry per
-    /// type with at least one published recipe. The default loops over the
-    /// single-type lookups (fakes); the Postgres implementation answers in
-    /// one query.
+    /// type with at least one published recipe, in one query.
     async fn production_recipes_for_products(
         &self,
         product_type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, ProductRecipeRefs>, SdeError> {
-        let mut refs = std::collections::BTreeMap::new();
-        for &type_id in product_type_ids {
-            let recipe = ProductRecipeRefs {
-                blueprint_type_id: self.manufacturing_blueprint_for_product(type_id).await?,
-                reaction_formula_type_id: self.reaction_formula_for_product(type_id).await?,
-            };
-            if recipe != ProductRecipeRefs::default() {
-                refs.insert(type_id, recipe);
-            }
-        }
-        Ok(refs)
-    }
+    ) -> Result<std::collections::BTreeMap<i64, ProductRecipeRefs>, SdeError>;
     async fn search_types(
         &self,
         query: &str,
@@ -589,29 +558,20 @@ pub trait SdeReadRepository: Send + Sync {
     async fn type_group_names(
         &self,
         type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError> {
-        let _ = type_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError>;
     /// Bulk type_id -> its group + category names (see
     /// `SdeTypeClassification`). Types absent from the active import are
     /// simply omitted from the map.
     async fn type_classifications(
         &self,
         type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, SdeTypeClassification>, SdeError> {
-        let _ = type_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, SdeTypeClassification>, SdeError>;
     /// Bulk type_id -> the type's own `name_en` (e.g. a skill or item
     /// name), unlike `type_group_names` which returns the *group's* name.
     async fn type_names(
         &self,
         type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError> {
-        let _ = type_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError>;
     /// Bulk type_id -> [`TypeReference`] (name + group + category + packaged
     /// volume) from one join across `sde_types` / `sde_groups` /
     /// `sde_categories`. The single metadata read the verification-workbook
@@ -621,80 +581,52 @@ pub trait SdeReadRepository: Send + Sync {
     async fn type_reference(
         &self,
         type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, TypeReference>, SdeError> {
-        let _ = type_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, TypeReference>, SdeError>;
     async fn inventory_type_metadata(
         &self,
         type_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, SdeInventoryTypeMetadata>, SdeError> {
-        let _ = type_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, SdeInventoryTypeMetadata>, SdeError>;
     async fn search_structure_types(
         &self,
         query: &str,
         limit: u32,
-    ) -> Result<Vec<TypeSearchResult>, SdeError> {
-        let _ = (query, limit);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<TypeSearchResult>, SdeError>;
     async fn search_structure_rigs(
         &self,
         query: &str,
         limit: u32,
         structure_type_id: Option<i64>,
-    ) -> Result<Vec<TypeSearchResult>, SdeError> {
-        let _ = (query, limit, structure_type_id);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<TypeSearchResult>, SdeError>;
     async fn structure_manufacturing_modifiers(
         &self,
         type_id: i64,
-    ) -> Result<Option<StructureManufacturingModifiers>, SdeError> {
-        let _ = type_id;
-        Ok(None)
-    }
+    ) -> Result<Option<StructureManufacturingModifiers>, SdeError>;
     /// Every `industryTargetFilters` row in the active SDE (≤ 18). Empty when
     /// the import predates the dataset, in which case rigs have no resolvable
     /// applicability and are treated as unrestricted.
-    async fn industry_target_filters(&self) -> Result<Vec<IndustryTargetFilter>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn industry_target_filters(&self) -> Result<Vec<IndustryTargetFilter>, SdeError>;
     /// Every target filter tagged with the activity whose rigs reference it
     /// (manufacturing rigs or reaction rigs) in the active SDE. A filter no
     /// rig references is omitted.
     async fn industry_target_filters_by_activity(
         &self,
-    ) -> Result<Vec<(RigActivity, IndustryTargetFilter)>, SdeError> {
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<(RigActivity, IndustryTargetFilter)>, SdeError>;
     /// The category of each known group in the active SDE.
     async fn group_categories(
         &self,
         group_ids: &[i64],
-    ) -> Result<std::collections::BTreeMap<i64, i64>, SdeError> {
-        let _ = group_ids;
-        Ok(std::collections::BTreeMap::new())
-    }
+    ) -> Result<std::collections::BTreeMap<i64, i64>, SdeError>;
     async fn rig_manufacturing_modifiers(
         &self,
         type_id: i64,
         security_class: &str,
         structure_type_id: Option<i64>,
-    ) -> Result<Option<RigManufacturingModifiers>, SdeError> {
-        let _ = (type_id, security_class, structure_type_id);
-        Ok(None)
-    }
+    ) -> Result<Option<RigManufacturingModifiers>, SdeError>;
     async fn search_solar_systems(
         &self,
         query: &str,
         limit: u32,
-    ) -> Result<Vec<SolarSystemSearchResult>, SdeError> {
-        let _ = (query, limit);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<SolarSystemSearchResult>, SdeError>;
     /// Matches on the station's own name *or* its solar system's name (a
     /// station whose name doesn't happen to start with its system's name
     /// would otherwise be unfindable by searching the system, e.g. from the
@@ -704,10 +636,7 @@ pub trait SdeReadRepository: Send + Sync {
         &self,
         query: &str,
         limit: u32,
-    ) -> Result<Vec<NpcStationSearchResult>, SdeError> {
-        let _ = (query, limit);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<NpcStationSearchResult>, SdeError>;
     /// Every region in the active SDE dataset -- the top level of the
     /// market-scope selector, unrelated to `PriceSource`.
     /// Restricted to the regions a normal market browse actually means --
@@ -719,22 +648,14 @@ pub trait SdeReadRepository: Send + Sync {
     /// it wrongly admits Thera's wormhole region, which has 4 stations, and
     /// wrongly excludes real, actively-used deep-nullsec regions that have
     /// zero NPC stations, such as Feythabolis).
-    async fn list_regions(&self) -> Result<Vec<RegionSummary>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn list_regions(&self) -> Result<Vec<RegionSummary>, SdeError>;
     /// Name search over the same market-relevant region set `list_regions`
     /// returns -- the Market Scope Selector's global search needs to match
     /// a typed region name without pulling the whole 67-region list into
     /// the browser to filter client-side. `query.len() < 2` returns empty,
     /// matching `search_solar_systems`'s convention.
-    async fn search_regions(
-        &self,
-        query: &str,
-        limit: u32,
-    ) -> Result<Vec<RegionSummary>, SdeError> {
-        let _ = (query, limit);
-        Ok(Vec::new())
-    }
+    async fn search_regions(&self, query: &str, limit: u32)
+        -> Result<Vec<RegionSummary>, SdeError>;
     /// NPC stations within one region -- the SDE-backed half of the
     /// location list under a selected region (the other half, known player
     /// structures, comes from `MarketRepository::known_locations_in_region`
@@ -742,10 +663,7 @@ pub trait SdeReadRepository: Send + Sync {
     async fn list_npc_stations_in_region(
         &self,
         region_id: i64,
-    ) -> Result<Vec<NpcStationSearchResult>, SdeError> {
-        let _ = region_id;
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<NpcStationSearchResult>, SdeError>;
     /// Resolves a specific, small set of station IDs by identity -- unlike
     /// `search_npc_stations` (name search) or `list_npc_stations_in_region`
     /// (region-scoped), this looks stations up directly by ID regardless of
@@ -757,16 +675,11 @@ pub trait SdeReadRepository: Send + Sync {
     async fn resolve_npc_stations(
         &self,
         station_ids: &[i64],
-    ) -> Result<Vec<NpcStationSearchResult>, SdeError> {
-        let _ = station_ids;
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<NpcStationSearchResult>, SdeError>;
     /// Every market group in the active SDE dataset, flat -- the raw
     /// material for the market-group/category hierarchy. See
     /// `MarketGroupNode` for why this stays flat rather than pre-nested.
-    async fn list_market_groups(&self) -> Result<Vec<MarketGroupNode>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn list_market_groups(&self) -> Result<Vec<MarketGroupNode>, SdeError>;
     /// A paginated, filtered page of market-browsable types (published,
     /// carrying a market group) plus the total match count -- the item
     /// summary table's candidate list. `market_group_id` is an exact match
@@ -779,10 +692,7 @@ pub trait SdeReadRepository: Send + Sync {
         search: &str,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<MarketItemCandidate>, u64), SdeError> {
-        let _ = (market_group_id, search, page, page_size);
-        Ok((Vec::new(), 0))
-    }
+    ) -> Result<(Vec<MarketItemCandidate>, u64), SdeError>;
     /// Every published, market-browsable type belonging to `root_group_id`
     /// or any of its descendant market groups -- the descendant-inclusive
     /// counterpart to `list_market_items`'s exact-match `market_group_id`
@@ -795,51 +705,33 @@ pub trait SdeReadRepository: Send + Sync {
     async fn list_market_group_subtree_item_ids(
         &self,
         root_group_id: i64,
-    ) -> Result<Vec<MarketItemCandidate>, SdeError> {
-        let _ = root_group_id;
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<MarketItemCandidate>, SdeError>;
     async fn search_reaction_rigs(
         &self,
         query: &str,
         limit: u32,
         structure_type_id: Option<i64>,
-    ) -> Result<Vec<TypeSearchResult>, SdeError> {
-        let _ = (query, limit, structure_type_id);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<TypeSearchResult>, SdeError>;
     async fn reaction_rig_modifiers(
         &self,
         type_id: i64,
         security_class: &str,
         structure_type_id: Option<i64>,
-    ) -> Result<Option<ReactionRigModifiers>, SdeError> {
-        let _ = (type_id, security_class, structure_type_id);
-        Ok(None)
-    }
+    ) -> Result<Option<ReactionRigModifiers>, SdeError>;
     /// PI schematics by id. Ids absent from the active import (or an import
     /// that predates planetary data) yield no entry.
     async fn planet_schematics(
         &self,
         schematic_ids: &[i64],
-    ) -> Result<BTreeMap<i64, PlanetSchematic>, SdeError> {
-        let _ = schematic_ids;
-        Ok(BTreeMap::new())
-    }
+    ) -> Result<BTreeMap<i64, PlanetSchematic>, SdeError>;
     /// Every PI schematic with its processor types, sorted by id. Empty when
     /// the import predates planetary data.
-    async fn planet_schematic_catalogue(&self) -> Result<Vec<PlanetSchematic>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn planet_schematic_catalogue(&self) -> Result<Vec<PlanetSchematic>, SdeError>;
     /// The PI structure types, sorted by type id. Empty when the import
     /// predates the PI Planner data.
-    async fn planet_pin_types(&self) -> Result<Vec<PlanetPinType>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn planet_pin_types(&self) -> Result<Vec<PlanetPinType>, SdeError>;
     /// Customs tax multipliers by commodity type id.
-    async fn planet_commodities(&self) -> Result<BTreeMap<i64, PlanetCommodity>, SdeError> {
-        Ok(BTreeMap::new())
-    }
+    async fn planet_commodities(&self) -> Result<BTreeMap<i64, PlanetCommodity>, SdeError>;
     /// The start system and every system within `max_jumps` gate jumps of
     /// it (capped at 5), each at its shortest distance, sorted by jumps then
     /// name. Empty when the system is unknown; a system without gates (such
@@ -848,72 +740,40 @@ pub trait SdeReadRepository: Send + Sync {
         &self,
         solar_system_id: i64,
         max_jumps: u8,
-    ) -> Result<Vec<SystemDistance>, SdeError> {
-        let _ = (solar_system_id, max_jumps);
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<SystemDistance>, SdeError>;
     /// The planets of these systems whose type is known, sorted by planet id.
     async fn planets_in_systems(
         &self,
         solar_system_ids: &[i64],
-    ) -> Result<Vec<PlannerPlanet>, SdeError> {
-        let _ = solar_system_ids;
-        Ok(Vec::new())
-    }
+    ) -> Result<Vec<PlannerPlanet>, SdeError>;
     /// `(from, to)` system pairs for every stargate whose two ends are both
     /// in the region, from the active import. Empty when the import has no
     /// stargates.
-    async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError> {
-        let _ = region_id;
-        Ok(Vec::new())
-    }
+    async fn region_stargate_edges(&self, region_id: i64) -> Result<Vec<(i64, i64)>, SdeError>;
     /// Every published skill in a published group of the active import,
     /// sorted by group name then skill name. Empty when the import predates
     /// skill dogma.
-    async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError> {
-        Ok(Vec::new())
-    }
+    async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError>;
     /// Required skills by type id (skills, ships, modules), in ordinal
     /// order. Types without requirements, or unknown ones, yield no entry.
     async fn required_skills(
         &self,
         type_ids: &[i64],
-    ) -> Result<BTreeMap<i64, Vec<RequiredSkill>>, SdeError> {
-        let _ = type_ids;
-        Ok(BTreeMap::new())
-    }
+    ) -> Result<BTreeMap<i64, Vec<RequiredSkill>>, SdeError>;
     /// The Type Info header and basics; `None` for a type the active
     /// import doesn't have.
-    async fn type_info_base(&self, type_id: i64) -> Result<Option<TypeInfoBase>, SdeError> {
-        let _ = type_id;
-        Ok(None)
-    }
+    async fn type_info_base(&self, type_id: i64) -> Result<Option<TypeInfoBase>, SdeError>;
     /// A type's displayable attribute values, by attribute id. Empty when
     /// the import predates type info.
-    async fn type_attributes(&self, type_id: i64) -> Result<Vec<TypeAttributeValue>, SdeError> {
-        let _ = type_id;
-        Ok(Vec::new())
-    }
+    async fn type_attributes(&self, type_id: i64) -> Result<Vec<TypeAttributeValue>, SdeError>;
     /// A type's ship bonuses: skill, then role, then misc.
-    async fn type_bonuses(&self, type_id: i64) -> Result<Vec<TypeBonusLine>, SdeError> {
-        let _ = type_id;
-        Ok(Vec::new())
-    }
+    async fn type_bonuses(&self, type_id: i64) -> Result<Vec<TypeBonusLine>, SdeError>;
     /// What one portion of a type reprocesses into, by material name.
-    async fn type_materials(&self, type_id: i64) -> Result<Vec<RecipeLine>, SdeError> {
-        let _ = type_id;
-        Ok(Vec::new())
-    }
-    async fn type_info_counts(&self, type_id: i64) -> Result<TypeInfoCounts, SdeError> {
-        let _ = type_id;
-        Ok(TypeInfoCounts::default())
-    }
+    async fn type_materials(&self, type_id: i64) -> Result<Vec<RecipeLine>, SdeError>;
+    async fn type_info_counts(&self, type_id: i64) -> Result<TypeInfoCounts, SdeError>;
     /// The published types of `type_id`'s variation family (itself
     /// included), by meta group id, then meta level, then name.
-    async fn type_variations(&self, type_id: i64) -> Result<Vec<TypeListEntry>, SdeError> {
-        let _ = type_id;
-        Ok(Vec::new())
-    }
+    async fn type_variations(&self, type_id: i64) -> Result<Vec<TypeListEntry>, SdeError>;
     /// For a module, the published charges it loads (its charge groups,
     /// matching charge size when both have one); for a charge, the
     /// published modules that load it. `None` for neither. Ordered like
@@ -921,10 +781,7 @@ pub trait SdeReadRepository: Send + Sync {
     async fn types_used_with(
         &self,
         type_id: i64,
-    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError> {
-        let _ = type_id;
-        Ok(None)
-    }
+    ) -> Result<Option<(UsedWithKind, Vec<TypeListEntry>)>, SdeError>;
     /// Recipes consuming `type_id`, by product name, `limit` from
     /// `offset`, with the total.
     async fn type_usages(
@@ -932,30 +789,18 @@ pub trait SdeReadRepository: Send + Sync {
         type_id: i64,
         limit: u32,
         offset: u32,
-    ) -> Result<(Vec<TypeUsage>, i64), SdeError> {
-        let _ = (type_id, limit, offset);
-        Ok((Vec::new(), 0))
-    }
+    ) -> Result<(Vec<TypeUsage>, i64), SdeError>;
     /// Group names by group id; unknown ids yield no entry.
-    async fn group_names(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
-        let _ = group_ids;
-        Ok(BTreeMap::new())
-    }
+    async fn group_names(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError>;
     /// Dogma attribute display names by attribute id; unknown ids yield no
     /// entry.
     async fn attribute_names(
         &self,
         attribute_ids: &[i64],
-    ) -> Result<BTreeMap<i64, String>, SdeError> {
-        let _ = attribute_ids;
-        Ok(BTreeMap::new())
-    }
+    ) -> Result<BTreeMap<i64, String>, SdeError>;
     /// Planet names and systems by planet id; unknown ids yield no entry.
     async fn planet_references(
         &self,
         planet_ids: &[i64],
-    ) -> Result<BTreeMap<i64, PlanetReference>, SdeError> {
-        let _ = planet_ids;
-        Ok(BTreeMap::new())
-    }
+    ) -> Result<BTreeMap<i64, PlanetReference>, SdeError>;
 }

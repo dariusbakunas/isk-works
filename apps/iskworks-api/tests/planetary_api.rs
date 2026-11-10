@@ -6,16 +6,15 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use iskworks_api::{build_router, AppState};
-use iskworks_app::{PlanetaryCharacter, PlanetaryCharacterSource};
+use iskworks_app::{FakePlanetaryCharacters, PlanetaryCharacter};
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId, InventoryError,
     MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource,
-    MarketRefreshState, MarketRepository, MarketScope, Money, PriceSourceId, WorkspaceId,
+    MarketRefreshState, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
-    ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, SdeReadRepository,
-    TypeReference,
+    ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, TypeReference,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -84,18 +83,6 @@ fn character(name: &str, eve_id: i64, summary: Option<Value>) -> PlanetaryCharac
     }
 }
 
-struct FakeCharacters(Vec<PlanetaryCharacter>);
-
-#[async_trait]
-impl PlanetaryCharacterSource for FakeCharacters {
-    async fn planetary_characters(
-        &self,
-        _: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
-        Ok(self.0.clone())
-    }
-}
-
 #[derive(Default)]
 struct FakePreferences(Mutex<PlanetaryPreferences>);
 
@@ -120,7 +107,7 @@ impl PlanetaryPreferencesRepository for FakePreferences {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -231,7 +218,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn scoped_order_books(
         &self,
         _: WorkspaceId,
@@ -359,7 +346,10 @@ fn harness(characters: Vec<PlanetaryCharacter>) -> Harness {
         AppState::new(Arc::new(configured_workspace("PI Test")))
             .with_sde_repository(Arc::new(FakeSde))
             .with_market_repository(market.clone())
-            .with_planetary_repositories(Arc::new(FakeCharacters(characters)), preferences.clone()),
+            .with_planetary_repositories(
+                Arc::new(FakePlanetaryCharacters(characters)),
+                preferences.clone(),
+            ),
     );
     Harness {
         app,

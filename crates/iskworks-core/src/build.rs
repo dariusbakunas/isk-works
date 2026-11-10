@@ -263,7 +263,7 @@ mod tests {
     struct FixtureRepository;
 
     #[async_trait]
-    impl SdeReadRepository for FixtureRepository {
+    impl iskworks_sde::FakeSdeRead for FixtureRepository {
         async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
             Ok(None)
         }

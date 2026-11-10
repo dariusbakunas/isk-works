@@ -50,6 +50,21 @@ pub trait PlanetaryCharacterSource: Send + Sync {
     ) -> Result<Vec<PlanetaryCharacter>, InventoryError>;
 }
 
+/// A fixed set of connected characters, for tests (`test-support` only).
+#[cfg(any(test, feature = "test-support"))]
+pub struct FakePlanetaryCharacters(pub Vec<PlanetaryCharacter>);
+
+#[cfg(any(test, feature = "test-support"))]
+#[async_trait]
+impl PlanetaryCharacterSource for FakePlanetaryCharacters {
+    async fn planetary_characters(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
+        Ok(self.0.clone())
+    }
+}
+
 #[async_trait]
 impl PlanetaryCharacterSource for PgEsiRepository {
     async fn planetary_characters(

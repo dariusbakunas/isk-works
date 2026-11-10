@@ -188,7 +188,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!()
     }
@@ -386,7 +386,7 @@ struct FakeSde {
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         unimplemented!()
     }

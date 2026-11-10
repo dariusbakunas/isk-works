@@ -13,12 +13,12 @@ use iskworks_core::market_orders::{
 use iskworks_core::{
     ConnectedCharacterId, InventoryError, MarketCoverageRegistration, MarketError,
     MarketImportBatchId, MarketLocationClassification, MarketObservationBatchId, MarketOrderBook,
-    MarketOrderSide, MarketOrderView, MarketPriceSource, MarketRepository, MarketScope, Money,
-    PriceSourceId, WorkspaceId,
+    MarketOrderSide, MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId,
+    WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, NpcStationSearchResult, SdeError,
-    SdeReadRepository, TypeSearchResult,
+    TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use tower::ServiceExt;
@@ -136,7 +136,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!()
     }
@@ -279,7 +279,7 @@ impl MarketRepository for FakeMarket {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

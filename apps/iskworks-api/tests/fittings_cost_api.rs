@@ -15,12 +15,11 @@ use iskworks_core::fitting::{
 };
 use iskworks_core::{
     ConnectedCharacterId, InventoryError, MarketError, MarketOrderBook, MarketOrderSide,
-    MarketOrderView, MarketPriceSource, MarketRepository, MarketScope, Money, PriceSourceId,
-    WorkspaceId,
+    MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError,
-    SdeReadRepository, TypeReference, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError, TypeReference,
+    TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -38,7 +37,7 @@ const HOBGOBLIN: i64 = 2_456;
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: Uuid::new_v4(),
@@ -188,7 +187,7 @@ struct FakeMarket {
 }
 
 #[async_trait]
-impl MarketRepository for FakeMarket {
+impl iskworks_core::FakeMarketRepository for FakeMarket {
     async fn scoped_order_books(
         &self,
         _: WorkspaceId,

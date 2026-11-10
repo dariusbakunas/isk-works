@@ -7,7 +7,7 @@ use chrono::Utc;
 use iskworks_api::{build_router, AppState};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, ReactionFormulaRecipe,
-    ReactionFormulaSearchResult, RecipeLine, SdeError, SdeReadRepository,
+    ReactionFormulaSearchResult, RecipeLine, SdeError,
 };
 use serde_json::Value;
 use tower::ServiceExt;
@@ -20,7 +20,7 @@ use support::workspace::EmptyWorkspaceRepository;
 struct FixtureSdeRepository;
 
 #[async_trait]
-impl SdeReadRepository for FixtureSdeRepository {
+impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: Uuid::nil(),

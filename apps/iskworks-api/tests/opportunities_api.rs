@@ -10,14 +10,14 @@ use iskworks_core::{
     AdjustedPriceRepository, FacilityKind, FacilityProfileId, FacilityRole, IndustryError,
     IndustryFacilityProfile, IndustryRepository, InventoryError, MarketCoverageItem,
     MarketCoverageRegistration, MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView,
-    MarketPriceSource, MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState,
-    MarketRepository, Money, NewWorkspace, PriceSource, PriceSourceId, PriceSourceKind,
-    SecurityClass, WorkspaceId, WorkspaceState,
+    MarketPriceSource, MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState, Money,
+    NewWorkspace, PriceSource, PriceSourceId, PriceSourceKind, SecurityClass, WorkspaceId,
+    WorkspaceState,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, CandidateProductClassification, CandidateRecipeIdentity,
     ImportCounts, ManufacturableCandidateRecipe, ManufacturableCandidateScope, ManufacturingRecipe,
-    RecipeLine, SdeError, SdeReadRepository, TypeSearchResult,
+    RecipeLine, SdeError, TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -263,7 +263,7 @@ struct FixtureMarketRepository {
 }
 
 #[async_trait]
-impl MarketRepository for FixtureMarketRepository {
+impl iskworks_core::FakeMarketRepository for FixtureMarketRepository {
     async fn resolve_type_name(&self, _: i64) -> Result<Option<String>, MarketError> {
         unimplemented!("not used by opportunity evaluation")
     }
@@ -380,6 +380,14 @@ impl MarketRepository for FixtureMarketRepository {
             })
             .collect())
     }
+
+    async fn classify_location(
+        &self,
+        _workspace_id: WorkspaceId,
+        _location_id: i64,
+    ) -> Result<iskworks_core::MarketLocationClassification, MarketError> {
+        Ok(iskworks_core::MarketLocationClassification::Unknown)
+    }
 }
 
 struct FixtureAdjustedPriceRepository {
@@ -410,7 +418,7 @@ struct FixtureSdeRepository {
 }
 
 #[async_trait]
-impl SdeReadRepository for FixtureSdeRepository {
+impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(self.active_sde.clone()))
     }

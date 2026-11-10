@@ -5,11 +5,11 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::Utc;
 use iskworks_api::{build_router, AppState};
-use iskworks_app::{SkillsCharacter, SkillsCharacterSource};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_app::{FakeSkillsCharacters, SkillsCharacter};
+use iskworks_core::ConnectedCharacterId;
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
-    SdeReadRepository, SkillAttribute, SkillDefinition, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
+    SkillDefinition, TypeSearchResult,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -26,7 +26,7 @@ struct FakeSde {
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -45,32 +45,6 @@ impl SdeReadRepository for FakeSde {
     }
     async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError> {
         Ok(self.skills.clone())
-    }
-}
-
-/// The test router has one workspace, so the fake matches on the
-/// connection alone.
-struct FakeCharacters(Vec<SkillsCharacter>);
-
-#[async_trait]
-impl SkillsCharacterSource for FakeCharacters {
-    async fn skills_character(
-        &self,
-        _workspace_id: WorkspaceId,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
-        Ok(self
-            .0
-            .iter()
-            .find(|character| character.connection_id == connection_id)
-            .cloned())
-    }
-
-    async fn skills_characters(
-        &self,
-        _workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
-        unimplemented!("the catalogue reads one character")
     }
 }
 
@@ -125,7 +99,7 @@ fn app(skills: Vec<SkillDefinition>, characters: Vec<SkillsCharacter>) -> axum::
     build_router(
         AppState::new(Arc::new(configured_workspace("Skills Test")))
             .with_sde_repository(Arc::new(FakeSde { skills }))
-            .with_skills_characters(Arc::new(FakeCharacters(characters))),
+            .with_skills_characters(Arc::new(FakeSkillsCharacters(characters))),
     )
 }
 

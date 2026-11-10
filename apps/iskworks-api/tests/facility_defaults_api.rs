@@ -16,7 +16,7 @@ use iskworks_core::{
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, IndustryTargetFilter, ManufacturingRecipe, RigActivity,
-    SdeError, SdeReadRepository, TypeSearchResult,
+    SdeError, TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use tower::ServiceExt;
@@ -74,7 +74,7 @@ impl FacilityDefaultsRepository for FakeDefaults {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
