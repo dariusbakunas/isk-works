@@ -413,3 +413,18 @@ fn a_retired_consumer_cannot_be_edited() {
         Err(CanonicalWriteError::RetiredConsumer { build: id(21) })
     );
 }
+
+#[test]
+fn a_producer_reference_must_be_a_live_producer_of_the_same_plan() {
+    let records = canonical_duplicate_plan();
+    let graph = graph_of(&records);
+    assert_eq!(check_producer_reference(&graph, id(20)), Ok(()));
+    for (producer, detail) in [(id(21), "retired producer"), (id(99), "another root plan")] {
+        match check_producer_reference(&graph, producer) {
+            Err(CanonicalWriteError::CanonicalGraphCorrupt { detail: message }) => {
+                assert!(message.contains(detail), "{message}");
+            }
+            other => panic!("{producer:?}: {other:?}"),
+        }
+    }
+}
