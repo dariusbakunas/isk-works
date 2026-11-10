@@ -1,6 +1,6 @@
 use super::*;
 use async_trait::async_trait;
-use iskworks_core::CharacterSourceRefreshRepository;
+use iskworks_core::{CharacterSourceRefreshRepository, RetryPolicy};
 
 pub(super) fn parse_refresh_state(value: &str) -> MarketRefreshState {
     match value {
@@ -153,20 +153,33 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         error_message: String,
     ) -> Result<bool, InventoryError> {
         // `next_refresh_at` is the caller's floor (it may carry ESI's
-        // `Retry-After`); consecutive failures back off 5, 10, 20...
-        // minutes on top, capped at 6 hours. The right-hand side sees the
-        // pre-update count.
-        let result = sqlx::query(
+        // `Retry-After`); consecutive failures back off on top, per
+        // `RetryPolicy::CHARACTER_SOURCE`, from the pre-update count.
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let failures: Option<i32> = sqlx::query_scalar(
+            "SELECT consecutive_failures FROM character_source_sync_state
+             WHERE connection_id = $1 AND source_kind = $2 AND last_attempted_at = $3
+             FOR UPDATE",
+        )
+        .bind(connection_id.0)
+        .bind(source_kind.as_db_str())
+        .bind(claim)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(failures) = failures else {
+            return Ok(false);
+        };
+        let retry_at = RetryPolicy::CHARACTER_SOURCE.retry_at(
+            attempted_at,
+            failures.unsigned_abs(),
+            next_refresh_at,
+        );
+        sqlx::query(
             "UPDATE character_source_sync_state
              SET refresh_state = 'failed',
                  last_error = $5,
-                 next_refresh_at = GREATEST(
-                   $4,
-                   $6 + LEAST(
-                     interval '5 minutes' * power(2, LEAST(consecutive_failures, 16)),
-                     interval '6 hours'
-                   )
-                 ),
+                 next_refresh_at = $4,
                  consecutive_failures = consecutive_failures + 1,
                  lease_expires_at = NULL
              WHERE connection_id = $1 AND source_kind = $2 AND last_attempted_at = $3",
@@ -174,13 +187,13 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         .bind(connection_id.0)
         .bind(source_kind.as_db_str())
         .bind(claim)
-        .bind(next_refresh_at)
+        .bind(retry_at)
         .bind(error_message)
-        .bind(attempted_at)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
-        Ok(result.rows_affected() > 0)
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
     }
 
     async fn due_character_sources(

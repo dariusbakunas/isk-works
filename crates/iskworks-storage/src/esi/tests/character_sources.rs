@@ -136,6 +136,78 @@ async fn complete_persists_summary_and_clears_the_refreshing_state(pool: PgPool)
     assert!(wallet.last_error.is_none());
 }
 
+/// A failure reported under a claim that is no longer current (the lease
+/// expired and another pass reclaimed the source) changes nothing: no
+/// error, no backoff, and the newer claim stays in force.
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn a_failure_under_a_lost_claim_is_ignored(pool: PgPool) {
+    let (workspace_id, owner_id) = fixture_workspace(&pool).await;
+    let connection = fixture_connection(&pool, workspace_id, owner_id, "Roster Pilot").await;
+    let repository = PgEsiRepository::new(pool);
+    repository
+        .register_character_sources(connection.id)
+        .await
+        .unwrap();
+    let now = crate::db_now();
+    let stale = repository
+        .begin_character_source_refresh(
+            connection.id,
+            CharacterSourceKind::Skills,
+            now,
+            now + chrono::Duration::seconds(120),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let later = now + chrono::Duration::seconds(180);
+    let current = repository
+        .begin_character_source_refresh(
+            connection.id,
+            CharacterSourceKind::Skills,
+            later,
+            later + chrono::Duration::seconds(120),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(stale, current);
+
+    let failed = repository
+        .fail_character_source_refresh(
+            connection.id,
+            CharacterSourceKind::Skills,
+            stale,
+            later,
+            later,
+            "too late".to_string(),
+        )
+        .await
+        .unwrap();
+    assert!(!failed);
+
+    let skills = repository
+        .character_source_state(connection.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.source_kind == CharacterSourceKind::Skills)
+        .unwrap();
+    assert_eq!(skills.refresh_state, MarketRefreshState::Refreshing);
+    assert_eq!(skills.last_error, None);
+    assert!(repository
+        .complete_character_source_refresh(
+            connection.id,
+            CharacterSourceKind::Skills,
+            current,
+            later + chrono::Duration::hours(1),
+            serde_json::json!({}),
+            later,
+        )
+        .await
+        .unwrap());
+}
+
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn fail_records_the_error_and_schedules_a_retry_instead_of_hot_looping(pool: PgPool) {

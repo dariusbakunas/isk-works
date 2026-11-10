@@ -8,7 +8,7 @@
 use chrono::{DateTime, Utc};
 use iskworks_core::{
     MarketCoverageItem, MarketCoverageRegistration, MarketError, MarketOrderObservationId,
-    PublicMarketCoverageWork, PublicMarketObservationBatch,
+    PublicMarketCoverageWork, PublicMarketObservationBatch, RetryPolicy,
 };
 use uuid::Uuid;
 
@@ -389,8 +389,8 @@ impl PgMarketRepository {
     }
 
     /// A failed refresh: `next_refresh_at` is the caller's floor (it may carry
-    /// a server-directed wait), and consecutive failures back off 1, 2, 4...
-    /// minutes, capped at 6 hours, exactly as per-workspace coverage does.
+    /// a server-directed wait), and consecutive failures back off per
+    /// `RetryPolicy::ESI_EVIDENCE`, exactly as per-workspace coverage does.
     /// The same wait becomes `refresh_not_before`, so prioritizing can't cut
     /// it short.
     pub async fn fail_public_market_refresh(
@@ -403,24 +403,34 @@ impl PgMarketRepository {
         error_message: String,
     ) -> Result<bool, MarketError> {
         let error_message: String = error_message.chars().take(500).collect();
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let failures: Option<i32> = sqlx::query_scalar(
+            r#"
+            SELECT consecutive_failures FROM public_market_coverage
+            WHERE region_id=$1 AND type_id=$2
+              AND refresh_state='refreshing' AND last_attempted_at=$3
+            FOR UPDATE
+            "#,
+        )
+        .bind(region_id)
+        .bind(type_id)
+        .bind(claim)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(failures) = failures else {
+            return Ok(false);
+        };
+        let retry_at = RetryPolicy::ESI_EVIDENCE.retry_at(
+            attempted_at,
+            failures.unsigned_abs(),
+            next_refresh_at,
+        );
         sqlx::query(
             r#"
             UPDATE public_market_coverage
             SET refresh_state='failed',last_attempted_at=$3,
-                next_refresh_at=GREATEST(
-                  $4,
-                  $3 + LEAST(
-                    interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                    interval '6 hours'
-                  )
-                ),
-                refresh_not_before=GREATEST(
-                  $4,
-                  $3 + LEAST(
-                    interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                    interval '6 hours'
-                  )
-                ),
+                next_refresh_at=$4,refresh_not_before=$4,
                 consecutive_failures=consecutive_failures + 1,
                 lease_expires_at=NULL,priority_requested_at=NULL,last_error=$5,updated_at=$3
             WHERE region_id=$1 AND type_id=$2
@@ -430,13 +440,14 @@ impl PgMarketRepository {
         .bind(region_id)
         .bind(type_id)
         .bind(attempted_at)
-        .bind(next_refresh_at)
+        .bind(retry_at)
         .bind(error_message)
         .bind(claim)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
     }
 }
 

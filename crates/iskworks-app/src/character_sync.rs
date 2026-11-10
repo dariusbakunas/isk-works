@@ -13,7 +13,7 @@ use iskworks_core::{
     ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId,
 };
 use iskworks_core::{
-    CharacterSourceRefreshRepository, EntityNameRepository, IndustryJobRepository,
+    CharacterSourceRefreshRepository, EntityNameRepository, IndustryJobRepository, RetryPolicy,
 };
 use iskworks_esi::{
     CharacterIndustryJobObservation, CharacterOrderObservation, EsiError, EsiTransport,
@@ -373,12 +373,13 @@ fn refresh_interval(kind: CharacterSourceKind) -> Duration {
     }
 }
 
-/// The first retry after a failed source refresh. The storage layer doubles
-/// it for each consecutive failure (capped at 6 hours), so a source that
-/// keeps failing -- a 403 the character can't fix, an endpoint that's down
-/// -- stops spending ESI's error budget every five minutes.
+/// The first retry after a failed source refresh: the base of
+/// `RetryPolicy::CHARACTER_SOURCE`, which storage doubles for each
+/// consecutive failure (capped at 6 hours), so a source that keeps failing
+/// -- a 403 the character can't fix, an endpoint that's down -- stops
+/// spending ESI's error budget every five minutes.
 fn retry_interval() -> Duration {
-    Duration::minutes(5)
+    RetryPolicy::CHARACTER_SOURCE.base
 }
 
 /// Why a source refresh failed, and how long ESI asked us to wait before

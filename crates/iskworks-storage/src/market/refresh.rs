@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use iskworks_core::{
     EsiMarketObservationBatch, MarketCoverageItem, MarketError, MarketOrderObservationId,
-    MarketRefreshFailure, PriceSourceId, WorkspaceId,
+    MarketRefreshFailure, PriceSourceId, RetryPolicy, WorkspaceId,
 };
 use uuid::Uuid;
 
@@ -403,29 +403,39 @@ impl PgMarketRepository {
         let error_message: String = error_message.chars().take(500).collect();
         // `next_refresh_at` is the caller's floor (it may carry a
         // server-directed wait); on top of that, consecutive failures back
-        // off exponentially -- 1, 2, 4... minutes, capped at 6 hours -- so a
-        // row that keeps failing stops spending the shared ESI error budget
-        // every minute. The right-hand side sees the pre-update count. The
-        // same wait becomes `refresh_not_before`, so prioritizing can't cut
-        // it short.
+        // off per `RetryPolicy::ESI_EVIDENCE`, from the pre-update count, so
+        // a row that keeps failing stops spending the shared ESI error
+        // budget every minute. The same wait becomes `refresh_not_before`,
+        // so prioritizing can't cut it short.
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let failures: Option<i32> = sqlx::query_scalar(
+            r#"
+            SELECT consecutive_failures FROM market_source_coverage
+            WHERE workspace_id=$1 AND price_source_id=$2 AND type_id=$3
+              AND refresh_state='refreshing' AND last_attempted_at=$4
+            FOR UPDATE
+            "#,
+        )
+        .bind(workspace_id.0)
+        .bind(source_id.0)
+        .bind(type_id)
+        .bind(claim)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(failures) = failures else {
+            return Ok(false);
+        };
+        let retry_at = RetryPolicy::ESI_EVIDENCE.retry_at(
+            attempted_at,
+            failures.unsigned_abs(),
+            next_refresh_at,
+        );
         sqlx::query(
             r#"
             UPDATE market_source_coverage
             SET refresh_state='failed',last_attempted_at=$4,
-                next_refresh_at=GREATEST(
-                  $5,
-                  $4 + LEAST(
-                    interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                    interval '6 hours'
-                  )
-                ),
-                refresh_not_before=GREATEST(
-                  $5,
-                  $4 + LEAST(
-                    interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                    interval '6 hours'
-                  )
-                ),
+                next_refresh_at=$5,refresh_not_before=$5,
                 consecutive_failures=consecutive_failures + 1,
                 lease_expires_at=NULL,priority_requested_at=NULL,last_error=$6,updated_at=$4
             WHERE workspace_id=$1 AND price_source_id=$2 AND type_id=$3
@@ -436,13 +446,14 @@ impl PgMarketRepository {
         .bind(source_id.0)
         .bind(type_id)
         .bind(attempted_at)
-        .bind(next_refresh_at)
+        .bind(retry_at)
         .bind(error_message)
         .bind(claim)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
     }
 
     /// ESI answered a conditional refresh with `304 Not Modified`: the
