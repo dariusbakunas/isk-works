@@ -1,80 +1,11 @@
 use super::sync_runs::{checksum, finalize_run};
 use super::*;
+use async_trait::async_trait;
+use iskworks_core::{EntityNameRepository, EsiWalletRepository};
 
-impl PgEsiRepository {
-    pub async fn unresolved_wallet_client_ids(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<i64>, InventoryError> {
-        sqlx::query_scalar(
-            r#"
-            SELECT DISTINCT transaction.client_id
-            FROM esi_wallet_transactions transaction
-            JOIN eve_connections connection ON connection.id=transaction.connection_id
-            LEFT JOIN eve_entity_names entity ON entity.entity_id=transaction.client_id
-            LEFT JOIN eve_entity_name_misses miss
-              ON miss.entity_id=transaction.client_id
-             AND miss.checked_at > now() - interval '7 days'
-            WHERE connection.workspace_id=$1
-              AND connection.disconnected_at IS NULL
-              AND entity.entity_id IS NULL
-              AND miss.entity_id IS NULL
-            ORDER BY transaction.client_id
-            "#,
-        )
-        .bind(workspace_id.0)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)
-    }
-
-    /// Records IDs `/universe/names` could not name, so wallet enrichment
-    /// skips them for a week instead of resending them every sync.
-    pub async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError> {
-        if ids.is_empty() {
-            return Ok(());
-        }
-        sqlx::query(
-            r#"INSERT INTO eve_entity_name_misses (entity_id,checked_at)
-               SELECT entity_id, now() FROM unnest($1::bigint[]) AS ids(entity_id)
-               WHERE entity_id > 0
-               ON CONFLICT (entity_id) DO UPDATE SET checked_at=EXCLUDED.checked_at"#,
-        )
-        .bind(ids)
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(map_sqlx)
-    }
-
-    pub async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
-        if names.is_empty() {
-            return Ok(());
-        }
-        let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
-        for name in names {
-            sqlx::query(
-                r#"
-                INSERT INTO eve_entity_names (entity_id,entity_name,category,observed_at)
-                VALUES ($1,$2,$3,$4)
-                ON CONFLICT (entity_id) DO UPDATE SET
-                  entity_name=EXCLUDED.entity_name,
-                  category=EXCLUDED.category,
-                  observed_at=EXCLUDED.observed_at
-                "#,
-            )
-            .bind(name.id)
-            .bind(&name.name)
-            .bind(&name.category)
-            .bind(crate::db_now())
-            .execute(&mut *transaction)
-            .await
-            .map_err(map_sqlx)?;
-        }
-        transaction.commit().await.map_err(map_sqlx)
-    }
-
-    pub async fn complete_wallet(
+#[async_trait]
+impl EsiWalletRepository for PgEsiRepository {
+    async fn complete_wallet(
         &self,
         run: &EsiSyncRun,
         observations: &[WalletTransactionObservation],
@@ -171,9 +102,7 @@ impl PgEsiRepository {
         })
     }
 
-    /// Insert journal entries not seen before; existing entries are left
-    /// untouched (journal rows are immutable). Returns how many were new.
-    pub async fn save_wallet_journal(
+    async fn save_wallet_journal(
         &self,
         connection_id: ConnectedCharacterId,
         entries: &[WalletJournalObservation],
@@ -214,7 +143,7 @@ impl PgEsiRepository {
         Ok(inserted)
     }
 
-    pub async fn save_wallet_balance(
+    async fn save_wallet_balance(
         &self,
         run: &EsiSyncRun,
         balance: Decimal,
@@ -242,5 +171,95 @@ impl PgEsiRepository {
         .await
         .map_err(map_sqlx)?;
         Ok(())
+    }
+
+    async fn unresolved_wallet_client_ids(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<i64>, InventoryError> {
+        sqlx::query_scalar(
+            r#"
+            SELECT DISTINCT transaction.client_id
+            FROM esi_wallet_transactions transaction
+            JOIN eve_connections connection ON connection.id=transaction.connection_id
+            LEFT JOIN eve_entity_names entity ON entity.entity_id=transaction.client_id
+            LEFT JOIN eve_entity_name_misses miss
+              ON miss.entity_id=transaction.client_id
+             AND miss.checked_at > now() - interval '7 days'
+            WHERE connection.workspace_id=$1
+              AND connection.disconnected_at IS NULL
+              AND entity.entity_id IS NULL
+              AND miss.entity_id IS NULL
+            ORDER BY transaction.client_id
+            "#,
+        )
+        .bind(workspace_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)
+    }
+}
+
+#[async_trait]
+impl EntityNameRepository for PgEsiRepository {
+    async fn entity_names(
+        &self,
+        ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, String>, InventoryError> {
+        if ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT entity_id, entity_name FROM eve_entity_names WHERE entity_id = ANY($1)",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(rows.into_iter().collect())
+    }
+
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+        if names.is_empty() {
+            return Ok(());
+        }
+        let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
+        for name in names {
+            sqlx::query(
+                r#"
+                INSERT INTO eve_entity_names (entity_id,entity_name,category,observed_at)
+                VALUES ($1,$2,$3,$4)
+                ON CONFLICT (entity_id) DO UPDATE SET
+                  entity_name=EXCLUDED.entity_name,
+                  category=EXCLUDED.category,
+                  observed_at=EXCLUDED.observed_at
+                "#,
+            )
+            .bind(name.id)
+            .bind(&name.name)
+            .bind(&name.category)
+            .bind(crate::db_now())
+            .execute(&mut *transaction)
+            .await
+            .map_err(map_sqlx)?;
+        }
+        transaction.commit().await.map_err(map_sqlx)
+    }
+
+    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        sqlx::query(
+            r#"INSERT INTO eve_entity_name_misses (entity_id,checked_at)
+               SELECT entity_id, now() FROM unnest($1::bigint[]) AS ids(entity_id)
+               WHERE entity_id > 0
+               ON CONFLICT (entity_id) DO UPDATE SET checked_at=EXCLUDED.checked_at"#,
+        )
+        .bind(ids)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(map_sqlx)
     }
 }

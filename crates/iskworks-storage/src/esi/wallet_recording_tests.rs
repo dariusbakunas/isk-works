@@ -7,7 +7,9 @@ use iskworks_core::{
     adjustment_posting, purchase_posting, CostInputQuality, FinanceInventoryState,
     FinanceTransactionFilter, FinanceTransactionSort, InventoryRepository, PostInventoryCommand,
 };
-use iskworks_core::{EsiSyncRunRepository, InventoryBalance, InventoryItemKey};
+use iskworks_core::{
+    EsiSyncRunRepository, EsiWalletRepository, InventoryBalance, InventoryItemKey,
+};
 use serde_json::json;
 use sqlx::PgPool;
 

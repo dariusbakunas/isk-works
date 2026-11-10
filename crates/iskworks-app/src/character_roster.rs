@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use iskworks_core::order::ObservedIndustryJob;
+use iskworks_core::EntityNameRepository;
 use iskworks_core::{
     character_health, industry_job_slot_max, CharacterConnectionReader, CharacterHealth,
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
@@ -186,6 +187,7 @@ pub struct CharacterDetail {
 #[derive(Clone)]
 pub struct CharacterRosterService {
     repository: Arc<PgEsiRepository>,
+    entity_names: Arc<dyn EntityNameRepository>,
     sde_repository: Arc<dyn SdeReadRepository>,
 }
 
@@ -196,6 +198,7 @@ impl CharacterRosterService {
         sde_repository: Arc<dyn SdeReadRepository>,
     ) -> Self {
         Self {
+            entity_names: repository.clone(),
             repository,
             sde_repository,
         }
@@ -338,7 +341,7 @@ impl CharacterRosterService {
         entity_ids: HashSet<i64>,
     ) -> Result<HashMap<i64, String>, InventoryError> {
         let ids: Vec<i64> = entity_ids.into_iter().collect();
-        self.repository.entity_names(&ids).await
+        self.entity_names.entity_names(&ids).await
     }
 
     /// Skill names come from the local SDE type catalog, not ESI -- a

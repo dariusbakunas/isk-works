@@ -249,28 +249,6 @@ impl PgEsiRepository {
         Ok(())
     }
 
-    /// Reads whatever names are already cached in `eve_entity_names` for the
-    /// given IDs -- corporation/solar-system names for the roster included,
-    /// but this table isn't character-sync-specific (`cache_entity_names`
-    /// already backs wallet-client-name resolution). A pure DB read: unknown
-    /// IDs are simply absent from the result, not resolved via ESI here.
-    pub async fn entity_names(
-        &self,
-        ids: &[i64],
-    ) -> Result<std::collections::HashMap<i64, String>, InventoryError> {
-        if ids.is_empty() {
-            return Ok(std::collections::HashMap::new());
-        }
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT entity_id, entity_name FROM eve_entity_names WHERE entity_id = ANY($1)",
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
-        Ok(rows.into_iter().collect())
-    }
-
     /// Resolve industry-job facility ids to a name (+ solar system when
     /// known) from data this workspace already has: the player-structure
     /// name cache the Add-Structure / asset-sync flows populate
