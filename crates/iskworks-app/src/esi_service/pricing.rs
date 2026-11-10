@@ -59,7 +59,7 @@ impl EsiApplicationService {
             .map(|line| line.type_id)
             .collect::<Vec<_>>();
         let stored = self
-            .repository
+            .adjusted_prices
             .latest_adjusted_prices(&type_ids, now)
             .await?;
         if type_ids.iter().all(|type_id| stored.contains_key(type_id)) {
@@ -82,7 +82,7 @@ impl EsiApplicationService {
             .map(|value| value.with_timezone(&Utc))
             .filter(|value| *value > fetched_at)
             .unwrap_or_else(|| fetched_at + Duration::hours(1));
-        self.repository
+        self.evidence_refresh
             .save_adjusted_prices(
                 &response.records,
                 fetched_at,
@@ -134,7 +134,10 @@ impl EsiApplicationService {
             }
         }
 
-        let stored = self.repository.latest_adjusted_prices(&wanted, now).await?;
+        let stored = self
+            .adjusted_prices
+            .latest_adjusted_prices(&wanted, now)
+            .await?;
         if wanted.iter().all(|type_id| stored.contains_key(type_id)) {
             return Ok(subset(&stored, &wanted, now));
         }
@@ -149,7 +152,7 @@ impl EsiApplicationService {
             .map(|value| value.with_timezone(&Utc))
             .filter(|value| *value > fetched_at)
             .unwrap_or_else(|| fetched_at + Duration::hours(1));
-        self.repository
+        self.evidence_refresh
             .save_adjusted_prices(
                 &response.records,
                 fetched_at,

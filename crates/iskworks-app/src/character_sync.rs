@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use iskworks_core::EntityNameRepository;
 use iskworks_core::{
     calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
     is_running_job_status,
@@ -12,6 +11,9 @@ use iskworks_core::{
     training::{derive_training_state, SkillQueueEntry, TrainingState},
     CharacterConnectionReader, CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter,
     ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId,
+};
+use iskworks_core::{
+    CharacterSourceRefreshRepository, EntityNameRepository, IndustryJobRepository,
 };
 use iskworks_esi::{
     CharacterIndustryJobObservation, CharacterOrderObservation, EsiError, EsiTransport,
@@ -143,15 +145,14 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         jobs: &[CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
     ) -> Result<(), InventoryError> {
-        self.record_industry_jobs(connection_id, jobs, observed_at)
-            .await
+        IndustryJobRepository::record_industry_jobs(self, connection_id, jobs, observed_at).await
     }
 
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
     ) -> Result<(), InventoryError> {
-        self.register_character_sources(connection_id).await
+        CharacterSourceRefreshRepository::register_character_sources(self, connection_id).await
     }
 
     async fn begin_character_source_refresh(
@@ -161,7 +162,8 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, InventoryError> {
-        self.begin_character_source_refresh(
+        CharacterSourceRefreshRepository::begin_character_source_refresh(
+            self,
             connection_id,
             source_kind,
             attempted_at,
@@ -179,7 +181,8 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         summary: Value,
         observed_at: DateTime<Utc>,
     ) -> Result<bool, InventoryError> {
-        self.complete_character_source_refresh(
+        CharacterSourceRefreshRepository::complete_character_source_refresh(
+            self,
             connection_id,
             source_kind,
             claim,
@@ -199,7 +202,8 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         next_refresh_at: DateTime<Utc>,
         error_message: String,
     ) -> Result<bool, InventoryError> {
-        self.fail_character_source_refresh(
+        CharacterSourceRefreshRepository::fail_character_source_refresh(
+            self,
             connection_id,
             source_kind,
             claim,
@@ -215,7 +219,7 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         connection_id: ConnectedCharacterId,
         until: DateTime<Utc>,
     ) -> Result<(), InventoryError> {
-        self.defer_character_sources(connection_id, until).await
+        CharacterSourceRefreshRepository::defer_character_sources(self, connection_id, until).await
     }
 
     async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError> {

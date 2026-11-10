@@ -1,7 +1,9 @@
 use super::sync_runs::{checksum, finalize_run};
 use super::*;
 use async_trait::async_trait;
-use iskworks_core::{EsiAssetSnapshotRepository, StructureNameRepository};
+use iskworks_core::{
+    EsiAssetSnapshotRepository, EvidenceRefreshRepository, StructureNameRepository,
+};
 
 /// Rows per batched `esi_asset_observations` INSERT. Each row binds 11
 /// parameters, and Postgres allows 65,535 per statement.
@@ -82,28 +84,6 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         ))
     }
 
-    async fn register_adjusted_price_refresh(
-        &self,
-        now: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
-        PgEsiRepository::register_adjusted_price_refresh(self, now).await
-    }
-
-    async fn register_system_cost_index(
-        &self,
-        solar_system_id: i64,
-        now: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
-        PgEsiRepository::register_system_cost_index(self, solar_system_id, now).await
-    }
-
-    async fn latest_system_cost_index(
-        &self,
-        solar_system_id: i64,
-    ) -> Result<Option<(Decimal, DateTime<Utc>)>, InventoryError> {
-        PgEsiRepository::latest_system_cost_index(self, solar_system_id).await
-    }
-
     async fn system_cost_index_refresh_overlay(
         &self,
         solar_system_id: i64,
@@ -160,10 +140,8 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         .map(|row| row.is_some())
         .map_err(map_sqlx)
     }
-}
 
-impl PgEsiRepository {
-    pub async fn register_adjusted_price_refresh(
+    async fn register_adjusted_price_refresh(
         &self,
         now: DateTime<Utc>,
     ) -> Result<(), InventoryError> {
@@ -180,145 +158,7 @@ impl PgEsiRepository {
         .map_err(map_sqlx)
     }
 
-    pub async fn adjusted_price_refresh_due(
-        &self,
-        now: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
-        sqlx::query_scalar::<_, bool>(
-            r#"SELECT EXISTS (
-                 SELECT 1 FROM industry_adjusted_price_refresh_state
-                 WHERE (next_refresh_at IS NULL OR next_refresh_at <= $1)
-                   AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
-               )"#,
-        )
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_sqlx)
-    }
-
-    pub async fn begin_adjusted_price_refresh(
-        &self,
-        attempted_at: DateTime<Utc>,
-        lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
-        sqlx::query_scalar::<_, DateTime<Utc>>(
-            r#"UPDATE industry_adjusted_price_refresh_state
-               SET refresh_state='refreshing',last_attempted_at=$1,
-                   lease_expires_at=$2,last_error=NULL,updated_at=$1
-               WHERE singleton
-                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
-                 AND (next_refresh_at IS NULL OR next_refresh_at <= $1)
-               RETURNING last_attempted_at"#,
-        )
-        .bind(attempted_at)
-        .bind(lease_expires_at)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_sqlx)
-    }
-
-    pub async fn complete_adjusted_price_refresh(
-        &self,
-        claim: DateTime<Utc>,
-        prices: &[iskworks_core::AdjustedPrice],
-        observed_at: DateTime<Utc>,
-        next_refresh_at: DateTime<Utc>,
-        cache_expires_at: Option<DateTime<Utc>>,
-        etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
-        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
-        let owns_claim = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM industry_adjusted_price_refresh_state WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$1 FOR UPDATE)",
-        )
-        .bind(claim)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        if !owns_claim {
-            tx.rollback().await.map_err(map_sqlx)?;
-            return Ok(false);
-        }
-        let checksum = etag.unwrap_or("esi-markets-prices");
-        for price in prices {
-            sqlx::query(
-                r#"INSERT INTO industry_adjusted_price_observations
-                   (id,type_id,adjusted_price,observed_at,expires_at,etag,
-                    source_checksum,source_url)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-                   ON CONFLICT (type_id,observed_at,source_checksum) DO NOTHING"#,
-            )
-            .bind(Uuid::new_v4())
-            .bind(price.type_id)
-            .bind(price.adjusted_price)
-            .bind(observed_at)
-            .bind(next_refresh_at)
-            .bind(etag)
-            .bind(checksum)
-            .bind("https://esi.evetech.net/latest/markets/prices/")
-            .execute(&mut *tx)
-            .await
-            .map_err(map_sqlx)?;
-        }
-        sqlx::query(
-            r#"UPDATE industry_adjusted_price_refresh_state
-               SET refresh_state='current',observed_at=$1,
-                   next_refresh_at=GREATEST($2,$4),refresh_not_before=$4,
-                   consecutive_failures=0,
-                   lease_expires_at=NULL,last_error=NULL,updated_at=$1
-               WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$3"#,
-        )
-        .bind(observed_at)
-        .bind(next_refresh_at)
-        .bind(claim)
-        .bind(cache_expires_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        tx.commit().await.map_err(map_sqlx)?;
-        Ok(true)
-    }
-
-    pub async fn fail_adjusted_price_refresh(
-        &self,
-        claim: DateTime<Utc>,
-        attempted_at: DateTime<Utc>,
-        next_refresh_at: DateTime<Utc>,
-        error_message: &str,
-    ) -> Result<bool, InventoryError> {
-        let error_message: String = error_message.chars().take(500).collect();
-        sqlx::query(
-            r#"UPDATE industry_adjusted_price_refresh_state
-               SET refresh_state='failed',last_attempted_at=$1,
-                   next_refresh_at=GREATEST(
-                     $2,
-                     $1 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   refresh_not_before=GREATEST(
-                     $2,
-                     $1 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   consecutive_failures=consecutive_failures + 1,
-                   lease_expires_at=NULL,last_error=$3,updated_at=$1
-               WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$4"#,
-        )
-        .bind(attempted_at)
-        .bind(next_refresh_at)
-        .bind(error_message)
-        .bind(claim)
-        .execute(&self.pool)
-        .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
-    }
-
-    pub async fn register_system_cost_index(
+    async fn register_system_cost_index(
         &self,
         solar_system_id: i64,
         now: DateTime<Utc>,
@@ -342,157 +182,7 @@ impl PgEsiRepository {
         .map_err(map_sqlx)
     }
 
-    pub async fn system_cost_index_refresh_candidates(
-        &self,
-        now: DateTime<Utc>,
-        limit: i64,
-    ) -> Result<Vec<i64>, InventoryError> {
-        sqlx::query_scalar(
-            r#"SELECT solar_system_id
-               FROM industry_system_cost_index_registrations
-               WHERE (next_refresh_at IS NULL OR next_refresh_at <= $1)
-                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
-               ORDER BY priority_requested_at DESC NULLS LAST,
-                        next_refresh_at NULLS FIRST,solar_system_id
-               LIMIT $2"#,
-        )
-        .bind(now)
-        .bind(limit.max(0))
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)
-    }
-
-    pub async fn begin_system_cost_index_refresh(
-        &self,
-        solar_system_id: i64,
-        attempted_at: DateTime<Utc>,
-        lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
-        sqlx::query_scalar::<_, DateTime<Utc>>(
-            r#"UPDATE industry_system_cost_index_registrations
-               SET refresh_state='refreshing',last_attempted_at=$2,
-                   lease_expires_at=$3,last_error=NULL,updated_at=$2
-               WHERE solar_system_id=$1
-                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $2)
-                 AND (next_refresh_at IS NULL OR next_refresh_at <= $2)
-               RETURNING last_attempted_at"#,
-        )
-        .bind(solar_system_id)
-        .bind(attempted_at)
-        .bind(lease_expires_at)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_sqlx)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn complete_system_cost_index_refresh(
-        &self,
-        solar_system_id: i64,
-        claim: DateTime<Utc>,
-        cost_index: Decimal,
-        observed_at: DateTime<Utc>,
-        next_refresh_at: DateTime<Utc>,
-        cache_expires_at: Option<DateTime<Utc>>,
-        etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
-        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
-        let owns_claim = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM industry_system_cost_index_registrations WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$2 FOR UPDATE)",
-        )
-        .bind(solar_system_id)
-        .bind(claim)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        if !owns_claim {
-            tx.rollback().await.map_err(map_sqlx)?;
-            return Ok(false);
-        }
-        let checksum = etag.unwrap_or("esi-industry-systems");
-        sqlx::query(
-            r#"INSERT INTO industry_system_cost_index_observations
-               (id,solar_system_id,activity,cost_index,observed_at,expires_at,
-                etag,source_checksum,source_url)
-               VALUES ($1,$2,'manufacturing',$3,$4,$5,$6,$7,$8)
-               ON CONFLICT (solar_system_id,activity,observed_at,source_checksum) DO NOTHING"#,
-        )
-        .bind(Uuid::new_v4())
-        .bind(solar_system_id)
-        .bind(cost_index)
-        .bind(observed_at)
-        .bind(next_refresh_at)
-        .bind(etag)
-        .bind(checksum)
-        .bind("https://esi.evetech.net/latest/industry/systems/")
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        sqlx::query(
-            r#"UPDATE industry_system_cost_index_registrations
-               SET refresh_state='current',observed_at=$2,
-                   next_refresh_at=GREATEST($3,$5),refresh_not_before=$5,
-                   consecutive_failures=0,
-                   priority_requested_at=NULL,
-                   lease_expires_at=NULL,last_error=NULL,updated_at=$2
-               WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$4"#,
-        )
-        .bind(solar_system_id)
-        .bind(observed_at)
-        .bind(next_refresh_at)
-        .bind(claim)
-        .bind(cache_expires_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
-        tx.commit().await.map_err(map_sqlx)?;
-        Ok(true)
-    }
-
-    pub async fn fail_system_cost_index_refresh(
-        &self,
-        solar_system_id: i64,
-        claim: DateTime<Utc>,
-        attempted_at: DateTime<Utc>,
-        next_refresh_at: DateTime<Utc>,
-        error_message: &str,
-    ) -> Result<bool, InventoryError> {
-        let error_message: String = error_message.chars().take(500).collect();
-        sqlx::query(
-            r#"UPDATE industry_system_cost_index_registrations
-               SET refresh_state='failed',last_attempted_at=$2,
-                   next_refresh_at=GREATEST(
-                     $3,
-                     $2 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   refresh_not_before=GREATEST(
-                     $3,
-                     $2 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   consecutive_failures=consecutive_failures + 1,
-                   priority_requested_at=NULL,
-                   lease_expires_at=NULL,last_error=$4,updated_at=$2
-               WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$5"#,
-        )
-        .bind(solar_system_id)
-        .bind(attempted_at)
-        .bind(next_refresh_at)
-        .bind(error_message)
-        .bind(claim)
-        .execute(&self.pool)
-        .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
-    }
-
-    pub async fn latest_system_cost_index(
+    async fn latest_system_cost_index(
         &self,
         solar_system_id: i64,
     ) -> Result<Option<(Decimal, DateTime<Utc>)>, InventoryError> {
@@ -506,39 +196,6 @@ impl PgEsiRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)
-    }
-
-    pub async fn save_adjusted_prices(
-        &self,
-        prices: &[iskworks_core::AdjustedPrice],
-        observed_at: DateTime<Utc>,
-        expires_at: DateTime<Utc>,
-        etag: Option<&str>,
-    ) -> Result<(), InventoryError> {
-        let source_checksum = etag.unwrap_or("esi-markets-prices");
-        for chunk in prices.chunks(4_000) {
-            let mut query = QueryBuilder::new(
-                "INSERT INTO industry_adjusted_price_observations \
-                 (id, type_id, adjusted_price, observed_at, expires_at, etag, source_checksum, source_url) ",
-            );
-            query.push_values(chunk, |mut row, price| {
-                row.push_bind(Uuid::new_v4())
-                    .push_bind(price.type_id)
-                    .push_bind(price.adjusted_price)
-                    .push_bind(observed_at)
-                    .push_bind(expires_at)
-                    .push_bind(etag)
-                    .push_bind(source_checksum)
-                    .push_bind("https://esi.evetech.net/latest/markets/prices/");
-            });
-            query
-                .push(" ON CONFLICT (type_id, observed_at, source_checksum) DO NOTHING")
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sqlx)?;
-        }
-        Ok(())
     }
 }
 
@@ -901,6 +558,326 @@ impl StructureNameRepository for PgEsiRepository {
         .bind(connection.id.0)
         .fetch_all(&self.pool)
         .await
+        .map_err(map_sqlx)
+    }
+}
+
+#[async_trait]
+impl EvidenceRefreshRepository for PgEsiRepository {
+    async fn adjusted_price_refresh_due(&self, now: DateTime<Utc>) -> Result<bool, InventoryError> {
+        sqlx::query_scalar::<_, bool>(
+            r#"SELECT EXISTS (
+                 SELECT 1 FROM industry_adjusted_price_refresh_state
+                 WHERE (next_refresh_at IS NULL OR next_refresh_at <= $1)
+                   AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
+               )"#,
+        )
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_sqlx)
+    }
+
+    async fn begin_adjusted_price_refresh(
+        &self,
+        attempted_at: DateTime<Utc>,
+        lease_expires_at: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+        sqlx::query_scalar::<_, DateTime<Utc>>(
+            r#"UPDATE industry_adjusted_price_refresh_state
+               SET refresh_state='refreshing',last_attempted_at=$1,
+                   lease_expires_at=$2,last_error=NULL,updated_at=$1
+               WHERE singleton
+                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
+                 AND (next_refresh_at IS NULL OR next_refresh_at <= $1)
+               RETURNING last_attempted_at"#,
+        )
+        .bind(attempted_at)
+        .bind(lease_expires_at)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)
+    }
+
+    async fn complete_adjusted_price_refresh(
+        &self,
+        claim: DateTime<Utc>,
+        prices: &[iskworks_core::AdjustedPrice],
+        observed_at: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        cache_expires_at: Option<DateTime<Utc>>,
+        etag: Option<&str>,
+    ) -> Result<bool, InventoryError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let owns_claim = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM industry_adjusted_price_refresh_state WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$1 FOR UPDATE)",
+        )
+        .bind(claim)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        if !owns_claim {
+            tx.rollback().await.map_err(map_sqlx)?;
+            return Ok(false);
+        }
+        let checksum = etag.unwrap_or("esi-markets-prices");
+        for price in prices {
+            sqlx::query(
+                r#"INSERT INTO industry_adjusted_price_observations
+                   (id,type_id,adjusted_price,observed_at,expires_at,etag,
+                    source_checksum,source_url)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                   ON CONFLICT (type_id,observed_at,source_checksum) DO NOTHING"#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(price.type_id)
+            .bind(price.adjusted_price)
+            .bind(observed_at)
+            .bind(next_refresh_at)
+            .bind(etag)
+            .bind(checksum)
+            .bind("https://esi.evetech.net/latest/markets/prices/")
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx)?;
+        }
+        sqlx::query(
+            r#"UPDATE industry_adjusted_price_refresh_state
+               SET refresh_state='current',observed_at=$1,
+                   next_refresh_at=GREATEST($2,$4),refresh_not_before=$4,
+                   consecutive_failures=0,
+                   lease_expires_at=NULL,last_error=NULL,updated_at=$1
+               WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$3"#,
+        )
+        .bind(observed_at)
+        .bind(next_refresh_at)
+        .bind(claim)
+        .bind(cache_expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
+    }
+
+    async fn fail_adjusted_price_refresh(
+        &self,
+        claim: DateTime<Utc>,
+        attempted_at: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        error_message: &str,
+    ) -> Result<bool, InventoryError> {
+        let error_message: String = error_message.chars().take(500).collect();
+        sqlx::query(
+            r#"UPDATE industry_adjusted_price_refresh_state
+               SET refresh_state='failed',last_attempted_at=$1,
+                   next_refresh_at=GREATEST(
+                     $2,
+                     $1 + LEAST(
+                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
+                       interval '6 hours'
+                     )
+                   ),
+                   refresh_not_before=GREATEST(
+                     $2,
+                     $1 + LEAST(
+                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
+                       interval '6 hours'
+                     )
+                   ),
+                   consecutive_failures=consecutive_failures + 1,
+                   lease_expires_at=NULL,last_error=$3,updated_at=$1
+               WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$4"#,
+        )
+        .bind(attempted_at)
+        .bind(next_refresh_at)
+        .bind(error_message)
+        .bind(claim)
+        .execute(&self.pool)
+        .await
+        .map(|result| result.rows_affected() == 1)
+        .map_err(map_sqlx)
+    }
+
+    async fn save_adjusted_prices(
+        &self,
+        prices: &[iskworks_core::AdjustedPrice],
+        observed_at: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+        etag: Option<&str>,
+    ) -> Result<(), InventoryError> {
+        let source_checksum = etag.unwrap_or("esi-markets-prices");
+        for chunk in prices.chunks(4_000) {
+            let mut query = QueryBuilder::new(
+                "INSERT INTO industry_adjusted_price_observations \
+                 (id, type_id, adjusted_price, observed_at, expires_at, etag, source_checksum, source_url) ",
+            );
+            query.push_values(chunk, |mut row, price| {
+                row.push_bind(Uuid::new_v4())
+                    .push_bind(price.type_id)
+                    .push_bind(price.adjusted_price)
+                    .push_bind(observed_at)
+                    .push_bind(expires_at)
+                    .push_bind(etag)
+                    .push_bind(source_checksum)
+                    .push_bind("https://esi.evetech.net/latest/markets/prices/");
+            });
+            query
+                .push(" ON CONFLICT (type_id, observed_at, source_checksum) DO NOTHING")
+                .build()
+                .execute(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
+        }
+        Ok(())
+    }
+
+    async fn system_cost_index_refresh_candidates(
+        &self,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<i64>, InventoryError> {
+        sqlx::query_scalar(
+            r#"SELECT solar_system_id
+               FROM industry_system_cost_index_registrations
+               WHERE (next_refresh_at IS NULL OR next_refresh_at <= $1)
+                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $1)
+               ORDER BY priority_requested_at DESC NULLS LAST,
+                        next_refresh_at NULLS FIRST,solar_system_id
+               LIMIT $2"#,
+        )
+        .bind(now)
+        .bind(limit.max(0))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)
+    }
+
+    async fn begin_system_cost_index_refresh(
+        &self,
+        solar_system_id: i64,
+        attempted_at: DateTime<Utc>,
+        lease_expires_at: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+        sqlx::query_scalar::<_, DateTime<Utc>>(
+            r#"UPDATE industry_system_cost_index_registrations
+               SET refresh_state='refreshing',last_attempted_at=$2,
+                   lease_expires_at=$3,last_error=NULL,updated_at=$2
+               WHERE solar_system_id=$1
+                 AND (refresh_state <> 'refreshing' OR lease_expires_at <= $2)
+                 AND (next_refresh_at IS NULL OR next_refresh_at <= $2)
+               RETURNING last_attempted_at"#,
+        )
+        .bind(solar_system_id)
+        .bind(attempted_at)
+        .bind(lease_expires_at)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)
+    }
+
+    async fn complete_system_cost_index_refresh(
+        &self,
+        solar_system_id: i64,
+        claim: DateTime<Utc>,
+        cost_index: Decimal,
+        observed_at: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        cache_expires_at: Option<DateTime<Utc>>,
+        etag: Option<&str>,
+    ) -> Result<bool, InventoryError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let owns_claim = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM industry_system_cost_index_registrations WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$2 FOR UPDATE)",
+        )
+        .bind(solar_system_id)
+        .bind(claim)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        if !owns_claim {
+            tx.rollback().await.map_err(map_sqlx)?;
+            return Ok(false);
+        }
+        let checksum = etag.unwrap_or("esi-industry-systems");
+        sqlx::query(
+            r#"INSERT INTO industry_system_cost_index_observations
+               (id,solar_system_id,activity,cost_index,observed_at,expires_at,
+                etag,source_checksum,source_url)
+               VALUES ($1,$2,'manufacturing',$3,$4,$5,$6,$7,$8)
+               ON CONFLICT (solar_system_id,activity,observed_at,source_checksum) DO NOTHING"#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(solar_system_id)
+        .bind(cost_index)
+        .bind(observed_at)
+        .bind(next_refresh_at)
+        .bind(etag)
+        .bind(checksum)
+        .bind("https://esi.evetech.net/latest/industry/systems/")
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        sqlx::query(
+            r#"UPDATE industry_system_cost_index_registrations
+               SET refresh_state='current',observed_at=$2,
+                   next_refresh_at=GREATEST($3,$5),refresh_not_before=$5,
+                   consecutive_failures=0,
+                   priority_requested_at=NULL,
+                   lease_expires_at=NULL,last_error=NULL,updated_at=$2
+               WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$4"#,
+        )
+        .bind(solar_system_id)
+        .bind(observed_at)
+        .bind(next_refresh_at)
+        .bind(claim)
+        .bind(cache_expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
+    }
+
+    async fn fail_system_cost_index_refresh(
+        &self,
+        solar_system_id: i64,
+        claim: DateTime<Utc>,
+        attempted_at: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        error_message: &str,
+    ) -> Result<bool, InventoryError> {
+        let error_message: String = error_message.chars().take(500).collect();
+        sqlx::query(
+            r#"UPDATE industry_system_cost_index_registrations
+               SET refresh_state='failed',last_attempted_at=$2,
+                   next_refresh_at=GREATEST(
+                     $3,
+                     $2 + LEAST(
+                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
+                       interval '6 hours'
+                     )
+                   ),
+                   refresh_not_before=GREATEST(
+                     $3,
+                     $2 + LEAST(
+                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
+                       interval '6 hours'
+                     )
+                   ),
+                   consecutive_failures=consecutive_failures + 1,
+                   priority_requested_at=NULL,
+                   lease_expires_at=NULL,last_error=$4,updated_at=$2
+               WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$5"#,
+        )
+        .bind(solar_system_id)
+        .bind(attempted_at)
+        .bind(next_refresh_at)
+        .bind(error_message)
+        .bind(claim)
+        .execute(&self.pool)
+        .await
+        .map(|result| result.rows_affected() == 1)
         .map_err(map_sqlx)
     }
 }

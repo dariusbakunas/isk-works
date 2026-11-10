@@ -1,8 +1,9 @@
 use super::*;
 use iskworks_core::BlueprintAssetObservation;
 use iskworks_core::{
-    AdjustedPriceRepository, CharacterConnectionReader, EntityNameRepository,
-    EsiAssetSnapshotRepository, EsiConnectionRepository, EsiSyncRunRepository, EsiWalletRepository,
+    AdjustedPriceRepository, CharacterConnectionReader, CharacterSourceRefreshRepository,
+    EntityNameRepository, EsiAssetSnapshotRepository, EsiConnectionRepository,
+    EsiSyncRunRepository, EsiWalletRepository, EvidenceRefreshRepository, IndustryJobRepository,
     IndustryRepository,
 };
 use iskworks_esi::SecretCipher;
