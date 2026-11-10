@@ -220,7 +220,7 @@ impl PgEsiRepository {
     pub async fn complete_adjusted_price_refresh(
         &self,
         claim: DateTime<Utc>,
-        prices: &[iskworks_esi::AdjustedPrice],
+        prices: &[iskworks_core::AdjustedPrice],
         observed_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
@@ -509,7 +509,7 @@ impl PgEsiRepository {
 
     pub async fn save_adjusted_prices(
         &self,
-        prices: &[iskworks_esi::AdjustedPrice],
+        prices: &[iskworks_core::AdjustedPrice],
         observed_at: DateTime<Utc>,
         expires_at: DateTime<Utc>,
         etag: Option<&str>,
@@ -681,7 +681,7 @@ impl PgEsiRepository {
     pub async fn complete_blueprints(
         &self,
         connection: &ConnectedCharacter,
-        observations: &[iskworks_esi::BlueprintAssetObservation],
+        observations: &[iskworks_core::BlueprintAssetObservation],
         retained_item_ids: &[i64],
     ) -> Result<(), InventoryError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;

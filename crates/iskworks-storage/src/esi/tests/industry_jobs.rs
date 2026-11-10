@@ -1,6 +1,6 @@
 use super::*;
 use chrono::{Duration, TimeZone, Utc};
-use iskworks_esi::CharacterIndustryJobObservation;
+use iskworks_core::CharacterIndustryJobObservation;
 use rust_decimal::Decimal;
 
 fn job(job_id: i64, status: &str) -> CharacterIndustryJobObservation {

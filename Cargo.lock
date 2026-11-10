@@ -1584,6 +1584,7 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "iskworks-core",
  "jsonwebtoken",
  "metrics",
  "metrics-util",

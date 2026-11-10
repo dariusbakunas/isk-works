@@ -153,7 +153,7 @@ async fn failed_adjusted_price_refresh_preserves_the_last_dataset(pool: PgPool) 
     repository
         .complete_adjusted_price_refresh(
             initial_claim,
-            &[iskworks_esi::AdjustedPrice {
+            &[iskworks_core::AdjustedPrice {
                 type_id: 34,
                 adjusted_price: Decimal::new(425, 2),
             }],

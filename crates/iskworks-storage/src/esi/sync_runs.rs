@@ -65,7 +65,7 @@ impl PgEsiRepository {
     pub async fn record_sync_metadata(
         &self,
         run_id: EsiSyncRunId,
-        metadata: &iskworks_esi::EsiResponseMetadata,
+        metadata: &iskworks_core::EsiResponseMetadata,
     ) -> Result<(), InventoryError> {
         sqlx::query("UPDATE esi_sync_runs SET rate_limit_metadata = $2 WHERE id = $1")
             .bind(run_id.0)

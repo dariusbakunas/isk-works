@@ -581,12 +581,12 @@ async fn entity_names_returns_only_the_cached_ids_and_ignores_unknown_ones(pool:
     let repository = PgEsiRepository::new(pool);
     repository
         .cache_entity_names(&[
-            iskworks_esi::EveEntityName {
+            iskworks_core::EveEntityName {
                 id: 98_000_001,
                 name: "Perimeter Industrial Holdings".to_string(),
                 category: "corporation".to_string(),
             },
-            iskworks_esi::EveEntityName {
+            iskworks_core::EveEntityName {
                 id: 30_000_142,
                 name: "Jita".to_string(),
                 category: "solar_system".to_string(),

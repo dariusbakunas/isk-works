@@ -9,7 +9,6 @@ license.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 iskworks-core = { path = "../iskworks-core" }
-iskworks-esi = { path = "../iskworks-esi" }
 iskworks-sde = { path = "../iskworks-sde" }
 log.workspace = true
 metrics.workspace = true

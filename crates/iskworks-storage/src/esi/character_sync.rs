@@ -62,7 +62,7 @@ impl PgEsiRepository {
     pub async fn record_industry_jobs(
         &self,
         connection_id: ConnectedCharacterId,
-        jobs: &[iskworks_esi::CharacterIndustryJobObservation],
+        jobs: &[iskworks_core::CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
     ) -> Result<(), InventoryError> {
         if jobs.is_empty() {

@@ -13,6 +13,8 @@ pub mod calendar_event;
 mod candidate;
 pub mod canonical_planner;
 mod component_expansion;
+mod encrypted_secret;
+mod esi_observation;
 pub mod execution_plan;
 mod facility;
 mod finance;
@@ -82,6 +84,12 @@ pub use component_expansion::{
     PreviewComponentExpansionCommand, ResolvedComponent,
 };
 /// Workspace default facility per EVE industry target filter.
+pub use encrypted_secret::EncryptedSecret;
+pub use esi_observation::{
+    AdjustedPrice, AssetObservation, BlueprintAssetObservation, CharacterIndustryJobObservation,
+    EsiResponseMetadata, EveEntityName, StructureInformation, WalletJournalObservation,
+    WalletTransactionObservation,
+};
 pub use facility::defaults as facility_defaults;
 pub use facility::{
     calculate_adjusted_price_eiv, decide_facility_import, export_command, facility_identity,
