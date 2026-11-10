@@ -3,10 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
-  listMarketHubs,
-  listMarketRegionLocations,
-  listMarketRegions,
-  listMarketStructures,
   searchMarketLocations,
   type MarketAccessState,
   type MarketHubSummary,
@@ -18,17 +14,12 @@ import {
   type ScopeFreshness,
 } from "../api/industry";
 import { useDebouncedLookup } from "../hooks/use-debounced-lookup";
+import { useMarketScopeData, type StructuresState } from "../hooks/use-market-scope-data";
 import { useMarketScopeRecents, type MarketScopeRecent } from "../hooks/use-market-scope-recents";
 import { Badge, type Tone } from "./primitives";
 
 type Tab = "hubs" | "structures" | "regions";
 type ResultKind = "hub" | "npcStation" | "structure" | "region";
-
-type StructuresState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; data: MarketStructureSummary[] }
-  | { status: "error" };
 
 // Matches the popover's own `w-[480px]`. The popover is portaled to
 // `document.body` and positioned with `fixed` coordinates computed from the
@@ -70,16 +61,28 @@ export function MarketScopeSelector({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("hubs");
   const [query, setQuery] = useState("");
-  const [regions, setRegions] = useState<MarketRegion[]>([]);
-  // Locations for the *committed* scope's region -- only needed to resolve
-  // the trigger button's own label, kept separate from the draft list below
-  // so opening the popover and browsing other regions never flickers it.
-  const [activeLocations, setActiveLocations] = useState<MarketLocation[]>([]);
   const [draftRegionId, setDraftRegionId] = useState(scope.regionId);
   const [draftLocationId, setDraftLocationId] = useState(scope.locationId);
-  const [draftLocations, setDraftLocations] = useState<MarketLocation[]>([]);
-  const [hubs, setHubs] = useState<MarketHubSummary[] | null>(null);
-  const [structuresState, setStructuresState] = useState<StructuresState>({ status: "idle" });
+  // Each open is a fresh session: hubs and structures refetch, and the
+  // structures list loads only once its tab is visited in that session.
+  const [session, setSession] = useState(0);
+  const [structuresSession, setStructuresSession] = useState<number | null>(null);
+  // `activeLocations` (the committed scope's region) only resolves the
+  // trigger button's own label; it's kept apart from `draftLocations` so
+  // opening the popover and browsing other regions never flickers it.
+  const {
+    regions,
+    activeLocations,
+    draftLocations,
+    hubs,
+    structures: structuresState,
+  } = useMarketScopeData({
+    regionId: scope.regionId,
+    draftRegionId,
+    open,
+    session,
+    structuresWanted: structuresSession === session,
+  });
   const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -97,56 +100,18 @@ export function MarketScopeSelector({
   );
   const searching = query.trim().length > 0;
 
-  useEffect(() => {
-    listMarketRegions()
-      .then(setRegions)
-      .catch(() => setRegions([]));
-  }, []);
-
-  useEffect(() => {
-    listMarketRegionLocations(scope.regionId)
-      .then(setActiveLocations)
-      .catch(() => setActiveLocations([]));
-  }, [scope.regionId]);
-
-  // One fresh "session" per open: reset every draft/tab/query/cache back to
-  // its starting point so a stale search or a tab left open from last time
-  // never leaks into the next visit.
+  // One fresh session per open: reset every draft/tab/query back to its
+  // starting point so a stale search or a tab left open from last time
+  // never leaks into the next visit. The trigger does this on open; this
+  // also covers the scope changing while the popover is open.
   useEffect(() => {
     if (!open) return;
     setTab("hubs");
     setQuery("");
     setDraftRegionId(scope.regionId);
     setDraftLocationId(scope.locationId);
-    setHubs(null);
-    setStructuresState({ status: "idle" });
   }, [open, scope.regionId, scope.locationId]);
 
-  useEffect(() => {
-    if (!open || hubs !== null) return;
-    listMarketHubs()
-      .then(setHubs)
-      .catch(() => setHubs([]));
-  }, [open, hubs]);
-
-  useEffect(() => {
-    if (!open || tab !== "structures" || structuresState.status !== "idle") return;
-    setStructuresState({ status: "loading" });
-    listMarketStructures()
-      .then((data) => setStructuresState({ status: "ready", data }))
-      .catch(() => setStructuresState({ status: "error" }));
-  }, [open, tab, structuresState.status]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (draftRegionId === scope.regionId) {
-      setDraftLocations(activeLocations);
-      return;
-    }
-    listMarketRegionLocations(draftRegionId)
-      .then(setDraftLocations)
-      .catch(() => setDraftLocations([]));
-  }, [open, draftRegionId, scope.regionId, activeLocations]);
 
   useEffect(() => {
     if (!open) return;
@@ -272,7 +237,19 @@ export function MarketScopeSelector({
         aria-expanded={open}
         aria-haspopup="dialog"
         className="iw-button-secondary"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open) {
+            // Start the session here, not only in the effect below, so the
+            // first open render neither shows last visit's tab nor fetches
+            // its draft region.
+            setTab("hubs");
+            setQuery("");
+            setDraftRegionId(scope.regionId);
+            setDraftLocationId(scope.locationId);
+            setSession((current) => current + 1);
+          }
+          setOpen(!open);
+        }}
         ref={triggerRef}
         type="button"
       >
@@ -345,7 +322,12 @@ export function MarketScopeSelector({
                   </button>
                   <button
                     className={tab === "structures" ? "iw-button-primary" : "iw-button-secondary"}
-                    onClick={() => setTab("structures")}
+                    onClick={() => {
+                      // The structures list lazy-loads on the first visit
+                      // to its tab in each session.
+                      setTab("structures");
+                      setStructuresSession(session);
+                    }}
                     role="tab"
                     aria-selected={tab === "structures"}
                     type="button"
