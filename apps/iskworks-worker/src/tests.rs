@@ -366,12 +366,17 @@ async fn empty_market_and_system_polls_make_no_esi_request(pool: sqlx::PgPool) {
     );
     assert_eq!(
         worker
+            .evidence_refresh()
             .refresh_due_system_indices(chrono::Utc::now())
             .await
             .unwrap(),
         0
     );
-    assert!(!worker.refresh_due_adjusted_prices(now).await.unwrap());
+    assert!(!worker
+        .evidence_refresh()
+        .refresh_due_adjusted_prices(now)
+        .await
+        .unwrap());
 }
 
 /// Serves one regional Tritanium book and counts calls; every other ESI

@@ -1,11 +1,12 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use iskworks_app::{CharacterSyncService, MarketAccessResolver, PublicMarketService};
-use iskworks_core::{
-    AdjustedPriceRepository, CharacterSourceRefreshRepository, EvidenceRefreshRepository,
+use iskworks_app::{
+    CharacterSyncService, EvidenceRefreshSchedule, EvidenceRefreshService, MarketAccessResolver,
+    PublicMarketService,
 };
+use iskworks_core::CharacterSourceRefreshRepository;
 use iskworks_esi::EsiTransport;
 use iskworks_storage::{
     AuthPurgeOutcome, EsiObservationPruneOutcome, PgAuthMaintenance, PgEsiRepository,
@@ -17,18 +18,18 @@ use tokio_util::sync::CancellationToken;
 use crate::WorkerConfig;
 
 #[derive(Clone)]
-pub struct EvidenceWorker<T: EsiTransport + 'static> {
+pub struct EvidenceWorker {
     config: WorkerConfig,
     esi_repository: Arc<PgEsiRepository>,
     market_repository: Arc<PgMarketRepository>,
-    transport: Arc<T>,
     market: PublicMarketService,
+    evidence: EvidenceRefreshService,
     character_sync: Option<CharacterSyncService>,
     auth_maintenance: Option<PgAuthMaintenance>,
 }
 
-impl<T: EsiTransport + 'static> EvidenceWorker<T> {
-    pub fn new(
+impl EvidenceWorker {
+    pub fn new<T: EsiTransport + 'static>(
         config: WorkerConfig,
         esi_repository: Arc<PgEsiRepository>,
         market_repository: Arc<PgMarketRepository>,
@@ -40,12 +41,20 @@ impl<T: EsiTransport + 'static> EvidenceWorker<T> {
                 config.lease_duration,
                 config.market_freshness,
             );
+        let evidence = EvidenceRefreshService::new(esi_repository.clone(), Arc::clone(&transport))
+            .with_schedule(EvidenceRefreshSchedule {
+                adjusted_price_freshness: config.adjusted_price_freshness,
+                system_index_freshness: config.system_index_freshness,
+                lease_duration: config.lease_duration,
+                retry_delay: config.retry_delay,
+                system_batch_size: config.system_batch_size,
+            });
         Self {
             config,
             esi_repository,
+            evidence,
             market_repository: Arc::clone(&market_repository),
             market,
-            transport,
             character_sync: None,
             auth_maintenance: None,
         }
@@ -61,6 +70,11 @@ impl<T: EsiTransport + 'static> EvidenceWorker<T> {
     pub fn with_character_sync(mut self, character_sync: Option<CharacterSyncService>) -> Self {
         self.character_sync = character_sync;
         self
+    }
+
+    /// The adjusted-price and system-index refresh passes.
+    pub fn evidence_refresh(&self) -> &EvidenceRefreshService {
+        &self.evidence
     }
 
     #[must_use]
@@ -191,160 +205,6 @@ impl<T: EsiTransport + 'static> EvidenceWorker<T> {
         Ok(public_count + count)
     }
 
-    pub async fn refresh_due_adjusted_prices(&self, now: DateTime<Utc>) -> Result<bool, String> {
-        self.esi_repository
-            .register_adjusted_price_refresh(now)
-            .await
-            .map_err(|error| error.to_string())?;
-        if !self
-            .esi_repository
-            .adjusted_price_refresh_due(now)
-            .await
-            .map_err(|error| error.to_string())?
-        {
-            return Ok(false);
-        }
-        let lease_expires_at = now
-            + chrono::Duration::from_std(self.config.lease_duration)
-                .map_err(|error| error.to_string())?;
-        let Some(claim) = self
-            .esi_repository
-            .begin_adjusted_price_refresh(now, lease_expires_at)
-            .await
-            .map_err(|error| error.to_string())?
-        else {
-            return Ok(false);
-        };
-        match self.transport.market_prices().await {
-            Ok(response) => {
-                let next_refresh_at = now
-                    + chrono::Duration::from_std(self.config.adjusted_price_freshness)
-                        .map_err(|error| error.to_string())?;
-                self.esi_repository
-                    .complete_adjusted_price_refresh(
-                        claim,
-                        &response.records,
-                        now,
-                        next_refresh_at,
-                        response.metadata.expires_at(),
-                        response.metadata.etag.as_deref(),
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?;
-                Ok(true)
-            }
-            Err(error) => {
-                let next_retry = now + retry_floor(self.config.retry_delay, &error);
-                self.esi_repository
-                    .fail_adjusted_price_refresh(claim, now, next_retry, &error.to_string())
-                    .await
-                    .map_err(|storage_error| storage_error.to_string())?;
-                Err(error.to_string())
-            }
-        }
-    }
-
-    pub async fn refresh_due_system_indices(&self, now: DateTime<Utc>) -> Result<usize, String> {
-        let systems = self
-            .esi_repository
-            .system_cost_index_refresh_candidates(now, self.config.system_batch_size)
-            .await
-            .map_err(|error| error.to_string())?;
-        let lease_expires_at = now
-            + chrono::Duration::from_std(self.config.lease_duration)
-                .map_err(|error| error.to_string())?;
-        let mut claimed = Vec::new();
-        let mut persistence_failures = Vec::new();
-        for system_id in systems {
-            match self
-                .esi_repository
-                .begin_system_cost_index_refresh(system_id, now, lease_expires_at)
-                .await
-            {
-                Ok(Some(claim)) => claimed.push((system_id, claim)),
-                Ok(None) => {}
-                Err(error) => persistence_failures.push(format!("{system_id}: {error}")),
-            }
-        }
-        if claimed.is_empty() {
-            return if persistence_failures.is_empty() {
-                Ok(0)
-            } else {
-                Err(persistence_failures.join("; "))
-            };
-        }
-        match self.transport.industry_systems().await {
-            Ok(response) => {
-                let values = response
-                    .records
-                    .into_iter()
-                    .map(|value| (value.solar_system_id, value.manufacturing))
-                    .collect::<BTreeMap<_, _>>();
-                let next_refresh_at = now
-                    + chrono::Duration::from_std(self.config.system_index_freshness)
-                        .map_err(|error| error.to_string())?;
-                for (system_id, claim) in &claimed {
-                    if let Some(value) = values.get(system_id) {
-                        if let Err(error) = self
-                            .esi_repository
-                            .complete_system_cost_index_refresh(
-                                *system_id,
-                                *claim,
-                                *value,
-                                now,
-                                next_refresh_at,
-                                response.metadata.expires_at(),
-                                response.metadata.etag.as_deref(),
-                            )
-                            .await
-                        {
-                            persistence_failures.push(format!("{system_id}: {error}"));
-                        }
-                    } else {
-                        if let Err(error) = self
-                            .esi_repository
-                            .fail_system_cost_index_refresh(
-                                *system_id,
-                                *claim,
-                                now,
-                                next_refresh_at,
-                                "ESI response omitted the registered solar system",
-                            )
-                            .await
-                        {
-                            persistence_failures.push(format!("{system_id}: {error}"));
-                        }
-                    }
-                }
-                if persistence_failures.is_empty() {
-                    Ok(claimed.len())
-                } else {
-                    Err(persistence_failures.join("; "))
-                }
-            }
-            Err(error) => {
-                let next_retry = now + retry_floor(self.config.retry_delay, &error);
-                for (system_id, claim) in &claimed {
-                    if let Err(storage_error) = self
-                        .esi_repository
-                        .fail_system_cost_index_refresh(
-                            *system_id,
-                            *claim,
-                            now,
-                            next_retry,
-                            &error.to_string(),
-                        )
-                        .await
-                    {
-                        persistence_failures.push(format!("{system_id}: {storage_error}"));
-                    }
-                }
-                persistence_failures.push(error.to_string());
-                Err(persistence_failures.join("; "))
-            }
-        }
-    }
-
     /// Pulls due `(connection, source_kind)` rows, dedupes to distinct
     /// connections (`CharacterSyncService::sync_connection` already
     /// re-evaluates due-ness per source, so one call per connection covers
@@ -397,15 +257,4 @@ impl<T: EsiTransport + 'static> EvidenceWorker<T> {
         }
         Ok(dispatched)
     }
-}
-
-/// The earliest retry after a failed ESI refresh: the configured delay, or
-/// longer when ESI asked us to wait (`EsiError::retry_after`). Storage adds
-/// exponential backoff on top for repeated failures.
-fn retry_floor(
-    retry_delay: std::time::Duration,
-    error: &iskworks_esi::EsiError,
-) -> chrono::Duration {
-    let wait = error.retry_after().unwrap_or_default().max(retry_delay);
-    chrono::Duration::from_std(wait).unwrap_or_else(|_| chrono::Duration::hours(6))
 }

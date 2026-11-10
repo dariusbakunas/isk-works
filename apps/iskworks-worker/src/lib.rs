@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use iskworks_esi::EsiTransport;
 use iskworks_storage::{AuthPurgeOutcome, DbPoolConfig};
 use tokio_util::sync::CancellationToken;
 
@@ -130,11 +129,7 @@ async fn poll_loop<F, Fut>(
     tracing::info!(worker = name, "worker loop stopped");
 }
 
-async fn market_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
-    interval: Duration,
-    cancel: CancellationToken,
-) {
+async fn market_loop(worker: Arc<EvidenceWorker>, interval: Duration, cancel: CancellationToken) {
     poll_loop(
         "market",
         interval,
@@ -158,11 +153,7 @@ async fn market_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn auth_gc_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
-    interval: Duration,
-    cancel: CancellationToken,
-) {
+async fn auth_gc_loop(worker: Arc<EvidenceWorker>, interval: Duration, cancel: CancellationToken) {
     poll_loop(
         "auth_gc",
         interval,
@@ -193,8 +184,8 @@ async fn auth_gc_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn market_gc_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
+async fn market_gc_loop(
+    worker: Arc<EvidenceWorker>,
     interval: Duration,
     cancel: CancellationToken,
 ) {
@@ -230,11 +221,7 @@ async fn market_gc_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn esi_gc_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
-    interval: Duration,
-    cancel: CancellationToken,
-) {
+async fn esi_gc_loop(worker: Arc<EvidenceWorker>, interval: Duration, cancel: CancellationToken) {
     poll_loop(
         "esi_gc",
         interval,
@@ -267,8 +254,8 @@ async fn esi_gc_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn adjusted_price_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
+async fn adjusted_price_loop(
+    worker: Arc<EvidenceWorker>,
     interval: Duration,
     cancel: CancellationToken,
 ) {
@@ -280,7 +267,11 @@ async fn adjusted_price_loop<T: EsiTransport + 'static>(
         move |_cancel| {
             let worker = Arc::clone(&worker);
             async move {
-                match worker.refresh_due_adjusted_prices(Utc::now()).await {
+                match worker
+                    .evidence_refresh()
+                    .refresh_due_adjusted_prices(Utc::now())
+                    .await
+                {
                     Ok(false) => tracing::trace!("adjusted-price evidence is not due"),
                     Ok(true) => tracing::info!("adjusted-price evidence refreshed"),
                     Err(error) => {
@@ -295,8 +286,8 @@ async fn adjusted_price_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn system_index_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
+async fn system_index_loop(
+    worker: Arc<EvidenceWorker>,
     interval: Duration,
     cancel: CancellationToken,
 ) {
@@ -308,7 +299,11 @@ async fn system_index_loop<T: EsiTransport + 'static>(
         move |_cancel| {
             let worker = Arc::clone(&worker);
             async move {
-                match worker.refresh_due_system_indices(Utc::now()).await {
+                match worker
+                    .evidence_refresh()
+                    .refresh_due_system_indices(Utc::now())
+                    .await
+                {
                     Ok(0) => tracing::trace!("no system-index evidence is due"),
                     Ok(count) => {
                         tracing::info!(count, "system-index evidence refresh pass completed")
@@ -325,8 +320,8 @@ async fn system_index_loop<T: EsiTransport + 'static>(
     .await
 }
 
-async fn character_sync_loop<T: EsiTransport + 'static>(
-    worker: Arc<EvidenceWorker<T>>,
+async fn character_sync_loop(
+    worker: Arc<EvidenceWorker>,
     interval: Duration,
     cancel: CancellationToken,
 ) {
@@ -379,9 +374,8 @@ async fn drain_with_timeout(
 
 /// Run the six periodic worker loops until `shutdown` resolves, then cancel
 /// them cooperatively and drain within `config.shutdown_timeout`.
-pub async fn run<T, S>(worker: Arc<EvidenceWorker<T>>, config: &WorkerConfig, shutdown: S)
+pub async fn run<S>(worker: Arc<EvidenceWorker>, config: &WorkerConfig, shutdown: S)
 where
-    T: EsiTransport + 'static,
     S: Future<Output = ()>,
 {
     let cancel = CancellationToken::new();

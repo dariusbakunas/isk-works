@@ -17,6 +17,7 @@ mod character_roster;
 mod character_sync;
 mod descendant_production_configuration;
 mod esi_service;
+mod evidence_refresh;
 mod execution_plan;
 mod fittings;
 mod jobs;
@@ -51,6 +52,7 @@ pub use esi_service::{
     AuthorizationStart, AutomaticEiv, EsiApplicationError, EsiApplicationService,
     EsiSyncDispatcher, MarketAccessResolution, MarketAccessResolver, SystemCostIndex,
 };
+pub use evidence_refresh::{EvidenceRefreshSchedule, EvidenceRefreshService};
 pub use execution_plan::{ExecutionPlanCoordinator, ExecutionPlanError};
 pub use fittings::{
     AttributeView, CatalogueItem, CatalogueQuery, CatalogueView, ExplainedSource, FitAssetsView,
