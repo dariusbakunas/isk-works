@@ -20,7 +20,7 @@ use iskworks_core::{
 };
 use iskworks_sde::{
     ActiveSde, PlanetCommodity, PlanetPinType, PlanetSchematic, PlannerPlanet, SdeError,
-    SdeReadRepository, SystemDistance, TypeReference,
+    SystemDistance, TypeReference,
 };
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
@@ -43,7 +43,7 @@ struct FakeSde {
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

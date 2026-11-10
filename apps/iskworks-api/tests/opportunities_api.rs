@@ -17,7 +17,7 @@ use iskworks_core::{
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, CandidateProductClassification, CandidateRecipeIdentity,
     ImportCounts, ManufacturableCandidateRecipe, ManufacturableCandidateScope, ManufacturingRecipe,
-    RecipeLine, SdeError, SdeReadRepository, TypeSearchResult,
+    RecipeLine, SdeError, TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -410,7 +410,7 @@ struct FixtureSdeRepository {
 }
 
 #[async_trait]
-impl SdeReadRepository for FixtureSdeRepository {
+impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(self.active_sde.clone()))
     }

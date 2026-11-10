@@ -680,7 +680,7 @@ impl IndustryRepository for FixtureIndustryRepository {
 struct FixtureSdeRepository;
 
 #[async_trait]
-impl SdeReadRepository for FixtureSdeRepository {
+impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: uuid::Uuid::nil(),
@@ -1065,6 +1065,31 @@ impl SdeReadRepository for FixtureSdeRepository {
                 })
             })
             .collect())
+    }
+
+    async fn reaction_formula_for_product(
+        &self,
+        product_type_id: i64,
+    ) -> Result<Option<i64>, SdeError> {
+        let _ = product_type_id;
+        Ok(None)
+    }
+
+    async fn type_group_names(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, String>, SdeError> {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
+    }
+
+    async fn inventory_type_metadata(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::SdeInventoryTypeMetadata>, SdeError>
+    {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
     }
 }
 

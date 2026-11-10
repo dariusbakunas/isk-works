@@ -386,7 +386,7 @@ struct FakeSde {
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         unimplemented!()
     }

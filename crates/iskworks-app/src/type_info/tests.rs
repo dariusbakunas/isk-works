@@ -102,7 +102,7 @@ fn attribute(attribute_id: i64, label: &str, unit: (i64, &str), value: i64) -> T
 }
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

@@ -25,4 +25,5 @@ uuid.workspace = true
 test-support = []
 
 [dev-dependencies]
+iskworks-sde = { path = "../iskworks-sde", features = ["test-support"] }
 tokio.workspace = true

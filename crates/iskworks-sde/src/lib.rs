@@ -16,11 +16,15 @@ use thiserror::Error;
 use uuid::Uuid;
 use zip::ZipArchive;
 
+#[cfg(feature = "test-support")]
+mod fake;
 mod import;
 mod read;
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "test-support")]
+pub use fake::FakeSdeRead;
 pub use import::*;
 pub use read::*;

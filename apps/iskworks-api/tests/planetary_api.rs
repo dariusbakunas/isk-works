@@ -14,8 +14,7 @@ use iskworks_core::{
     MarketRefreshState, MarketRepository, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
-    ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, SdeReadRepository,
-    TypeReference,
+    ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, TypeReference,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -120,7 +119,7 @@ impl PlanetaryPreferencesRepository for FakePreferences {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

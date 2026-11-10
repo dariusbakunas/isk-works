@@ -314,7 +314,7 @@ struct FixtureSdeRepository {
 }
 
 #[async_trait::async_trait]
-impl SdeReadRepository for FixtureSdeRepository {
+impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     async fn active_sde(&self) -> Result<Option<iskworks_sde::ActiveSde>, SdeError> {
         Ok(Some(self.active_sde.clone()))
     }

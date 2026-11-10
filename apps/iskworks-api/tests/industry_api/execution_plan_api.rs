@@ -526,7 +526,7 @@ async fn execution_plan_inventory_threshold_activates_production_with_durable_ob
 struct MuninnLikeSde;
 
 #[async_trait]
-impl SdeReadRepository for MuninnLikeSde {
+impl iskworks_sde::FakeSdeRead for MuninnLikeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: uuid::Uuid::nil(),
@@ -650,6 +650,31 @@ impl SdeReadRepository for MuninnLikeSde {
             _ => return Ok(None),
         };
         Ok(Some(recipe))
+    }
+
+    async fn manufacturing_blueprint_for_product(
+        &self,
+        product_type_id: i64,
+    ) -> Result<Option<i64>, SdeError> {
+        let _ = product_type_id;
+        Ok(None)
+    }
+
+    async fn reaction_formula_for_product(
+        &self,
+        product_type_id: i64,
+    ) -> Result<Option<i64>, SdeError> {
+        let _ = product_type_id;
+        Ok(None)
+    }
+
+    async fn inventory_type_metadata(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::SdeInventoryTypeMetadata>, SdeError>
+    {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
     }
 }
 

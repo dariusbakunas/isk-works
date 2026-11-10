@@ -8,8 +8,8 @@ use iskworks_core::skill_plans::{
 };
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
-    SdeReadRepository, SkillAttribute, SkillDefinition, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
+    SkillDefinition, TypeSearchResult,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -27,7 +27,7 @@ fn now() -> DateTime<Utc> {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

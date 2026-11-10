@@ -3,11 +3,11 @@
 //! service/repository accessors. Each accessor's "unavailable" fallback
 //! error is part of the API's observable behavior (status, code and
 //! message), so it must not drift.
-//! `UnavailableSdeRepository` is the null `SdeReadRepository` used until a
-//! real one is wired in.
 
 use std::env;
 use std::sync::Arc;
+
+use crate::unavailable_sde::UnavailableSdeRepository;
 
 use iskworks_core::order::{OrderError, OrderRepository, TicketJobRepository};
 use iskworks_core::{
@@ -17,9 +17,7 @@ use iskworks_core::{
     OpportunityQueryService, ProductionError, ProductionRepository, ReactionPlanningService,
     WorkspaceId, WorkspaceRepository, WorkspaceService,
 };
-use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, SdeError, SdeReadRepository, TypeSearchResult,
-};
+use iskworks_sde::SdeReadRepository;
 
 use iskworks_app::{
     BuildGraphCoordinator, BuildMaterialsCoordinator, BuildPlanningDeps, BuildWorksheetCoordinator,
@@ -1113,38 +1111,6 @@ fn evidence_freshness(name: &str, default_seconds: i64) -> chrono::Duration {
         .filter(|seconds| *seconds > 0)
         .unwrap_or(default_seconds);
     chrono::Duration::seconds(seconds)
-}
-
-pub(crate) struct UnavailableSdeRepository;
-
-#[async_trait::async_trait]
-impl SdeReadRepository for UnavailableSdeRepository {
-    async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
-        Ok(None)
-    }
-
-    async fn search_manufacturing_blueprints(
-        &self,
-        _query: &str,
-        _limit: u32,
-    ) -> Result<Vec<BlueprintSearchResult>, SdeError> {
-        Ok(Vec::new())
-    }
-
-    async fn manufacturing_recipe(
-        &self,
-        _blueprint_type_id: i64,
-    ) -> Result<Option<iskworks_sde::ManufacturingRecipe>, SdeError> {
-        Ok(None)
-    }
-
-    async fn search_types(
-        &self,
-        _query: &str,
-        _limit: u32,
-    ) -> Result<Vec<TypeSearchResult>, SdeError> {
-        Ok(Vec::new())
-    }
 }
 
 /// The error every ESI-backed accessor returns when EVE SSO isn't configured.

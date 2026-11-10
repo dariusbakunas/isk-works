@@ -12,7 +12,7 @@ use iskworks_core::{
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, SdeError, SdeInventoryTypeMetadata,
-    SdeReadRepository, TypeSearchResult,
+    TypeSearchResult,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -222,7 +222,7 @@ struct RecordingSdeRepository {
 }
 
 #[async_trait]
-impl SdeReadRepository for RecordingSdeRepository {
+impl iskworks_sde::FakeSdeRead for RecordingSdeRepository {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }

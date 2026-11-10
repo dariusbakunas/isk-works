@@ -13,9 +13,9 @@ use iskworks_core::{
     MarketRepository, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
-    SdeReadRepository, SkillAttribute, SkillDefinition, TypeBonusLine, TypeBonusSource,
-    TypeInfoBase, TypeListEntry, TypeSearchResult, TypeUsage, UsedWithKind,
+    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
+    SkillDefinition, TypeBonusLine, TypeBonusSource, TypeInfoBase, TypeListEntry, TypeSearchResult,
+    TypeUsage, UsedWithKind,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -33,7 +33,7 @@ const TRITANIUM: i64 = 34;
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
@@ -184,6 +184,59 @@ impl SdeReadRepository for FakeSde {
             omega_only: false,
             prerequisites: Vec::new(),
         }])
+    }
+
+    async fn type_attributes(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::TypeAttributeValue>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+
+    async fn type_materials(
+        &self,
+        type_id: i64,
+    ) -> Result<Vec<iskworks_sde::RecipeLine>, SdeError> {
+        let _ = type_id;
+        Ok(Vec::new())
+    }
+
+    async fn type_info_counts(
+        &self,
+        type_id: i64,
+    ) -> Result<iskworks_sde::TypeInfoCounts, SdeError> {
+        let _ = type_id;
+        Ok(iskworks_sde::TypeInfoCounts::default())
+    }
+
+    async fn manufacturing_blueprint_for_product(
+        &self,
+        product_type_id: i64,
+    ) -> Result<Option<i64>, SdeError> {
+        let _ = product_type_id;
+        Ok(None)
+    }
+
+    async fn reaction_formula_for_product(
+        &self,
+        product_type_id: i64,
+    ) -> Result<Option<i64>, SdeError> {
+        let _ = product_type_id;
+        Ok(None)
+    }
+
+    async fn group_names(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
+        let _ = group_ids;
+        Ok(BTreeMap::new())
+    }
+
+    async fn attribute_names(
+        &self,
+        attribute_ids: &[i64],
+    ) -> Result<BTreeMap<i64, String>, SdeError> {
+        let _ = attribute_ids;
+        Ok(BTreeMap::new())
     }
 }
 

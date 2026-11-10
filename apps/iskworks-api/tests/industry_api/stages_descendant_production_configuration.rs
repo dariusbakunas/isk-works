@@ -11,7 +11,7 @@ fn ln(type_id: i64, name: &str, quantity: i64) -> RecipeLine {
 }
 
 #[async_trait]
-impl SdeReadRepository for ConfigSde {
+impl iskworks_sde::FakeSdeRead for ConfigSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(Some(ActiveSde {
             import_id: uuid::Uuid::nil(),
@@ -91,6 +91,15 @@ impl SdeReadRepository for ConfigSde {
         _reaction_formula_type_id: i64,
     ) -> Result<Option<ReactionFormulaRecipe>, SdeError> {
         Ok(None)
+    }
+
+    async fn type_classifications(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, iskworks_sde::SdeTypeClassification>, SdeError>
+    {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
     }
 }
 

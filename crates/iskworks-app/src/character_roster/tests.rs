@@ -7,12 +7,11 @@ use super::*;
 /// exercises only connection/source assembly and never needs skill
 /// names resolved. Replaces the API crate's `state::UnavailableSdeRepository`
 /// (which stays API-owned) so this test has no `iskworks-api` dependency.
-/// Only the trait's four non-defaulted methods need bodies; `type_names`
-/// (the one the service actually calls) keeps its empty default.
+/// `type_names` is the one read the service makes; it finds nothing.
 struct NoopSdeRepository;
 
 #[async_trait::async_trait]
-impl SdeReadRepository for NoopSdeRepository {
+impl iskworks_sde::FakeSdeRead for NoopSdeRepository {
     async fn active_sde(&self) -> Result<Option<iskworks_sde::ActiveSde>, iskworks_sde::SdeError> {
         Ok(None)
     }
@@ -38,6 +37,14 @@ impl SdeReadRepository for NoopSdeRepository {
         _limit: u32,
     ) -> Result<Vec<iskworks_sde::TypeSearchResult>, iskworks_sde::SdeError> {
         Ok(Vec::new())
+    }
+
+    async fn type_names(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<std::collections::BTreeMap<i64, String>, iskworks_sde::SdeError> {
+        let _ = type_ids;
+        Ok(std::collections::BTreeMap::new())
     }
 }
 

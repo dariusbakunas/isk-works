@@ -18,7 +18,7 @@ use iskworks_core::fitting::{
 use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
-    SdeReadRepository, TypeSearchResult,
+    TypeSearchResult,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -193,7 +193,7 @@ impl FittingEngine for FakeEngine {
 struct FakeSde;
 
 #[async_trait]
-impl SdeReadRepository for FakeSde {
+impl iskworks_sde::FakeSdeRead for FakeSde {
     async fn active_sde(&self) -> Result<Option<ActiveSde>, SdeError> {
         Ok(None)
     }
