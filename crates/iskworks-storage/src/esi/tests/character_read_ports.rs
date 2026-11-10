@@ -1,16 +1,12 @@
 use std::sync::Arc;
 
 use iskworks_core::esi_scope::{MARKET_ORDERS_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE};
-use iskworks_core::{
-    CharacterConnectionReader, PlanetaryCharacterSource, SkillsCharacterSource,
-    TraderCharacterSource,
-};
+use iskworks_core::{PlanetaryCharacterSource, SkillsCharacterSource, TraderCharacterSource};
 
 use super::*;
 
 /// Every character-read port answers from the connections table through
-/// `dyn`, so each resolves to `PgEsiRepository`'s own reads (not back into
-/// the same-named trait method) and skips disconnected characters.
+/// `dyn`, and the `*CharacterSource` ports skip disconnected characters.
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
 async fn the_character_read_ports_list_connected_characters_with_their_scopes(pool: PgPool) {

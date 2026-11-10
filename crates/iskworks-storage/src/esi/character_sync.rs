@@ -1,6 +1,6 @@
 use super::*;
 
-fn parse_refresh_state(value: &str) -> MarketRefreshState {
+pub(super) fn parse_refresh_state(value: &str) -> MarketRefreshState {
     match value {
         "current" => MarketRefreshState::Current,
         "refreshing" => MarketRefreshState::Refreshing,
@@ -247,58 +247,6 @@ impl PgEsiRepository {
         .await
         .map_err(map_sqlx)?;
         Ok(())
-    }
-
-    pub async fn character_source_state(
-        &self,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
-        #[allow(clippy::type_complexity)]
-        let rows: Vec<(
-            String,
-            String,
-            Option<serde_json::Value>,
-            Option<DateTime<Utc>>,
-            Option<DateTime<Utc>>,
-            Option<DateTime<Utc>>,
-            Option<String>,
-        )> = sqlx::query_as(
-            "SELECT source_kind, refresh_state, summary, observed_at,
-                    last_attempted_at, next_refresh_at, last_error
-             FROM character_source_sync_state
-             WHERE connection_id = $1",
-        )
-        .bind(connection_id.0)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
-        Ok(rows
-            .into_iter()
-            .filter_map(
-                |(
-                    kind,
-                    state,
-                    summary,
-                    observed_at,
-                    last_attempted_at,
-                    next_refresh_at,
-                    last_error,
-                )| {
-                    CharacterSourceKind::from_db_str(&kind).map(|source_kind| {
-                        CharacterSourceSyncState {
-                            connection_id,
-                            source_kind,
-                            refresh_state: parse_refresh_state(&state),
-                            summary,
-                            observed_at,
-                            last_attempted_at,
-                            next_refresh_at,
-                            last_error,
-                        }
-                    })
-                },
-            )
-            .collect())
     }
 
     /// Reads whatever names are already cached in `eve_entity_names` for the

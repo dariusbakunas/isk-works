@@ -9,6 +9,7 @@ use iskworks_core::{
     ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, InventoryError,
     InventoryEventId, InventoryPosting, MarketRefreshState, OwnerId, WorkspaceId,
 };
+pub use iskworks_core::{PendingAuthorization, StoredRefreshToken};
 use rust_decimal::Decimal;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -42,25 +43,6 @@ pub use retention::EsiObservationPruneOutcome;
 #[derive(Clone)]
 pub struct PgEsiRepository {
     pool: PgPool,
-}
-
-#[derive(Debug, Clone)]
-pub struct PendingAuthorization {
-    pub workspace_id: WorkspaceId,
-    pub owner_id: OwnerId,
-    pub verifier: EncryptedSecret,
-    pub requested_scopes: Vec<String>,
-    pub return_path: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct StoredRefreshToken {
-    pub connection: ConnectedCharacter,
-    pub envelope: EncryptedSecret,
-    /// The current access token, valid until
-    /// `connection.access_token_expires_at`. `None` until the first refresh.
-    pub access_token: Option<EncryptedSecret>,
-    pub token_revision: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

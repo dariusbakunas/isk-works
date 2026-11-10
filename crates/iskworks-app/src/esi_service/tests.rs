@@ -1,6 +1,7 @@
 use super::authorization::{authorization_scopes, require_requested_scopes};
 use super::sync::{lookup_entity_names, NAME_LOOKUP_ERROR_BUDGET};
 use super::*;
+use iskworks_core::CharacterConnectionReader;
 
 #[test]
 fn structure_candidates_exclude_nested_asset_containers() {
@@ -1507,4 +1508,192 @@ fn fixture_mode_is_refused_by_a_build_without_the_fixture_transport() {
     for unset in [None, Some("0"), Some("")] {
         assert!(!fixture_mode_requested(unset, false).unwrap());
     }
+}
+
+/// Connections whose stored tokens another refresh replaces between the
+/// first load and the save: the first load has no access token, the save
+/// loses the revision race, and the reload holds the winner's live token.
+struct RacedRefreshConnections {
+    loads: std::sync::Mutex<u32>,
+    saved_revisions: std::sync::Mutex<Vec<u64>>,
+}
+
+impl RacedRefreshConnections {
+    fn connection(access_token_expires_at: Option<chrono::DateTime<Utc>>) -> ConnectedCharacter {
+        let now = Utc::now();
+        ConnectedCharacter {
+            id: ConnectedCharacterId(uuid::Uuid::nil()),
+            workspace_id: WorkspaceId(uuid::Uuid::nil()),
+            owner_id: OwnerId(uuid::Uuid::nil()),
+            eve_character_id: 9101,
+            character_name: "Character 9101".to_string(),
+            status: ConnectionStatus::Connected,
+            granted_scopes: Vec::new(),
+            access_token_expires_at,
+            last_refreshed_at: None,
+            last_error_code: None,
+            last_error_message: None,
+            connected_at: now,
+            updated_at: now,
+            disconnected_at: None,
+            revision: 1,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl CharacterConnectionReader for RacedRefreshConnections {
+    async fn list_connections(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Vec<ConnectedCharacter>, InventoryError> {
+        unimplemented!("refresh never lists connections")
+    }
+
+    async fn get_connection(
+        &self,
+        _id: ConnectedCharacterId,
+    ) -> Result<ConnectedCharacter, InventoryError> {
+        unimplemented!("a refresh that lost the race never saved, so never re-reads")
+    }
+
+    async fn character_source_state(
+        &self,
+        _connection_id: ConnectedCharacterId,
+    ) -> Result<Vec<iskworks_core::CharacterSourceSyncState>, InventoryError> {
+        unimplemented!("refresh never reads source state")
+    }
+}
+
+#[async_trait::async_trait]
+impl EsiConnectionRepository for RacedRefreshConnections {
+    async fn begin_authorization(
+        &self,
+        _state_hash: String,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+        _verifier: EncryptedSecret,
+        _scopes: &[String],
+    ) -> Result<(), InventoryError> {
+        unimplemented!("refresh never starts a login")
+    }
+
+    async fn consume_authorization(
+        &self,
+        _state_hash: &str,
+    ) -> Result<PendingAuthorization, InventoryError> {
+        unimplemented!("refresh never completes a login")
+    }
+
+    async fn complete_connection(
+        &self,
+        _pending: &PendingAuthorization,
+        _eve_character_id: i64,
+        _character_name: &str,
+        _scopes: &[String],
+        _expires_at: chrono::DateTime<Utc>,
+        _refresh_token: EncryptedSecret,
+    ) -> Result<ConnectedCharacter, InventoryError> {
+        unimplemented!("refresh never completes a login")
+    }
+
+    async fn mock_connect(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+        _envelope: EncryptedSecret,
+        _scopes: &[String],
+    ) -> Result<ConnectedCharacter, InventoryError> {
+        unimplemented!("refresh never connects")
+    }
+
+    async fn load_refresh_token(
+        &self,
+        _id: ConnectedCharacterId,
+    ) -> Result<StoredRefreshToken, InventoryError> {
+        let cipher = SecretCipher::for_tests();
+        let mut loads = self.loads.lock().unwrap();
+        *loads += 1;
+        Ok(if *loads == 1 {
+            StoredRefreshToken {
+                connection: Self::connection(None),
+                envelope: cipher.encrypt("refresh-token").unwrap(),
+                access_token: None,
+                token_revision: 1,
+            }
+        } else {
+            StoredRefreshToken {
+                connection: Self::connection(Some(Utc::now() + Duration::minutes(20))),
+                envelope: cipher.encrypt("refresh-token").unwrap(),
+                access_token: Some(cipher.encrypt("winner-access").unwrap()),
+                token_revision: 2,
+            }
+        })
+    }
+
+    async fn save_refreshed_token(
+        &self,
+        _id: ConnectedCharacterId,
+        expected_token_revision: u64,
+        _envelope: Option<EncryptedSecret>,
+        _access_token: EncryptedSecret,
+        _scopes: &[String],
+        _expires_at: chrono::DateTime<Utc>,
+    ) -> Result<bool, InventoryError> {
+        self.saved_revisions
+            .lock()
+            .unwrap()
+            .push(expected_token_revision);
+        Ok(false)
+    }
+
+    async fn mark_connection_unrefreshable(
+        &self,
+        _id: ConnectedCharacterId,
+        _status: ConnectionStatus,
+        _error_code: &str,
+    ) -> Result<(), InventoryError> {
+        unimplemented!("losing the race does not flag the connection")
+    }
+
+    async fn disconnect(
+        &self,
+        _id: ConnectedCharacterId,
+    ) -> Result<ConnectedCharacter, InventoryError> {
+        unimplemented!("refresh never disconnects")
+    }
+}
+
+/// When another refresh saves first, the loser reloads and uses the
+/// winner's live access token instead of asking EVE SSO again (the canned
+/// transport panics if it is asked twice). Runs on fake connections, no
+/// database.
+#[tokio::test]
+async fn a_refresh_that_loses_the_token_race_uses_the_winners_access_token() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://unused@127.0.0.1:1/unused")
+        .expect("a well-formed URL");
+    let mut service = EsiApplicationService::new_for_tests(
+        Arc::new(PgEsiRepository::new(pool)),
+        Arc::new(CannedRefreshTransport {
+            outcome: std::sync::Mutex::new(Some(Ok(refreshed_token(
+                "loser-access",
+                Utc::now() + Duration::minutes(20),
+            )))),
+        }),
+    );
+    let connections = Arc::new(RacedRefreshConnections {
+        loads: std::sync::Mutex::new(0),
+        saved_revisions: std::sync::Mutex::new(Vec::new()),
+    });
+    service.connections = connections.clone();
+
+    let (_, access_token) = service
+        .refresh(ConnectedCharacterId(uuid::Uuid::nil()))
+        .await
+        .unwrap();
+
+    assert_eq!(access_token, "winner-access");
+    assert_eq!(*connections.saved_revisions.lock().unwrap(), [1]);
+    assert_eq!(*connections.loads.lock().unwrap(), 2);
 }

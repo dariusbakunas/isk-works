@@ -1,7 +1,12 @@
+use async_trait::async_trait;
+use iskworks_core::{CharacterConnectionReader, EsiConnectionRepository};
+
+use super::character_sync::parse_refresh_state;
 use super::*;
 
-impl PgEsiRepository {
-    pub async fn list_connections(
+#[async_trait]
+impl CharacterConnectionReader for PgEsiRepository {
+    async fn list_connections(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<ConnectedCharacter>, InventoryError> {
@@ -24,7 +29,7 @@ impl PgEsiRepository {
         .collect()
     }
 
-    pub async fn get_connection(
+    async fn get_connection(
         &self,
         id: ConnectedCharacterId,
     ) -> Result<ConnectedCharacter, InventoryError> {
@@ -45,7 +50,62 @@ impl PgEsiRepository {
         .into_domain()
     }
 
-    pub async fn begin_authorization(
+    async fn character_source_state(
+        &self,
+        connection_id: ConnectedCharacterId,
+    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(
+            String,
+            String,
+            Option<serde_json::Value>,
+            Option<DateTime<Utc>>,
+            Option<DateTime<Utc>>,
+            Option<DateTime<Utc>>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT source_kind, refresh_state, summary, observed_at,
+                    last_attempted_at, next_refresh_at, last_error
+             FROM character_source_sync_state
+             WHERE connection_id = $1",
+        )
+        .bind(connection_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(rows
+            .into_iter()
+            .filter_map(
+                |(
+                    kind,
+                    state,
+                    summary,
+                    observed_at,
+                    last_attempted_at,
+                    next_refresh_at,
+                    last_error,
+                )| {
+                    CharacterSourceKind::from_db_str(&kind).map(|source_kind| {
+                        CharacterSourceSyncState {
+                            connection_id,
+                            source_kind,
+                            refresh_state: parse_refresh_state(&state),
+                            summary,
+                            observed_at,
+                            last_attempted_at,
+                            next_refresh_at,
+                            last_error,
+                        }
+                    })
+                },
+            )
+            .collect())
+    }
+}
+
+#[async_trait]
+impl EsiConnectionRepository for PgEsiRepository {
+    async fn begin_authorization(
         &self,
         state_hash: String,
         workspace_id: WorkspaceId,
@@ -72,7 +132,7 @@ impl PgEsiRepository {
         Ok(())
     }
 
-    pub async fn consume_authorization(
+    async fn consume_authorization(
         &self,
         state_hash: &str,
     ) -> Result<PendingAuthorization, InventoryError> {
@@ -111,7 +171,7 @@ impl PgEsiRepository {
         })
     }
 
-    pub async fn complete_connection(
+    async fn complete_connection(
         &self,
         pending: &PendingAuthorization,
         eve_character_id: i64,
@@ -185,9 +245,7 @@ impl PgEsiRepository {
         self.get_connection(ConnectedCharacterId(id)).await
     }
 
-    /// Fixture-mode connect: grants exactly `scopes` (the service passes the
-    /// full requested set, so fixture characters exercise every feature).
-    pub async fn mock_connect(
+    async fn mock_connect(
         &self,
         workspace_id: WorkspaceId,
         owner_id: OwnerId,
@@ -212,7 +270,7 @@ impl PgEsiRepository {
         .await
     }
 
-    pub async fn load_refresh_token(
+    async fn load_refresh_token(
         &self,
         id: ConnectedCharacterId,
     ) -> Result<StoredRefreshToken, InventoryError> {
@@ -249,7 +307,7 @@ impl PgEsiRepository {
         })
     }
 
-    pub async fn save_refreshed_token(
+    async fn save_refreshed_token(
         &self,
         id: ConnectedCharacterId,
         expected_token_revision: u64,
@@ -300,11 +358,7 @@ impl PgEsiRepository {
         Ok(true)
     }
 
-    /// Records that a connection's token can no longer be refreshed (EVE
-    /// rejected it, or it lacks a required scope), which takes it out of the
-    /// worker's character-sync queue until the user reconnects -- a fresh
-    /// authorization resets `status` to `connected`.
-    pub async fn mark_connection_unrefreshable(
+    async fn mark_connection_unrefreshable(
         &self,
         id: ConnectedCharacterId,
         status: ConnectionStatus,
@@ -334,7 +388,7 @@ impl PgEsiRepository {
         Ok(())
     }
 
-    pub async fn disconnect(
+    async fn disconnect(
         &self,
         id: ConnectedCharacterId,
     ) -> Result<ConnectedCharacter, InventoryError> {

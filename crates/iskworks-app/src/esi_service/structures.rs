@@ -23,7 +23,7 @@ impl EsiApplicationService {
             )
             .into());
         }
-        let connections = self.repository.list_connections(workspace_id).await?;
+        let connections = self.connections.list_connections(workspace_id).await?;
         let eligible = connections
             .iter()
             .filter(|connection| {

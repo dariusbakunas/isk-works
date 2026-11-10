@@ -5,30 +5,12 @@ use async_trait::async_trait;
 use iskworks_core::esi_scope::{MARKET_ORDERS_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE};
 use iskworks_core::market_orders::accounting_level;
 use iskworks_core::{
-    CharacterConnectionReader, CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter,
-    ConnectedCharacterId, InventoryError, MarketRefreshState, PlanetaryCharacter,
-    PlanetaryCharacterSource, SkillsCharacter, SkillsCharacterSource, TraderCharacter,
-    TraderCharacterSource, WorkspaceId,
+    CharacterConnectionReader, CharacterSourceKind, ConnectedCharacter, ConnectedCharacterId,
+    InventoryError, MarketRefreshState, PlanetaryCharacter, PlanetaryCharacterSource,
+    SkillsCharacter, SkillsCharacterSource, TraderCharacter, TraderCharacterSource, WorkspaceId,
 };
 
 use super::PgEsiRepository;
-
-#[async_trait]
-impl CharacterConnectionReader for PgEsiRepository {
-    async fn list_connections(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<ConnectedCharacter>, InventoryError> {
-        PgEsiRepository::list_connections(self, workspace_id).await
-    }
-
-    async fn character_source_state(
-        &self,
-        connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
-        PgEsiRepository::character_source_state(self, connection_id).await
-    }
-}
 
 #[async_trait]
 impl TraderCharacterSource for PgEsiRepository {

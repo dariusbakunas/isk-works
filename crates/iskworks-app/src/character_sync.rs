@@ -9,8 +9,8 @@ use iskworks_core::{
     is_running_job_status,
     market_orders::{CharacterMarketOrder, CharacterMarketOrderRepository, OrderRange},
     training::{derive_training_state, SkillQueueEntry, TrainingState},
-    CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
-    InventoryError, MarketOrderSide, WorkspaceId,
+    CharacterConnectionReader, CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter,
+    ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId,
 };
 use iskworks_esi::{
     CharacterIndustryJobObservation, CharacterOrderObservation, EsiError, EsiTransport,
@@ -229,7 +229,7 @@ impl CharacterSyncRepository for iskworks_storage::PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
     ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
-        self.character_source_state(connection_id).await
+        CharacterConnectionReader::character_source_state(self, connection_id).await
     }
 
     async fn calendar_event_copies(
