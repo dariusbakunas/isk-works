@@ -44,7 +44,7 @@ impl EsiApplicationService {
             }
             let now = Utc::now();
             let to_look_up = self
-                .repository
+                .structure_names
                 .structures_to_look_up(
                     candidate,
                     &unresolved.iter().copied().collect::<Vec<_>>(),
@@ -87,7 +87,7 @@ impl EsiApplicationService {
                     }
                 }
             }
-            self.repository
+            self.structure_names
                 .record_structure_lookup_denials(&connection, &denied, now + STRUCTURE_DENIAL_TTL)
                 .await?;
         }
@@ -114,7 +114,7 @@ impl EsiApplicationService {
         let now = Utc::now();
         let candidates = structure_ids.into_iter().collect::<BTreeSet<_>>();
         let to_look_up = self
-            .repository
+            .structure_names
             .structures_to_look_up(
                 connection,
                 &candidates.into_iter().collect::<Vec<_>>(),
@@ -139,10 +139,10 @@ impl EsiApplicationService {
                 Err(_) => {}
             }
         }
-        self.repository
+        self.structure_names
             .cache_structure_names(connection, &resolved)
             .await?;
-        self.repository
+        self.structure_names
             .record_structure_lookup_denials(connection, &denied, now + STRUCTURE_DENIAL_TTL)
             .await?;
         Ok(())

@@ -1,8 +1,8 @@
 use super::*;
 use iskworks_core::BlueprintAssetObservation;
 use iskworks_core::{
-    AdjustedPriceRepository, CharacterConnectionReader, EsiConnectionRepository,
-    EsiSyncRunRepository, IndustryRepository,
+    AdjustedPriceRepository, CharacterConnectionReader, EsiAssetSnapshotRepository,
+    EsiConnectionRepository, EsiSyncRunRepository, IndustryRepository,
 };
 use iskworks_esi::SecretCipher;
 use serde_json::json;

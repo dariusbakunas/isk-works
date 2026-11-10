@@ -42,7 +42,10 @@ impl EsiApplicationService {
             .iter()
             .any(|scope| scope == STRUCTURE_SCOPE)
         {
-            let structure_ids = self.repository.unresolved_structure_ids(connection).await?;
+            let structure_ids = self
+                .structure_names
+                .unresolved_structure_ids(connection)
+                .await?;
             self.resolve_and_cache_structures(connection, token, structure_ids)
                 .await?;
         }
@@ -100,7 +103,7 @@ impl EsiApplicationService {
                         .pages
                         .is_some_and(|actual| actual != pages)
                     {
-                        self.repository
+                        self.asset_snapshots
                             .mark_incomplete_asset_sync(
                                 &run,
                                 pages,
@@ -113,7 +116,7 @@ impl EsiApplicationService {
                     records.extend(response.records);
                 }
                 Err(error) => {
-                    self.repository
+                    self.asset_snapshots
                         .mark_incomplete_asset_sync(
                             &run,
                             pages,
@@ -174,11 +177,11 @@ impl EsiApplicationService {
         // ETag checkpoint, and a retry that gets 304 for assets returns
         // early -- so a blueprint failure after it would leave blueprints
         // stale until the assets themselves change.
-        self.repository
+        self.asset_snapshots
             .complete_blueprints(connection, &blueprints, &retained)
             .await?;
         Operation::AssetSnapshotComplete
-            .timed(self.repository.complete_assets(
+            .timed(self.asset_snapshots.complete_assets(
                 &run,
                 pages,
                 &records,
