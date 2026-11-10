@@ -50,6 +50,7 @@ pub mod planetary;
 mod production;
 pub mod production_dependency;
 mod production_stage;
+mod retry_policy;
 pub mod skill_plans;
 pub mod skills;
 pub mod training;
@@ -168,5 +169,6 @@ pub use opportunity_quality::{
 };
 pub use owner::{Owner, OwnerId, OwnerKind};
 pub use production::*;
+pub use retry_policy::RetryPolicy;
 pub use worksheet::*;
 pub use workspace::{Workspace, WorkspaceId};

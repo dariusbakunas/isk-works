@@ -44,8 +44,8 @@ pub trait CharacterSourceRefreshRepository: Send + Sync {
     ) -> Result<bool, InventoryError>;
 
     /// `next_refresh_at` is the caller's floor (it may carry ESI's
-    /// `Retry-After`); consecutive failures back off 5, 10, 20... minutes on
-    /// top, capped at 6 hours.
+    /// `Retry-After`); consecutive failures back off on top, per
+    /// `RetryPolicy::CHARACTER_SOURCE`.
     async fn fail_character_source_refresh(
         &self,
         connection_id: ConnectedCharacterId,
@@ -101,7 +101,7 @@ pub trait EvidenceRefreshRepository: Send + Sync {
     ) -> Result<bool, InventoryError>;
 
     /// `next_refresh_at` is the caller's floor; consecutive failures back
-    /// off 1, 2, 4... minutes on top, capped at 6 hours.
+    /// off on top, per `RetryPolicy::ESI_EVIDENCE`.
     async fn fail_adjusted_price_refresh(
         &self,
         claim: DateTime<Utc>,

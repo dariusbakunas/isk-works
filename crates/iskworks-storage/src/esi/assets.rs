@@ -2,7 +2,7 @@ use super::sync_runs::{checksum, finalize_run};
 use super::*;
 use async_trait::async_trait;
 use iskworks_core::{
-    EsiAssetSnapshotRepository, EvidenceRefreshRepository, StructureNameRepository,
+    EsiAssetSnapshotRepository, EvidenceRefreshRepository, RetryPolicy, StructureNameRepository,
 };
 
 /// Rows per batched `esi_asset_observations` INSERT. Each row binds 11
@@ -668,35 +668,43 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         error_message: &str,
     ) -> Result<bool, InventoryError> {
         let error_message: String = error_message.chars().take(500).collect();
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let failures: Option<i32> = sqlx::query_scalar(
+            r#"SELECT consecutive_failures FROM industry_adjusted_price_refresh_state
+               WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$1
+               FOR UPDATE"#,
+        )
+        .bind(claim)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(failures) = failures else {
+            return Ok(false);
+        };
+        // The same wait becomes `refresh_not_before`, so prioritizing can't
+        // cut it short.
+        let retry_at = RetryPolicy::ESI_EVIDENCE.retry_at(
+            attempted_at,
+            failures.unsigned_abs(),
+            next_refresh_at,
+        );
         sqlx::query(
             r#"UPDATE industry_adjusted_price_refresh_state
                SET refresh_state='failed',last_attempted_at=$1,
-                   next_refresh_at=GREATEST(
-                     $2,
-                     $1 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   refresh_not_before=GREATEST(
-                     $2,
-                     $1 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
+                   next_refresh_at=$2,refresh_not_before=$2,
                    consecutive_failures=consecutive_failures + 1,
                    lease_expires_at=NULL,last_error=$3,updated_at=$1
                WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$4"#,
         )
         .bind(attempted_at)
-        .bind(next_refresh_at)
+        .bind(retry_at)
         .bind(error_message)
         .bind(claim)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
     }
 
     async fn save_adjusted_prices(
@@ -848,23 +856,29 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         error_message: &str,
     ) -> Result<bool, InventoryError> {
         let error_message: String = error_message.chars().take(500).collect();
+        let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
+        let failures: Option<i32> = sqlx::query_scalar(
+            r#"SELECT consecutive_failures FROM industry_system_cost_index_registrations
+               WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$2
+               FOR UPDATE"#,
+        )
+        .bind(solar_system_id)
+        .bind(claim)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(failures) = failures else {
+            return Ok(false);
+        };
+        let retry_at = RetryPolicy::ESI_EVIDENCE.retry_at(
+            attempted_at,
+            failures.unsigned_abs(),
+            next_refresh_at,
+        );
         sqlx::query(
             r#"UPDATE industry_system_cost_index_registrations
                SET refresh_state='failed',last_attempted_at=$2,
-                   next_refresh_at=GREATEST(
-                     $3,
-                     $2 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
-                   refresh_not_before=GREATEST(
-                     $3,
-                     $2 + LEAST(
-                       interval '1 minute' * power(2, LEAST(consecutive_failures, 16)),
-                       interval '6 hours'
-                     )
-                   ),
+                   next_refresh_at=$3,refresh_not_before=$3,
                    consecutive_failures=consecutive_failures + 1,
                    priority_requested_at=NULL,
                    lease_expires_at=NULL,last_error=$4,updated_at=$2
@@ -872,12 +886,13 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         )
         .bind(solar_system_id)
         .bind(attempted_at)
-        .bind(next_refresh_at)
+        .bind(retry_at)
         .bind(error_message)
         .bind(claim)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map(|result| result.rows_affected() == 1)
-        .map_err(map_sqlx)
+        .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        Ok(true)
     }
 }
