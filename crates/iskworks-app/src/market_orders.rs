@@ -9,23 +9,21 @@ use chrono::{DateTime, Duration, Utc};
 use iskworks_core::market_orders::{
     evaluate_order, sales_tax_rate, sell_margin, trades_at_location, BookOrder, BookVisibility,
     CharacterMarketOrderRepository, CompetitionInput, JumpGraph, OrderRange, OrderStanding,
-    SellMargin, StandingStatus, ACCOUNTING_SKILL_ID, BASE_SALES_TAX,
+    SellMargin, StandingStatus, BASE_SALES_TAX,
 };
 use iskworks_core::{
-    CharacterSourceKind, ConnectedCharacterId, InventoryError, InventoryRepository,
-    MarketCoverageRegistration, MarketError, MarketLocationClassification, MarketOrderBook,
-    MarketOrderSide, MarketRefreshState, MarketRepository, MarketScope, OwnerId, PriceSourceId,
-    WorkspaceId,
+    ConnectedCharacterId, InventoryError, InventoryRepository, MarketCoverageRegistration,
+    MarketError, MarketLocationClassification, MarketOrderBook, MarketOrderSide,
+    MarketRefreshState, MarketRepository, MarketScope, OwnerId, PriceSourceId, WorkspaceId,
 };
-use iskworks_esi::MARKET_ORDERS_SCOPE;
 use iskworks_sde::{SdeError, SdeReadRepository};
-use iskworks_storage::PgEsiRepository;
 use rust_decimal::Decimal;
 use serde::Serialize;
-use serde_json::Value;
 use thiserror::Error;
 
 use crate::esi_service::EsiApplicationService;
+
+pub use iskworks_core::{TraderCharacter, TraderCharacterSource};
 
 /// How far a buy order's range can reach, in jumps.
 const MAX_ORDER_RANGE_JUMPS: u8 = 40;
@@ -50,76 +48,6 @@ pub enum MarketOrdersError {
     Inventory(#[from] InventoryError),
     #[error(transparent)]
     Sde(#[from] SdeError),
-}
-
-/// A workspace character as the Market Orders page needs it.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TraderCharacter {
-    pub connection_id: ConnectedCharacterId,
-    pub eve_character_id: i64,
-    pub character_name: String,
-    /// The connection hasn't granted `esi-markets.read_character_orders.v1`.
-    pub orders_scope_missing: bool,
-    pub orders_synced_at: Option<DateTime<Utc>>,
-    pub orders_sync_error: Option<String>,
-    /// Trained Accounting level, when the skills source has synced.
-    pub accounting_level: Option<u8>,
-}
-
-#[async_trait]
-pub trait TraderCharacterSource: Send + Sync {
-    async fn trader_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError>;
-}
-
-fn accounting_level(skills_summary: Option<&Value>) -> Option<u8> {
-    let skills = skills_summary?.get("skills")?.as_array()?;
-    let level = skills
-        .iter()
-        .find(|skill| skill.get("skill_id").and_then(Value::as_i64) == Some(ACCOUNTING_SKILL_ID))
-        .and_then(|skill| skill.get("active_skill_level"))
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    Some(u8::try_from(level.min(5)).unwrap_or(5))
-}
-
-#[async_trait]
-impl TraderCharacterSource for PgEsiRepository {
-    async fn trader_characters(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError> {
-        let mut characters = Vec::new();
-        for connection in self.list_connections(workspace_id).await? {
-            if connection.disconnected_at.is_some() {
-                continue;
-            }
-            let sources = self.character_source_state(connection.id).await?;
-            let source = |kind| sources.iter().find(|source| source.source_kind == kind);
-            let orders = source(CharacterSourceKind::MarketOrders);
-            characters.push(TraderCharacter {
-                connection_id: connection.id,
-                eve_character_id: connection.eve_character_id,
-                character_name: connection.character_name.clone(),
-                orders_scope_missing: !connection
-                    .granted_scopes
-                    .iter()
-                    .any(|scope| scope == MARKET_ORDERS_SCOPE),
-                orders_synced_at: orders.and_then(|source| source.observed_at),
-                orders_sync_error: orders
-                    .filter(|source| source.refresh_state == MarketRefreshState::Failed)
-                    .and_then(|source| source.last_error.clone()),
-                accounting_level: accounting_level(
-                    source(CharacterSourceKind::Skills).and_then(|source| source.summary.as_ref()),
-                ),
-            });
-        }
-        characters.sort_by(|a, b| a.character_name.cmp(&b.character_name));
-        Ok(characters)
-    }
 }
 
 /// Resolves unknown player structure IDs (name and system) so their market

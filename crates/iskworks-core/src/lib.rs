@@ -12,9 +12,11 @@ pub mod build_worksheet;
 pub mod calendar_event;
 mod candidate;
 pub mod canonical_planner;
+mod character_sources;
 mod component_expansion;
 mod encrypted_secret;
 mod esi_observation;
+pub mod esi_scope;
 pub mod execution_plan;
 mod facility;
 mod finance;
@@ -77,6 +79,10 @@ pub use build_cost::{
     OperationCostProjection, OperationInstallationCost, RootCostSummary,
 };
 pub use candidate::*;
+pub use character_sources::{
+    CharacterConnectionReader, PlanetaryCharacter, PlanetaryCharacterSource, SkillsCharacter,
+    SkillsCharacterSource, TraderCharacter, TraderCharacterSource,
+};
 pub use component_expansion::{
     ComponentExpansion, ComponentExpansionError, ComponentExpansionService,
     ComponentFacilityOverride, ComponentResolution, ComponentResolutionOutcome, Contribution,
