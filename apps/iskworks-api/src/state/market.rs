@@ -5,8 +5,7 @@ use super::AppState;
 use crate::error::ApiError;
 use iskworks_app::PublicMarketService;
 use iskworks_core::{
-    AdjustedPriceRepository, InventoryError, MarketError, MarketRepository, MarketService,
-    OpportunityQueryService,
+    AdjustedPriceRepository, MarketError, MarketRepository, MarketService, OpportunityQueryService,
 };
 use std::sync::{Arc, OnceLock};
 
@@ -88,11 +87,13 @@ impl AppState {
         if let Some(service) = self.market.built_market_orders_service.get() {
             return Ok(service.clone());
         }
-        let esi = self.esi.esi_repository.clone().ok_or_else(|| {
-            ApiError::Inventory(InventoryError::Persistence(
-                "Market order persistence is unavailable.".to_string(),
-            ))
-        })?;
+        let esi = self
+            .esi
+            .esi_repository
+            .clone()
+            .ok_or(ApiError::ServiceUnavailable(
+                "Market order persistence is unavailable.",
+            ))?;
         let market = self.market_repository()?;
         let mut service = iskworks_app::MarketOrdersService::new(
             esi.clone(),
@@ -123,11 +124,9 @@ impl AppState {
         self.market
             .adjusted_price_repository
             .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Adjusted-price persistence is unavailable.".to_string(),
-                ))
-            })
+            .ok_or(ApiError::ServiceUnavailable(
+                "Adjusted-price persistence is unavailable.",
+            ))
     }
 
     pub(crate) fn opportunity_service(&self) -> Result<Arc<OpportunityQueryService>, ApiError> {

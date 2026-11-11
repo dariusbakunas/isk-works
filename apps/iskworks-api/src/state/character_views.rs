@@ -6,7 +6,6 @@ use crate::error::ApiError;
 use iskworks_app::{
     CalendarService, CharacterRosterService, PlanetaryCharacterSource, PlanetaryService,
 };
-use iskworks_core::InventoryError;
 use std::sync::Arc;
 
 /// Character read models built on synced ESI data: roster, calendar, jobs, planetary, skills, fittings and the asset browser.
@@ -144,15 +143,9 @@ impl AppState {
     /// The PI Planner. Character prefill needs ESI; everything else works
     /// without it.
     pub(crate) fn pi_planner_service(&self) -> Result<iskworks_app::PiPlannerService, ApiError> {
-        let inputs = self
-            .character_views
-            .pi_planner_repository
-            .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "PI Planner persistence is unavailable.".to_string(),
-                ))
-            })?;
+        let inputs = self.character_views.pi_planner_repository.clone().ok_or(
+            ApiError::ServiceUnavailable("PI Planner persistence is unavailable."),
+        )?;
         let service = iskworks_app::PiPlannerService::new(
             self.sde_repository.clone(),
             self.market_repository()?,
@@ -189,11 +182,12 @@ impl AppState {
 
     pub(crate) fn fitting_service(&self) -> Result<iskworks_app::FittingService, ApiError> {
         let mut service = iskworks_app::FittingService::new(
-            self.character_views.fit_repository.clone().ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Fit persistence is unavailable.".to_string(),
-                ))
-            })?,
+            self.character_views
+                .fit_repository
+                .clone()
+                .ok_or(ApiError::ServiceUnavailable(
+                    "Fit persistence is unavailable.",
+                ))?,
             self.sde_repository.clone(),
         );
         if let Some(characters) = self.character_views.skills_characters.clone() {
@@ -227,14 +221,9 @@ impl AppState {
 
     pub(crate) fn skill_plan_service(&self) -> Result<iskworks_app::SkillPlanService, ApiError> {
         Ok(iskworks_app::SkillPlanService::new(
-            self.character_views
-                .skill_plan_repository
-                .clone()
-                .ok_or_else(|| {
-                    ApiError::Inventory(InventoryError::Persistence(
-                        "Skill plan persistence is unavailable.".to_string(),
-                    ))
-                })?,
+            self.character_views.skill_plan_repository.clone().ok_or(
+                ApiError::ServiceUnavailable("Skill plan persistence is unavailable."),
+            )?,
             self.character_views
                 .skills_characters
                 .clone()
@@ -247,15 +236,13 @@ impl AppState {
     /// read model is available (it is optional: without it the calendar
     /// still serves industry and skill milestones).
     pub(crate) fn calendar_service(&self) -> Result<Arc<CalendarService>, ApiError> {
-        let service = self
-            .character_views
-            .calendar_service
-            .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Calendar persistence is unavailable.".to_string(),
-                ))
-            })?;
+        let service =
+            self.character_views
+                .calendar_service
+                .clone()
+                .ok_or(ApiError::ServiceUnavailable(
+                    "Calendar persistence is unavailable.",
+                ))?;
         Ok(match self.planetary_service() {
             Ok(planetary) => Arc::new((*service).clone().with_planetary(Arc::new(planetary))),
             Err(_) => service,
@@ -263,11 +250,12 @@ impl AppState {
     }
 
     pub(crate) fn jobs_service(&self) -> Result<Arc<iskworks_app::JobsService>, ApiError> {
-        self.character_views.jobs_service.clone().ok_or_else(|| {
-            ApiError::Inventory(InventoryError::Persistence(
-                "Jobs persistence is unavailable.".to_string(),
+        self.character_views
+            .jobs_service
+            .clone()
+            .ok_or(ApiError::ServiceUnavailable(
+                "Jobs persistence is unavailable.",
             ))
-        })
     }
 
     pub(crate) fn asset_browser_repository(
@@ -276,10 +264,8 @@ impl AppState {
         self.character_views
             .asset_browser_repository
             .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Asset browser persistence is unavailable.".to_string(),
-                ))
-            })
+            .ok_or(ApiError::ServiceUnavailable(
+                "Asset browser persistence is unavailable.",
+            ))
     }
 }

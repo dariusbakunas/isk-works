@@ -7,7 +7,6 @@ use iskworks_app::{
     CalendarService, CharacterRosterService, CharacterSyncService, EsiApplicationError,
     EsiApplicationService, TicketJobService,
 };
-use iskworks_core::InventoryError;
 use std::sync::Arc;
 
 /// EVE ESI: its persistence, the application service and character sync, and the downtime transport.
@@ -103,11 +102,13 @@ impl AppState {
 
     /// Ticket <-> ESI industry job links; needs ESI persistence.
     pub(crate) fn ticket_job_service(&self) -> Result<TicketJobService, ApiError> {
-        let links = self.industry.ticket_job_repository.clone().ok_or_else(|| {
-            ApiError::Inventory(InventoryError::Persistence(
-                "Ticket job persistence is unavailable.".to_string(),
-            ))
-        })?;
+        let links =
+            self.industry
+                .ticket_job_repository
+                .clone()
+                .ok_or(ApiError::ServiceUnavailable(
+                    "Ticket job persistence is unavailable.",
+                ))?;
         Ok(TicketJobService::new(self.esi_repository()?, links))
     }
 }

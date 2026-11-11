@@ -149,8 +149,7 @@ async fn build_preview_unavailable_markers_map_to_the_exact_legacy_api_error() {
     let inventory = ApiError::from(BuildPreviewError::InventoryUnavailable);
     assert!(matches!(
         &inventory,
-        ApiError::Inventory(InventoryError::Persistence(message))
-            if message == "Inventory persistence is unavailable."
+        ApiError::ServiceUnavailable("Inventory persistence is unavailable.")
     ));
     let response = inventory.into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -333,6 +332,12 @@ async fn every_internal_failure_variant_redacts_and_keeps_5xx() {
             ApiError::Integration(EsiApplicationError::Persistence(
                 InventoryError::Persistence(raw.into()),
             )),
+        ),
+        (
+            "unwired service",
+            ApiError::ServiceUnavailable(
+                "relation \"secret_internal_table\" does not exist (constraint sqlx postgres)",
+            ),
         ),
         (
             "auth persistence",
@@ -587,4 +592,48 @@ async fn insufficient_available_is_a_409_naming_short_items_and_holders() {
         body,
         r#"{"error":{"code":"insufficient_available","message":"Other Epics have reserved stock this recording needs.","retryable":false,"shortages":[{"typeId":34,"typeName":"Tritanium","needed":1000,"own":600,"free":0,"holders":[{"orderId":"00000000-0000-0000-0000-000000000000","displayName":"EP-2","quantity":400}]}]}}"#
     );
+}
+
+/// The `AppState` accessors' fallbacks used to borrow
+/// `InventoryError::Persistence`; their own variant must answer exactly as
+/// that did, apart from the fresh correlation id.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn an_unwired_service_answers_exactly_like_the_old_inventory_fallback() {
+    hold_internal_log_lock!();
+    let message = "Fit persistence is unavailable.";
+    let old = ApiError::Inventory(InventoryError::Persistence(message.to_string())).into_response();
+    let new = ApiError::ServiceUnavailable(message).into_response();
+    assert_eq!(new.status(), old.status());
+    assert_eq!(new.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let mut old = response_json(old).await;
+    let mut new = response_json(new).await;
+    assert!(new["error"]["correlationId"].is_string());
+    old["error"]["correlationId"] = serde_json::Value::Null;
+    new["error"]["correlationId"] = serde_json::Value::Null;
+    assert_eq!(new, old);
+}
+
+/// A PI solver failure is not a storage outage: it has its own code, is a
+/// 500, and is not retryable. Its detail (which may carry a panic message)
+/// is still redacted behind a correlation id.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn a_pi_solver_failure_has_its_own_redacted_code() {
+    hold_internal_log_lock!();
+    let error = ApiError::from(iskworks_app::PiPlannerError::Solver(
+        "relation \"secret_internal_table\" does not exist (constraint sqlx postgres)".to_string(),
+    ));
+    assert!(matches!(error, ApiError::PiSolverFailed(_)));
+    let response = error.into_response();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = response_json(response).await;
+    assert_eq!(body["error"]["code"], "pi_solver_failed");
+    assert_eq!(
+        body["error"]["message"],
+        "The PI plan could not be solved. Try a different radius or fewer characters."
+    );
+    assert_eq!(body["error"]["retryable"], false);
+    assert!(body["error"]["correlationId"].is_string());
+    assert_body_has_no_leak(&body);
 }
