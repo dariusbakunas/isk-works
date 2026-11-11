@@ -451,7 +451,6 @@ fn edge_to_x(consumer: u128, scope: FulfillmentScope) -> ProductionDependency {
             method: ferrogel_key().method,
         },
         producer: Some(id(PRODUCER_X)),
-        legacy_consumer_overrides: None,
     }
 }
 
@@ -891,7 +890,6 @@ fn edge_graph(pairs: &[(u128, u128)]) -> RootPlanDependencyGraph {
                 },
             },
             producer: Some(id(*producer)),
-            legacy_consumer_overrides: None,
         };
         outgoing.entry(*consumer).or_default().push(edge.id.clone());
         dependencies.push(edge);
