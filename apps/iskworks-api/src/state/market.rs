@@ -8,8 +8,7 @@ use iskworks_core::{
     AdjustedPriceRepository, InventoryError, MarketError, MarketRepository, MarketService,
     OpportunityQueryService,
 };
-use std::env;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Market data: stored and public order books, adjusted prices and the Market Orders read model.
 #[derive(Clone, Default)]
@@ -18,6 +17,12 @@ pub(crate) struct MarketDeps {
     pub(super) adjusted_price_repository: Option<Arc<dyn AdjustedPriceRepository>>,
     pub(super) public_market_service: Option<Arc<PublicMarketService>>,
     pub(super) market_orders_service: Option<Arc<iskworks_app::MarketOrdersService>>,
+    pub(super) opportunity_freshness: iskworks_core::OpportunityEvidenceFreshness,
+    /// Built on first use and shared by every clone of the state, so a
+    /// request doesn't rebuild them. Builders must not run after the first
+    /// request (they don't: `main.rs` finishes the state before serving).
+    built_market_orders_service: Arc<OnceLock<Arc<iskworks_app::MarketOrdersService>>>,
+    built_opportunity_service: Arc<OnceLock<Arc<OpportunityQueryService>>>,
 }
 
 impl AppState {
@@ -28,6 +33,17 @@ impl AppState {
         service: Arc<iskworks_app::MarketOrdersService>,
     ) -> Self {
         self.market.market_orders_service = Some(service);
+        self
+    }
+
+    /// The Opportunities freshness windows, read once at startup
+    /// (`ApiConfig::opportunity_freshness`). Unset, the core defaults apply.
+    #[must_use]
+    pub fn with_opportunity_freshness(
+        mut self,
+        freshness: iskworks_core::OpportunityEvidenceFreshness,
+    ) -> Self {
+        self.market.opportunity_freshness = freshness;
         self
     }
 
@@ -69,6 +85,9 @@ impl AppState {
         if let Some(service) = &self.market.market_orders_service {
             return Ok(service.clone());
         }
+        if let Some(service) = self.market.built_market_orders_service.get() {
+            return Ok(service.clone());
+        }
         let esi = self.esi.esi_repository.clone().ok_or_else(|| {
             ApiError::Inventory(InventoryError::Persistence(
                 "Market order persistence is unavailable.".to_string(),
@@ -87,7 +106,11 @@ impl AppState {
                 iskworks_app::EsiStructureLocationResolver::new(esi_service.clone(), market),
             ));
         }
-        Ok(Arc::new(service))
+        Ok(self
+            .market
+            .built_market_orders_service
+            .get_or_init(|| Arc::new(service))
+            .clone())
     }
 
     pub(crate) fn market_service(&self) -> Result<MarketService, ApiError> {
@@ -107,24 +130,22 @@ impl AppState {
             })
     }
 
-    pub(crate) fn opportunity_service(&self) -> Result<OpportunityQueryService, ApiError> {
-        Ok(OpportunityQueryService::new(
+    pub(crate) fn opportunity_service(&self) -> Result<Arc<OpportunityQueryService>, ApiError> {
+        if let Some(service) = self.market.built_opportunity_service.get() {
+            return Ok(service.clone());
+        }
+        let service = OpportunityQueryService::new(
             self.industry_repository()?,
             self.sde_repository.clone(),
             self.market_repository()?,
             self.adjusted_price_repository()?,
         )
-        .with_freshness(iskworks_core::OpportunityEvidenceFreshness {
-            market: evidence_freshness("ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS", 900),
-            adjusted_prices: evidence_freshness(
-                "ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS",
-                21_600,
-            ),
-            system_index: evidence_freshness(
-                "ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS",
-                3_600,
-            ),
-        }))
+        .with_freshness(self.market.opportunity_freshness);
+        Ok(self
+            .market
+            .built_opportunity_service
+            .get_or_init(|| Arc::new(service))
+            .clone())
     }
 
     pub(crate) fn public_market_service(&self) -> Result<Arc<PublicMarketService>, ApiError> {
@@ -134,13 +155,4 @@ impl AppState {
             ))
         })
     }
-}
-
-fn evidence_freshness(name: &str, default_seconds: i64) -> chrono::Duration {
-    let seconds = env::var(name)
-        .ok()
-        .and_then(|value| value.parse::<i64>().ok())
-        .filter(|seconds| *seconds > 0)
-        .unwrap_or(default_seconds);
-    chrono::Duration::seconds(seconds)
 }

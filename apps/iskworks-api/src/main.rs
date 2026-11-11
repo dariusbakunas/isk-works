@@ -175,6 +175,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_fit_repository(fit_repository)
         .with_market_repository(market_repository)
         .with_public_market_service(public_market_service)
+        .with_opportunity_freshness(config.opportunity_freshness)
         .with_esi_status(public_esi_transport)
         .with_esi(esi_repository, esi_service)
         .with_auth(auth_service)
