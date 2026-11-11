@@ -1,27 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
-import { listCharacters, type CharacterRosterEntry, type IndustryJob } from "../../api/characters";
 import {
-  listAcquisitionRuns,
-  listBuilds,
-  listFacilities,
-  listOrders,
-  listPriceSources,
-  listTicketJobProgress,
-  listTickets,
-  updateTicketStatus,
   type AcquisitionRun,
-  type Build,
-  type FacilityProfile,
   type OrderSummary,
-  type PriceSource,
   type Ticket,
   type TicketStatus,
   type TicketSummary,
 } from "../../api/industry";
 import { Badge, InlineAlert, LoadingState, PageHeader, StatusDot, type Tone } from "../../components/primitives";
-import { apiMessage } from "../../api/api-error";
 import {
   boardEpicCardIsVisible,
   filterBoardTickets,
@@ -47,20 +34,10 @@ import { OrderTicketCard } from "./order-ticket-card";
 import { OrderTicketDetailDrawer } from "./order-ticket-detail-drawer";
 import { summarizeTicketJobs } from "./ticket-job-progress";
 import { TicketEditor } from "./ticket-editor";
-import { canDropTicket, isTicketDraggable } from "./ticket-drag";
-
-type LoadState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | {
-      status: "ready";
-      tickets: TicketSummary[];
-      runs: AcquisitionRun[];
-      orders: OrderSummary[];
-      priceSources: PriceSource[];
-      characters: CharacterRosterEntry[];
-      builds: Build[];
-    };
+import { useBoardData } from "./use-board-data";
+import { useBoardDrag } from "./use-board-drag";
+import { useBoardDrawers } from "./use-board-drawers";
+import { useBoardSelection } from "./use-board-selection";
 
 // The three organizational workflow lanes. There is no "Blocked" or
 // "Ready" lane -- a ticket with unmet dependencies stays in whatever lane
@@ -161,60 +138,31 @@ function combinedTicketContext(ticket: Ticket, tickets: Ticket[], orders: { id: 
 }
 
 export function BoardPage() {
-  // `?ticket=<id>` / `?epic=<id>` deep-links -- read once at mount to seed
-  // which Ticket Inspector or Epic Inspector opens (e.g. "Navigate to
-  // ticket" from the Inventory Reservations tab, which has no other route
-  // to a bare Ticket). Not kept in sync afterward: every other way of
-  // opening one (a card click) is plain state, same as `openRunId`, so this
-  // only seeds the initial value and is cleared on close.
   const [params, setParams] = useSearchParams();
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const { state, reload, patchTicketStatus, jobsByTicketId, nowMs, facilityById } = useBoardData();
+  const loadedTickets = state.status === "ready" ? state.tickets : null;
+  const selection = useBoardSelection(loadedTickets ?? []);
+  const { selectionMode, selectedTicketIds, selectedTickets } = selection;
+  const drag = useBoardDrag({ tickets: loadedTickets, patchTicketStatus, reload });
+  const drawers = useBoardDrawers(reload);
+  const { openRunId, openOrderId, openTicketId } = drawers;
   const [showArchivedOrders, setShowArchivedOrders] = useState(false);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [combineDialogOpen, setCombineDialogOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-  const [openRunId, setOpenRunId] = useState<string | null>(null);
-  const [openOrderId, setOpenOrderId] = useState<string | null>(() => params.get("epic"));
-  const [openTicketId, setOpenTicketId] = useState<string | null>(() => params.get("ticket"));
-  // Set only when the currently-open ticket was opened from within the Epic
-  // Inspector named here -- the tiny in-rail navigation stack's one frame of
-  // "back" state. Null when a ticket was opened directly from a Board card,
-  // which is what keeps that path's Close going to no inspector at all
-  // (rather than resurrecting an Epic Inspector that was never open).
-  const [ticketBackToOrderId, setTicketBackToOrderId] = useState<string | null>(null);
-  // The canonical Ticket editor -- opening it always replaces whatever else
-  // is in the rail (same "one thing in the rail" rule as Epic/Ticket).
-  // `editorBackToEpicId` is set only when opened from within an Epic
-  // Inspector's own "Create ticket" action, so Cancel/Close returns there
-  // (mirrors the Ticket Inspector's own onBack) and a successful create
-  // opens the new Ticket with that same Epic as its Back target.
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editorInitialEpicId, setEditorInitialEpicId] = useState<string | null>(null);
-  const [editorBackToEpicId, setEditorBackToEpicId] = useState<string | null>(null);
-  const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
-  const [dragOverLane, setDragOverLane] = useState<TicketStatus | null>(null);
-  const [dragError, setDragError] = useState<string | null>(null);
   // Keyed `${priceSourceId}:${status}` -- collapsed by default, the whole
   // point of grouping being to cut Board noise down from one card per
   // ticket.
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showAllComplete, setShowAllComplete] = useState(false);
-  // ESI jobs matched to In Progress production tickets, by ticket id, and
-  // the clock their progress bars are drawn at. Display only: loaded apart
-  // from the Board's own data so a failure here never blanks the Board.
-  const [jobsByTicketId, setJobsByTicketId] = useState<Map<string, IndustryJob[]>>(new Map());
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [facilityById, setFacilityById] = useState<Map<string, FacilityProfile>>(new Map());
 
   // Board filters -- a distinct state dimension from Inspector selection
-  // (`openOrderId`/`openTicketId` above). Derived live from the URL on
-  // every render (never mirrored into local state) so they can never drift
-  // from what's bookmarked/shared/reloaded; `?epicFilter=`/`?assigneeFilter=`/
-  // `?typeFilter=`/`?q=` are deliberately distinct from the existing
-  // `?epic=`/`?ticket=` Inspector-selection params -- see board-filters.ts's
-  // own doc for why those were never renamed or overloaded.
+  // (see `useBoardDrawers`). Derived live from the URL on every render
+  // (never mirrored into local state) so they can never drift from what's
+  // bookmarked/shared/reloaded; `?epicFilter=`/`?assigneeFilter=`/
+  // `?typeFilter=`/`?q=` are deliberately distinct from the `?epic=`/
+  // `?ticket=` Inspector-selection params -- see board-filters.ts's own doc
+  // for why those were never renamed or overloaded.
   const filters = parseBoardFiltersFromParams(params);
 
   function setFilterParam(key: "epicFilter" | "assigneeFilter" | "typeFilter" | "search", value: string) {
@@ -228,186 +176,6 @@ export function BoardPage() {
     setParams(withoutBoardFilters(params), { replace: true });
   }
 
-  function loadJobProgress() {
-    return listTicketJobProgress()
-      .then((rows) => setJobsByTicketId(new Map(rows.map((row) => [row.ticketId, row.jobs]))))
-      .catch(() => {
-        // Keep the last known bars; the Board itself is unaffected.
-      });
-  }
-
-  // Bars tick locally from each job's fixed dates; the matches themselves
-  // are refetched every few minutes to pick up newly started jobs.
-  useEffect(() => {
-    const tick = window.setInterval(() => setNowMs(Date.now()), 30_000);
-    const refetch = window.setInterval(() => void loadJobProgress(), 5 * 60_000);
-    return () => {
-      window.clearInterval(tick);
-      window.clearInterval(refetch);
-    };
-  }, []);
-
-  // Names the planned facility on generated step tickets (see the ticket
-  // drawer). Optional context, so a failure never blanks the Board.
-  function loadFacilities() {
-    return listFacilities()
-      .then((facilities) => setFacilityById(new Map(facilities.map((facility) => [facility.id, facility]))))
-      .catch(() => {
-        // The drawer just omits the Installation section.
-      });
-  }
-
-  function load() {
-    void loadJobProgress();
-    void loadFacilities();
-    // Fetches everything once (small, personal-scale dataset), including
-    // every archived Order -- "Show archived" applies purely client-side
-    // afterward, so toggling it is instant with no refetch. `listCharacters`
-    // reads only already-synced/cached connected-character data (no ESI
-    // call), the same roster the Ticket editor's Assignee picker needs --
-    // loaded here so opening the editor never waits on its own fetch.
-    // `listBuilds` is the same Build picker data source the Manufacturing/
-    // Reaction TicketEditor needs -- loaded here for the same reason (no
-    // per-open fetch), never recalculated per dropdown row.
-    return Promise.all([
-      listTickets(),
-      listAcquisitionRuns(),
-      listOrders("all"),
-      listPriceSources(),
-      listCharacters(),
-      listBuilds(),
-    ])
-      .then(([tickets, runs, orders, priceSources, characters, builds]) => {
-        setState({ status: "ready", tickets, runs, orders, priceSources, characters, builds });
-      })
-      .catch((requestError) => {
-        setState({ status: "error", message: apiMessage(requestError) });
-      });
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  // The Board's tiny in-rail navigation stack (Epic <-> Ticket) -- one frame
-  // deep, plain state, no history/router involvement. Clicking an Epic or
-  // Ticket card never navigates (see order-card.tsx / order-ticket-card.tsx);
-  // it only ever changes which of these panels is open, so every Board
-  // filter/search/scroll/loaded-data stays exactly as it was.
-  function openEpic(orderId: string) {
-    setOpenOrderId(orderId);
-    setOpenTicketId(null);
-    setTicketBackToOrderId(null);
-  }
-
-  function closeEpic() {
-    setOpenOrderId(null);
-    if (params.has("epic")) {
-      const next = new URLSearchParams(params);
-      next.delete("epic");
-      setParams(next);
-    }
-  }
-
-  // A ticket opened directly from a Board card (not via an Epic) has no
-  // "back" frame -- closing it goes to no inspector at all, so any Epic
-  // Inspector that happened to be open underneath is cleared too.
-  function openTicketFromCard(ticketId: string) {
-    setOpenTicketId(ticketId);
-    setOpenOrderId(null);
-    setTicketBackToOrderId(null);
-  }
-
-  // A ticket opened from within the currently-open Epic Inspector's own
-  // Tickets list -- `openOrderId` is left as-is (it's what "Back" returns
-  // to); only the Ticket Inspector takes over the rail in the meantime.
-  function openTicketFromEpic(ticketId: string) {
-    setTicketBackToOrderId(openOrderId);
-    setOpenTicketId(ticketId);
-  }
-
-  function backFromTicketToEpic() {
-    setOpenTicketId(null);
-    setTicketBackToOrderId(null);
-    if (params.has("ticket")) {
-      const next = new URLSearchParams(params);
-      next.delete("ticket");
-      setParams(next);
-    }
-  }
-
-  function closeTicket() {
-    setOpenTicketId(null);
-    setOpenOrderId(null);
-    setTicketBackToOrderId(null);
-    if (params.has("ticket") || params.has("epic")) {
-      const next = new URLSearchParams(params);
-      next.delete("ticket");
-      next.delete("epic");
-      setParams(next);
-    }
-  }
-
-  // `backToEpicId` is only passed by Epic Inspector's own "Create ticket"
-  // action -- everywhere else (Board-level "Create ticket") it's omitted,
-  // so Cancel/Close goes to no inspector at all, same as a ticket opened
-  // directly from a Board card.
-  function openTicketEditor(initialEpicId: string | null = null, backToEpicId: string | null = null) {
-    setOpenTicketId(null);
-    setOpenOrderId(null);
-    setTicketBackToOrderId(null);
-    setEditorInitialEpicId(initialEpicId);
-    setEditorBackToEpicId(backToEpicId);
-    setEditorOpen(true);
-  }
-
-  function closeTicketEditor() {
-    setEditorOpen(false);
-    if (editorBackToEpicId) openEpic(editorBackToEpicId);
-  }
-
-  // Refetches first so the newly created ticket is already present in
-  // `state.tickets` by the time the Ticket Inspector opens for it.
-  async function handleTicketCreated(ticket: Ticket) {
-    setEditorOpen(false);
-    await load();
-    setTicketBackToOrderId(editorBackToEpicId);
-    setOpenOrderId(editorBackToEpicId);
-    setOpenTicketId(ticket.id);
-  }
-
-  function exitSelectionMode() {
-    setSelectionMode(false);
-    setSelectedTicketIds(new Set());
-  }
-
-  function toggleSelected(ticketId: string) {
-    setSelectedTicketIds((current) => {
-      const next = new Set(current);
-      if (next.has(ticketId)) {
-        next.delete(ticketId);
-      } else {
-        next.add(ticketId);
-      }
-      return next;
-    });
-  }
-
-  // Group-level "select all" / header checkbox: already-all-selected clears
-  // the set, otherwise selects every id -- shared by an ACQ GROUP's header
-  // checkbox and its expanded "Select N actionable" button.
-  function selectMany(ticketIds: string[]) {
-    setSelectedTicketIds((current) => {
-      const next = new Set(current);
-      const allSelected = ticketIds.every((id) => next.has(id));
-      for (const id of ticketIds) {
-        if (allSelected) next.delete(id);
-        else next.add(id);
-      }
-      return next;
-    });
-  }
-
   function toggleGroup(key: string) {
     setExpandedGroups((current) => {
       const next = new Set(current);
@@ -419,42 +187,6 @@ export function BoardPage() {
       return next;
     });
   }
-
-  function patchTicketStatus(ticketId: string, status: TicketStatus) {
-    setState((current) => {
-      if (current.status !== "ready") return current;
-      return { ...current, tickets: current.tickets.map((t) => (t.id === ticketId ? { ...t, status } : t)) };
-    });
-  }
-
-  // Moving a card between lanes is a bare workflow-status write and nothing
-  // else (see ticket-drag.ts): it
-  // never calls /start, /complete, or /cancel, so it has no inventory,
-  // cascade, or Order/Run side effect, and it works in both directions.
-  // Optimistically repaints the card, fires `PATCH /api/tickets/:id`, then
-  // resyncs (ACQ-group re-derivation etc. is still cheaper to reload than
-  // to predict). On failure the optimistic patch is rolled back and the
-  // existing InlineAlert surfaces the message.
-  async function handleTicketDrop(ticketId: string, targetStatus: TicketStatus) {
-    if (state.status !== "ready") return;
-    const ticket = state.tickets.find((t) => t.id === ticketId);
-    if (!ticket || !isTicketDraggable(ticket)) return;
-    if (!canDropTicket(ticket.status, targetStatus)) return;
-
-    const originalStatus = ticket.status;
-    setDragError(null);
-    patchTicketStatus(ticketId, targetStatus);
-    try {
-      await updateTicketStatus(ticketId, targetStatus);
-      void load();
-    } catch (requestError) {
-      patchTicketStatus(ticketId, originalStatus);
-      setDragError(apiMessage(requestError));
-    }
-  }
-
-  const selectedTickets: Ticket[] =
-    state.status === "ready" ? state.tickets.filter((ticket) => selectedTicketIds.has(ticket.id)) : [];
 
   // Every group of Board tickets that could be combined right now.
   const suggestions = useMemo(
@@ -588,9 +320,6 @@ export function BoardPage() {
   }
   if (!view) return null;
 
-  const draggingTicket = draggingTicketId ? state.tickets.find((t) => t.id === draggingTicketId) ?? null : null;
-  const draggingTicketDraggable = draggingTicket !== null && isTicketDraggable(draggingTicket);
-
   // Sourced from the full (unfiltered) ticket/run lists, not `view`, so the
   // drawer still has complete data even if search narrows what's currently
   // visible on the board underneath it.
@@ -696,19 +425,19 @@ export function BoardPage() {
         <button
           aria-pressed={selectionMode}
           className={selectionMode ? "iw-button-primary" : "iw-button-secondary"}
-          onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+          onClick={() => (selectionMode ? selection.exitSelectionMode() : selection.startSelection())}
           type="button"
         >
           {selectionMode ? "Cancel Selection" : "Select"}
         </button>
-        <button className="iw-button-primary" onClick={() => openTicketEditor()} type="button">
+        <button className="iw-button-primary" onClick={() => drawers.openTicketEditor()} type="button">
           Create ticket
         </button>
       </div>
 
-      {dragError ? (
+      {drag.dragError ? (
         <div className="mb-3">
-          <InlineAlert title="Could not update ticket status">{dragError}</InlineAlert>
+          <InlineAlert title="Could not update ticket status">{drag.dragError}</InlineAlert>
         </div>
       ) : null}
 
@@ -748,36 +477,22 @@ export function BoardPage() {
             isCompleteLane && !showAllComplete ? Math.max(0, laneEntries.length - COMPLETE_LANE_PREVIEW) : 0;
           const visibleEntries =
             hiddenEntryCount > 0 ? laneEntries.slice(0, COMPLETE_LANE_PREVIEW) : laneEntries;
-          const isEligibleLane =
-            draggingTicket !== null &&
-            draggingTicketDraggable &&
-            canDropTicket(draggingTicket.status, lane.status);
-          const isHoverLane = isEligibleLane && dragOverLane === lane.status;
-          const laneHighlight = isHoverLane
+          const laneDrag = drag.lane(lane.status);
+          const laneHighlight = laneDrag.hovered
             ? laneHoverClasses[lane.tone]
-            : isEligibleLane
+            : laneDrag.eligible
               ? laneEligibleClasses[lane.tone]
               : "border-border";
           return (
             <div
               // An empty lane gives its width to the lanes that have cards.
               className={`rounded-[2px] border transition-colors sm:min-w-0 ${laneCardCount === 0 ? "sm:flex-[0.5]" : "sm:flex-1"} ${laneHighlight}`}
-              data-drag-eligible={isEligibleLane ? "true" : "false"}
+              data-drag-eligible={laneDrag.eligible ? "true" : "false"}
               data-testid={`board-lane-${lane.status}`}
               key={lane.status}
-              onDragLeave={() => setDragOverLane((current) => (current === lane.status ? null : current))}
-              onDragOver={(event) => {
-                if (!isEligibleLane) return;
-                event.preventDefault();
-                if (dragOverLane !== lane.status) setDragOverLane(lane.status);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragOverLane(null);
-                if (isEligibleLane && draggingTicket) {
-                  void handleTicketDrop(draggingTicket.id, lane.status);
-                }
-              }}
+              onDragLeave={laneDrag.onDragLeave}
+              onDragOver={laneDrag.onDragOver}
+              onDrop={laneDrag.onDrop}
             >
               <div className="flex items-center justify-between border-b border-border px-2 py-1.5">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
@@ -795,13 +510,13 @@ export function BoardPage() {
                     // A ticket opened from the Epic takes over the rail;
                     // the Epic stays only as "Back".
                     active={order.id === openOrderId && openTicketId === null}
-                    key={order.id} onOpen={openEpic} order={order} />
+                    key={order.id} onOpen={drawers.openEpic} order={order} />
                 ))}
                 {laneRunCards.map(({ run, tickets }) => (
                   <OrderAcquisitionRunCard
                     active={run.id === openRunId}
                     key={run.id}
-                    onOpen={setOpenRunId}
+                    onOpen={drawers.setOpenRunId}
                     priceSourceName={
                       run.priceSourceId ? (view.priceSourceNameById.get(run.priceSourceId) ?? null) : null
                     }
@@ -817,7 +532,7 @@ export function BoardPage() {
                         active={order.id === openOrderId && openTicketId === null}
                         compact
                         key={order.id}
-                        onOpen={openEpic}
+                        onOpen={drawers.openEpic}
                         order={order}
                       />
                     );
@@ -834,13 +549,10 @@ export function BoardPage() {
                       compact={isCompleteLane}
                       jobProgress={summarizeTicketJobs(jobsByTicketId.get(ticket.id) ?? [], nowMs)}
                       key={ticket.id}
-                      onDragEnd={() => {
-                        setDraggingTicketId(null);
-                        setDragOverLane(null);
-                      }}
-                      onDragStart={setDraggingTicketId}
-                      onOpen={openTicketFromCard}
-                      onToggleSelect={toggleSelected}
+                      onDragEnd={drag.endDrag}
+                      onDragStart={drag.startDrag}
+                      onOpen={drawers.openTicketFromCard}
+                      onToggleSelect={selection.toggleSelected}
                       selectable={selectionMode}
                       selectionEnabled={isSelectable(ticket, selectedTickets, {
                         hasJobs: (jobsByTicketId.get(ticket.id)?.length ?? 0) > 0,
@@ -858,15 +570,12 @@ export function BoardPage() {
                       group={group}
                       key={key}
                       expanded={expandedGroups.has(key)}
-                      onOpenTicket={openTicketFromCard}
-                      onSelectAll={selectMany}
-                      onTicketDragEnd={() => {
-                        setDraggingTicketId(null);
-                        setDragOverLane(null);
-                      }}
-                      onTicketDragStart={setDraggingTicketId}
+                      onOpenTicket={drawers.openTicketFromCard}
+                      onSelectAll={selection.selectMany}
+                      onTicketDragEnd={drag.endDrag}
+                      onTicketDragStart={drag.startDrag}
                       onToggleExpand={() => toggleGroup(key)}
-                      onToggleSelect={toggleSelected}
+                      onToggleSelect={selection.toggleSelected}
                       priceSourceName={
                         group.priceSourceId
                           ? (view.priceSourceNameById.get(group.priceSourceId) ?? null)
@@ -899,16 +608,13 @@ export function BoardPage() {
 
       {selectionMode && selectedTickets.length > 0 ? (
         <OrderSelectionBar
-          onClear={() => setSelectedTicketIds(new Set())}
+          onClear={selection.clearSelection}
           onCombine={() => setCombineDialogOpen(true)}
           onCreateRun={() => setCreateDialogOpen(true)}
           groupSize={selectedGroup?.tickets.length}
           onSelectGroup={
             selectedGroup?.tickets.some((ticket) => !selectedTicketIds.has(ticket.id))
-              ? () =>
-                  setSelectedTicketIds(
-                    new Set([...selectedTicketIds, ...selectedGroup.tickets.map((ticket) => ticket.id)]),
-                  )
+              ? () => selection.addToSelection(selectedGroup.tickets.map((ticket) => ticket.id))
               : undefined
           }
           selectedTickets={selectedTickets}
@@ -919,8 +625,8 @@ export function BoardPage() {
         onCancel={() => setCreateDialogOpen(false)}
         onCreated={() => {
           setCreateDialogOpen(false);
-          exitSelectionMode();
-          void load();
+          selection.exitSelectionMode();
+          void reload();
         }}
         open={createDialogOpen}
         priceSourceNameById={view.priceSourceNameById}
@@ -933,8 +639,8 @@ export function BoardPage() {
         onCancel={() => setCombineDialogOpen(false)}
         onCombined={(combined) => {
           setCombineDialogOpen(false);
-          exitSelectionMode();
-          void load().then(() => openTicketFromCard(combined.id));
+          selection.exitSelectionMode();
+          void reload().then(() => drawers.openTicketFromCard(combined.id));
         }}
         open={combineDialogOpen}
         tickets={selectedTickets}
@@ -944,8 +650,8 @@ export function BoardPage() {
         onClose={(changed) => {
           setSuggestionsOpen(false);
           if (changed) {
-            exitSelectionMode();
-            void load();
+            selection.exitSelectionMode();
+            void reload();
           }
         }}
         open={suggestionsOpen}
@@ -954,21 +660,21 @@ export function BoardPage() {
 
       {openRun ? (
         <OrderAcquisitionRunDrawer
-          onChanged={() => void load()}
-          onClose={() => setOpenRunId(null)}
+          onChanged={() => void reload()}
+          onClose={() => drawers.setOpenRunId(null)}
           priceSourceName={openRunPriceSourceName}
           run={openRun}
           tickets={openRunTickets}
         />
       ) : null}
 
-      {editorOpen ? (
+      {drawers.editorOpen ? (
         <TicketEditor
           builds={state.builds}
           characters={state.characters}
-          initialEpicId={editorInitialEpicId}
-          onClose={closeTicketEditor}
-          onCreated={(ticket) => void handleTicketCreated(ticket)}
+          initialEpicId={drawers.editorInitialEpicId}
+          onClose={drawers.closeTicketEditor}
+          onCreated={(ticket) => void drawers.handleTicketCreated(ticket)}
           orders={state.orders}
         />
       ) : openTicket ? (
@@ -979,27 +685,27 @@ export function BoardPage() {
               ? (state.orders.find((order) => order.id === openTicket.orderId)?.displayName ?? null)
               : null
           }
-          onBack={ticketBackToOrderId ? backFromTicketToEpic : undefined}
-          onChanged={() => void load()}
-          onClose={closeTicket}
+          onBack={drawers.ticketBackToOrderId ? drawers.backFromTicketToEpic : undefined}
+          onChanged={() => void reload()}
+          onClose={drawers.closeTicket}
           // Switches to that Epic's own Inspector, staying on Board -- the
           // ticket drawer's own Epic-context section triggers this, never
           // a navigation to `/orders/:id`.
-          onOpenEpic={openTicket.orderId ? () => openEpic(openTicket.orderId as string) : undefined}
+          onOpenEpic={openTicket.orderId ? () => drawers.openEpic(openTicket.orderId as string) : undefined}
           jobs={jobsByTicketId.get(openTicket.id)}
           nowMs={nowMs}
           facilityById={facilityById}
           ticket={openTicket}
           {...combinedTicketContext(openTicket, state.tickets, state.orders)}
-          onOpenEpicById={openEpic}
-          onOpenTicket={openTicketFromCard}
+          onOpenEpicById={drawers.openEpic}
+          onOpenTicket={drawers.openTicketFromCard}
         />
       ) : openOrder ? (
         <EpicInspector
-          onChanged={() => void load()}
-          onClose={closeEpic}
-          onCreateTicket={() => openTicketEditor(openOrder.id, openOrder.id)}
-          onOpenTicket={openTicketFromEpic}
+          onChanged={() => void reload()}
+          onClose={drawers.closeEpic}
+          onCreateTicket={() => drawers.openTicketEditor(openOrder.id, openOrder.id)}
+          onOpenTicket={drawers.openTicketFromEpic}
           order={openOrder}
           tickets={state.tickets}
         />
