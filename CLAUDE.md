@@ -5,7 +5,7 @@ Rust API + Postgres backend, React/TypeScript frontend.
 
 ## Layout
 
-- `apps/iskworks-api` — Axum HTTP API: thin routes in `src/routes/<domain>.rs` or `src/routes/<domain>/` (e.g. `inventory.rs`, `builds/`, `orders/`), `AppState` wiring in `src/state.rs`, and `ApiError`'s HTTP mapping in `src/error.rs` + `src/error/`.
+- `apps/iskworks-api` — Axum HTTP API: thin routes in `src/routes/<domain>.rs` or `src/routes/<domain>/` (e.g. `inventory.rs`, `builds/`, `orders/`), `AppState` wiring in `src/state/` (one dependency group per domain: industry, market, esi, character views, admin), and `ApiError`'s HTTP mapping in `src/error.rs` + `src/error/`.
 - `apps/iskworks-worker` — background loops: market order books, adjusted prices, system cost indices, character source sync, and expired auth/market data cleanup.
 - `apps/iskworks-admin` — operator CLI for invite codes (create, list, disable).
 - `apps/iskworks-sde-import` — CLI to import EVE's Static Data Export into Postgres.
