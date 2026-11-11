@@ -304,6 +304,10 @@ pub struct ApiConfig {
     /// the public listener: Traefik only routes `listen_addr`.
     pub metrics_addr: Option<SocketAddr>,
     pub db_pool: DbPoolConfig,
+    /// How old evidence may be before Opportunities calls it stale. It
+    /// reads the worker's `ISKWORKS_WORKER_*_FRESHNESS_SECONDS` settings, so
+    /// the API and the worker agree on what "fresh" means.
+    pub opportunity_freshness: iskworks_core::OpportunityEvidenceFreshness,
 }
 
 impl ApiConfig {
@@ -317,13 +321,41 @@ impl ApiConfig {
         let metrics_addr = metrics_exporter::metrics_addr(env::var("ISKWORKS_METRICS_ADDR").ok())?;
         let db_pool = DbPoolConfig::from_lookup(|name| env::var(name).ok())
             .map_err(ConfigError::InvalidDbPool)?;
+        let opportunity_freshness = opportunity_freshness_from_lookup(|name| env::var(name).ok());
 
         Ok(Self {
             database_url,
             listen_addr,
             metrics_addr,
             db_pool,
+            opportunity_freshness,
         })
+    }
+}
+
+/// The Opportunities freshness windows. A missing, unparsable or
+/// non-positive value keeps that window's default (15 minutes for market
+/// books, 6 hours for adjusted prices, 1 hour for system cost indices).
+pub fn opportunity_freshness_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> iskworks_core::OpportunityEvidenceFreshness {
+    let window = |name: &str, default: chrono::Duration| {
+        lookup(name)
+            .and_then(|value| value.parse::<i64>().ok())
+            .filter(|seconds| *seconds > 0)
+            .map_or(default, chrono::Duration::seconds)
+    };
+    let defaults = iskworks_core::OpportunityEvidenceFreshness::default();
+    iskworks_core::OpportunityEvidenceFreshness {
+        market: window("ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS", defaults.market),
+        adjusted_prices: window(
+            "ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS",
+            defaults.adjusted_prices,
+        ),
+        system_index: window(
+            "ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS",
+            defaults.system_index,
+        ),
     }
 }
 
@@ -422,6 +454,50 @@ async fn workspace_context(
         _ => Err(ApiError::Industry(IndustryError::Validation(
             "Workspace setup must be completed first.".to_string(),
         ))),
+    }
+}
+
+#[cfg(test)]
+mod opportunity_freshness_tests {
+    use super::opportunity_freshness_from_lookup;
+
+    #[test]
+    fn unset_windows_keep_their_defaults() {
+        let freshness = opportunity_freshness_from_lookup(|_| None);
+        assert_eq!(
+            freshness,
+            iskworks_core::OpportunityEvidenceFreshness::default()
+        );
+        assert_eq!(freshness.market, chrono::Duration::seconds(900));
+        assert_eq!(freshness.adjusted_prices, chrono::Duration::seconds(21_600));
+        assert_eq!(freshness.system_index, chrono::Duration::seconds(3_600));
+    }
+
+    #[test]
+    fn each_window_reads_its_own_setting() {
+        let freshness = opportunity_freshness_from_lookup(|name| match name {
+            "ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS" => Some("60".to_string()),
+            "ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS" => Some("120".to_string()),
+            "ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS" => Some("180".to_string()),
+            _ => None,
+        });
+        assert_eq!(freshness.market, chrono::Duration::seconds(60));
+        assert_eq!(freshness.adjusted_prices, chrono::Duration::seconds(120));
+        assert_eq!(freshness.system_index, chrono::Duration::seconds(180));
+    }
+
+    #[test]
+    fn invalid_or_non_positive_values_keep_the_default() {
+        let freshness = opportunity_freshness_from_lookup(|name| match name {
+            "ISKWORKS_WORKER_MARKET_FRESHNESS_SECONDS" => Some("soon".to_string()),
+            "ISKWORKS_WORKER_ADJUSTED_PRICE_FRESHNESS_SECONDS" => Some("0".to_string()),
+            "ISKWORKS_WORKER_SYSTEM_INDEX_FRESHNESS_SECONDS" => Some("-5".to_string()),
+            _ => None,
+        });
+        assert_eq!(
+            freshness,
+            iskworks_core::OpportunityEvidenceFreshness::default()
+        );
     }
 }
 

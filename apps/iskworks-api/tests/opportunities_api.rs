@@ -755,6 +755,56 @@ async fn evaluate_returns_camel_case_result_quality_projection() {
     assert_eq!(body["excludedCosts"].as_array().unwrap().len(), 6);
 }
 
+/// The freshness windows `main.rs` reads once at startup reach the
+/// evaluation: the fixture's order books are months old, so they are stale
+/// under the default 15-minute market window and fresh under a long one.
+#[tokio::test]
+async fn evaluate_uses_the_configured_opportunity_freshness() {
+    let request = || {
+        json_request(json!({
+            "scopeId": "t1-frigates",
+            "facilityProfileId": "00000000-0000-0000-0000-000000000065",
+            "materialEfficiency": 10,
+            "timeEfficiency": 20,
+            "marketScope": { "regionId": 10000002, "locationId": 60003760 }
+        }))
+    };
+
+    let default_body = response_json(
+        successful_evaluation_app()
+            .oneshot(request())
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        default_body["readiness"]["marketStaleCount"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(default_body["readiness"]["marketFreshCount"], 0);
+
+    let long_window = iskworks_core::OpportunityEvidenceFreshness {
+        market: chrono::Duration::days(3_650),
+        ..iskworks_core::OpportunityEvidenceFreshness::default()
+    };
+    let configured_body = response_json(
+        build_router(successful_evaluation_state().with_opportunity_freshness(long_window))
+            .oneshot(request())
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(configured_body["readiness"]["marketStaleCount"], 0);
+    assert!(
+        configured_body["readiness"]["marketFreshCount"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+}
+
 /// **Inventory-neutrality golden guard**: Opportunities' economic material cost / gross
 /// profit must stay byte-for-byte identical whether or not inventory exists
 /// for the candidate's materials, and regardless of that inventory's
