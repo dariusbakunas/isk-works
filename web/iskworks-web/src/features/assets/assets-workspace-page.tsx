@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { exportAssets, syncAssets, type AssetBlueprintKindFilter, type AssetColumn, type AssetKindFilter, type AssetReconciliationFilter, type AssetSortColumn, type AssetSortDirection, type FlatAssetQuery, type FlatAssetRow } from "../../api/assets";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { EveTypeImage } from "../../components/eve-type-image";
+import { OperationalTable, OperationalTableRow, type OperationalColumn } from "../../components/operational-table";
 import { CharacterName } from "../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../components/finance-filter-controls";
 import { ExportColumnsDialog } from "../../components/export-columns-dialog";
@@ -13,11 +14,11 @@ import { useAssetsQuery } from "./use-assets-query";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
 import { apiMessage } from "../../api/api-error";
 
-const columns: Array<{ key: AssetColumn; label: string; numeric?: boolean }> = [
-  { key: "item", label: "Item" }, { key: "quantity", label: "Quantity", numeric: true },
-  { key: "packagedVolume", label: "Volume", numeric: true }, { key: "character", label: "Character" },
-  { key: "location", label: "Location" }, { key: "container", label: "Container" },
-  { key: "group", label: "Group" }, { key: "status", label: "Status" }, { key: "observed", label: "Observed" },
+const columns: Array<{ key: AssetColumn; label: string; width: string; numeric?: boolean }> = [
+  { key: "item", label: "Item", width: "18rem" }, { key: "quantity", label: "Quantity", width: "6rem", numeric: true },
+  { key: "packagedVolume", label: "Volume", width: "7rem", numeric: true }, { key: "character", label: "Character", width: "10rem" },
+  { key: "location", label: "Location", width: "14rem" }, { key: "container", label: "Container", width: "9rem" },
+  { key: "group", label: "Group", width: "8rem" }, { key: "status", label: "Status", width: "7rem" }, { key: "observed", label: "Observed", width: "9.5rem" },
 ];
 const EXPORT_COLUMNS_STORAGE_KEY = "iskworks.assets.exportColumns";
 const assetKinds: AssetKindFilter[] = ["blueprint", "material", "ship", "container", "other"];
@@ -115,14 +116,23 @@ function FilterChecks<T extends string>({ all, selected, setSelected }: { all: T
 }
 
 function AssetTable({ assets, onSelect, onSort, order, resetKey, selected, sort, visible }: { assets: ReturnType<typeof useAssetsQuery>; onSelect: (row: FlatAssetRow) => void; onSort: (column: AssetSortColumn) => void; order: AssetSortDirection; resetKey: string; selected: FlatAssetRow | null; sort: AssetSortColumn; visible: Set<AssetColumn> }) {
-  const shown = columns.filter(({ key }) => visible.has(key));
-  const root = useRef<HTMLDivElement>(null);
+  const tableColumns: OperationalColumn[] = columns.filter(({ key }) => visible.has(key)).map((column) => ({
+    key: column.key,
+    label: column.label,
+    width: column.width,
+    align: column.numeric ? "right" : "left",
+    numeric: column.numeric,
+    sort: { direction: sort === column.key ? order : null, onToggle: () => onSort(column.key) },
+  }));
   const sentinel = useRef<HTMLDivElement>(null);
+  // The table's own wrapper is the one scroll container (see
+  // OperationalTable's `footer`); the sentinel sits inside it.
   useEffect(() => {
-    if (root.current) root.current.scrollTop = 0;
+    const viewport = sentinel.current?.closest<HTMLElement>("[data-operational-table-scroll]");
+    if (viewport) viewport.scrollTop = 0;
   }, [resetKey]);
   useEffect(() => {
-    const viewport = root.current;
+    const viewport = sentinel.current?.closest<HTMLElement>("[data-operational-table-scroll]");
     const marker = sentinel.current;
     if (!viewport || !marker || !assets.hasMore || assets.error) return;
     const observer = new IntersectionObserver(
@@ -133,21 +143,42 @@ function AssetTable({ assets, onSelect, onSort, order, resetKey, selected, sort,
     return () => observer.disconnect();
   }, [assets.error, assets.hasMore, assets.loadMore]);
   return (
-    <div className="min-h-0 flex-1 overflow-auto" data-asset-scroll-viewport ref={root}>
-      <table aria-label="Synchronized assets" className="w-full min-w-[76rem] table-fixed border-collapse">
-        <thead className="sticky top-0 z-20 bg-panel-strong"><tr>{shown.map((column) => <th className={column.numeric ? "text-right" : "text-left"} key={column.key}><button className="flex w-full items-center gap-1 px-2 py-1.5 text-[0.65rem] font-semibold uppercase text-muted" onClick={() => onSort(column.key)} type="button"><span className={column.numeric ? "ml-auto" : ""}>{column.label}</span>{sort === column.key ? order === "asc" ? "↑" : "↓" : null}</button></th>)}</tr></thead>
-        <tbody>{assets.rows.map((row) => <AssetRow columns={shown.map(({ key }) => key)} key={`${row.connectionId}:${row.eveItemId}`} onClick={() => onSelect(row)} row={row} selected={selected?.connectionId === row.connectionId && selected?.eveItemId === row.eveItemId} />)}</tbody>
-      </table>
-      {assets.loading && !assets.rows.length ? <State>Loading synchronized assets...</State> : null}
-      {!assets.loading && !assets.rows.length && !assets.error ? <State>No synchronized assets match these filters.</State> : null}
-      <div className="h-px" ref={sentinel} />
-      {assets.loadingMore ? <State>Loading more assets...</State> : null}
-      {assets.error ? <div className="flex justify-center gap-2 p-3 text-destructive"><span>{assets.error.message}</span>{assets.rows.length ? <button className="iw-button-secondary min-h-7" onClick={assets.retry} type="button">Retry</button> : null}</div> : null}
-    </div>
+    <OperationalTable
+      ariaLabel="Synchronized assets"
+      columns={tableColumns}
+      footer={
+        <>
+          {assets.loading && !assets.rows.length ? <State>Loading synchronized assets...</State> : null}
+          {!assets.loading && !assets.rows.length && !assets.error ? <State>No synchronized assets match these filters.</State> : null}
+          <div className="h-px" ref={sentinel} />
+          {assets.loadingMore ? <State>Loading more assets...</State> : null}
+          {assets.error ? <div className="flex justify-center gap-2 p-3 text-destructive"><span>{assets.error.message}</span>{assets.rows.length ? <button className="iw-button-secondary min-h-7" onClick={assets.retry} type="button">Retry</button> : null}</div> : null}
+        </>
+      }
+      onSelectRow={(key) => {
+        const row = assets.rows.find((candidate) => assetRowKey(candidate) === key);
+        if (row) onSelect(row);
+      }}
+      scrollClassName="min-h-0 flex-1 overflow-y-auto"
+      selectedRowKey={selected ? assetRowKey(selected) : null}
+    >
+      <tbody>{assets.rows.map((row) => <AssetRow key={assetRowKey(row)} row={row} />)}</tbody>
+    </OperationalTable>
   );
 }
 
-function AssetRow({ columns: shown, onClick, row, selected }: { columns: AssetColumn[]; onClick: () => void; row: FlatAssetRow; selected: boolean }) { const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() }; return <tr aria-selected={selected} className={`group cursor-pointer border-b border-border hover:bg-panel ${selected ? "bg-primary/10" : ""}`} onClick={onClick}>{shown.map((column) => <td className={`${column === "quantity" || column === "packagedVolume" ? "text-right font-mono tabular-nums" : ""} truncate px-2 py-1.5 text-muted`} key={column} title={typeof values[column] === "string" ? String(values[column]) : undefined}>{values[column]}</td>)}</tr>; }
+function assetRowKey(row: FlatAssetRow) { return `${row.connectionId}:${row.eveItemId}`; }
+
+function AssetRow({ row }: { row: FlatAssetRow }) {
+  const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() };
+  const cells = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      <span className="min-w-0 truncate text-muted" key={key} title={typeof value === "string" ? value : undefined}>{value}</span>,
+    ]),
+  );
+  return <OperationalTableRow cells={cells} rowKey={assetRowKey(row)} />;
+}
 
 function ColumnChooser({ onChange, visible }: { onChange: (value: Set<AssetColumn>) => void; visible: Set<AssetColumn> }) { return <details className="relative"><summary className="inline-flex h-7 cursor-pointer list-none items-center rounded-[3px] border border-border bg-panel-strong px-2 text-[0.6875rem] font-semibold text-muted"><Columns3 className="mr-1.5 h-3.5 w-3.5" />Columns</summary><div className="absolute right-0 z-50 mt-1 grid w-64 grid-cols-2 gap-2 rounded-[3px] border border-border bg-panel-strong p-3 shadow-xl">{columns.map(({ key, label }) => <FinanceCheckbox checked={visible.has(key)} key={key} onChange={() => { const next = new Set(visible); if (next.has(key) && next.size > 1) next.delete(key); else next.add(key); onChange(next); }}><span className="text-[0.6875rem] text-muted">{label}</span></FinanceCheckbox>)}</div></details>; }
 function Action({ disabled, icon, label, onClick }: { disabled?: boolean; icon: React.ReactNode; label: string; onClick: () => void }) { return <button className="inline-flex h-7 items-center gap-1.5 rounded-[3px] border border-border bg-panel-strong px-2 text-[0.6875rem] font-semibold text-muted hover:border-primary/70 hover:text-foreground disabled:opacity-60" disabled={disabled} onClick={onClick} type="button">{icon}{label}</button>; }
