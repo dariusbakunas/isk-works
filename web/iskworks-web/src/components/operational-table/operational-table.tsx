@@ -56,15 +56,24 @@ export function OperationalTable({
     () => ({ columns, selectedRowKey, onSelectRow }),
     [columns, onSelectRow, selectedRowKey],
   );
-  const gridTemplateColumns = columns.map((column) => column.width).join(" ");
+  // One template per breakpoint, without the columns hidden there: hidden
+  // cells are `display: none`, so a track kept for them would shift the
+  // remaining cells into the wrong columns and keep the table's full width.
+  // The classes on <table> pick the template, so `--operational-columns`
+  // must not be set inline (inline would win over them).
+  const templates = {
+    "--operational-columns-base": gridTemplate(columns, "base"),
+    "--operational-columns-tablet": gridTemplate(columns, "tablet"),
+    "--operational-columns-desktop": gridTemplate(columns, "desktop"),
+  } as CSSProperties;
 
   return (
     <TableContext.Provider value={context}>
       <div className={`max-w-full overflow-x-auto ${scrollClassName}`} data-operational-table-scroll>
         <table
           aria-label={ariaLabel}
-          className="w-full min-w-max border-collapse text-sm"
-          style={{ "--operational-columns": gridTemplateColumns } as CSSProperties}
+          className="w-full min-w-max border-collapse text-sm [--operational-columns:var(--operational-columns-base)] sm:[--operational-columns:var(--operational-columns-tablet)] lg:[--operational-columns:var(--operational-columns-desktop)]"
+          style={templates}
         >
           <thead className="sticky top-0 z-20 bg-background">
             <tr className="grid grid-cols-[var(--operational-columns)] border-b border-border">
@@ -280,6 +289,21 @@ export function OperationalTableRow({
       ))}
     </tr>
   );
+}
+
+// `hideBelow: "tablet"` shows from `sm`, `"desktop"` from `lg`, matching
+// the cell classes in `cellClass`.
+function gridTemplate(columns: OperationalColumn[], breakpoint: "base" | "tablet" | "desktop") {
+  return columns
+    .filter((column) =>
+      column.hideBelow === "desktop"
+        ? breakpoint === "desktop"
+        : column.hideBelow === "tablet"
+          ? breakpoint !== "base"
+          : true,
+    )
+    .map((column) => column.width)
+    .join(" ");
 }
 
 function useTableContext() {

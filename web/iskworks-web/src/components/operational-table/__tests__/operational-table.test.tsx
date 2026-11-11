@@ -217,4 +217,38 @@ describe("OperationalTable", () => {
     );
     expect(screen.getByRole("button", { name: "Item" })).toHaveClass("uppercase");
   });
+
+  test("a column hidden below a breakpoint gives up its grid track there too", () => {
+    render(
+      <OperationalTable
+        ariaLabel="Pilots"
+        columns={[
+          { key: "pilot", label: "Pilot", width: "minmax(10rem,1fr)" },
+          { key: "ehp", label: "EHP", width: "5rem", hideBelow: "tablet" },
+          { key: "dps", label: "DPS", width: "4.5rem", hideBelow: "desktop" },
+          { key: "expand", label: "", width: "2rem" },
+        ]}
+        onSelectRow={vi.fn()}
+        selectedRowKey={null}
+      >
+        <tbody>
+          <OperationalTableRow rowKey="a" cells={{ pilot: "Aura" }} />
+        </tbody>
+      </OperationalTable>,
+    );
+
+    // Hidden cells are display:none, so a track left in the template would
+    // shift the remaining cells into the wrong columns and keep the width.
+    const table = screen.getByRole("table", { name: "Pilots" });
+    expect(table.style.getPropertyValue("--operational-columns-base")).toBe("minmax(10rem,1fr) 2rem");
+    expect(table.style.getPropertyValue("--operational-columns-tablet")).toBe("minmax(10rem,1fr) 5rem 2rem");
+    expect(table.style.getPropertyValue("--operational-columns-desktop")).toBe("minmax(10rem,1fr) 5rem 4.5rem 2rem");
+    // An inline --operational-columns would override the breakpoint classes.
+    expect(table.style.getPropertyValue("--operational-columns")).toBe("");
+    expect(table).toHaveClass(
+      "[--operational-columns:var(--operational-columns-base)]",
+      "sm:[--operational-columns:var(--operational-columns-tablet)]",
+      "lg:[--operational-columns:var(--operational-columns-desktop)]",
+    );
+  });
 });

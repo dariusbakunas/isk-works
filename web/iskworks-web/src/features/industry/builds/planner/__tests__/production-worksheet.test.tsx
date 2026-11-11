@@ -556,7 +556,7 @@ describe("ProductionWorksheet", () => {
     expect(fullRequired).toHaveTextContent("18,203,393");
     expect(fullRequired.closest("td")).toHaveClass("text-right", "tabular-nums");
     expect(
-      screen.getByRole("table", { name: "Production worksheet" }).style.getPropertyValue("--operational-columns"),
+      screen.getByRole("table", { name: "Production worksheet" }).style.getPropertyValue("--operational-columns-desktop"),
     ).toContain("112px 112px 112px 112px");
   });
 
