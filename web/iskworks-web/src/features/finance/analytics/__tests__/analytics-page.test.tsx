@@ -388,6 +388,10 @@ describe("AnalyticsPage breakdowns", () => {
     expect(within(earners).getByText("% of income")).toBeInTheDocument();
     expect(within(earners).queryByText(/% spend/)).not.toBeInTheDocument();
     expect(within(earners).getByText("42.5%")).toBeInTheDocument();
+    // Both are shared operational tables; the share sits in its own column.
+    expect(within(expenses).getByRole("table", { name: "Top expenses" })).toBeInTheDocument();
+    const earnersTable = within(earners).getByRole("table", { name: "Top earners" });
+    expect(earnersTable.querySelector('td[data-column="share"]')?.textContent).toBe("42.5%");
     // Average price is exact ISK per unit; quantity and total are exact too.
     expect(within(expenses).getByText("8,420")).toBeInTheDocument();
     expect(within(expenses).getByText("45,000")).toBeInTheDocument();
