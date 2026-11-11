@@ -252,18 +252,6 @@ body {
     white-space: nowrap;
   }
 
-  .finance-table [data-finance-column="time"] { width: 9.5rem; }
-  .finance-table [data-finance-column="character"] { width: 9rem; }
-  .finance-table [data-finance-column="transactionType"] { width: 7rem; }
-  .finance-table [data-finance-column="item"] { width: 15rem; }
-  .finance-table [data-finance-column="quantity"] { width: 6rem; }
-  .finance-table [data-finance-column="unitPrice"] { width: 8rem; }
-  .finance-table [data-finance-column="totalPrice"] { width: 9rem; }
-  .finance-table [data-finance-column="direction"] { width: 7rem; }
-  .finance-table [data-finance-column="counterparty"] { width: 10rem; }
-  .finance-table [data-finance-column="region"] { width: 8rem; }
-  .finance-table [data-finance-column="inventory"] { width: 6.5rem; }
-
   .finance-date-field {
     color-scheme: dark;
   }

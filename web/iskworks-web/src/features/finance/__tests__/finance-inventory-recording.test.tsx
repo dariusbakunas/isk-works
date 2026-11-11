@@ -288,7 +288,7 @@ describe("Finance inventory recording column", () => {
     fireEvent.click(screen.getByRole("button", { name: "Columns" }));
     fireEvent.click(screen.getByLabelText("Inventory"));
     expect(screen.queryByRole("columnheader", { name: "Inventory" })).not.toBeInTheDocument();
-    expect(container.querySelector('td[data-finance-column="inventory"]')).toBeNull();
+    expect(container.querySelector('td[data-column="inventory"]')).toBeNull();
   });
 
   test("the Inventory header is not sortable and export never asks for it", async () => {
