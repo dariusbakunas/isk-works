@@ -10,8 +10,7 @@ use iskworks_app::{
 use iskworks_core::order::{OrderError, OrderRepository, TicketJobRepository};
 use iskworks_core::{
     FacilityError, FinanceError, IndustryError, IndustryRepository, IndustryService,
-    InventoryError, InventoryRepository, InventoryService, ProductionError, ProductionRepository,
-    WorkspaceId,
+    InventoryRepository, InventoryService, ProductionError, ProductionRepository, WorkspaceId,
 };
 use std::sync::Arc;
 
@@ -216,11 +215,12 @@ impl AppState {
     }
 
     pub(crate) fn inventory_repository(&self) -> Result<Arc<dyn InventoryRepository>, ApiError> {
-        self.industry.inventory_repository.clone().ok_or_else(|| {
-            ApiError::Inventory(InventoryError::Persistence(
-                "Inventory persistence is unavailable.".to_string(),
+        self.industry
+            .inventory_repository
+            .clone()
+            .ok_or(ApiError::ServiceUnavailable(
+                "Inventory persistence is unavailable.",
             ))
-        })
     }
 
     pub(crate) fn inventory_service(&self) -> Result<InventoryService, ApiError> {
@@ -413,11 +413,9 @@ impl AppState {
         self.industry
             .inventory_runway_repository
             .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Inventory runway persistence is unavailable.".to_string(),
-                ))
-            })
+            .ok_or(ApiError::ServiceUnavailable(
+                "Inventory runway persistence is unavailable.",
+            ))
     }
 
     pub(crate) fn inventory_consumption_repository(
@@ -426,11 +424,9 @@ impl AppState {
         self.industry
             .inventory_consumption_repository
             .clone()
-            .ok_or_else(|| {
-                ApiError::Inventory(InventoryError::Persistence(
-                    "Inventory consumption persistence is unavailable.".to_string(),
-                ))
-            })
+            .ok_or(ApiError::ServiceUnavailable(
+                "Inventory consumption persistence is unavailable.",
+            ))
     }
 
     pub(crate) fn blueprint_library_repository(

@@ -101,6 +101,15 @@ pub enum ApiError {
     SdeMissingPlannerData,
     /// The PI plan ran past its solve deadline.
     SolveTimeout,
+    /// The PI plan solver failed (an infeasible relaxation or a crashed
+    /// solve task). An internal failure: the detail is logged against a
+    /// correlation id, never returned.
+    PiSolverFailed(String),
+    /// A dependency this server was started without (an `AppState`
+    /// accessor's fallback). Answers exactly like a storage failure: a
+    /// redacted, retryable 503 `persistence_unavailable`, with the message
+    /// logged against the correlation id.
+    ServiceUnavailable(&'static str),
     /// The request is well-formed but not allowed in the current state;
     /// the message is curated and safe to show.
     Conflict(&'static str),
@@ -208,9 +217,7 @@ impl From<iskworks_app::PiPlannerError> for ApiError {
             iskworks_app::PiPlannerError::Sde(error) => error.into(),
             iskworks_app::PiPlannerError::Market(error) => Self::Market(error),
             iskworks_app::PiPlannerError::SolveTimeout => Self::SolveTimeout,
-            iskworks_app::PiPlannerError::Solver(message) => {
-                Self::Inventory(InventoryError::Persistence(message))
-            }
+            iskworks_app::PiPlannerError::Solver(message) => Self::PiSolverFailed(message),
         }
     }
 }
@@ -261,9 +268,9 @@ impl From<BuildPreviewError> for ApiError {
             BuildPreviewError::ProductionUnavailable => Self::Production(ProductionError::Persistence(
                 "Production persistence is unavailable.".to_string(),
             )),
-            BuildPreviewError::InventoryUnavailable => Self::Inventory(InventoryError::Persistence(
-                "Inventory persistence is unavailable.".to_string(),
-            )),
+            BuildPreviewError::InventoryUnavailable => {
+                Self::ServiceUnavailable("Inventory persistence is unavailable.")
+            }
             BuildPreviewError::EsiUnavailable => Self::Integration(EsiApplicationError::Configuration(
                 "EVE integration is not configured. Set EVE SSO credentials or enable explicit fixture mode.".to_string(),
             )),
@@ -422,12 +429,13 @@ fn facility_error_status(error: &FacilityError) -> (StatusCode, &'static str) {
 /// `correlationId`; the real error text is logged server-side against that
 /// id and never crosses the wire.
 ///
-/// There is intentionally one category today. `sqlx`/Postgres errors,
-/// stored-row decode failures, and SDE read failures all surface as
-/// `String`-carrying `Persistence` / `StaticData` variants whose `Display`
-/// embeds raw driver text (`relation "..."`, `constraint "..."`), so they
-/// share one contract. Add another variant here only when a genuinely
-/// different public code/status/retryable tuple is warranted.
+/// `sqlx`/Postgres errors, stored-row decode failures, and SDE read
+/// failures all surface as `String`-carrying `Persistence` / `StaticData`
+/// variants whose `Display` embeds raw driver text (`relation "..."`,
+/// `constraint "..."`), so they share the `Persistence` contract. A PI
+/// solver failure is not a storage problem and retrying the same scenario
+/// fails again, so it has its own. Add another variant here only when a
+/// genuinely different public code/status/retryable tuple is warranted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InternalFailureCategory {
     /// Storage failure: database driver error, transaction failure, a
@@ -435,12 +443,16 @@ pub enum InternalFailureCategory {
     /// database. Retryable — a later attempt may land once the pool or
     /// database recovers.
     Persistence,
+    /// The PI plan solver failed. Not retryable: the same scenario fails
+    /// the same way, so the user has to change it.
+    Solver,
 }
 
 impl InternalFailureCategory {
     fn as_str(self) -> &'static str {
         match self {
             Self::Persistence => "persistence",
+            Self::Solver => "solver",
         }
     }
 
@@ -448,6 +460,7 @@ impl InternalFailureCategory {
     fn public_code(self) -> &'static str {
         match self {
             Self::Persistence => "persistence_unavailable",
+            Self::Solver => "pi_solver_failed",
         }
     }
 
@@ -456,12 +469,17 @@ impl InternalFailureCategory {
     fn public_message(self) -> &'static str {
         match self {
             Self::Persistence => "A storage error occurred. Please try again.",
+            Self::Solver => {
+                "The PI plan could not be solved. Try a different radius or fewer \
+                             characters."
+            }
         }
     }
 
     fn retryable(self) -> bool {
         match self {
             Self::Persistence => true,
+            Self::Solver => false,
         }
     }
 }
@@ -552,6 +570,13 @@ impl ApiError {
             Self::Inventory(InventoryError::Persistence(detail)) => {
                 persistence_failure(format!("inventory persistence: {detail}"))
             }
+            Self::ServiceUnavailable(detail) => {
+                persistence_failure(format!("service unavailable: {detail}"))
+            }
+            Self::PiSolverFailed(detail) => Some((
+                InternalFailureCategory::Solver,
+                format!("pi planner solver: {detail}"),
+            )),
             Self::Production(ProductionError::Persistence(detail)) => {
                 persistence_failure(format!("production persistence: {detail}"))
             }
@@ -822,6 +847,26 @@ impl IntoResponse for ApiError {
                     message: "The static data import predates the PI Planner. Re-import the SDE \
                               to use it."
                         .to_string(),
+                    fields: None,
+                    retryable: false,
+                    correlation_id: None,
+                },
+            ),
+            Self::ServiceUnavailable(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorBody {
+                    code: "persistence_unavailable",
+                    message: message.to_string(),
+                    fields: None,
+                    retryable: true,
+                    correlation_id: None,
+                },
+            ),
+            Self::PiSolverFailed(message) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorBody {
+                    code: "pi_solver_failed",
+                    message,
                     fields: None,
                     retryable: false,
                     correlation_id: None,
