@@ -421,20 +421,6 @@ impl From<iskworks_app::DescendantProductionConfigurationError> for ApiError {
     }
 }
 
-fn facility_error_status(error: &FacilityError) -> (StatusCode, &'static str) {
-    match error {
-        FacilityError::NotFound => (StatusCode::NOT_FOUND, "facility_not_found"),
-        FacilityError::Archived => (StatusCode::CONFLICT, "facility_archived"),
-        FacilityError::RevisionConflict => (StatusCode::CONFLICT, "facility_revision_conflict"),
-        FacilityError::Validation(_) | FacilityError::ArithmeticOverflow => {
-            (StatusCode::BAD_REQUEST, "facility_calculation_failed")
-        }
-        FacilityError::Persistence(_) => {
-            (StatusCode::SERVICE_UNAVAILABLE, "persistence_unavailable")
-        }
-    }
-}
-
 /// A public category for an error that represents an ISK Works
 /// implementation or infrastructure failure rather than a deliberately
 /// authored, actionable domain outcome. When `ApiError::into_response`
@@ -666,12 +652,14 @@ where
     }
 }
 
+mod facility;
 mod industry;
 mod integration;
 mod inventory;
 mod market;
 mod opportunity;
 mod order;
+use facility::*;
 use industry::*;
 use integration::*;
 use inventory::*;
