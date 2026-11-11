@@ -124,8 +124,13 @@ describe("TransactionsPage", () => {
 
     const { container } = render(<MemoryRouter><TransactionsPage /></MemoryRouter>);
     expect(await screen.findByText("Rifter")).toBeInTheDocument();
-    expect(container.querySelector('td[data-finance-column="counterparty"]')).toHaveTextContent("—");
-    expect(container.querySelector('td[data-finance-column="location"]')).toHaveTextContent("—");
+    expect(container.querySelector('td[data-column="counterparty"]')).toHaveTextContent("—");
+    expect(container.querySelector('td[data-column="location"]')).toHaveTextContent("—");
+    // Session replay redacts this exact selector (observability/logrocket.ts),
+    // on top of the rows' own data-private marker.
+    const masked = container.querySelector('table[aria-label="Wallet transactions"] tbody');
+    expect(masked).toHaveAttribute("data-private");
+    expect(masked).toHaveTextContent("Rifter");
   });
 
   test("uses the compact column chooser and updates visible table columns", async () => {

@@ -174,4 +174,47 @@ describe("OperationalTable", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("row", { name: /EUU-4N II/ })).toHaveAttribute("data-accent", "blocking");
   });
+
+  test("tags each header and cell with its column key", () => {
+    const { container } = render(fixture().view);
+    expect(container.querySelector('th[data-column="required"]')).toHaveTextContent("Required");
+    expect([...container.querySelectorAll('td[data-column="required"]')].map((cell) => cell.textContent)).toEqual([
+      "28,800",
+      "5,400",
+    ]);
+  });
+
+  test("renders a footer after the table inside the same scroll container", () => {
+    render(
+      <OperationalTable
+        ariaLabel="Paged"
+        columns={columns}
+        footer={<div data-testid="footer">All rows loaded.</div>}
+        onSelectRow={vi.fn()}
+        selectedRowKey={null}
+      >
+        <tbody>
+          <OperationalTableRow rowKey="a" cells={{ item: "Rifter", required: "1" }} />
+        </tbody>
+      </OperationalTable>,
+    );
+    const footer = screen.getByTestId("footer");
+    const scroll = footer.closest("[data-operational-table-scroll]");
+    expect(scroll).not.toBeNull();
+    expect(scroll?.querySelector("table")?.nextElementSibling).toBe(footer);
+  });
+
+  test("a sortable header keeps the uppercase header style on its button", () => {
+    render(
+      <OperationalTable
+        ariaLabel="Sortable"
+        columns={[{ ...columns[0], sort: { direction: null, onToggle: vi.fn() } }, columns[1]]}
+        onSelectRow={vi.fn()}
+        selectedRowKey={null}
+      >
+        <tbody />
+      </OperationalTable>,
+    );
+    expect(screen.getByRole("button", { name: "Item" })).toHaveClass("uppercase");
+  });
 });

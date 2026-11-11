@@ -32,6 +32,7 @@ import {
   type SortDirection,
 } from "../../api/finance";
 import { MoneyAmount, formatIskCompact } from "../../components/money";
+import { OperationalTable, OperationalTableRow, type OperationalColumn } from "../../components/operational-table";
 import { CharacterName, Private } from "../../observability/private";
 import { FinanceCheckbox, FinanceDateField, FinanceFilterSection } from "../../components/finance-filter-controls";
 import { InventoryRecordingCell } from "./inventory-recording-cell";
@@ -39,19 +40,19 @@ import { parseTransactionsUrlFilter, parseTransactionsUrlLabels } from "./transa
 import { useFinanceTransactions } from "./use-finance-transactions";
 import { apiMessage } from "../../api/api-error";
 
-const allColumns: Array<{ key: FinanceDisplayColumn; label: string; numeric?: boolean }> = [
-  { key: "time", label: "Time" },
-  { key: "character", label: "Character" },
-  { key: "transactionType", label: "Type" },
-  { key: "item", label: "Item" },
-  { key: "quantity", label: "Qty", numeric: true },
-  { key: "unitPrice", label: "Unit price", numeric: true },
-  { key: "totalPrice", label: "Total", numeric: true },
-  { key: "direction", label: "Direction" },
-  { key: "counterparty", label: "Client" },
-  { key: "location", label: "Where" },
-  { key: "region", label: "Region" },
-  { key: "inventory", label: "Inventory" },
+const allColumns: Array<{ key: FinanceDisplayColumn; label: string; width: string; numeric?: boolean }> = [
+  { key: "time", label: "Time", width: "9.5rem" },
+  { key: "character", label: "Character", width: "9rem" },
+  { key: "transactionType", label: "Type", width: "7rem" },
+  { key: "item", label: "Item", width: "15rem" },
+  { key: "quantity", label: "Qty", width: "6rem", numeric: true },
+  { key: "unitPrice", label: "Unit price", width: "8rem", numeric: true },
+  { key: "totalPrice", label: "Total", width: "9rem", numeric: true },
+  { key: "direction", label: "Direction", width: "7rem" },
+  { key: "counterparty", label: "Client", width: "10rem" },
+  { key: "location", label: "Where", width: "12rem" },
+  { key: "region", label: "Region", width: "8rem" },
+  { key: "inventory", label: "Inventory", width: "6.5rem" },
 ];
 
 const defaultVisible = new Set<FinanceDisplayColumn>(allColumns.map(({ key }) => key));
@@ -437,12 +438,22 @@ function TransactionTable({ columns, error, hasMore, loadingInitial, loadingMore
   onInventoryChange: (observationId: string, recording: FinanceInventoryRecording) => void;
 }) {
   const visible = allColumns.filter(({ key }) => columns.has(key));
-  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const tableColumns: OperationalColumn[] = visible.map((column) => ({
+    key: column.key,
+    label: column.label,
+    width: column.width,
+    align: column.numeric ? "right" : "left",
+    numeric: column.numeric,
+    // Inventory is a per-row action, not a sortable value.
+    sort: column.key === "inventory"
+      ? undefined
+      : { direction: sort === column.key ? order : null, onToggle: () => onSort(column.key as FinanceSortColumn) },
+  }));
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const root = scrollRootRef.current;
     const sentinel = sentinelRef.current;
+    const root = sentinel?.closest<HTMLElement>("[data-operational-table-scroll]");
     if (!root || !sentinel || !hasMore || error) return;
     const observer = new IntersectionObserver(
       (entries) => { if (entries.some(({ isIntersecting }) => isIntersecting)) onLoadMore(); },
@@ -453,27 +464,36 @@ function TransactionTable({ columns, error, hasMore, loadingInitial, loadingMore
   }, [error, hasMore, onLoadMore]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto" data-finance-scroll-viewport ref={scrollRootRef}>
-      <table aria-label="Wallet transactions" className="finance-table w-full min-w-[72rem] table-fixed border-collapse">
-        <thead className="sticky top-0 z-20 bg-panel-strong"><tr>{visible.map((column) => <th className={column.numeric ? "text-right" : "text-left"} data-finance-column={column.key} key={column.key}>{column.key === "inventory" ? <span className="block px-2 py-1.5 text-[0.65rem] font-semibold uppercase text-muted">{column.label}</span> : <button className="flex w-full items-center gap-1 px-2 py-1.5 text-left text-[0.65rem] font-semibold uppercase text-muted" onClick={() => onSort(column.key as FinanceSortColumn)} type="button"><span className={column.numeric ? "ml-auto" : ""}>{column.label}</span>{sort === column.key ? <span aria-label={order === "asc" ? "ascending" : "descending"}>{order === "asc" ? "↑" : "↓"}</span> : null}</button>}</th>)}</tr></thead>
-        <tbody data-private="">{rows.map((row) => <TransactionRow columns={visible.map(({ key }) => key)} key={row.observationId} onInventoryChange={onInventoryChange} row={row} />)}</tbody>
-      </table>
-      {loadingInitial && rows.length === 0
-        ? <div className="p-4 text-center text-muted">Loading transactions...</div>
-        : error && rows.length === 0
-          ? <div className="p-4 text-center text-destructive">{error.message}</div>
-          : rows.length === 0
-            ? <div className="p-6 text-center text-muted"><WalletCards className="mx-auto mb-2 h-5 w-5" />No real EVE market transactions match these filters.</div>
-            : null}
-      <div className="h-px" data-finance-load-sentinel ref={sentinelRef} />
-      {loadingMore ? <div className="p-3 text-center text-muted">Loading more transactions...</div> : null}
-      {error && rows.length > 0 ? <div className="flex items-center justify-center gap-2 p-3 text-destructive"><span>{error.message}</span><button className="iw-button-secondary min-h-7" onClick={onRetry} type="button">Retry</button></div> : null}
-      {!loadingInitial && !loadingMore && !hasMore && rows.length > 0 ? <div className="p-3 text-center text-muted">All matching transactions loaded.</div> : null}
-    </div>
+    <OperationalTable
+      ariaLabel="Wallet transactions"
+      columns={tableColumns}
+      footer={
+        <>
+          {loadingInitial && rows.length === 0
+            ? <div className="p-4 text-center text-muted">Loading transactions...</div>
+            : error && rows.length === 0
+              ? <div className="p-4 text-center text-destructive">{error.message}</div>
+              : rows.length === 0
+                ? <div className="p-6 text-center text-muted"><WalletCards className="mx-auto mb-2 h-5 w-5" />No real EVE market transactions match these filters.</div>
+                : null}
+          <div className="h-px" data-finance-load-sentinel ref={sentinelRef} />
+          {loadingMore ? <div className="p-3 text-center text-muted">Loading more transactions...</div> : null}
+          {error && rows.length > 0 ? <div className="flex items-center justify-center gap-2 p-3 text-destructive"><span>{error.message}</span><button className="iw-button-secondary min-h-7" onClick={onRetry} type="button">Retry</button></div> : null}
+          {!loadingInitial && !loadingMore && !hasMore && rows.length > 0 ? <div className="p-3 text-center text-muted">All matching transactions loaded.</div> : null}
+        </>
+      }
+      onSelectRow={() => {}}
+      scrollClassName="min-h-0 flex-1 overflow-y-auto"
+      selectedRowKey={null}
+    >
+      <tbody data-private="">
+        {rows.map((row) => <TransactionRow key={row.observationId} onInventoryChange={onInventoryChange} row={row} />)}
+      </tbody>
+    </OperationalTable>
   );
 }
 
-function TransactionRow({ columns, row, onInventoryChange }: { columns: FinanceDisplayColumn[]; row: FinanceTransaction; onInventoryChange: (observationId: string, recording: FinanceInventoryRecording) => void }) {
+function TransactionRow({ row, onInventoryChange }: { row: FinanceTransaction; onInventoryChange: (observationId: string, recording: FinanceInventoryRecording) => void }) {
   const incoming = row.transactionType === "marketSell";
   const values: Record<FinanceDisplayColumn, React.ReactNode> = {
     time: <time dateTime={row.transactedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(new Date(row.transactedAt))}</time>,
@@ -489,7 +509,13 @@ function TransactionRow({ columns, row, onInventoryChange }: { columns: FinanceD
     region: row.regionName ?? "—",
     inventory: <InventoryRecordingCell onChange={onInventoryChange} row={row} />,
   };
-  return <tr className="border-b border-border hover:bg-panel">{columns.map((column) => <td className={`${["quantity", "unitPrice", "totalPrice"].includes(column) ? "text-right font-mono tabular-nums" : ""} truncate px-2 py-1.5 text-muted`} data-finance-column={column} key={column} title={typeof values[column] === "string" ? String(values[column]) : undefined}>{values[column]}</td>)}</tr>;
+  const cells = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      <span className="min-w-0 truncate text-muted" key={key} title={typeof value === "string" ? value : undefined}>{value}</span>,
+    ]),
+  );
+  return <OperationalTableRow cells={cells} interactive={false} rowKey={row.observationId} />;
 }
 
 function errorMessage(error: unknown) {

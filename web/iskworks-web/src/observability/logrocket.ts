@@ -95,7 +95,7 @@ export function initLogRocket(): void {
         // `data-private` marker regresses. Stable selectors already in the
         // Finance UI.
         'section[aria-label="Transaction summary"]',
-        ".finance-table tbody",
+        'table[aria-label="Wallet transactions"] tbody',
       ],
     },
     network: {

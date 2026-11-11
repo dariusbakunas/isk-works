@@ -26,6 +26,7 @@ export function OperationalTable({
   ariaLabel,
   children,
   columns,
+  footer,
   selectedRowKey,
   onSelectRow,
   scrollClassName = "",
@@ -33,6 +34,12 @@ export function OperationalTable({
   ariaLabel: string;
   children: ReactNode;
   columns: OperationalColumn[];
+  /** Rendered after the table, inside the same scroll container: status
+   * lines ("Loading more…") and an infinite-scroll sentinel, which must
+   * scroll with the rows so the sticky header keeps one scroll ancestor.
+   * Find that container from inside with
+   * `closest("[data-operational-table-scroll]")`. */
+  footer?: ReactNode;
   // Extends (not replaces) the table's own horizontal-scroll wrapper --
   // for a caller that also needs vertical scroll within a bounded height
   // (e.g. `h-full overflow-y-auto`), so the sticky `<thead>` below sticks
@@ -73,13 +80,17 @@ export function OperationalTable({
                       : undefined
                   }
                   className={cellClass(column, true, false)}
+                  data-column={column.key}
                   key={column.key}
                   scope="col"
                   title={column.title}
                 >
                   {column.sort ? (
+                    // `uppercase` again: the base styles reset
+                    // text-transform on buttons, so a sortable header would
+                    // otherwise not match its plain neighbours.
                     <button
-                      className="flex w-full items-center gap-1 whitespace-nowrap hover:text-foreground"
+                      className="flex w-full items-center gap-1 whitespace-nowrap uppercase hover:text-foreground"
                       onClick={column.sort.onToggle}
                       style={{ justifyContent: column.align === "right" ? "flex-end" : "flex-start" }}
                       type="button"
@@ -96,6 +107,7 @@ export function OperationalTable({
           </thead>
           {children}
         </table>
+        {footer}
       </div>
     </TableContext.Provider>
   );
@@ -257,7 +269,12 @@ export function OperationalTableRow({
       tabIndex={disabled ? -1 : interactive ? 0 : undefined}
     >
       {columns.map((column) => (
-        <td className={cellClass(column, false, selected, align)} data-status={status} key={column.key}>
+        <td
+          className={cellClass(column, false, selected, align)}
+          data-column={column.key}
+          data-status={status}
+          key={column.key}
+        >
           {cells[column.key] ?? null}
         </td>
       ))}
