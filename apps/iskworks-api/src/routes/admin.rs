@@ -90,7 +90,10 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<Vec<AdminUserD
                 characters_needing_attention: user.characters_needing_attention,
                 active_sessions: user.active_session_count,
                 disabled_at: user.disabled_at,
-                is_admin: state.admin_config.is_admin_character(user.eve_character_id),
+                is_admin: state
+                    .admin
+                    .admin_config
+                    .is_admin_character(user.eve_character_id),
                 is_current_user: current
                     .as_ref()
                     .is_some_and(|current| current.user_id == user.user_id),
@@ -185,7 +188,7 @@ async fn create_invite(
             "Could not encrypt the invite code.".to_string(),
         ))
     };
-    let code_ciphertext = match &state.invite_cipher {
+    let code_ciphertext = match &state.admin.invite_cipher {
         Some(cipher) => {
             let envelope = cipher.encrypt(&code).map_err(|_| encryption_failed())?;
             Some(serde_json::to_string(&envelope).map_err(|_| encryption_failed())?)
@@ -240,7 +243,11 @@ async fn reveal_invite_code(
     ),
     ApiError,
 > {
-    let cipher = state.invite_cipher.as_ref().ok_or(ApiError::NotFound)?;
+    let cipher = state
+        .admin
+        .invite_cipher
+        .as_ref()
+        .ok_or(ApiError::NotFound)?;
     let stored = state
         .invite_admin_repository()?
         .invite_code_ciphertext(InviteId(invite_id))
@@ -319,7 +326,11 @@ async fn guarded_user(
             "You cannot disable or delete your own account.",
         ));
     }
-    if state.admin_config.is_admin_character(user.eve_character_id) {
+    if state
+        .admin
+        .admin_config
+        .is_admin_character(user.eve_character_id)
+    {
         return Err(ApiError::Conflict(
             "Admin accounts cannot be disabled or deleted here. Remove the character from ISKWORKS_ADMIN_CHARACTER_IDS first.",
         ));

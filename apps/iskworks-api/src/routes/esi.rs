@@ -90,8 +90,9 @@ async fn list_eve_connections(
 ) -> Result<Json<EveConnectionsResponse>, ApiError> {
     let (workspace_id, _) = workspace_context(&state).await?;
     Ok(Json(EveConnectionsResponse {
-        configured: state.esi_service.is_some(),
+        configured: state.esi.esi_service.is_some(),
         fixture_mode: state
+            .esi
             .esi_service
             .as_ref()
             .is_some_and(|service| service.fixture_mode()),
@@ -160,11 +161,13 @@ async fn complete_eve_oauth_callback(
     }
     let (mut headers, redirect) = finish_eve_oauth_callback(&state, state_value, query).await?;
     let secure = state
+        .admin
         .auth_service
         .as_ref()
         .map(|auth_service| auth_service.cookie_secure())
         .or_else(|| {
             state
+                .esi
                 .esi_service
                 .as_ref()
                 .map(|service| cookie_secure(service.web_app_url()))
@@ -295,7 +298,7 @@ async fn disconnect_eve_connection(
     require_own_connection(&state, workspace_id, ConnectedCharacterId(id)).await?;
     // With EVE SSO configured, also revoke the grant at EVE; otherwise
     // (fixture/local mode) there's no real token to revoke.
-    let connection = match &state.esi_service {
+    let connection = match &state.esi.esi_service {
         Some(service) => service.disconnect(ConnectedCharacterId(id)).await?,
         None => {
             state

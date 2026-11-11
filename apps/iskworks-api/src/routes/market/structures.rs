@@ -75,7 +75,7 @@ async fn resolve_market_locations(
         .collect::<Vec<_>>();
     if missing.is_empty() {
         return Ok(Json(ResolveMarketLocationsResponse {
-            configured: state.esi_service.is_some(),
+            configured: state.esi.esi_service.is_some(),
             resolved,
             unresolved_location_ids: Vec::new(),
             eligible_character_count: 0,
@@ -83,7 +83,7 @@ async fn resolve_market_locations(
             warnings: Vec::new(),
         }));
     }
-    let Some(service) = state.esi_service.as_ref() else {
+    let Some(service) = state.esi.esi_service.as_ref() else {
         return Ok(Json(ResolveMarketLocationsResponse {
             configured: false,
             resolved,

@@ -26,7 +26,7 @@ pub(crate) async fn reject_cross_origin_writes(
     request: Request,
     next: Next,
 ) -> Response {
-    if state.auth_service.is_some()
+    if state.admin.auth_service.is_some()
         && is_cross_origin_write(request.method(), request.headers(), &state.web_app_origin)
     {
         tracing::warn!(

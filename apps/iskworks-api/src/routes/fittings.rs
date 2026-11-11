@@ -66,7 +66,11 @@ struct SdeBuild {
 /// What the Fittings page needs before anything else: whether stats work,
 /// both data builds (they are versioned apart), and the damage profiles.
 async fn meta(State(state): State<AppState>) -> Result<Json<FittingsMeta>, ApiError> {
-    let engine = state.fitting_engine.as_ref().map(|engine| engine.info());
+    let engine = state
+        .character_views
+        .fitting_engine
+        .as_ref()
+        .map(|engine| engine.info());
     let sde = state
         .sde_repository
         .active_sde()
@@ -341,7 +345,7 @@ async fn fit_pilots(
 ) -> Result<Json<Vec<FitPilot>>, ApiError> {
     let (workspace_id, _) = workspace_context(&state).await?;
     let profile = parse_profile(params.profile.as_deref())?;
-    let engine = state.fitting_engine.clone();
+    let engine = state.character_views.fitting_engine.clone();
     state
         .fitting_service()?
         .pilots(
