@@ -173,19 +173,6 @@ pub struct ProductionDependency {
     pub sourcing: DependencySourcing,
     /// The producer satisfying this edge when `sourcing` is `Produce`.
     pub producer: Option<BuildId>,
-    /// **Consumer-stored producer configuration**: the
-    /// `ComponentResolution.facility_override` / `.blueprint_selection` the
-    /// consumer carries for this component. These belong to the producer --
-    /// the planner reads the producer Build's own draft instead -- and are
-    /// surfaced only to show where a consumer still sets them.
-    pub legacy_consumer_overrides: Option<LegacyConsumerOverrides>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyConsumerOverrides {
-    pub facility_profile_id: Option<FacilityProfileId>,
-    pub blueprint_selection: Option<BlueprintSelection>,
 }
 
 /// A producer's effective blueprint configuration (manufacturing only),
@@ -606,15 +593,6 @@ impl RootPlanDependencyGraph {
             .draft_planning
             .as_ref()
             .map(|snapshot| &snapshot.input);
-        let resolutions: BTreeMap<i64, &crate::ComponentResolution> = draft
-            .map(|input| {
-                input
-                    .component_resolutions
-                    .iter()
-                    .map(|resolution| (resolution.type_id, resolution))
-                    .collect()
-            })
-            .unwrap_or_default();
         let kind = build.recipe.kind();
         let product = build.recipe.primary_product();
         let (facility_profile_id, blueprint) = match kind {
@@ -665,7 +643,6 @@ impl RootPlanDependencyGraph {
             if !seen_types.insert(line.type_id) {
                 continue;
             }
-            let resolution = resolutions.get(&line.type_id).copied();
             let Some(ResolvedLine {
                 id,
                 sourcing,
@@ -704,17 +681,6 @@ impl RootPlanDependencyGraph {
                     fulfillment_scope,
                     sourcing,
                     producer: producer_id,
-                    legacy_consumer_overrides: resolution.and_then(|resolution| {
-                        (resolution.facility_override.is_some()
-                            || resolution.blueprint_selection.is_some())
-                        .then(|| LegacyConsumerOverrides {
-                            facility_profile_id: resolution
-                                .facility_override
-                                .as_ref()
-                                .map(|value| value.facility_profile_id),
-                            blueprint_selection: resolution.blueprint_selection.clone(),
-                        })
-                    }),
                 },
             );
         }
