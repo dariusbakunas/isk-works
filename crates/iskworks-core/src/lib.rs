@@ -53,8 +53,8 @@ mod production_stage;
 mod retry_policy;
 pub mod skill_plans;
 pub mod skills;
-pub mod training;
-pub mod type_info;
+mod training;
+mod type_info;
 mod worksheet;
 mod workspace;
 
@@ -170,5 +170,15 @@ pub use opportunity_quality::{
 pub use owner::{Owner, OwnerId, OwnerKind};
 pub use production::*;
 pub use retry_policy::RetryPolicy;
+pub use training::{
+    derive_training_state, skill_queue_capacity, SkillQueueEntry, TrainingState,
+    SKILL_QUEUE_CAPACITY,
+};
+pub use type_info::{
+    attribute_groups, format_attribute, format_bonus, parse_rich_text, requirement_summary,
+    requirement_tree, trait_groups, AttributeGroup, AttributeNames, AttributeRow, FormattedValue,
+    NameMaps, RequirementPilot, RequirementSummary, RichSegment, SkillNode, TraitBonus, TraitGroup,
+    ValueLink,
+};
 pub use worksheet::*;
 pub use workspace::{Workspace, WorkspaceId};

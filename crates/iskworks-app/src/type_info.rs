@@ -6,13 +6,11 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use iskworks_core::type_info::{
-    attribute_groups, parse_rich_text, requirement_summary, requirement_tree, trait_groups,
-    AttributeGroup, NameMaps, RequirementPilot, RequirementSummary, RichSegment, SkillNode,
-    TraitGroup,
-};
 use iskworks_core::{
-    summarize_scoped_orders, InventoryError, MarketRepository, MarketScope, Money, WorkspaceId,
+    attribute_groups, parse_rich_text, requirement_summary, requirement_tree,
+    summarize_scoped_orders, trait_groups, AttributeGroup, InventoryError, MarketRepository,
+    MarketScope, Money, NameMaps, RequirementPilot, RequirementSummary, RichSegment, SkillNode,
+    TraitGroup, WorkspaceId,
 };
 use iskworks_sde::{CandidateRecipeKind, SdeReadRepository, TypeListEntry, UsedWithKind};
 use rust_decimal::Decimal;
