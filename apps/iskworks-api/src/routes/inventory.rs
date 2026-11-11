@@ -698,7 +698,7 @@ async fn inventory_pricing_source(
     requested: Option<uuid::Uuid>,
 ) -> Result<InventoryPricingSource, ApiError> {
     if let Some(id) = requested {
-        let Some(repository) = state.industry_repository.clone() else {
+        let Some(repository) = state.industry.industry_repository.clone() else {
             return Ok(InventoryPricingSource::Unavailable);
         };
         return Ok(InventoryPricingSource::Explicit(
@@ -707,7 +707,7 @@ async fn inventory_pricing_source(
                 .await?,
         ));
     }
-    if state.market_repository.is_none() {
+    if state.market.market_repository.is_none() {
         return Ok(InventoryPricingSource::Unavailable);
     }
     Ok(InventoryPricingSource::DefaultScope(

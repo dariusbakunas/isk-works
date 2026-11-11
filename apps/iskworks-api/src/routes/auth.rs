@@ -110,7 +110,7 @@ async fn session(
     Ok(Json(match resolved {
         Some(user) => SessionResponse {
             authenticated: true,
-            is_admin: state.admin_config.is_admin(&user),
+            is_admin: state.admin.admin_config.is_admin(&user),
             character_name: Some(user.eve_character_name),
             workspace_id: Some(user.workspace_id.0.to_string()),
             invite_required,

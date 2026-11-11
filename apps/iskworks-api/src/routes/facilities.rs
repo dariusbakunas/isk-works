@@ -348,7 +348,7 @@ async fn resolve_structure(
             warnings: Vec::new(),
         }));
     }
-    let Some(service) = state.esi_service.as_ref() else {
+    let Some(service) = state.esi.esi_service.as_ref() else {
         return Ok(Json(ResolveStructureResponse {
             configured: false,
             structure: None,

@@ -61,7 +61,7 @@ async fn resolve_session_middleware(
     request: Request,
     next: Next,
 ) -> Response {
-    let authenticated_user = match &state.auth_service {
+    let authenticated_user = match &state.admin.auth_service {
         Some(auth_service) => match cookies::extract_session_token(request.headers()) {
             Some(raw_token) => auth_service
                 .resolve_session(&iskworks_core::SessionToken::from_raw(raw_token))
@@ -94,7 +94,7 @@ async fn require_session_middleware(
     request: Request,
     next: Next,
 ) -> Response {
-    if state.auth_service.is_some() {
+    if state.admin.auth_service.is_some() {
         let authenticated = CURRENT_USER.try_with(Clone::clone).unwrap_or(None);
         if authenticated.is_none() {
             return ApiError::Unauthenticated.into_response();
@@ -115,7 +115,9 @@ async fn require_admin_middleware(
     let user = CURRENT_USER.try_with(Clone::clone).unwrap_or(None);
     match user {
         None => ApiError::Forbidden.into_response(),
-        Some(user) if !state.admin_config.is_admin(&user) => ApiError::Forbidden.into_response(),
+        Some(user) if !state.admin.admin_config.is_admin(&user) => {
+            ApiError::Forbidden.into_response()
+        }
         Some(_) => next.run(request).await,
     }
 }
@@ -399,7 +401,7 @@ pub(crate) fn app_version() -> String {
 async fn workspace_context(
     state: &AppState,
 ) -> Result<(WorkspaceId, iskworks_core::OwnerId), ApiError> {
-    if state.auth_service.is_some() {
+    if state.admin.auth_service.is_some() {
         let authenticated = CURRENT_USER
             .try_with(Clone::clone)
             .unwrap_or(None)
