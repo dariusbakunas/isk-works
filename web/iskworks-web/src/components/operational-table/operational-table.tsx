@@ -86,8 +86,11 @@ export function OperationalTable({
                   title={column.title}
                 >
                   {column.sort ? (
+                    // `uppercase` again: the base styles reset
+                    // text-transform on buttons, so a sortable header would
+                    // otherwise not match its plain neighbours.
                     <button
-                      className="flex w-full items-center gap-1 whitespace-nowrap hover:text-foreground"
+                      className="flex w-full items-center gap-1 whitespace-nowrap uppercase hover:text-foreground"
                       onClick={column.sort.onToggle}
                       style={{ justifyContent: column.align === "right" ? "flex-end" : "flex-start" }}
                       type="button"

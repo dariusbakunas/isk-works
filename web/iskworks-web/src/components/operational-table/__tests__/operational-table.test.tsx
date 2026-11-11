@@ -204,4 +204,17 @@ describe("OperationalTable", () => {
     expect(scroll?.querySelector("table")?.nextElementSibling).toBe(footer);
   });
 
+  test("a sortable header keeps the uppercase header style on its button", () => {
+    render(
+      <OperationalTable
+        ariaLabel="Sortable"
+        columns={[{ ...columns[0], sort: { direction: null, onToggle: vi.fn() } }, columns[1]]}
+        onSelectRow={vi.fn()}
+        selectedRowKey={null}
+      >
+        <tbody />
+      </OperationalTable>,
+    );
+    expect(screen.getByRole("button", { name: "Item" })).toHaveClass("uppercase");
+  });
 });
