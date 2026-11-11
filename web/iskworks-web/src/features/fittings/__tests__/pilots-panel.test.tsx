@@ -12,8 +12,10 @@ async function panel() {
   return region;
 }
 
-const rowOf = (region: HTMLElement, name: string) =>
-  within(region).getByRole("button", { name: new RegExp(`^${name}`) });
+const rowOf = (region: HTMLElement, name: string) => {
+  const table = within(region).getByRole("table", { name: "Pilots" });
+  return within(table).getByText(name, { exact: true }).closest("tr")!;
+};
 
 describe("Fittings › pilots", () => {
   test("every character is listed closest first, with stats on its own skills", async () => {
@@ -21,10 +23,7 @@ describe("Fittings › pilots", () => {
     renderPage(`/fittings/${FIT_ID}`);
     const region = await panel();
 
-    const names = within(region)
-      .getAllByRole("button")
-      .map((button) => button.dataset.pilot)
-      .filter(Boolean);
+    const names = [...region.querySelectorAll<HTMLElement>("tr[data-row-key]")].map((row) => row.dataset.rowKey);
     expect(names).toEqual([MIRA, AURA, FRESH, expect.any(String)]);
     expect(within(region).getByText("Best: Mira")).toBeInTheDocument();
 
@@ -44,6 +43,28 @@ describe("Fittings › pilots", () => {
 
     fireEvent.click(rowOf(region, "Fresh Char"));
     expect(location()).toBe(`/fittings/${FIT_ID}?pilot=${FRESH}`);
+  });
+
+  test("a focused pilot row is picked with Enter", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+    const region = await panel();
+
+    fireEvent.keyDown(rowOf(region, "Aura"), { key: "Enter" });
+    expect(location()).toBe(`/fittings/${FIT_ID}?pilot=${AURA}`);
+    await waitFor(() => expect(rowOf(region, "Aura")).toHaveAttribute("aria-selected", "true"));
+  });
+
+  test("opening a pilot's missing skills doesn't pick that pilot", async () => {
+    stubFetch();
+    renderPage(`/fittings/${FIT_ID}`);
+    const region = await panel();
+
+    const toggle = within(region).getByRole("button", { name: "Missing skills for Fresh Char" });
+    fireEvent.keyDown(toggle, { key: "Enter" });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(location()).toBe(`/fittings/${FIT_ID}`);
   });
 
   test("a pilot's missing skills list each level needed and what needs Omega", async () => {

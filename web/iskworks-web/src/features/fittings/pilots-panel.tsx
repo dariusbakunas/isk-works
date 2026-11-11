@@ -1,9 +1,10 @@
 import { ChevronDown, Users } from "lucide-react";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { Link } from "react-router";
 
 import { createFitSkillPlan, type CreatedSkillPlan, type FitDetail, type FitPilot } from "../../api/fittings";
 import { formatRemainingMs, skillLevelNumeral } from "../../lib/characters-formatters";
+import { OperationalTable, OperationalTableRow, type OperationalColumn } from "../../components/operational-table";
 import { PilotPortrait } from "./fit-shared";
 import { capacitorLabel, formatStat } from "./fittings-format";
 import { apiMessage } from "../../api/api-error";
@@ -14,6 +15,21 @@ const STATUS_CHIPS = {
   cannot: { label: "Can't fly", className: "border-danger/60 text-danger" },
   unknown: { label: "Skills not synced", className: "border-border text-muted" },
 } as const;
+
+// The stat columns hide below tablet width, leaving pilot, status and the
+// missing-skills toggle.
+const COLUMNS: OperationalColumn[] = [
+  { key: "pilot", label: "Pilot", width: "minmax(10rem,1fr)" },
+  { key: "status", label: "Status", width: "7.5rem" },
+  { key: "missing", label: "Missing", width: "4.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "training", label: "Training", width: "5.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "ehp", label: "EHP", width: "5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "dps", label: "DPS", width: "4.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "cap", label: "Cap", width: "4.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "speed", label: "Speed", width: "4.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "align", label: "Align", width: "4.5rem", align: "right", numeric: true, hideBelow: "tablet" },
+  { key: "expand", label: "", width: "2rem", align: "right" },
+];
 
 const level = (value: number) => (value > 0 ? skillLevelNumeral(value) : "—");
 const duration = (seconds: number | null) => (seconds === null ? "—" : seconds === 0 ? "—" : formatRemainingMs(seconds * 1000));
@@ -106,88 +122,79 @@ export function PilotsPanel({
         ) : null}
         <span className="ml-auto hidden text-[0.625rem] text-muted sm:inline">Pick a pilot to recalculate the fit</span>
       </div>
-      <div className="hidden px-3 py-1 text-[0.5625rem] uppercase tracking-wide text-muted md:flex">
-        {/* Same columns as the rows, plus their expand button's width. */}
-        <div className="grid flex-1 grid-cols-[minmax(160px,1fr)_96px_56px_80px_repeat(5,64px)] gap-x-2">
-          <span>Pilot</span>
-          <span>Status</span>
-          <span className="text-right">Missing</span>
-          <span className="text-right">Training</span>
-          <span className="text-right">EHP</span>
-          <span className="text-right">DPS</span>
-          <span className="text-right">Cap</span>
-          <span className="text-right">Speed</span>
-          <span className="text-right">Align</span>
-        </div>
-        <span className="w-[30px]" />
-      </div>
-      {pilots.map((pilot) => {
-        const chip = STATUS_CHIPS[pilot.status ?? "unknown"];
-        const missing = pilot.flyability?.missing.length ?? 0;
-        const isClosest = closest?.connectionId === pilot.connectionId;
-        return (
-          <div key={pilot.connectionId}>
-            <div className="flex items-stretch border-b border-border">
-              <button
-                aria-label={`${pilot.name}, ${chip.label}`}
-                aria-pressed={selected === pilot.connectionId}
-                className={`grid min-h-10 flex-1 grid-cols-[1fr_auto] items-center gap-x-2 px-3 py-1 text-left text-xs hover:bg-panel-strong md:grid-cols-[minmax(160px,1fr)_96px_56px_80px_repeat(5,64px)] ${
-                  selected === pilot.connectionId ? "bg-primary/10" : ""
-                }`}
-                data-pilot={pilot.connectionId}
-                onClick={() => onSelect(pilot.connectionId)}
-                type="button"
-              >
-                <span className="flex items-center gap-2">
-                  <PilotPortrait connectionId={pilot.connectionId} name={pilot.name} size={32} />
-                  <span data-private="">{pilot.name}</span>
-                </span>
-                <span>
-                  <span className={`rounded-[2px] border px-1.5 py-px text-[0.625rem] ${chip.className}`}>{chip.label}</span>
-                </span>
-                <span className={`hidden text-right font-mono md:block ${missing ? "text-danger" : "text-muted"}`}>
-                  {pilot.flyability ? missing : "—"}
-                </span>
-                <span className={`hidden text-right font-mono md:block ${isClosest ? "text-warning" : "text-muted"}`}>
-                  {pilot.flyability ? duration(pilot.flyability.remainingSeconds) : "—"}
-                </span>
-                {pilot.stats ? (
-                  <>
-                    <span className="hidden text-right font-mono md:block">{formatStat(pilot.stats.ehp)}</span>
-                    <span className="hidden text-right font-mono md:block">{formatStat(pilot.stats.dps, 1)}</span>
-                    <span className="hidden text-right font-mono md:block" title={capacitorLabel(pilot.stats.capacitor)}>
-                      {pilot.stats.capacitor.kind === "stable"
-                        ? `${formatStat(pilot.stats.capacitor.level * 100)}%`
-                        : capacitorLabel(pilot.stats.capacitor).replace("Depletes in ", "")}
-                    </span>
-                    <span className="hidden text-right font-mono md:block">{formatStat(pilot.stats.maxVelocity, 1)}</span>
-                    <span className="hidden text-right font-mono md:block">{formatStat(pilot.stats.alignSeconds, 2)}</span>
-                  </>
-                ) : (
-                  <span className="col-span-5 hidden text-right text-muted md:block">—</span>
-                )}
-              </button>
-              {missing ? (
-                <button
-                  aria-expanded={expanded === pilot.connectionId}
-                  aria-label={`Missing skills for ${pilot.name}`}
-                  className="px-2 text-muted hover:text-foreground"
-                  onClick={() => setExpanded((current) => (current === pilot.connectionId ? null : pilot.connectionId))}
-                  type="button"
-                >
-                  <ChevronDown
-                    aria-hidden="true"
-                    className={`h-3.5 w-3.5 transition ${expanded === pilot.connectionId ? "rotate-180" : ""}`}
-                  />
-                </button>
-              ) : (
-                <span className="w-[30px]" />
-              )}
-            </div>
-            {expanded === pilot.connectionId ? <MissingSkills fit={fit} pilot={pilot} /> : null}
-          </div>
-        );
-      })}
+      <OperationalTable ariaLabel="Pilots" columns={COLUMNS} onSelectRow={onSelect} selectedRowKey={selected}>
+        <tbody>
+          {pilots.map((pilot) => {
+            const chip = STATUS_CHIPS[pilot.status ?? "unknown"];
+            const missing = pilot.flyability?.missing.length ?? 0;
+            const isClosest = closest?.connectionId === pilot.connectionId;
+            const open = expanded === pilot.connectionId;
+            const stats = pilot.stats;
+            const stat = (value: (s: NonNullable<typeof stats>) => string, title?: string) =>
+              stats ? <span className="truncate text-xs" title={title}>{value(stats)}</span> : <span className="text-xs text-muted">—</span>;
+            return (
+              <Fragment key={pilot.connectionId}>
+                <OperationalTableRow
+                  cells={{
+                    pilot: (
+                      <span className="flex min-w-0 items-center gap-2 text-xs">
+                        <PilotPortrait connectionId={pilot.connectionId} name={pilot.name} size={32} />
+                        <span className="truncate" data-private="">{pilot.name}</span>
+                      </span>
+                    ),
+                    status: (
+                      <span className={`truncate rounded-[2px] border px-1.5 py-px text-[0.625rem] ${chip.className}`}>{chip.label}</span>
+                    ),
+                    missing: (
+                      <span className={`text-xs ${missing ? "text-danger" : "text-muted"}`}>{pilot.flyability ? missing : "—"}</span>
+                    ),
+                    training: (
+                      <span className={`truncate text-xs ${isClosest ? "text-warning" : "text-muted"}`}>
+                        {pilot.flyability ? duration(pilot.flyability.remainingSeconds) : "—"}
+                      </span>
+                    ),
+                    ehp: stat((s) => formatStat(s.ehp)),
+                    dps: stat((s) => formatStat(s.dps, 1)),
+                    cap: stat(
+                      (s) =>
+                        s.capacitor.kind === "stable"
+                          ? `${formatStat(s.capacitor.level * 100)}%`
+                          : capacitorLabel(s.capacitor).replace("Depletes in ", ""),
+                      stats ? capacitorLabel(stats.capacitor) : undefined,
+                    ),
+                    speed: stat((s) => formatStat(s.maxVelocity, 1)),
+                    align: stat((s) => formatStat(s.alignSeconds, 2)),
+                    expand: missing ? (
+                      <button
+                        aria-expanded={open}
+                        aria-label={`Missing skills for ${pilot.name}`}
+                        className="text-muted hover:text-foreground"
+                        // Opening the list doesn't pick the pilot.
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setExpanded((current) => (current === pilot.connectionId ? null : pilot.connectionId));
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        type="button"
+                      >
+                        <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition ${open ? "rotate-180" : ""}`} />
+                      </button>
+                    ) : null,
+                  }}
+                  rowKey={pilot.connectionId}
+                />
+                {open ? (
+                  <tr className="grid grid-cols-[var(--operational-columns)]">
+                    <td className="col-span-full p-0">
+                      <MissingSkills fit={fit} pilot={pilot} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </OperationalTable>
     </section>
   );
 }
