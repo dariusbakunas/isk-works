@@ -2,7 +2,8 @@ import { Search, X } from "lucide-react";
 import { useEffect, useId } from "react";
 
 import type { FitHolding } from "../../api/fittings";
-import { CharacterName } from "../../observability/private";
+import { HoldingsTable } from "../../components/holdings-table";
+import { PilotPortrait } from "./fit-shared";
 
 /** 1,729 as 1.7K and 12,341 as 12K: a count has to fit beside the magnifier. */
 const compactCount = new Intl.NumberFormat("en-US", { notation: "compact" });
@@ -83,32 +84,17 @@ export function HoldingsDialog({ name, holdings, onClose }: { name: string; hold
           {holdings.length === 0 ? (
             <p className="text-xs text-muted">None of your characters hold any.</p>
           ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border text-left uppercase text-muted">
-                  <th className="py-1.5 pr-2 font-semibold">Character</th>
-                  <th className="py-1.5 pr-2 font-semibold">Location</th>
-                  <th className="py-1.5 pl-2 text-right font-semibold">Quantity</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holdings.map((holding) => (
-                  <tr className="border-b border-border" key={`${holding.connectionId}:${holding.locationId}`}>
-                    <td className="py-1.5 pr-2">
-                      <CharacterName className="truncate" name={holding.characterName} />
-                    </td>
-                    <td className="py-1.5 pr-2 text-muted">{holding.locationName}</td>
-                    <td className="whitespace-nowrap py-1.5 pl-2 text-right font-mono">{holding.quantity.toLocaleString("en-US")}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="font-semibold">
-                  <td className="py-1.5 pr-2" colSpan={2}>Total</td>
-                  <td className="whitespace-nowrap py-1.5 pl-2 text-right font-mono">{total.toLocaleString("en-US")}</td>
-                </tr>
-              </tfoot>
-            </table>
+            <HoldingsTable
+              ariaLabel={`Holdings of ${name}`}
+              rows={holdings.map((holding) => ({
+                key: `${holding.connectionId}:${holding.locationId}`,
+                characterName: holding.characterName,
+                portrait: <PilotPortrait connectionId={holding.connectionId} name={holding.characterName} size={32} />,
+                location: holding.locationName,
+                quantity: holding.quantity,
+              }))}
+              total={total}
+            />
           )}
         </div>
       </section>
