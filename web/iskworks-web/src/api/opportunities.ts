@@ -1,5 +1,5 @@
 import { json, request } from "./industry/request";
-import type { MarketScope } from "./industry/market";
+import type { MarketPricingPolicy, MarketScope } from "./industry/market";
 import type { Money } from "./industry/shared";
 
 // Opaque server-owned identifier -- the full set of supported scopes is
@@ -26,12 +26,6 @@ export interface EvaluateOpportunitiesCommand {
   timeEfficiency: number | null;
   marketScope: MarketScope;
 }
-
-export type MarketPricingPolicy =
-  | "lowestSell"
-  | "highestBuy"
-  | "acquireQuantityFromSellOrders"
-  | "liquidateQuantityIntoBuyOrders";
 
 export interface OpportunityEvaluationContext {
   scopeId: ProfitabilityScopeId;
