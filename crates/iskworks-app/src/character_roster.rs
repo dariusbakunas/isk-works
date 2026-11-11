@@ -468,7 +468,7 @@ pub(crate) fn current_trained_level(skills_summary: Option<&Value>, skill_id: i6
 /// (see `iskworks_esi`'s `queue_position`-ascending ordering contract) --
 /// including entries whose `finish_date` has already passed. Deciding
 /// what's currently training is the frontend's/worker's job
-/// (`iskworks_core::training::derive_training_state`), not this read
+/// (`iskworks_core::derive_training_state`), not this read
 /// model's.
 fn parse_training_queue(
     skills_summary: Option<&Value>,

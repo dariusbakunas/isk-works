@@ -6,11 +6,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use iskworks_core::{
     calendar_event::{CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent},
-    is_running_job_status,
+    derive_training_state, is_running_job_status,
     market_orders::{CharacterMarketOrder, CharacterMarketOrderRepository, OrderRange},
-    training::{derive_training_state, SkillQueueEntry, TrainingState},
     CharacterConnectionReader, CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter,
-    ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId,
+    ConnectedCharacterId, InventoryError, MarketOrderSide, SkillQueueEntry, TrainingState,
+    WorkspaceId,
 };
 use iskworks_core::{
     CharacterSourceRefreshRepository, EntityNameRepository, IndustryJobRepository, RetryPolicy,
