@@ -125,7 +125,7 @@ test("returns the asset table to the top when filters change", async () => {
   render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
 
   await screen.findByText("Tritanium");
-  const viewport = document.querySelector<HTMLElement>("[data-asset-scroll-viewport]");
+  const viewport = screen.getByRole("table", { name: "Synchronized assets" }).closest<HTMLElement>("[data-operational-table-scroll]");
   const workspace = document.querySelector<HTMLElement>("[data-assets-workspace]");
   expect(viewport).not.toBeNull();
   expect(workspace).not.toBeNull();
@@ -230,6 +230,16 @@ test("items open in Type Info from the table", async () => {
   const name = buttons[0].getAttribute("aria-label")!.replace("Show info: ", "");
   fireEvent.click(buttons[0]);
   expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
+});
+
+test("a focused asset row opens the inspector with Enter", async () => {
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
+  const table = await screen.findByRole("table", { name: "Synchronized assets" });
+  const row = within(table).getByText("Tritanium").closest("tr")!;
+  row.focus();
+  fireEvent.keyDown(row, { key: "Enter" });
+  expect(await screen.findByRole("complementary", { name: "Selected asset" })).toBeInTheDocument();
+  expect(row).toHaveAttribute("aria-selected", "true");
 });
 
 test("the selected asset's inspector opens its item in Type Info", async () => {
