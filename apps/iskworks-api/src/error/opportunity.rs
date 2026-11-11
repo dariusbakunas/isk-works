@@ -1,19 +1,5 @@
 use super::*;
 
-pub(super) fn facility_response(error: FacilityError) -> (StatusCode, ErrorBody) {
-    let (status, code) = facility_error_status(&error);
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable: matches!(error, FacilityError::Persistence(_)),
-            correlation_id: None,
-        },
-    )
-}
-
 pub(super) fn opportunity_response(error: OpportunityError) -> (StatusCode, ErrorBody) {
     let (status, code, retryable) = match &error {
         OpportunityError::Industry(IndustryError::PriceSourceNotFound)
@@ -69,14 +55,5 @@ pub(super) fn opportunity_response(error: OpportunityError) -> (StatusCode, Erro
             false,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

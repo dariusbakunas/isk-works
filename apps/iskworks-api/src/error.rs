@@ -46,6 +46,21 @@ pub struct ErrorBody {
     pub correlation_id: Option<String>,
 }
 
+impl ErrorBody {
+    /// A curated error body with no per-field detail. `into_response`
+    /// fills in `correlation_id` (and redacts the rest) when the error is
+    /// an internal failure.
+    pub(crate) fn new(code: &'static str, message: impl Into<String>, retryable: bool) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            fields: None,
+            retryable,
+            correlation_id: None,
+        }
+    }
+}
+
 /// Extra fields a few errors add after `retryable`, inside the same
 /// `{ "error": ... }` envelope, so clients read them through their usual
 /// error path.
@@ -406,20 +421,6 @@ impl From<iskworks_app::DescendantProductionConfigurationError> for ApiError {
     }
 }
 
-fn facility_error_status(error: &FacilityError) -> (StatusCode, &'static str) {
-    match error {
-        FacilityError::NotFound => (StatusCode::NOT_FOUND, "facility_not_found"),
-        FacilityError::Archived => (StatusCode::CONFLICT, "facility_archived"),
-        FacilityError::RevisionConflict => (StatusCode::CONFLICT, "facility_revision_conflict"),
-        FacilityError::Validation(_) | FacilityError::ArithmeticOverflow => {
-            (StatusCode::BAD_REQUEST, "facility_calculation_failed")
-        }
-        FacilityError::Persistence(_) => {
-            (StatusCode::SERVICE_UNAVAILABLE, "persistence_unavailable")
-        }
-    }
-}
-
 /// A public category for an error that represents an ISK Works
 /// implementation or infrastructure failure rather than a deliberately
 /// authored, actionable domain outcome. When `ApiError::into_response`
@@ -651,12 +652,14 @@ where
     }
 }
 
+mod facility;
 mod industry;
 mod integration;
 mod inventory;
 mod market;
 mod opportunity;
 mod order;
+use facility::*;
 use industry::*;
 use integration::*;
 use inventory::*;
@@ -678,126 +681,79 @@ impl IntoResponse for ApiError {
             Self::Application(AppError::Validation(errors)) => (
                 StatusCode::BAD_REQUEST,
                 ErrorBody {
-                    code: "validation_failed",
-                    message: "Validation failed.".to_string(),
                     fields: Some(errors.fields),
-                    retryable: false,
-                    correlation_id: None,
+                    ..ErrorBody::new("validation_failed", "Validation failed.", false)
                 },
             ),
             Self::Application(AppError::WorkspaceAlreadyConfigured) => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code: "workspace_already_configured",
-                    message: "Workspace is already configured.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "workspace_already_configured",
+                    "Workspace is already configured.",
+                    false,
+                ),
             ),
             Self::Application(AppError::Persistence(message)) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "persistence_unavailable",
-                    message,
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("persistence_unavailable", message, true),
             ),
             Self::StaticData(error) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "static_data_unavailable",
-                    message: error.to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("static_data_unavailable", error.to_string(), true),
             ),
             Self::StaticDataEntryNotFound => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "static_data_entry_not_found",
-                    message: "Manufacturing modifiers were not found in the active SDE."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "static_data_entry_not_found",
+                    "Manufacturing modifiers were not found in the active SDE.",
+                    false,
+                ),
             ),
             Self::BuildPlanning(BuildPlanningError::InvalidRuns)
             | Self::ReactionPlanning(ReactionPlanningError::InvalidRuns)
             | Self::ComponentExpansion(ComponentExpansionError::InvalidRuns) => (
                 StatusCode::BAD_REQUEST,
-                ErrorBody {
-                    code: "invalid_runs",
-                    message: "Runs must be between 1 and 1,000,000.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "invalid_runs",
+                    "Runs must be between 1 and 1,000,000.",
+                    false,
+                ),
             ),
             Self::BuildPlanning(BuildPlanningError::BlueprintNotFound(_)) => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "blueprint_not_found",
-                    message: "Manufacturing blueprint was not found in the active SDE.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "blueprint_not_found",
+                    "Manufacturing blueprint was not found in the active SDE.",
+                    false,
+                ),
             ),
             Self::BuildPlanning(error) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "build_planning_unavailable",
-                    message: error.to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("build_planning_unavailable", error.to_string(), true),
             ),
             Self::ReactionPlanning(ReactionPlanningError::ReactionFormulaNotFound(_)) => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "reaction_formula_not_found",
-                    message: "Reaction formula was not found in the active SDE.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "reaction_formula_not_found",
+                    "Reaction formula was not found in the active SDE.",
+                    false,
+                ),
             ),
             Self::ReactionPlanning(error) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "reaction_planning_unavailable",
-                    message: error.to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("reaction_planning_unavailable", error.to_string(), true),
             ),
             Self::ComponentExpansion(ComponentExpansionError::RecipeNotFound) => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "component_recipe_not_found",
-                    message: "No active recipe was found for a requested component resolution."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "component_recipe_not_found",
+                    "No active recipe was found for a requested component resolution.",
+                    false,
+                ),
             ),
             Self::ComponentExpansion(error) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "component_expansion_unavailable",
-                    message: error.to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("component_expansion_unavailable", error.to_string(), true),
             ),
             Self::Industry(error) => industry_response(error),
             Self::Inventory(error) => inventory_response(error),
@@ -810,146 +766,94 @@ impl IntoResponse for ApiError {
             Self::Integration(error) => integration_response(error),
             Self::Unauthenticated => (
                 StatusCode::UNAUTHORIZED,
-                ErrorBody {
-                    code: "unauthenticated",
-                    message: "Sign in with EVE Online to continue.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "unauthenticated",
+                    "Sign in with EVE Online to continue.",
+                    false,
+                ),
             ),
             Self::Conflict(message) => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code: "conflict",
-                    message: message.to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new("conflict", message.to_string(), false),
             ),
             Self::FittingEngineUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "fitting_engine_unavailable",
-                    message: "Fit stats and fit import/export are unavailable: the server has no \
-                              fitting engine data."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "fitting_engine_unavailable",
+                    "Fit stats and fit import/export are unavailable: the server has no \
+                              fitting engine data.",
+                    false,
+                ),
             ),
             Self::SdeMissingPlannerData => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code: "sde_missing_planner_data",
-                    message: "The static data import predates the PI Planner. Re-import the SDE \
-                              to use it."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "sde_missing_planner_data",
+                    "The static data import predates the PI Planner. Re-import the SDE \
+                              to use it.",
+                    false,
+                ),
             ),
             Self::ServiceUnavailable(message) => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                ErrorBody {
-                    code: "persistence_unavailable",
-                    message: message.to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new("persistence_unavailable", message.to_string(), true),
             ),
             Self::PiSolverFailed(message) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                ErrorBody {
-                    code: "pi_solver_failed",
-                    message,
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new("pi_solver_failed", message, false),
             ),
             Self::SolveTimeout => (
                 StatusCode::REQUEST_TIMEOUT,
-                ErrorBody {
-                    code: "solve_timeout",
-                    message: "The plan took too long to solve. Try a smaller radius or fewer \
-                              characters."
-                        .to_string(),
-                    fields: None,
-                    retryable: true,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "solve_timeout",
+                    "The plan took too long to solve. Try a smaller radius or fewer \
+                              characters.",
+                    true,
+                ),
             ),
             Self::TypeNotFound => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "type_not_found",
-                    message: "That item isn't in the current static data.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "type_not_found",
+                    "That item isn't in the current static data.",
+                    false,
+                ),
             ),
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
-                ErrorBody {
-                    code: "not_found",
-                    message: "Not found.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new("not_found", "Not found.", false),
             ),
             Self::Forbidden => (
                 StatusCode::FORBIDDEN,
-                ErrorBody {
-                    code: "forbidden",
-                    message: "You do not have access to this area.".to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new("forbidden", "You do not have access to this area.", false),
             ),
             Self::BuildMaterialsIncomplete => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                ErrorBody {
-                    code: "build_materials_incomplete",
-                    message: "The materials breakdown is unavailable for this build right now \
+                ErrorBody::new(
+                    "build_materials_incomplete",
+                    "The materials breakdown is unavailable for this build right now \
                               because one or more linked builds need attention. Open the \
-                              affected linked builds, then try again."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                              affected linked builds, then try again.",
+                    false,
+                ),
             ),
             Self::CanonicalGraphInvalid => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code: "canonical_graph_invalid",
-                    message: "This plan's production graph is inconsistent (a cycle, a retired \
-                              producer, or duplicate producers) and cannot be calculated."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "canonical_graph_invalid",
+                    "This plan's production graph is inconsistent (a cycle, a retired \
+                              producer, or duplicate producers) and cannot be calculated.",
+                    false,
+                ),
             ),
             Self::DescendantOperationMembershipStale => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code: "descendant_operation_membership_stale",
-                    message: "This production operation has changed since it was loaded. \
-                              Refresh Stages and try the edit again."
-                        .to_string(),
-                    fields: None,
-                    retryable: false,
-                    correlation_id: None,
-                },
+                ErrorBody::new(
+                    "descendant_operation_membership_stale",
+                    "This production operation has changed since it was loaded. \
+                              Refresh Stages and try the edit again.",
+                    false,
+                ),
             ),
             Self::Auth(error) => auth_response(error),
             Self::ReservationDrift(payload) => {
