@@ -61,28 +61,23 @@ pub struct HolderView {
 pub(super) fn reservation_drift_response() -> (StatusCode, ErrorBody) {
     (
         StatusCode::CONFLICT,
-        ErrorBody {
-            code: "reservation_drift",
-            message: "Free inventory changed since the preview. Review the updated reuse and \
-                      confirm again."
-                .to_string(),
-            fields: None,
-            retryable: true,
-            correlation_id: None,
-        },
+        ErrorBody::new(
+            "reservation_drift",
+            "Free inventory changed since the preview. Review the updated reuse and \
+                      confirm again.",
+            true,
+        ),
     )
 }
 
 pub(super) fn insufficient_available_response() -> (StatusCode, ErrorBody) {
     (
         StatusCode::CONFLICT,
-        ErrorBody {
-            code: "insufficient_available",
-            message: "Other Epics have reserved stock this recording needs.".to_string(),
-            fields: None,
-            retryable: false,
-            correlation_id: None,
-        },
+        ErrorBody::new(
+            "insufficient_available",
+            "Other Epics have reserved stock this recording needs.",
+            false,
+        ),
     )
 }
 
@@ -233,14 +228,5 @@ pub(super) fn order_response(error: OrderError) -> (StatusCode, ErrorBody) {
             false,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

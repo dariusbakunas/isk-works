@@ -4,13 +4,11 @@ pub(super) fn facility_response(error: FacilityError) -> (StatusCode, ErrorBody)
     let (status, code) = facility_error_status(&error);
     (
         status,
-        ErrorBody {
+        ErrorBody::new(
             code,
-            message: error.to_string(),
-            fields: None,
-            retryable: matches!(error, FacilityError::Persistence(_)),
-            correlation_id: None,
-        },
+            error.to_string(),
+            matches!(error, FacilityError::Persistence(_)),
+        ),
     )
 }
 
@@ -69,14 +67,5 @@ pub(super) fn opportunity_response(error: OpportunityError) -> (StatusCode, Erro
             false,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

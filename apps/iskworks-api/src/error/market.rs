@@ -10,16 +10,7 @@ pub(super) fn finance_response(error: FinanceError) -> (StatusCode, ErrorBody) {
             true,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }
 
 pub(super) fn market_response(error: MarketError) -> (StatusCode, ErrorBody) {
@@ -92,14 +83,5 @@ pub(super) fn market_response(error: MarketError) -> (StatusCode, ErrorBody) {
         ),
         MarketError::Validation(_) => (StatusCode::BAD_REQUEST, "validation_failed", false),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

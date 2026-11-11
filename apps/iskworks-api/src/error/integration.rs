@@ -45,16 +45,7 @@ pub(super) fn integration_response(error: EsiApplicationError) -> (StatusCode, E
             true,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }
 
 pub(super) fn auth_response(error: AuthApplicationError) -> (StatusCode, ErrorBody) {
@@ -92,14 +83,5 @@ pub(super) fn auth_response(error: AuthApplicationError) -> (StatusCode, ErrorBo
             (StatusCode::FORBIDDEN, "character_transferred", false)
         }
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

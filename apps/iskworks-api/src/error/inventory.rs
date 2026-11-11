@@ -35,16 +35,7 @@ pub(super) fn inventory_response(error: InventoryError) -> (StatusCode, ErrorBod
             true,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }
 
 pub(super) fn production_response(error: ProductionError) -> (StatusCode, ErrorBody) {
@@ -64,14 +55,5 @@ pub(super) fn production_response(error: ProductionError) -> (StatusCode, ErrorB
             true,
         ),
     };
-    (
-        status,
-        ErrorBody {
-            code,
-            message: error.to_string(),
-            fields: None,
-            retryable,
-            correlation_id: None,
-        },
-    )
+    (status, ErrorBody::new(code, error.to_string(), retryable))
 }

@@ -136,11 +136,8 @@ pub(super) fn industry_response(error: IndustryError) -> (StatusCode, ErrorBody)
     (
         status,
         ErrorBody {
-            code,
-            message: error.to_string(),
             fields,
-            retryable,
-            correlation_id: None,
+            ..ErrorBody::new(code, error.to_string(), retryable)
         },
     )
 }
