@@ -172,6 +172,17 @@ describe("Blueprints page", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("categoryIds=6");
   });
 
+  test("a filter changed while a search is still debouncing survives the search", async () => {
+    renderPage();
+    await screen.findByRole("table", { name: "Owned blueprints" });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search blueprints" }), { target: { value: "raven" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Copies" }));
+
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("search=raven"));
+    expect(screen.getByTestId("location")).toHaveTextContent("kinds=copy");
+  });
+
   test("choosing a category narrows the group list to it", async () => {
     const user = userEvent.setup();
     renderPage("/builds/blueprints?categoryIds=6");

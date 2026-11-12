@@ -41,6 +41,7 @@ import {
 } from "./blueprint-library-url-state";
 import { fetchAllBlueprintPages, useBlueprintLibrary } from "./use-blueprint-library";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
+import { useStableCallback } from "../../../hooks/use-stable-callback";
 
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
   { key: "blueprint", label: "Blueprint", width: "minmax(240px,1fr)", sort: "blueprint" },
@@ -70,13 +71,17 @@ export function BlueprintsPage() {
     setSearchParams(blueprintLibraryViewParams({ ...view, ...patch }), { replace: true });
   }
 
+  // Applies the typed search to the view as it is when the debounce fires,
+  // so a sort or filter changed meanwhile isn't reverted.
+  const applySearch = useStableCallback((search: string) => {
+    if (search !== view.search) update({ search });
+  });
+
+  // Only typing schedules a search; URL changes are already applied.
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchText.trim() !== view.search) update({ search: searchText.trim() });
-    }, 250);
+    const timer = window.setTimeout(() => applySearch(searchText.trim()), 250);
     return () => window.clearTimeout(timer);
-    // Only typing schedules a search; URL changes are already applied.
-  }, [searchText]);
+  }, [searchText, applySearch]);
 
   function reset() {
     setSearchText("");
@@ -92,10 +97,10 @@ export function BlueprintsPage() {
     downloadText(blueprintLibraryCsv(rows, keys), `iskworks-blueprints-${date}.csv`, "text/csv");
   }
 
-  function toggleSort(sort: BlueprintLibrarySort) {
+  const toggleSort = useStableCallback((sort: BlueprintLibrarySort) => {
     if (view.sort === sort) update({ order: view.order === "asc" ? "desc" : "asc" });
     else update({ sort, order: sort === "me" || sort === "te" || sort === "runs" || sort === "observed" ? "desc" : "asc" });
-  }
+  });
 
   const columns = useMemo<OperationalColumn[]>(() => COLUMN_DEFS.map((column) => ({
     key: column.key,
@@ -105,7 +110,7 @@ export function BlueprintsPage() {
     numeric: column.numeric,
     hideBelow: column.hideBelow,
     sort: { direction: view.sort === column.sort ? view.order : null, onToggle: () => toggleSort(column.sort) },
-  })), [view]);
+  })), [view, toggleSort]);
   const groups = useMemo(() => groupBlueprints(library.rows, view.groupBy), [library.rows, view.groupBy]);
   const selected = library.rows.find((row) => row.observationId === selectedKey) ?? null;
   const filtered = hasActiveFilters(view);
