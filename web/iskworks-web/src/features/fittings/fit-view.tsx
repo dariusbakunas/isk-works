@@ -306,9 +306,9 @@ export function FitView({ onChanged }: { onChanged: () => void }) {
   const { fitId = "" } = useParams();
   const fit = useFit(fitId);
 
-  if (fit.error) return <InlineAlert title="Couldn't load the fit">{fit.error.message}</InlineAlert>;
+  if (fit.error) return <InlineAlert title="Couldn't load the fit">{fit.errorMessage}</InlineAlert>;
   if (!fit.data) return <p className="text-sm text-muted">Loading fit…</p>;
-  return <LoadedFit fit={fit.data} key={fit.data.id} onChanged={onChanged} reload={fit.retry} />;
+  return <LoadedFit fit={fit.data} key={fit.data.id} onChanged={onChanged} reload={fit.reload} />;
 }
 
 function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () => void; reload: () => void }) {
@@ -326,8 +326,8 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
     engineAvailable,
     onSaved: () => {
       reload();
-      stats.retry();
-      pilots.retry();
+      stats.reload();
+      pilots.reload();
       onChanged();
     },
   });
@@ -336,8 +336,8 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
     fit,
     onSaved: () => {
       reload();
-      stats.retry();
-      pilots.retry();
+      stats.reload();
+      pilots.reload();
       onChanged();
     },
   });
@@ -418,7 +418,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         pilots={pilots.data ?? []}
       />
       {engineAvailable ? null : <EngineUnavailableHint />}
-      {stats.error ? <InlineAlert title="Couldn't calculate the fit">{stats.error.message}</InlineAlert> : null}
+      {stats.error ? <InlineAlert title="Couldn't calculate the fit">{stats.errorMessage}</InlineAlert> : null}
       {quick.error ? <InlineAlert title="Couldn't save the module state">{quick.error}</InlineAlert> : null}
       {railStats ? <SummaryStrip view={railStats} /> : null}
       <div
@@ -494,7 +494,7 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
         <StatsRail
           baseline={editor.differs ? (statsView?.stats ?? null) : null}
           fitId={fit.id}
-          price={<PriceSection cost={cost.data} error={cost.error?.message ?? null} stale={editor.changes > 0} />}
+          price={<PriceSection cost={cost.data} error={cost.errorMessage} stale={editor.changes > 0} />}
           recalculating={editor.calculating}
           stats={railStats}
         />

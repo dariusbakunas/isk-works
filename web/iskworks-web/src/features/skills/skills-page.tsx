@@ -105,7 +105,7 @@ export function SkillsPage() {
       </PageHeader>
       {error && !catalogue.data ? (
         <InlineAlert title="Skills unavailable">
-          {error.message}{" "}
+          {characters.errorMessage ?? catalogue.errorMessage}{" "}
           <button className="underline" onClick={characters.error ? characters.retry : catalogue.retry} type="button">Retry</button>
         </InlineAlert>
       ) : !catalogue.data ? (

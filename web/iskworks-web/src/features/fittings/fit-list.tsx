@@ -160,7 +160,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   const navigate = useNavigate();
   const { roster } = useFittingsContext();
   const engineAvailable = useEngineAvailable();
-  const { data, error, loading } = useFits(revision);
+  const { data, error, errorMessage, loading } = useFits(revision);
   const [query, setQuery] = useState("");
   const [flyableBy, setFlyableBy] = useState("");
   const [importing, setImporting] = useState(false);
@@ -261,7 +261,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
         </div>
 
         {engineAvailable ? null : <EngineUnavailableHint />}
-        {error ? <InlineAlert title="Couldn't load fits">{error.message}</InlineAlert> : null}
+        {error ? <InlineAlert title="Couldn't load fits">{errorMessage}</InlineAlert> : null}
 
         {!loading && data && data.length === 0 ? (
           <EmptyState
