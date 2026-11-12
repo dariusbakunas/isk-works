@@ -46,6 +46,13 @@ pub enum MarketOrdersError {
     Sde(#[from] SdeError),
 }
 
+/// A store port's error, as the `InventoryError` it was before.
+impl From<iskworks_core::StoreError> for MarketOrdersError {
+    fn from(error: iskworks_core::StoreError) -> Self {
+        Self::Inventory(error.into())
+    }
+}
+
 /// Resolves unknown player structure IDs (name and system) so their market
 /// can be read. Best-effort: failures leave the location unknown.
 #[async_trait]

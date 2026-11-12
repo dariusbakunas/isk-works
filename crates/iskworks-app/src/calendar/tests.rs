@@ -630,30 +630,30 @@ mod events {
         async fn calendar_events(
             &self,
             _: ConnectedCharacterId,
-        ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+        ) -> Result<Vec<CharacterCalendarEvent>, iskworks_core::StoreError> {
             unreachable!("the calendar reads the workspace view")
         }
         async fn workspace_calendar_event_copies(
             &self,
             _: WorkspaceId,
             _: &[i64],
-        ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+        ) -> Result<Vec<CharacterCalendarEvent>, iskworks_core::StoreError> {
             unreachable!("the calendar reads the workspace view")
         }
         async fn replace_calendar_events(
             &self,
             _: ConnectedCharacterId,
             _: &[CharacterCalendarEvent],
-        ) -> Result<(), InventoryError> {
+        ) -> Result<(), iskworks_core::StoreError> {
             unreachable!("loading the calendar never writes")
         }
         async fn workspace_calendar_events(
             &self,
             _: WorkspaceId,
-        ) -> Result<Vec<WorkspaceCalendarEvent>, InventoryError> {
+        ) -> Result<Vec<WorkspaceCalendarEvent>, iskworks_core::StoreError> {
             self.0
                 .clone()
-                .map_err(|()| InventoryError::Persistence("boom".into()))
+                .map_err(|()| iskworks_core::StoreError::Persistence("boom".into()))
         }
     }
 

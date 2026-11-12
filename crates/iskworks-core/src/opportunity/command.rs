@@ -83,6 +83,14 @@ impl From<InventoryError> for OpportunityError {
     }
 }
 
+/// The adjusted-price port's error, worded as it was when the port
+/// returned `InventoryError`.
+impl From<crate::StoreError> for OpportunityError {
+    fn from(error: crate::StoreError) -> Self {
+        InventoryError::from(error).into()
+    }
+}
+
 /// Opportunities' own default policy pair -- deliberately independent of
 /// Build's (`industry::build::default_material_pricing_policy`/
 /// `default_output_pricing_policy`, which default material to

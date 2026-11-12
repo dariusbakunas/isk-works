@@ -68,7 +68,7 @@ impl EsiApplicationService {
             .await
         {
             Ok(pending) => Ok(Some(pending)),
-            Err(InventoryError::Validation(_)) => Ok(None),
+            Err(StoreError::Validation(_)) => Ok(None),
             Err(other) => Err(other.into()),
         }
     }

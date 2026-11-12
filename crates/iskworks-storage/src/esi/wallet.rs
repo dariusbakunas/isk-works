@@ -10,7 +10,7 @@ impl EsiWalletRepository for PgEsiRepository {
         run: &EsiSyncRun,
         observations: &[WalletTransactionObservation],
         etag: Option<&str>,
-    ) -> Result<SyncCompletion, InventoryError> {
+    ) -> Result<SyncCompletion, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         // Serialize completion of this run.
         sqlx::query("SELECT id FROM esi_sync_runs WHERE id = $1 FOR UPDATE")
@@ -30,7 +30,7 @@ impl EsiWalletRepository for PgEsiRepository {
             let total = observation
                 .unit_price
                 .checked_mul(Decimal::from(observation.quantity))
-                .ok_or(InventoryError::ArithmeticOverflow)?;
+                .ok_or(StoreError::OutOfRange)?;
             let row = sqlx::query_scalar::<_, Uuid>(
                 r#"
                 INSERT INTO esi_wallet_transactions (
@@ -106,7 +106,7 @@ impl EsiWalletRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         entries: &[WalletJournalObservation],
-    ) -> Result<u64, InventoryError> {
+    ) -> Result<u64, StoreError> {
         let mut inserted = 0_u64;
         for chunk in entries.chunks(500) {
             let mut query = QueryBuilder::<Postgres>::new(
@@ -149,7 +149,7 @@ impl EsiWalletRepository for PgEsiRepository {
         balance: Decimal,
         observed_at: DateTime<Utc>,
         source_checksum: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         sqlx::query(
             r#"
             INSERT INTO esi_wallet_balances (
@@ -176,7 +176,7 @@ impl EsiWalletRepository for PgEsiRepository {
     async fn unresolved_wallet_client_ids(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         sqlx::query_scalar(
             r#"
             SELECT DISTINCT transaction.client_id
@@ -205,7 +205,7 @@ impl EntityNameRepository for PgEsiRepository {
     async fn entity_names(
         &self,
         ids: &[i64],
-    ) -> Result<std::collections::HashMap<i64, String>, InventoryError> {
+    ) -> Result<std::collections::HashMap<i64, String>, StoreError> {
         if ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -219,7 +219,7 @@ impl EntityNameRepository for PgEsiRepository {
         Ok(rows.into_iter().collect())
     }
 
-    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), StoreError> {
         if names.is_empty() {
             return Ok(());
         }
@@ -246,7 +246,7 @@ impl EntityNameRepository for PgEsiRepository {
         transaction.commit().await.map_err(map_sqlx)
     }
 
-    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError> {
+    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), StoreError> {
         if ids.is_empty() {
             return Ok(());
         }

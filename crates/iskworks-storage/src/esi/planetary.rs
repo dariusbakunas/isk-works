@@ -3,7 +3,7 @@
 
 use async_trait::async_trait;
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::{StoreError, WorkspaceId};
 use sqlx::types::Json;
 
 use super::{map_sqlx, PgEsiRepository};
@@ -13,7 +13,7 @@ impl PlanetaryPreferencesRepository for PgEsiRepository {
     async fn planetary_preferences(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<PlanetaryPreferences, InventoryError> {
+    ) -> Result<PlanetaryPreferences, StoreError> {
         let row: Option<(Json<serde_json::Value>, Json<serde_json::Value>)> = sqlx::query_as(
             "SELECT excluded_exports, character_order FROM pi_preferences WHERE workspace_id = $1",
         )
@@ -26,9 +26,9 @@ impl PlanetaryPreferencesRepository for PgEsiRepository {
         };
         Ok(PlanetaryPreferences {
             excluded_exports: serde_json::from_value(excluded_exports)
-                .map_err(|error| InventoryError::Persistence(error.to_string()))?,
+                .map_err(|error| StoreError::Persistence(error.to_string()))?,
             character_order: serde_json::from_value(character_order)
-                .map_err(|error| InventoryError::Persistence(error.to_string()))?,
+                .map_err(|error| StoreError::Persistence(error.to_string()))?,
         })
     }
 
@@ -36,7 +36,7 @@ impl PlanetaryPreferencesRepository for PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         preferences: &PlanetaryPreferences,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "INSERT INTO pi_preferences (workspace_id, excluded_exports, character_order, updated_at)
              VALUES ($1, $2, $3, now())

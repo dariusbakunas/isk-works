@@ -11,10 +11,9 @@ use iskworks_core::market_orders::{
     CharacterMarketOrder, CharacterMarketOrderRepository, OrderRange, WorkspaceMarketOrder,
 };
 use iskworks_core::{
-    ConnectedCharacterId, InventoryError, MarketCoverageRegistration, MarketError,
-    MarketImportBatchId, MarketLocationClassification, MarketObservationBatchId, MarketOrderBook,
-    MarketOrderSide, MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId,
-    WorkspaceId,
+    ConnectedCharacterId, MarketCoverageRegistration, MarketError, MarketImportBatchId,
+    MarketLocationClassification, MarketObservationBatchId, MarketOrderBook, MarketOrderSide,
+    MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, NpcStationSearchResult, SdeError,
@@ -51,14 +50,14 @@ impl CharacterMarketOrderRepository for FakeOrders {
         _: ConnectedCharacterId,
         _: &[CharacterMarketOrder],
         _: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!()
     }
 
     async fn open_market_orders(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<WorkspaceMarketOrder>, InventoryError> {
+    ) -> Result<Vec<WorkspaceMarketOrder>, iskworks_core::StoreError> {
         Ok(vec![WorkspaceMarketOrder {
             order: CharacterMarketOrder {
                 order_id: 1,
@@ -92,7 +91,7 @@ impl TraderCharacterSource for FakeCharacters {
     async fn trader_characters(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError> {
+    ) -> Result<Vec<TraderCharacter>, iskworks_core::StoreError> {
         Ok(vec![TraderCharacter {
             connection_id: KAEL,
             eve_character_id: 90_000_001,

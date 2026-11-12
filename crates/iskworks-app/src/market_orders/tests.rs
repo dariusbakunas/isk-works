@@ -136,14 +136,14 @@ impl CharacterMarketOrderRepository for FakeOrders {
         _: ConnectedCharacterId,
         _: &[CharacterMarketOrder],
         _: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!()
     }
 
     async fn open_market_orders(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<WorkspaceMarketOrder>, InventoryError> {
+    ) -> Result<Vec<WorkspaceMarketOrder>, iskworks_core::StoreError> {
         Ok(self.0.clone())
     }
 }
@@ -155,7 +155,7 @@ impl TraderCharacterSource for FakeCharacters {
     async fn trader_characters(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError> {
+    ) -> Result<Vec<TraderCharacter>, iskworks_core::StoreError> {
         Ok(vec![TraderCharacter {
             connection_id: kael(),
             eve_character_id: 90_000_001,

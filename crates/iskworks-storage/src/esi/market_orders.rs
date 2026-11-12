@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use iskworks_core::market_orders::{
     CharacterMarketOrder, CharacterMarketOrderRepository, OrderRange, WorkspaceMarketOrder,
 };
-use iskworks_core::{ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, MarketOrderSide, StoreError, WorkspaceId};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -36,18 +36,18 @@ struct OpenOrderRow {
 }
 
 impl OpenOrderRow {
-    fn into_domain(self) -> Result<WorkspaceMarketOrder, InventoryError> {
+    fn into_domain(self) -> Result<WorkspaceMarketOrder, StoreError> {
         let side = match self.order_side.as_str() {
             "buy" => MarketOrderSide::Buy,
             "sell" => MarketOrderSide::Sell,
             other => {
-                return Err(InventoryError::Persistence(format!(
+                return Err(StoreError::Persistence(format!(
                     "unknown market order side {other}"
                 )))
             }
         };
         let range = OrderRange::from_db_i32(self.order_range).ok_or_else(|| {
-            InventoryError::Persistence(format!("unknown order range {}", self.order_range))
+            StoreError::Persistence(format!("unknown order range {}", self.order_range))
         })?;
         Ok(WorkspaceMarketOrder {
             order: CharacterMarketOrder {
@@ -89,7 +89,7 @@ impl CharacterMarketOrderRepository for PgEsiRepository {
         connection_id: ConnectedCharacterId,
         orders: &[CharacterMarketOrder],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let seen: Vec<i64> = orders.iter().map(|order| order.order_id).collect();
         sqlx::query(
@@ -153,7 +153,7 @@ impl CharacterMarketOrderRepository for PgEsiRepository {
     async fn open_market_orders(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<WorkspaceMarketOrder>, InventoryError> {
+    ) -> Result<Vec<WorkspaceMarketOrder>, StoreError> {
         sqlx::query_as::<_, OpenOrderRow>(
             "SELECT o.connection_id, o.order_id, o.type_id, o.region_id, o.location_id,
                     o.order_side, o.is_corporation, o.price, o.volume_total, o.volume_remain,

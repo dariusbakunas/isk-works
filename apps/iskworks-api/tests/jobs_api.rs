@@ -124,7 +124,7 @@ impl IndustryJobRepository for FakeJobs {
         _workspace_id: WorkspaceId,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<StoredIndustryJob>, InventoryError> {
+    ) -> Result<Vec<StoredIndustryJob>, iskworks_core::StoreError> {
         self.windows.lock().unwrap().push((from, to));
         let completed = to - Duration::days(2);
         Ok(vec![StoredIndustryJob {
@@ -147,7 +147,7 @@ impl IndustryJobRepository for FakeJobs {
     async fn earliest_job_seen(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, iskworks_core::StoreError> {
         Ok(Some("2026-10-20T12:00:00Z".parse().unwrap()))
     }
 
@@ -155,7 +155,7 @@ impl IndustryJobRepository for FakeJobs {
         &self,
         _workspace_id: WorkspaceId,
         job_ids: &[i64],
-    ) -> Result<HashMap<i64, JobTicketLink>, InventoryError> {
+    ) -> Result<HashMap<i64, JobTicketLink>, iskworks_core::StoreError> {
         Ok(job_ids
             .iter()
             .filter(|id| **id == 11 || **id == 31)
@@ -176,7 +176,7 @@ impl IndustryJobRepository for FakeJobs {
         _connection_id: iskworks_core::ConnectedCharacterId,
         _jobs: &[iskworks_core::CharacterIndustryJobObservation],
         _observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!("the Jobs page never records jobs")
     }
 }

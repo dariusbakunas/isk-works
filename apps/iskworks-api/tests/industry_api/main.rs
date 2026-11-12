@@ -1283,7 +1283,7 @@ impl iskworks_core::AdjustedPriceRepository for FixtureAdjustedPriceRepository {
         &self,
         type_ids: &[i64],
         _as_of: chrono::DateTime<chrono::Utc>,
-    ) -> Result<std::collections::BTreeMap<i64, rust_decimal::Decimal>, iskworks_core::InventoryError>
+    ) -> Result<std::collections::BTreeMap<i64, rust_decimal::Decimal>, iskworks_core::StoreError>
     {
         Ok(type_ids
             .iter()

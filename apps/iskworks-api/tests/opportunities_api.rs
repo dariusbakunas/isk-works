@@ -8,11 +8,10 @@ use chrono::{DateTime, TimeZone, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_core::{
     AdjustedPriceRepository, FacilityKind, FacilityProfileId, FacilityRole, IndustryError,
-    IndustryFacilityProfile, IndustryRepository, InventoryError, MarketCoverageItem,
-    MarketCoverageRegistration, MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView,
-    MarketPriceSource, MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState, Money,
-    NewWorkspace, PriceSource, PriceSourceId, PriceSourceKind, SecurityClass, WorkspaceId,
-    WorkspaceState,
+    IndustryFacilityProfile, IndustryRepository, MarketCoverageItem, MarketCoverageRegistration,
+    MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource,
+    MarketPriceSourceConfig, MarketPricingPolicy, MarketRefreshState, Money, NewWorkspace,
+    PriceSource, PriceSourceId, PriceSourceKind, SecurityClass, WorkspaceId, WorkspaceState,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, CandidateProductClassification, CandidateRecipeIdentity,
@@ -400,7 +399,7 @@ impl AdjustedPriceRepository for FixtureAdjustedPriceRepository {
         &self,
         type_ids: &[i64],
         _: DateTime<Utc>,
-    ) -> Result<BTreeMap<i64, Decimal>, InventoryError> {
+    ) -> Result<BTreeMap<i64, Decimal>, iskworks_core::StoreError> {
         Ok(type_ids
             .iter()
             .filter_map(|type_id| {

@@ -15,7 +15,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         &self,
         type_ids: &[i64],
         _as_of: DateTime<Utc>,
-    ) -> Result<std::collections::BTreeMap<i64, Decimal>, InventoryError> {
+    ) -> Result<std::collections::BTreeMap<i64, Decimal>, StoreError> {
         let ids = type_ids
             .iter()
             .copied()
@@ -43,7 +43,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
     async fn latest_adjusted_price_observed_at(
         &self,
         type_ids: &[i64],
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         let ids = type_ids
             .iter()
             .copied()
@@ -68,7 +68,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
 
     async fn adjusted_price_refresh_overlay(
         &self,
-    ) -> Result<iskworks_core::EvidenceRefreshOverlay, InventoryError> {
+    ) -> Result<iskworks_core::EvidenceRefreshOverlay, StoreError> {
         let row = sqlx::query_as::<_, (String, Option<DateTime<Utc>>, Option<String>)>(
             "SELECT refresh_state,next_refresh_at,last_error FROM industry_adjusted_price_refresh_state WHERE singleton",
         )
@@ -87,7 +87,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
     async fn system_cost_index_refresh_overlay(
         &self,
         solar_system_id: i64,
-    ) -> Result<iskworks_core::EvidenceRefreshOverlay, InventoryError> {
+    ) -> Result<iskworks_core::EvidenceRefreshOverlay, StoreError> {
         let row = sqlx::query_as::<_, (String, Option<DateTime<Utc>>, Option<String>)>(
             "SELECT refresh_state,next_refresh_at,last_error FROM industry_system_cost_index_registrations WHERE solar_system_id=$1",
         )
@@ -107,7 +107,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
     async fn prioritize_adjusted_price_refresh(
         &self,
         now: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         sqlx::query_scalar::<_, i32>(
             r#"UPDATE industry_adjusted_price_refresh_state
                SET next_refresh_at=GREATEST($1,refresh_not_before),updated_at=$1
@@ -125,7 +125,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         &self,
         solar_system_id: i64,
         now: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         sqlx::query_scalar::<_, i32>(
             r#"UPDATE industry_system_cost_index_registrations
                SET next_refresh_at=GREATEST($2,refresh_not_before),
@@ -141,10 +141,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         .map_err(map_sqlx)
     }
 
-    async fn register_adjusted_price_refresh(
-        &self,
-        now: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    async fn register_adjusted_price_refresh(&self, now: DateTime<Utc>) -> Result<(), StoreError> {
         sqlx::query(
             r#"INSERT INTO industry_adjusted_price_refresh_state
                (singleton,refresh_state,updated_at)
@@ -162,9 +159,9 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         &self,
         solar_system_id: i64,
         now: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         if solar_system_id <= 0 {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "solar system ID must be positive".to_string(),
             ));
         }
@@ -185,7 +182,7 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
     async fn latest_system_cost_index(
         &self,
         solar_system_id: i64,
-    ) -> Result<Option<(Decimal, DateTime<Utc>)>, InventoryError> {
+    ) -> Result<Option<(Decimal, DateTime<Utc>)>, StoreError> {
         sqlx::query_as(
             r#"SELECT cost_index,observed_at
                FROM industry_system_cost_index_observations
@@ -208,7 +205,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         observations: &[AssetObservation],
         etag: Option<&str>,
         skipped_blueprints: u64,
-    ) -> Result<SyncCompletion, InventoryError> {
+    ) -> Result<SyncCompletion, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let snapshot_id = Uuid::new_v4();
         sqlx::query(
@@ -221,7 +218,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         .bind(snapshot_id)
         .bind(run.connection_id.0)
         .bind(run.id.0)
-        .bind(i32::try_from(pages).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .bind(i32::try_from(pages).map_err(|_| StoreError::OutOfRange)?)
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
@@ -236,7 +233,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
                     let source_checksum = checksum(&payload);
                     Ok((asset, payload, source_checksum))
                 })
-                .collect::<Result<Vec<_>, InventoryError>>()?;
+                .collect::<Result<Vec<_>, StoreError>>()?;
             let mut query = QueryBuilder::new(
                 "INSERT INTO esi_asset_observations (\
                  snapshot_id, source_item_id, type_id, quantity, location_id, \
@@ -280,7 +277,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
             "UPDATE esi_asset_snapshots SET status = 'complete', active = true, completed_at = now(), row_count = $2 WHERE id = $1",
         )
         .bind(snapshot_id)
-        .bind(i64::try_from(observations.len()).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .bind(i64::try_from(observations.len()).map_err(|_| StoreError::OutOfRange)?)
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
@@ -294,7 +291,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         )
         .bind(run.connection_id.0)
         .bind(etag)
-        .bind(i32::try_from(pages).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .bind(i32::try_from(pages).map_err(|_| StoreError::OutOfRange)?)
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
@@ -310,10 +307,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         if skipped_blueprints > 0 {
             sqlx::query("UPDATE esi_sync_runs SET skipped_count = $2 WHERE id = $1")
                 .bind(run.id.0)
-                .bind(
-                    i64::try_from(skipped_blueprints)
-                        .map_err(|_| InventoryError::ArithmeticOverflow)?,
-                )
+                .bind(i64::try_from(skipped_blueprints).map_err(|_| StoreError::OutOfRange)?)
                 .execute(&mut *tx)
                 .await
                 .map_err(map_sqlx)?;
@@ -330,7 +324,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         connection: &ConnectedCharacter,
         observations: &[iskworks_core::BlueprintAssetObservation],
         retained_item_ids: &[i64],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let observed_at = crate::db_now();
 
@@ -404,7 +398,7 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         pages: u32,
         observations: &[AssetObservation],
         summary: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let snapshot_id = Uuid::new_v4();
         sqlx::query(
@@ -413,8 +407,8 @@ impl EsiAssetSnapshotRepository for PgEsiRepository {
         .bind(snapshot_id)
         .bind(run.connection_id.0)
         .bind(run.id.0)
-        .bind(i32::try_from(pages.max(1)).map_err(|_| InventoryError::ArithmeticOverflow)?)
-        .bind(i64::try_from(observations.len()).map_err(|_| InventoryError::ArithmeticOverflow)?)
+        .bind(i32::try_from(pages.max(1)).map_err(|_| StoreError::OutOfRange)?)
+        .bind(i64::try_from(observations.len()).map_err(|_| StoreError::OutOfRange)?)
         .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
@@ -435,7 +429,7 @@ impl StructureNameRepository for PgEsiRepository {
         &self,
         connection: &ConnectedCharacter,
         structures: &[StructureInformation],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         for structure in structures {
             sqlx::query(
@@ -471,7 +465,7 @@ impl StructureNameRepository for PgEsiRepository {
         connection: &ConnectedCharacter,
         structure_ids: &[i64],
         denied_until: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         if structure_ids.is_empty() {
             return Ok(());
         }
@@ -496,7 +490,7 @@ impl StructureNameRepository for PgEsiRepository {
         structure_ids: &[i64],
         stale_before: Option<DateTime<Utc>>,
         now: DateTime<Utc>,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         if structure_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -528,7 +522,7 @@ impl StructureNameRepository for PgEsiRepository {
     async fn unresolved_structure_ids(
         &self,
         connection: &ConnectedCharacter,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         sqlx::query_scalar(
             r#"SELECT location_id
                FROM (
@@ -564,7 +558,7 @@ impl StructureNameRepository for PgEsiRepository {
 
 #[async_trait]
 impl EvidenceRefreshRepository for PgEsiRepository {
-    async fn adjusted_price_refresh_due(&self, now: DateTime<Utc>) -> Result<bool, InventoryError> {
+    async fn adjusted_price_refresh_due(&self, now: DateTime<Utc>) -> Result<bool, StoreError> {
         sqlx::query_scalar::<_, bool>(
             r#"SELECT EXISTS (
                  SELECT 1 FROM industry_adjusted_price_refresh_state
@@ -582,7 +576,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         &self,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         sqlx::query_scalar::<_, DateTime<Utc>>(
             r#"UPDATE industry_adjusted_price_refresh_state
                SET refresh_state='refreshing',last_attempted_at=$1,
@@ -607,7 +601,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
         etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let owns_claim = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS (SELECT 1 FROM industry_adjusted_price_refresh_state WHERE singleton AND refresh_state='refreshing' AND last_attempted_at=$1 FOR UPDATE)",
@@ -666,7 +660,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let error_message: String = error_message.chars().take(500).collect();
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let failures: Option<i32> = sqlx::query_scalar(
@@ -713,7 +707,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         observed_at: DateTime<Utc>,
         expires_at: DateTime<Utc>,
         etag: Option<&str>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let source_checksum = etag.unwrap_or("esi-markets-prices");
         for chunk in prices.chunks(4_000) {
             let mut query = QueryBuilder::new(
@@ -744,7 +738,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         &self,
         now: DateTime<Utc>,
         limit: i64,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         sqlx::query_scalar(
             r#"SELECT solar_system_id
                FROM industry_system_cost_index_registrations
@@ -766,7 +760,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         solar_system_id: i64,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         sqlx::query_scalar::<_, DateTime<Utc>>(
             r#"UPDATE industry_system_cost_index_registrations
                SET refresh_state='refreshing',last_attempted_at=$2,
@@ -793,7 +787,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
         etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let owns_claim = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS (SELECT 1 FROM industry_system_cost_index_registrations WHERE solar_system_id=$1 AND refresh_state='refreshing' AND last_attempted_at=$2 FOR UPDATE)",
@@ -854,7 +848,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let error_message: String = error_message.chars().take(500).collect();
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let failures: Option<i32> = sqlx::query_scalar(

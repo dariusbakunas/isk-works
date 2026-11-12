@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use iskworks_core::calendar_event::{
     CalendarEventRepository, CalendarEventResponse, CharacterCalendarEvent, WorkspaceCalendarEvent,
 };
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use uuid::Uuid;
 
 use super::{map_sqlx, PgEsiRepository};
@@ -30,9 +30,9 @@ struct EventRow {
 }
 
 impl EventRow {
-    fn into_domain(self) -> Result<CharacterCalendarEvent, InventoryError> {
+    fn into_domain(self) -> Result<CharacterCalendarEvent, StoreError> {
         let response = CalendarEventResponse::from_db_str(&self.response).ok_or_else(|| {
-            InventoryError::Persistence(format!("unknown calendar response {}", self.response))
+            StoreError::Persistence(format!("unknown calendar response {}", self.response))
         })?;
         Ok(CharacterCalendarEvent {
             connection_id: ConnectedCharacterId(self.connection_id),
@@ -64,7 +64,7 @@ impl CalendarEventRepository for PgEsiRepository {
     async fn calendar_events(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError> {
         sqlx::query_as::<_, EventRow>(&format!(
             "SELECT {EVENT_COLUMNS} FROM character_calendar_events e
              WHERE e.connection_id = $1 ORDER BY e.event_date, e.event_id"
@@ -82,7 +82,7 @@ impl CalendarEventRepository for PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         event_ids: &[i64],
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError> {
         sqlx::query_as::<_, EventRow>(&format!(
             "SELECT {EVENT_COLUMNS} FROM character_calendar_events e
              JOIN eve_connections c ON c.id = e.connection_id
@@ -103,7 +103,7 @@ impl CalendarEventRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let seen: Vec<i64> = events.iter().map(|event| event.event_id).collect();
         sqlx::query(
@@ -155,7 +155,7 @@ impl CalendarEventRepository for PgEsiRepository {
     async fn workspace_calendar_events(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<WorkspaceCalendarEvent>, InventoryError> {
+    ) -> Result<Vec<WorkspaceCalendarEvent>, StoreError> {
         sqlx::query_as::<_, WorkspaceEventRow>(&format!(
             "SELECT {EVENT_COLUMNS}, c.eve_character_id, c.character_name
              FROM character_calendar_events e

@@ -24,7 +24,7 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::{InventoryError, WorkspaceId};
+use crate::{StoreError, WorkspaceId};
 
 /// `invGroups` of the PI pins that hold items, and their fixed capacities.
 pub const COMMAND_CENTER_GROUP_ID: i64 = 1027;
@@ -66,12 +66,12 @@ pub trait PlanetaryPreferencesRepository: Send + Sync {
     async fn planetary_preferences(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<PlanetaryPreferences, InventoryError>;
+    ) -> Result<PlanetaryPreferences, StoreError>;
     async fn save_planetary_preferences(
         &self,
         workspace_id: WorkspaceId,
         preferences: &PlanetaryPreferences,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 /// One colony as stored in the `planets` character-source summary.

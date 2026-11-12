@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     CharacterConnectionReader, ConnectedCharacter, ConnectedCharacterId, ConnectionStatus,
-    EncryptedSecret, InventoryError, OwnerId, WorkspaceId,
+    EncryptedSecret, OwnerId, StoreError, WorkspaceId,
 };
 
 /// An SSO login that was started and not yet completed, found by the hash
@@ -43,13 +43,13 @@ pub trait EsiConnectionRepository: CharacterConnectionReader {
         owner_id: OwnerId,
         verifier: EncryptedSecret,
         scopes: &[String],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Consumes a started, unexpired login: each state works once.
     async fn consume_authorization(
         &self,
         state_hash: &str,
-    ) -> Result<PendingAuthorization, InventoryError>;
+    ) -> Result<PendingAuthorization, StoreError>;
 
     /// Creates or reconnects the character a completed login names.
     async fn complete_connection(
@@ -60,7 +60,7 @@ pub trait EsiConnectionRepository: CharacterConnectionReader {
         scopes: &[String],
         expires_at: DateTime<Utc>,
         refresh_token: EncryptedSecret,
-    ) -> Result<ConnectedCharacter, InventoryError>;
+    ) -> Result<ConnectedCharacter, StoreError>;
 
     /// Fixture-mode connect: grants exactly `scopes` (the service passes the
     /// full requested set, so fixture characters exercise every feature).
@@ -70,12 +70,12 @@ pub trait EsiConnectionRepository: CharacterConnectionReader {
         owner_id: OwnerId,
         envelope: EncryptedSecret,
         scopes: &[String],
-    ) -> Result<ConnectedCharacter, InventoryError>;
+    ) -> Result<ConnectedCharacter, StoreError>;
 
     async fn load_refresh_token(
         &self,
         id: ConnectedCharacterId,
-    ) -> Result<StoredRefreshToken, InventoryError>;
+    ) -> Result<StoredRefreshToken, StoreError>;
 
     /// Saves refreshed tokens if the stored ones are still at
     /// `expected_token_revision`. Returns `false` when another refresh won.
@@ -87,7 +87,7 @@ pub trait EsiConnectionRepository: CharacterConnectionReader {
         access_token: EncryptedSecret,
         scopes: &[String],
         expires_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError>;
+    ) -> Result<bool, StoreError>;
 
     /// Records that a connection's token can no longer be refreshed (EVE
     /// rejected it, or it lacks a required scope), which takes it out of the
@@ -98,11 +98,8 @@ pub trait EsiConnectionRepository: CharacterConnectionReader {
         id: ConnectedCharacterId,
         status: ConnectionStatus,
         error_code: &str,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Deletes the connection's tokens and marks it disconnected.
-    async fn disconnect(
-        &self,
-        id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError>;
+    async fn disconnect(&self, id: ConnectedCharacterId) -> Result<ConnectedCharacter, StoreError>;
 }

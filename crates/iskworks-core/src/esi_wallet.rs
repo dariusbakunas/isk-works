@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
 use crate::{
-    ConnectedCharacterId, EsiSyncRun, EveEntityName, InventoryError, SyncCompletion,
+    ConnectedCharacterId, EsiSyncRun, EveEntityName, StoreError, SyncCompletion,
     WalletJournalObservation, WalletTransactionObservation, WorkspaceId,
 };
 
@@ -21,7 +21,7 @@ pub trait EsiWalletRepository: Send + Sync {
         run: &EsiSyncRun,
         observations: &[WalletTransactionObservation],
         etag: Option<&str>,
-    ) -> Result<SyncCompletion, InventoryError>;
+    ) -> Result<SyncCompletion, StoreError>;
 
     /// Insert journal entries not seen before; existing entries are left
     /// untouched (journal rows are immutable). Returns how many were new.
@@ -29,7 +29,7 @@ pub trait EsiWalletRepository: Send + Sync {
         &self,
         connection_id: ConnectedCharacterId,
         entries: &[WalletJournalObservation],
-    ) -> Result<u64, InventoryError>;
+    ) -> Result<u64, StoreError>;
 
     async fn save_wallet_balance(
         &self,
@@ -37,14 +37,14 @@ pub trait EsiWalletRepository: Send + Sync {
         balance: Decimal,
         observed_at: DateTime<Utc>,
         source_checksum: &str,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Wallet transaction clients of the workspace's connected characters
     /// that have no cached name and no recent miss.
     async fn unresolved_wallet_client_ids(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<i64>, InventoryError>;
+    ) -> Result<Vec<i64>, StoreError>;
 }
 
 /// Names of EVE entities (characters, corporations, systems, …) by id,
@@ -53,11 +53,11 @@ pub trait EsiWalletRepository: Send + Sync {
 pub trait EntityNameRepository: Send + Sync {
     /// Whatever names are already cached for the given ids. A pure read:
     /// unknown ids are simply absent from the result, not resolved via ESI.
-    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError>;
+    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, StoreError>;
 
-    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError>;
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), StoreError>;
 
     /// Records ids `/universe/names` could not name, so wallet enrichment
     /// skips them for a week instead of resending them every sync.
-    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError>;
+    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), StoreError>;
 }

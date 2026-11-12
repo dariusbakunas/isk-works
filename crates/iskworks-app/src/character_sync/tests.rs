@@ -11,7 +11,7 @@ use iskworks_core::calendar_event::{CalendarEventResponse, CharacterCalendarEven
 use iskworks_core::market_orders::{CharacterMarketOrder, OrderRange};
 use iskworks_core::{
     CharacterSourceSyncState, ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId,
-    EsiSyncStatus, InventoryError, MarketOrderSide, OwnerId, WorkspaceId,
+    EsiSyncStatus, MarketOrderSide, OwnerId, StoreError, WorkspaceId,
 };
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
@@ -87,7 +87,7 @@ impl CharacterSyncRepository for RecordingRepository {
         connection_id: ConnectedCharacterId,
         jobs: &[CharacterIndustryJobObservation],
         _observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.recorded_jobs
             .lock()
             .unwrap()
@@ -98,7 +98,7 @@ impl CharacterSyncRepository for RecordingRepository {
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.registered.lock().unwrap().push(connection_id);
         Ok(())
     }
@@ -109,7 +109,7 @@ impl CharacterSyncRepository for RecordingRepository {
         source_kind: CharacterSourceKind,
         attempted_at: DateTime<Utc>,
         _lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         if self.unclaimable.lock().unwrap().contains(&source_kind) {
             Ok(None)
         } else {
@@ -125,7 +125,7 @@ impl CharacterSyncRepository for RecordingRepository {
         next_refresh_at: DateTime<Utc>,
         summary: Value,
         _observed_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         self.completed
             .lock()
             .unwrap()
@@ -146,7 +146,7 @@ impl CharacterSyncRepository for RecordingRepository {
         _attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: String,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         self.failed
             .lock()
             .unwrap()
@@ -163,12 +163,12 @@ impl CharacterSyncRepository for RecordingRepository {
         &self,
         connection_id: ConnectedCharacterId,
         until: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.deferred.lock().unwrap().push((connection_id, until));
         Ok(())
     }
 
-    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError> {
+    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, StoreError> {
         self.entity_names_calls.lock().unwrap().push(ids.to_vec());
         let cache = self.cached_names.lock().unwrap();
         Ok(ids
@@ -180,7 +180,7 @@ impl CharacterSyncRepository for RecordingRepository {
     async fn cache_entity_names(
         &self,
         names: &[iskworks_esi::EveEntityName],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut cache = self.cached_names.lock().unwrap();
         for name in names {
             cache.insert(name.id, name.name.clone());
@@ -191,7 +191,7 @@ impl CharacterSyncRepository for RecordingRepository {
     async fn character_source_state(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
+    ) -> Result<Vec<CharacterSourceSyncState>, StoreError> {
         Ok(self
             .persisted_sources
             .lock()
@@ -205,7 +205,7 @@ impl CharacterSyncRepository for RecordingRepository {
         &self,
         _workspace_id: WorkspaceId,
         event_ids: &[i64],
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError> {
         Ok(self
             .calendar_copies
             .lock()
@@ -220,7 +220,7 @@ impl CharacterSyncRepository for RecordingRepository {
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.stored_calendar
             .lock()
             .unwrap()
@@ -233,7 +233,7 @@ impl CharacterSyncRepository for RecordingRepository {
         connection_id: ConnectedCharacterId,
         orders: &[CharacterMarketOrder],
         _observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.stored_market_orders
             .lock()
             .unwrap()

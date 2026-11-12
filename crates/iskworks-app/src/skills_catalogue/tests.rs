@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use iskworks_core::skills::SkillState;
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
     SkillDefinition, TypeSearchResult,
@@ -51,7 +51,7 @@ impl SkillsCharacterSource for FakeCharacters {
         &self,
         workspace_id: WorkspaceId,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
+    ) -> Result<Option<SkillsCharacter>, StoreError> {
         Ok(self
             .0
             .iter()
@@ -64,7 +64,7 @@ impl SkillsCharacterSource for FakeCharacters {
     async fn skills_characters(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+    ) -> Result<Vec<SkillsCharacter>, StoreError> {
         unimplemented!("the catalogue reads one character")
     }
 }

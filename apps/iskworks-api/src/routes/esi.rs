@@ -4,7 +4,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use iskworks_core::{
     CharacterConnectionReader, ConnectedCharacter, ConnectedCharacterId, EsiConnectionRepository,
-    EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncRunRepository, InventoryError, WorkspaceId,
+    EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncRunRepository, StoreError, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +28,7 @@ pub(crate) async fn require_own_connection(
 ) -> Result<ConnectedCharacter, ApiError> {
     let connection = state.esi_repository()?.get_connection(id).await?;
     if connection.workspace_id != workspace_id {
-        return Err(EsiApplicationError::Persistence(InventoryError::ItemNotFound).into());
+        return Err(EsiApplicationError::Persistence(StoreError::NotFound).into());
     }
     Ok(connection)
 }
@@ -153,7 +153,7 @@ async fn complete_eve_oauth_callback(
     // real browser's in-flight flow. See `cookies::OAUTH_STATE_COOKIE_NAME`.
     if !oauth_state_matches_cookie(&request_headers, &state_value) {
         return Err(ApiError::Integration(EsiApplicationError::Persistence(
-            InventoryError::Validation(
+            StoreError::Validation(
                 "This sign-in wasn't started in this browser. Start it again from ISK Works."
                     .to_string(),
             ),

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 
 use crate::{
     ConnectedCharacter, ConnectedCharacterId, EsiResponseMetadata, EsiSyncKind, EsiSyncRun,
-    EsiSyncRunId, InventoryError, WorkspaceId,
+    EsiSyncRunId, StoreError, WorkspaceId,
 };
 
 #[async_trait]
@@ -16,7 +16,7 @@ pub trait EsiSyncRunRepository: Send + Sync {
         &self,
         connection: &ConnectedCharacter,
         kind: EsiSyncKind,
-    ) -> Result<EsiSyncRun, InventoryError>;
+    ) -> Result<EsiSyncRun, StoreError>;
 
     /// Marks the run failed with an error code and summary.
     async fn fail_sync(
@@ -24,21 +24,21 @@ pub trait EsiSyncRunRepository: Send + Sync {
         run_id: EsiSyncRunId,
         code: &str,
         summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError>;
+    ) -> Result<EsiSyncRun, StoreError>;
 
     /// Stores the response headers (cache expiry, rate limits) ESI sent.
     async fn record_sync_metadata(
         &self,
         run_id: EsiSyncRunId,
         metadata: &EsiResponseMetadata,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// The ETag of the endpoint's last stored response, if any.
     async fn checkpoint_etag(
         &self,
         connection_id: ConnectedCharacterId,
         endpoint_kind: &str,
-    ) -> Result<Option<String>, InventoryError>;
+    ) -> Result<Option<String>, StoreError>;
 
     /// Completes a run whose response was unchanged (ESI answered 304).
     async fn complete_unchanged_sync(
@@ -46,13 +46,13 @@ pub trait EsiSyncRunRepository: Send + Sync {
         run: &EsiSyncRun,
         endpoint_kind: &str,
         summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError>;
+    ) -> Result<EsiSyncRun, StoreError>;
 
-    async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError>;
+    async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, StoreError>;
 
     /// The workspace's 50 most recent runs, newest first.
     async fn list_sync_runs(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<EsiSyncRun>, InventoryError>;
+    ) -> Result<Vec<EsiSyncRun>, StoreError>;
 }

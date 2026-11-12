@@ -9,7 +9,7 @@ impl CharacterConnectionReader for PgEsiRepository {
     async fn list_connections(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<ConnectedCharacter>, InventoryError> {
+    ) -> Result<Vec<ConnectedCharacter>, StoreError> {
         sqlx::query_as::<_, ConnectionRow>(
             r#"
             SELECT id, workspace_id, owner_id, eve_character_id, character_name, status,
@@ -32,7 +32,7 @@ impl CharacterConnectionReader for PgEsiRepository {
     async fn get_connection(
         &self,
         id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         sqlx::query_as::<_, ConnectionRow>(
             r#"
             SELECT id, workspace_id, owner_id, eve_character_id, character_name, status,
@@ -46,14 +46,14 @@ impl CharacterConnectionReader for PgEsiRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)?
-        .ok_or(InventoryError::ItemNotFound)?
+        .ok_or(StoreError::NotFound)?
         .into_domain()
     }
 
     async fn character_source_state(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
+    ) -> Result<Vec<CharacterSourceSyncState>, StoreError> {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(
             String,
@@ -112,7 +112,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         owner_id: OwnerId,
         verifier: EncryptedSecret,
         scopes: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         sqlx::query(
             r#"
             INSERT INTO eve_oauth_pending_authorizations (
@@ -135,7 +135,7 @@ impl EsiConnectionRepository for PgEsiRepository {
     async fn consume_authorization(
         &self,
         state_hash: &str,
-    ) -> Result<PendingAuthorization, InventoryError> {
+    ) -> Result<PendingAuthorization, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let row = sqlx::query_as::<_, PendingRow>(
             r#"
@@ -150,7 +150,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         .await
         .map_err(map_sqlx)?
         .ok_or_else(|| {
-            InventoryError::Validation(
+            StoreError::Validation(
                 "Authorization state is invalid, expired, or already used.".to_string(),
             )
         })?;
@@ -179,7 +179,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         scopes: &[String],
         expires_at: DateTime<Utc>,
         refresh_token: EncryptedSecret,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let id = sqlx::query_scalar::<_, Uuid>(
             r#"
@@ -251,7 +251,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         owner_id: OwnerId,
         envelope: EncryptedSecret,
         scopes: &[String],
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         let pending = PendingAuthorization {
             workspace_id,
             owner_id,
@@ -273,7 +273,7 @@ impl EsiConnectionRepository for PgEsiRepository {
     async fn load_refresh_token(
         &self,
         id: ConnectedCharacterId,
-    ) -> Result<StoredRefreshToken, InventoryError> {
+    ) -> Result<StoredRefreshToken, StoreError> {
         let row = sqlx::query_as::<_, TokenRow>(
             r#"
             SELECT t.refresh_token_envelope, t.access_token_envelope, t.token_revision,
@@ -291,7 +291,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         .await
         .map_err(map_sqlx)?
         .ok_or_else(|| {
-            InventoryError::Validation(
+            StoreError::Validation(
                 "This EVE connection is disconnected or unavailable.".to_string(),
             )
         })?;
@@ -315,7 +315,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         access_token: EncryptedSecret,
         scopes: &[String],
         expires_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         // A NULL `$3` keeps the stored refresh token (EVE didn't rotate it).
         let result = sqlx::query(
@@ -328,10 +328,7 @@ impl EsiConnectionRepository for PgEsiRepository {
             "#,
         )
         .bind(id.0)
-        .bind(
-            i64::try_from(expected_token_revision)
-                .map_err(|_| InventoryError::ArithmeticOverflow)?,
-        )
+        .bind(i64::try_from(expected_token_revision).map_err(|_| StoreError::OutOfRange)?)
         .bind(
             envelope
                 .map(|envelope| serde_json::to_value(envelope).map_err(map_json))
@@ -363,13 +360,13 @@ impl EsiConnectionRepository for PgEsiRepository {
         id: ConnectedCharacterId,
         status: ConnectionStatus,
         error_code: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let status = match status {
             ConnectionStatus::NeedsReconnection => "needs_reconnection",
             ConnectionStatus::MissingScope => "missing_scope",
             ConnectionStatus::TemporarilyUnavailable => "temporarily_unavailable",
             ConnectionStatus::Connected | ConnectionStatus::Disconnected => {
-                return Err(InventoryError::Validation(
+                return Err(StoreError::Validation(
                     "Only a failure status can mark a connection unrefreshable.".to_string(),
                 ));
             }
@@ -388,10 +385,7 @@ impl EsiConnectionRepository for PgEsiRepository {
         Ok(())
     }
 
-    async fn disconnect(
-        &self,
-        id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    async fn disconnect(&self, id: ConnectedCharacterId) -> Result<ConnectedCharacter, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         sqlx::query("DELETE FROM eve_connection_tokens WHERE connection_id = $1")
             .bind(id.0)
@@ -405,7 +399,7 @@ impl EsiConnectionRepository for PgEsiRepository {
             .map_err(map_sqlx)?
             .rows_affected();
         if affected == 0 {
-            return Err(InventoryError::ItemNotFound);
+            return Err(StoreError::NotFound);
         }
         tx.commit().await.map_err(map_sqlx)?;
         self.get_connection(id).await
@@ -432,7 +426,7 @@ pub(super) struct ConnectionRow {
 }
 
 impl ConnectionRow {
-    pub(super) fn into_domain(self) -> Result<ConnectedCharacter, InventoryError> {
+    pub(super) fn into_domain(self) -> Result<ConnectedCharacter, StoreError> {
         Ok(ConnectedCharacter {
             id: ConnectedCharacterId(self.id),
             workspace_id: WorkspaceId(self.workspace_id),
@@ -513,7 +507,7 @@ pub(super) fn parse_esi_expiry(value: &str) -> Option<DateTime<Utc>> {
         .map(|value| value.with_timezone(&Utc))
 }
 
-pub(super) fn connection_status_from_str(value: &str) -> Result<ConnectionStatus, InventoryError> {
+pub(super) fn connection_status_from_str(value: &str) -> Result<ConnectionStatus, StoreError> {
     match value {
         "connected" => Ok(ConnectionStatus::Connected),
         "needs_reconnection" => Ok(ConnectionStatus::NeedsReconnection),

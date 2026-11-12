@@ -29,7 +29,7 @@ impl PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         facility_ids: &[i64],
-    ) -> Result<std::collections::HashMap<i64, super::FacilityLabel>, InventoryError> {
+    ) -> Result<std::collections::HashMap<i64, super::FacilityLabel>, StoreError> {
         if facility_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -75,7 +75,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         for kind in CharacterSourceKind::all() {
             sqlx::query(
                 "INSERT INTO character_source_sync_state (connection_id, source_kind)
@@ -97,7 +97,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         source_kind: CharacterSourceKind,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         let claimed: Option<(DateTime<Utc>,)> = sqlx::query_as(
             "UPDATE character_source_sync_state
              SET refresh_state = 'refreshing',
@@ -126,7 +126,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         next_refresh_at: DateTime<Utc>,
         summary: serde_json::Value,
         observed_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let result = sqlx::query(
             "UPDATE character_source_sync_state
              SET refresh_state = 'current',
@@ -158,7 +158,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: String,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         // `next_refresh_at` is the caller's floor (it may carry ESI's
         // `Retry-After`); consecutive failures back off on top, per
         // `RetryPolicy::CHARACTER_SOURCE`, from the pre-update count.
@@ -207,7 +207,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         &self,
         now: DateTime<Utc>,
         limit: i64,
-    ) -> Result<Vec<(ConnectedCharacterId, CharacterSourceKind)>, InventoryError> {
+    ) -> Result<Vec<(ConnectedCharacterId, CharacterSourceKind)>, StoreError> {
         // Only connections that can actually sync: live (not disconnected,
         // not flagged for reconnection by a rejected refresh) and not
         // belonging to a disabled user. Anything else would sit at the head
@@ -244,7 +244,7 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         until: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "UPDATE character_source_sync_state
              SET next_refresh_at = $2
@@ -268,14 +268,14 @@ impl CharacterSyncRepository for PgEsiRepository {
         connection_id: ConnectedCharacterId,
         jobs: &[CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         IndustryJobRepository::record_industry_jobs(self, connection_id, jobs, observed_at).await
     }
 
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         CharacterSourceRefreshRepository::register_character_sources(self, connection_id).await
     }
 
@@ -285,7 +285,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         source_kind: CharacterSourceKind,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         CharacterSourceRefreshRepository::begin_character_source_refresh(
             self,
             connection_id,
@@ -304,7 +304,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         next_refresh_at: DateTime<Utc>,
         summary: Value,
         observed_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         CharacterSourceRefreshRepository::complete_character_source_refresh(
             self,
             connection_id,
@@ -325,7 +325,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: String,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         CharacterSourceRefreshRepository::fail_character_source_refresh(
             self,
             connection_id,
@@ -342,22 +342,22 @@ impl CharacterSyncRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         until: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         CharacterSourceRefreshRepository::defer_character_sources(self, connection_id, until).await
     }
 
-    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError> {
+    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, StoreError> {
         EntityNameRepository::entity_names(self, ids).await
     }
 
-    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), StoreError> {
         EntityNameRepository::cache_entity_names(self, names).await
     }
 
     async fn character_source_state(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
+    ) -> Result<Vec<CharacterSourceSyncState>, StoreError> {
         CharacterConnectionReader::character_source_state(self, connection_id).await
     }
 
@@ -365,7 +365,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         event_ids: &[i64],
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError> {
         CalendarEventRepository::workspace_calendar_event_copies(self, workspace_id, event_ids)
             .await
     }
@@ -374,7 +374,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         CalendarEventRepository::replace_calendar_events(self, connection_id, events).await
     }
 
@@ -383,7 +383,7 @@ impl CharacterSyncRepository for PgEsiRepository {
         connection_id: ConnectedCharacterId,
         orders: &[CharacterMarketOrder],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         CharacterMarketOrderRepository::replace_open_orders(
             self,
             connection_id,

@@ -329,9 +329,15 @@ async fn every_internal_failure_variant_redacts_and_keeps_5xx() {
         ),
         (
             "integration persistence",
-            ApiError::Integration(EsiApplicationError::Persistence(
-                InventoryError::Persistence(raw.into()),
-            )),
+            ApiError::Integration(EsiApplicationError::Persistence(StoreError::Persistence(
+                raw.into(),
+            ))),
+        ),
+        (
+            "integration inventory persistence",
+            ApiError::Integration(EsiApplicationError::Inventory(InventoryError::Persistence(
+                raw.into(),
+            ))),
         ),
         (
             "unwired service",
@@ -636,4 +642,71 @@ async fn a_pi_solver_failure_has_its_own_redacted_code() {
     assert_eq!(body["error"]["retryable"], false);
     assert!(body["error"]["correlationId"].is_string());
     assert_body_has_no_leak(&body);
+}
+
+/// ESI storage errors keep their HTTP contract after moving from
+/// `InventoryError` to `StoreError`; only the not-found and conflict
+/// messages stop saying "inventory". Wallet recording (an inventory rule
+/// reached through ESI) and store errors returned straight from a route
+/// keep their old codes and messages.
+#[tokio::test]
+async fn store_errors_keep_their_http_contracts() {
+    let cases = [
+        (
+            ApiError::Integration(EsiApplicationError::Persistence(StoreError::NotFound)),
+            StatusCode::NOT_FOUND,
+            "integration_record_not_found",
+            "record was not found",
+        ),
+        (
+            ApiError::Integration(EsiApplicationError::Persistence(StoreError::Conflict)),
+            StatusCode::CONFLICT,
+            "revision_conflict",
+            "record changed while this form was open",
+        ),
+        (
+            ApiError::Integration(EsiApplicationError::Persistence(StoreError::Validation(
+                "Pick a character.".into(),
+            ))),
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "validation failed: Pick a character.",
+        ),
+        (
+            ApiError::Integration(EsiApplicationError::Inventory(InventoryError::ItemNotFound)),
+            StatusCode::NOT_FOUND,
+            "integration_record_not_found",
+            "inventory item was not found",
+        ),
+        (
+            // Not curated: redacted as a storage failure, as before.
+            ApiError::Integration(EsiApplicationError::Inventory(
+                InventoryError::AlreadyReversed,
+            )),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "persistence_unavailable",
+            "",
+        ),
+        (
+            ApiError::from(StoreError::NotFound),
+            StatusCode::NOT_FOUND,
+            "inventory_item_not_found",
+            "inventory item was not found",
+        ),
+        (
+            ApiError::from(StoreError::OutOfRange),
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "inventory arithmetic exceeds the supported range",
+        ),
+    ];
+    for (error, status, code, message) in cases {
+        let response = error.into_response();
+        assert_eq!(response.status(), status, "{code}");
+        let body = response_json(response).await;
+        assert_eq!(body["error"]["code"], code);
+        if !message.is_empty() {
+            assert_eq!(body["error"]["message"], message, "{code}");
+        }
+    }
 }
