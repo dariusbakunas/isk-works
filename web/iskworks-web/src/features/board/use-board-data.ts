@@ -18,6 +18,7 @@ import {
   type TicketSummary,
 } from "../../api/industry";
 import { apiMessage } from "../../api/api-error";
+import { useStableCallback } from "../../hooks/use-stable-callback";
 
 export type BoardLoadState =
   | { status: "loading" }
@@ -79,7 +80,7 @@ export function useBoardData() {
       });
   }
 
-  function reload() {
+  const reload = useStableCallback(() => {
     void loadJobProgress();
     void loadFacilities();
     // Fetches everything once (small, personal-scale dataset), including
@@ -105,12 +106,12 @@ export function useBoardData() {
       .catch((requestError) => {
         setState({ status: "error", message: apiMessage(requestError) });
       });
-  }
+  });
 
+  // Loads once on mount; every later load is an explicit `reload()`.
   useEffect(() => {
     void reload();
-    // Loads once on mount; every later load is an explicit `reload()`.
-  }, []);
+  }, [reload]);
 
   /** Repaints one ticket's status locally, ahead of (or to undo) a save. */
   function patchTicketStatus(ticketId: string, status: TicketStatus) {

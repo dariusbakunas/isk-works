@@ -1,7 +1,8 @@
-// The web lint gate. It starts narrow: the Rules of Hooks are an error, and
-// missing effect dependencies a warning until the existing ones are fixed or
-// justified, then that rule becomes an error too. The shared layer may not
-// import features.
+// The web lint gate: the Rules of Hooks and complete effect dependencies are
+// errors. An effect that deliberately runs on fewer dependencies says why on
+// the line above its `eslint-disable-next-line`; one that only calls a
+// callback takes it through `useStableCallback` instead. The shared layer may
+// not import features.
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
@@ -19,7 +20,7 @@ export default tseslint.config(
     },
     rules: {
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
   {

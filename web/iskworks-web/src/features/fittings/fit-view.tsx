@@ -368,6 +368,8 @@ function LoadedFit({ fit, onChanged, reload }: { fit: FitDetail; onChanged: () =
       },
       { replace: true },
     );
+    // Runs once on mount: the handoff from creating a fit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const items = editor.draft?.items ?? quick.items ?? fit.items;
   const racks: RackSizes | null = statsView

@@ -11,6 +11,7 @@ import {
 } from "../../../api/sde";
 import { apiMessage } from "../../../api/api-error";
 import { Field } from "../../../components/field";
+import { useStableCallback } from "../../../hooks/use-stable-callback";
 
 /** Human-readable summary of which jobs a rig's bonuses reach. `null`/`null`
  * means the rig has no target filter in the SDE -- it applies to every job
@@ -70,6 +71,9 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     };
   }, [onError, open, rig.typeId, rig.typeName, searchRigs, structureTypeId]);
 
+  // The parent's latest handlers, without re-deriving when they change.
+  const reportModifiers = useStableCallback(onChange);
+  const reportError = useStableCallback(onError);
   useEffect(() => {
     if (!rig.typeId) {
       setCompatibility(null);
@@ -81,7 +85,7 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     getModifiers(rig.typeId, securityClass, structureTypeId)
       .then((modifiers) => {
         if (cancelled) return;
-        onChange({
+        reportModifiers({
           materialReductionPercent: modifiers.materialReductionPercent,
           timeReductionPercent: modifiers.timeReductionPercent,
         });
@@ -89,7 +93,7 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
         setAppliesTo(modifiers.appliesTo);
       })
       .catch((requestError) => {
-        if (!cancelled) onError(apiMessage(requestError));
+        if (!cancelled) reportError(apiMessage(requestError));
       })
       .finally(() => {
         if (!cancelled) setDeriving(false);
@@ -97,7 +101,7 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     return () => {
       cancelled = true;
     };
-  }, [getModifiers, rig.typeId, securityClass, structureTypeId]);
+  }, [getModifiers, rig.typeId, securityClass, structureTypeId, reportModifiers, reportError]);
 
   return (
     <div className="relative sm:col-span-2">

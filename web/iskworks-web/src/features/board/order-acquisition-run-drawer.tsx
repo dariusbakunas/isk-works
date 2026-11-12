@@ -72,6 +72,7 @@ export function OrderAcquisitionRunDrawer({
     setInputs(next);
     setError("");
     // Re-seed the inputs only when the run or its source data changes; `items` is derived from them each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.id, tickets, runItems]);
 
   const status = acquisitionRunStatusMeta[run.status];

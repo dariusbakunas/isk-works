@@ -65,6 +65,7 @@ export function ExportColumnsDialog<K extends string>({
       setError(null);
     }
     // Only opening resets the picks; the caller's arrays change identity freely.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open) return null;

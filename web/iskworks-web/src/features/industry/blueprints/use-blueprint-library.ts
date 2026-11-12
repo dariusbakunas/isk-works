@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getBlueprintLibraryFacets,
@@ -52,7 +52,10 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = fals
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sequence = useRef(0);
+  // Callers rebuild `query` every render; its key is its identity, and the
+  // query read back from the key changes only with it.
   const queryKey = JSON.stringify(query);
+  const stableQuery = useMemo(() => JSON.parse(queryKey) as BlueprintLibraryQuery, [queryKey]);
 
   useEffect(() => {
     getBlueprintLibraryFacets()
@@ -64,7 +67,9 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = fals
     const current = ++sequence.current;
     setLoading(true);
     setError(null);
-    (loadAll ? fetchAllBlueprintPages(query) : listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: 0 }))
+    (loadAll
+      ? fetchAllBlueprintPages(stableQuery)
+      : listBlueprintLibrary({ ...stableQuery, limit: BLUEPRINT_PAGE_SIZE, offset: 0 }))
       .then((page) => {
         if (current !== sequence.current) return;
         setRows(page.rows);
@@ -77,14 +82,13 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = fals
       .finally(() => {
         if (current === sequence.current) setLoading(false);
       });
-    // `queryKey` stands in for `query`, which callers rebuild every render.
-  }, [queryKey, loadAll]);
+  }, [stableQuery, loadAll]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || rows.length >= total) return;
     const current = sequence.current;
     setLoadingMore(true);
-    listBlueprintLibrary({ ...query, limit: BLUEPRINT_PAGE_SIZE, offset: rows.length })
+    listBlueprintLibrary({ ...stableQuery, limit: BLUEPRINT_PAGE_SIZE, offset: rows.length })
       .then((page) => {
         if (current !== sequence.current) return;
         setRows((existing) => [...existing, ...page.rows]);
@@ -94,7 +98,7 @@ export function useBlueprintLibrary(query: BlueprintLibraryQuery, loadAll = fals
         if (current === sequence.current) setError(apiMessage(requestError));
       })
       .finally(() => setLoadingMore(false));
-  }, [loadingMore, queryKey, rows.length, total]);
+  }, [loadingMore, stableQuery, rows.length, total]);
 
   return { rows, total, summary, facets, loading, loadingMore, error, loadMore };
 }

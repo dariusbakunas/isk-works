@@ -75,6 +75,29 @@ describe("Fittings › import", () => {
     expect(JSON.parse((save![1] as RequestInit).body as string)).toEqual({ text: TEXT, name: "Hauler" });
   });
 
+  test("a name typed while the preview loads isn't replaced by the fit's name", async () => {
+    const fetchSpy = stubFetch();
+    const answer = fetchSpy.getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    fetchSpy.mockImplementation(async (input, init) => {
+      if (String(input).includes("/api/fittings/parse")) await held;
+      return answer(input, init);
+    });
+    renderPage();
+    const dialog = await openDialog();
+
+    fireEvent.change(within(dialog).getByLabelText("Paste from EVE or pyfa"), { target: { value: TEXT } });
+    await waitFor(() =>
+      expect(fetchSpy.mock.calls.some(([input]) => String(input).includes("/api/fittings/parse"))).toBe(true),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Fit name"), { target: { value: "Hauler" } });
+    release();
+
+    expect(await within(dialog).findByText("Bustard")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Fit name")).toHaveValue("Hauler");
+  });
+
   test("closing the dialog leaves nothing saved", async () => {
     const fetchSpy = stubFetch();
     renderPage();

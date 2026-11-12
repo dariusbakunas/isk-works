@@ -87,6 +87,7 @@ export function InventoryReviewDiscrepancyPanel({
   useEffect(() => {
     if (!needsCost) void runPreview(false);
     // Runs once on mount: the panel is remounted per item, and the preview fills in the review numbers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function post() {

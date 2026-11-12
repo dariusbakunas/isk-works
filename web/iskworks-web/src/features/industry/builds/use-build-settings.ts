@@ -104,6 +104,7 @@ export function useBuildSettings(
       cancelled = true;
     };
     // `usesSeed` is left out: seed mode is adopted above and only fetches on an explicit `reloadToken` bump.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildId, reloadToken]);
 
   const reload = useCallback(() => {

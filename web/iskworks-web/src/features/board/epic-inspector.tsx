@@ -21,6 +21,7 @@ import { PlannerInspectorShell } from "../../components/planner-inspector-shell"
 import { apiMessage } from "../../api/api-error";
 import { formatDate } from "../../lib/formatting";
 import { useAsyncAction } from "../../hooks/use-async-action";
+import { useStableCallback } from "../../hooks/use-stable-callback";
 import {
   orderStatusMeta,
   orderTicketKindMeta,
@@ -113,18 +114,18 @@ export function EpicInspector({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [reserveResult, setReserveResult] = useState<ReserveInventoryResult | null>(null);
 
-  function loadDetail() {
+  const loadDetail = useStableCallback(() => {
     setDetailError("");
     getOrder(order.id)
       .then(setDetail)
       .catch((requestError) => setDetailError(apiMessage(requestError)));
-  }
+  });
 
+  // Refetch when a different Epic is inspected.
   useEffect(() => {
     setDetail(null);
     loadDetail();
-    // `loadDetail` only reads `order.id`; refetch when a different Epic is inspected.
-  }, [order.id]);
+  }, [order.id, loadDetail]);
 
   const statusMeta = orderStatusMeta[order.status];
 

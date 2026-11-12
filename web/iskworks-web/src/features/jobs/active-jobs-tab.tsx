@@ -147,7 +147,7 @@ export function ActiveJobsTab() {
     setParams(next, { replace: true });
   }
 
-  const characters = data?.characters ?? [];
+  const characters = useMemo(() => data?.characters ?? [], [data]);
   const byId = useMemo(() => characterById(characters), [characters]);
   const visible = useMemo(
     () =>

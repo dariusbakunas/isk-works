@@ -19,6 +19,7 @@ import {
 } from "../../../../api/sde";
 import { apiMessage } from "../../../../api/api-error";
 import { useDebouncedLookup } from "../../../../hooks/use-debounced-lookup";
+import { useStableCallback } from "../../../../hooks/use-stable-callback";
 import type { ProductSearchResult } from "../builds-page";
 import { createManualBlueprintSelection, parseRuns } from "../components/planner-panels";
 import { selectAvailableBlueprint } from "../planner/available-blueprint";
@@ -119,6 +120,15 @@ export function useRecipeSelection({
     ...reactionFormulaLookup.results.map((result) => ({ kind: "reaction" as const, result })),
   ].sort((a, b) => a.result.productName.localeCompare(b.result.productName));
 
+  // The deep link's selection, through the latest `selectProduct` (rebuilt
+  // every render) without re-running the deep-link effect.
+  const selectRouteManufacturing = useStableCallback(
+    (result: BlueprintSearchResult, observationId: string) => selectProduct("manufacturing", result, observationId),
+  );
+  const selectRouteReaction = useStableCallback(
+    (result: ReactionFormulaSearchResult) => selectProduct("reaction", result),
+  );
+
   useEffect(() => {
     if (initialBuild || !sdeReady || routeBlueprintLoaded.current) return;
     routeBlueprintLoaded.current = true;
@@ -133,7 +143,7 @@ export function useRecipeSelection({
             setSearchParams({}, { replace: true });
             return;
           }
-          return selectProduct("reaction", {
+          return selectRouteReaction({
             reactionFormulaTypeId: loadedRecipe.reactionFormulaTypeId,
             reactionFormulaName: loadedRecipe.reactionFormulaName,
             productTypeId: product.typeId,
@@ -156,7 +166,7 @@ export function useRecipeSelection({
           setSearchParams({}, { replace: true });
           return;
         }
-        return selectProduct("manufacturing", {
+        return selectRouteManufacturing({
           blueprintTypeId: loadedRecipe.blueprintTypeId,
           blueprintName: loadedRecipe.blueprintName,
           productTypeId: product.typeId,
@@ -167,7 +177,7 @@ export function useRecipeSelection({
         }, observationId);
       })
       .catch(() => setSearchParams({}, { replace: true }));
-  }, [initialBuild, sdeReady, searchParams, setSearchParams]);
+  }, [initialBuild, sdeReady, searchParams, setSearchParams, selectRouteManufacturing, selectRouteReaction]);
 
   useEffect(() => {
     if (!initialBuild || !selected || selected.kind !== "manufacturing") return;

@@ -20,6 +20,7 @@ import {
 import { CharacterIndustryTab } from "./character-industry-tab";
 import { CharacterSkillQueueTab } from "./skill-queue-tab";
 import { LiveTrainingProgress } from "./live-training-progress";
+import { useStableCallback } from "../../hooks/use-stable-callback";
 
 type LoadState =
   | { status: "loading" }
@@ -112,18 +113,18 @@ export function CharacterInspector({
   const [actionError, setActionError] = useState("");
   const [tokenDetails, setTokenDetails] = useState<TokenDetailsState>({ status: "idle" });
 
-  function load() {
+  const load = useStableCallback(() => {
     getCharacter(connectionId)
       .then((detail) => setState({ status: "ready", detail }))
       .catch((error: unknown) => setState({ status: "error", message: apiMessage(error) }));
-  }
+  });
 
+  // Reset and refetch when a different character is inspected.
   useEffect(() => {
     setState({ status: "loading" });
     setTokenDetails({ status: "idle" });
     load();
-    // `load` only closes over `connectionId`; reset and refetch when a different character is inspected.
-  }, [connectionId]);
+  }, [connectionId, load]);
 
   // The Industry and Skills tabs derive job/training progress and remaining
   // time from fixed ESI timestamps against this clock; a coarse 30s tick

@@ -36,6 +36,7 @@ export function BlueprintBody({
     setTe(String(slice.te ?? 0));
     setRuns(slice.licensedRuns != null ? String(slice.licensedRuns) : "");
     setNotes(slice.notes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slice.blueprintTypeId, slice.mode, slice.selectedObservationId]);
 
   function commitManual(next: Partial<{ kind: "original" | "copy"; me: string; te: string; runs: string; notes: string }> = {}) {

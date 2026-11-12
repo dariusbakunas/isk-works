@@ -163,7 +163,7 @@ export function BoardPage() {
   // `?typeFilter=`/`?q=` are deliberately distinct from the `?epic=`/
   // `?ticket=` Inspector-selection params -- see board-filters.ts's own doc
   // for why those were never renamed or overloaded.
-  const filters = parseBoardFiltersFromParams(params);
+  const filters = useMemo(() => parseBoardFiltersFromParams(params), [params]);
 
   function setFilterParam(key: "epicFilter" | "assigneeFilter" | "typeFilter" | "search", value: string) {
     // `replace: true` -- a filter/search change updates the current
@@ -305,7 +305,7 @@ export function BoardPage() {
       totalTickets: tickets.length,
       totalOrders: orders.length,
     };
-  }, [state, showArchivedOrders, filters.epicFilter, filters.assigneeFilter, filters.typeFilter, filters.search]);
+  }, [state, showArchivedOrders, filters]);
 
   if (state.status === "loading") return <LoadingState>Loading Board…</LoadingState>;
   if (state.status === "error") {

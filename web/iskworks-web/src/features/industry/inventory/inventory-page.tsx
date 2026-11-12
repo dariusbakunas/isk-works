@@ -21,6 +21,7 @@ import { InventorySectionTabs } from "./inventory-section-tabs";
 import { InventoryPostingPanel } from "./inventory-posting-panel";
 import { ImportInventoryModal } from "./inventory-import-modal";
 import { apiMessage, type LoadState } from "./shared";
+import { useStableCallback } from "../../../hooks/use-stable-callback";
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -74,7 +75,7 @@ export function InventoryPage() {
   // overtaken by another) is dropped instead of overwriting newer data.
   const latestLoad = useRef(0);
 
-  function load() {
+  const load = useStableCallback(() => {
     const request = ++latestLoad.current;
     setState({ status: "loading" });
     Promise.all([listInventory(sourceId || undefined, scope), listPriceSources()])
@@ -87,16 +88,16 @@ export function InventoryPage() {
         if (request !== latestLoad.current) return;
         setState({ status: "error", message: apiMessage(error) });
       });
-  }
+  });
 
   useEffect(() => {
     load();
     return () => {
       latestLoad.current += 1;
     };
-  }, [sourceId, scope]);
+  }, [sourceId, scope, load]);
 
-  const items = state.status === "ready" ? state.data : [];
+  const items = useMemo(() => (state.status === "ready" ? state.data : []), [state]);
   const visibleItems = useMemo(
     () => items.filter((item) => matchesInventorySearch(item, search) && matchesInventoryFilter(item, filter)),
     [items, search, filter],
@@ -121,6 +122,7 @@ export function InventoryPage() {
     return () => { cancelled = true; };
     // `items` intentionally excluded: only re-run when the target type or
     // price source changes, not on every scope/filter-driven list reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypeId, sourceId]);
 
   function openPosting(kind: "opening" | "purchase", typeId?: number) {

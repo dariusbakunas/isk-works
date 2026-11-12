@@ -315,9 +315,10 @@ export function BuildGraphView({
   // A linked Build's settings edited here (by id) must also reach the
   // Worksheet inspector, which reads the editor's linked-build map -- adopt
   // the freshest copy of this Build back into it after every load/patch.
+  const { adoptLinkedBuild } = editor;
   useEffect(() => {
-    if (linkedSettings.build) editor.adoptLinkedBuild(linkedSettings.build);
-  }, [linkedSettings.build, editor.adoptLinkedBuild]);
+    if (linkedSettings.build) adoptLinkedBuild(linkedSettings.build);
+  }, [linkedSettings.build, adoptLinkedBuild]);
 
   // Owned blueprint instances for the selected linked *manufacturing* node,
   // so its Blueprint section can offer "Use existing blueprint".
