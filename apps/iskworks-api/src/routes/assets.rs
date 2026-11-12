@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use iskworks_core::{
     AssetBlueprintKindFilter, AssetKindFilter, AssetReconciliationFilter, AssetSortColumn,
     AssetSortDirection, CharacterConnectionReader, ConnectedCharacterId, EsiSyncKind,
-    FlatAssetQuery, InventoryError,
+    FlatAssetQuery, StoreError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ struct AssetHttpQuery {
 }
 
 impl AssetHttpQuery {
-    fn into_core(self) -> Result<FlatAssetQuery, InventoryError> {
+    fn into_core(self) -> Result<FlatAssetQuery, StoreError> {
         Ok(FlatAssetQuery {
             search: self.search,
             connection_ids: parse_csv(self.connection_ids.as_deref(), "connection ID")?,
@@ -104,7 +104,7 @@ async fn export_flat_assets(
     let mut writer = csv::Writer::from_writer(Vec::new());
     writer
         .write_record(columns.iter().map(|column| column_label(*column)))
-        .map_err(|error| InventoryError::Persistence(error.to_string()))?;
+        .map_err(|error| StoreError::Persistence(error.to_string()))?;
     for row in rows {
         writer
             .write_record(
@@ -125,11 +125,11 @@ async fn export_flat_assets(
                     })
                     .map(|cell| safe_cell(&cell).into_owned()),
             )
-            .map_err(|error| InventoryError::Persistence(error.to_string()))?;
+            .map_err(|error| StoreError::Persistence(error.to_string()))?;
     }
     let csv = writer
         .into_inner()
-        .map_err(|error| InventoryError::Persistence(error.to_string()))?;
+        .map_err(|error| StoreError::Persistence(error.to_string()))?;
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
@@ -165,7 +165,7 @@ async fn sync_assets(
     let (workspace_id, _) = workspace_context(&state).await?;
     let service = state.esi_service()?;
     if service.fixture_mode() {
-        return Err(InventoryError::Validation(
+        return Err(StoreError::Validation(
             "Asset synchronization requires real EVE connections; fixture mode is not supported."
                 .to_string(),
         )
@@ -185,7 +185,7 @@ async fn sync_assets(
         .map(|connection| connection.id)
         .collect::<HashSet<_>>();
     if !requested.is_subset(&known) {
-        return Err(InventoryError::Validation(
+        return Err(StoreError::Validation(
             "One or more selected characters do not belong to this workspace.".to_string(),
         )
         .into());
@@ -215,7 +215,7 @@ async fn sync_assets(
     Ok(Json(outcomes))
 }
 
-fn parse_columns(value: Option<&str>) -> Result<Vec<AssetColumn>, InventoryError> {
+fn parse_columns(value: Option<&str>) -> Result<Vec<AssetColumn>, StoreError> {
     let requested = value.unwrap_or(
         "item,quantity,packagedVolume,character,location,container,group,status,observed",
     );
@@ -231,7 +231,7 @@ fn parse_columns(value: Option<&str>) -> Result<Vec<AssetColumn>, InventoryError
             "group" => Ok(AssetColumn::Group),
             "status" => Ok(AssetColumn::Status),
             "observed" => Ok(AssetColumn::Observed),
-            _ => Err(InventoryError::Validation(
+            _ => Err(StoreError::Validation(
                 "one or more asset export columns are unsupported".to_string(),
             )),
         })
@@ -266,7 +266,7 @@ async fn list_flat_assets(
     ))
 }
 
-fn parse_csv<T>(value: Option<&str>, label: &str) -> Result<Vec<T>, InventoryError>
+fn parse_csv<T>(value: Option<&str>, label: &str) -> Result<Vec<T>, StoreError>
 where
     T: std::str::FromStr,
 {
@@ -277,7 +277,7 @@ where
                 .split(',')
                 .map(|entry| {
                     entry.parse().map_err(|_| {
-                        InventoryError::Validation(format!("asset {label} filter is invalid"))
+                        StoreError::Validation(format!("asset {label} filter is invalid"))
                     })
                 })
                 .collect()
@@ -285,7 +285,7 @@ where
         .unwrap_or_else(|| Ok(Vec::new()))
 }
 
-fn parse_asset_kinds(value: Option<&str>) -> Result<Vec<AssetKindFilter>, InventoryError> {
+fn parse_asset_kinds(value: Option<&str>) -> Result<Vec<AssetKindFilter>, StoreError> {
     parse_named(value, |entry| match entry {
         "blueprint" => Some(AssetKindFilter::Blueprint),
         "material" => Some(AssetKindFilter::Material),
@@ -296,9 +296,7 @@ fn parse_asset_kinds(value: Option<&str>) -> Result<Vec<AssetKindFilter>, Invent
     })
 }
 
-fn parse_blueprint_kinds(
-    value: Option<&str>,
-) -> Result<Vec<AssetBlueprintKindFilter>, InventoryError> {
+fn parse_blueprint_kinds(value: Option<&str>) -> Result<Vec<AssetBlueprintKindFilter>, StoreError> {
     parse_named(value, |entry| match entry {
         "original" => Some(AssetBlueprintKindFilter::Original),
         "copy" => Some(AssetBlueprintKindFilter::Copy),
@@ -309,7 +307,7 @@ fn parse_blueprint_kinds(
 
 fn parse_reconciliation_states(
     value: Option<&str>,
-) -> Result<Vec<AssetReconciliationFilter>, InventoryError> {
+) -> Result<Vec<AssetReconciliationFilter>, StoreError> {
     parse_named(value, |entry| match entry {
         "matched" => Some(AssetReconciliationFilter::Matched),
         "difference" => Some(AssetReconciliationFilter::Difference),
@@ -321,7 +319,7 @@ fn parse_reconciliation_states(
 fn parse_named<T>(
     value: Option<&str>,
     parse: impl Fn(&str) -> Option<T>,
-) -> Result<Vec<T>, InventoryError> {
+) -> Result<Vec<T>, StoreError> {
     value
         .filter(|value| !value.is_empty())
         .map(|value| {
@@ -329,7 +327,7 @@ fn parse_named<T>(
                 .split(',')
                 .map(|entry| {
                     parse(entry).ok_or_else(|| {
-                        InventoryError::Validation("asset filter value is invalid".to_string())
+                        StoreError::Validation("asset filter value is invalid".to_string())
                     })
                 })
                 .collect()

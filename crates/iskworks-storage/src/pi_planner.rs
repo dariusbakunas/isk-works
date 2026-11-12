@@ -5,7 +5,7 @@ use iskworks_core::pi_planner::{
     DensityWrite, PiPlannerInputsRepository, PlanetSettingsWrite, StoredDensity,
     StoredPlanetSettings,
 };
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::{StoreError, WorkspaceId};
 use sqlx::PgPool;
 
 #[derive(Clone)]
@@ -20,8 +20,8 @@ impl PgPiPlannerInputsRepository {
     }
 }
 
-fn persistence(error: sqlx::Error) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn persistence(error: sqlx::Error) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 #[async_trait]
@@ -30,7 +30,7 @@ impl PiPlannerInputsRepository for PgPiPlannerInputsRepository {
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredDensity>, InventoryError> {
+    ) -> Result<Vec<StoredDensity>, StoreError> {
         let rows: Vec<(i64, i64, _, _, _)> = sqlx::query_as(
             "SELECT planet_id, resource_type_id, density_pct, head_value, updated_at
              FROM pi_planet_densities
@@ -61,7 +61,7 @@ impl PiPlannerInputsRepository for PgPiPlannerInputsRepository {
         &self,
         workspace_id: WorkspaceId,
         writes: &[DensityWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         for write in writes {
             if write.clears() {
@@ -102,7 +102,7 @@ impl PiPlannerInputsRepository for PgPiPlannerInputsRepository {
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredPlanetSettings>, InventoryError> {
+    ) -> Result<Vec<StoredPlanetSettings>, StoreError> {
         let rows: Vec<(i64, _, bool, _)> = sqlx::query_as(
             "SELECT planet_id, customs_rate, contested, updated_at
              FROM pi_planet_settings
@@ -130,7 +130,7 @@ impl PiPlannerInputsRepository for PgPiPlannerInputsRepository {
         &self,
         workspace_id: WorkspaceId,
         writes: &[PlanetSettingsWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         for write in writes {
             if write.clears() {

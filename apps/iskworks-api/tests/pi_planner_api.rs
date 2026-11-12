@@ -14,8 +14,8 @@ use iskworks_core::pi_planner::{
 };
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
-    ConnectedCharacterId, InventoryError, MarketError, MarketOrderBook, MarketOrderSide,
-    MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
+    ConnectedCharacterId, MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView,
+    MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, PlanetCommodity, PlanetPinType, PlanetSchematic, PlannerPlanet, SdeError,
@@ -274,14 +274,14 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         _: WorkspaceId,
         _: &[i64],
-    ) -> Result<Vec<StoredDensity>, InventoryError> {
+    ) -> Result<Vec<StoredDensity>, iskworks_core::StoreError> {
         Ok(self.densities.lock().unwrap().values().cloned().collect())
     }
     async fn save_densities(
         &self,
         _: WorkspaceId,
         writes: &[DensityWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         let mut densities = self.densities.lock().unwrap();
         for write in writes {
             let key = (write.planet_id, write.resource_type_id);
@@ -306,14 +306,14 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         _: WorkspaceId,
         _: &[i64],
-    ) -> Result<Vec<StoredPlanetSettings>, InventoryError> {
+    ) -> Result<Vec<StoredPlanetSettings>, iskworks_core::StoreError> {
         Ok(self.settings.lock().unwrap().values().cloned().collect())
     }
     async fn save_planet_settings(
         &self,
         _: WorkspaceId,
         writes: &[PlanetSettingsWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         let mut settings = self.settings.lock().unwrap();
         for write in writes {
             if write.clears() {

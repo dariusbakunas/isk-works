@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
-use crate::{InventoryError, WorkspaceId};
+use crate::{StoreError, WorkspaceId};
 
 /// One stored resource reading on one planet.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,17 +33,17 @@ impl DensityWrite {
     }
 
     /// Density is 0–100 %, a head value is positive.
-    pub fn validate(&self) -> Result<(), InventoryError> {
+    pub fn validate(&self) -> Result<(), StoreError> {
         if self
             .density_pct
             .is_some_and(|pct| pct < Decimal::ZERO || pct > Decimal::ONE_HUNDRED)
         {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "densityPct must be between 0 and 100".to_string(),
             ));
         }
         if self.head_value.is_some_and(|value| value <= Decimal::ZERO) {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "headValue must be positive".to_string(),
             ));
         }
@@ -78,12 +78,12 @@ impl PlanetSettingsWrite {
     }
 
     /// A customs rate is 0–1.
-    pub fn validate(&self) -> Result<(), InventoryError> {
+    pub fn validate(&self) -> Result<(), StoreError> {
         if self
             .customs_rate
             .is_some_and(|rate| rate < Decimal::ZERO || rate > Decimal::ONE)
         {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "customsRate must be between 0 and 1".to_string(),
             ));
         }
@@ -98,24 +98,24 @@ pub trait PiPlannerInputsRepository: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredDensity>, InventoryError>;
+    ) -> Result<Vec<StoredDensity>, StoreError>;
     /// Upserts every write, or deletes the reading when the write clears it.
     async fn save_densities(
         &self,
         workspace_id: WorkspaceId,
         writes: &[DensityWrite],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
     async fn planet_settings(
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredPlanetSettings>, InventoryError>;
+    ) -> Result<Vec<StoredPlanetSettings>, StoreError>;
     /// Upserts every write, or deletes the row when the write clears it.
     async fn save_planet_settings(
         &self,
         workspace_id: WorkspaceId,
         writes: &[PlanetSettingsWrite],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 #[cfg(test)]

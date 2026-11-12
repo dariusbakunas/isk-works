@@ -17,7 +17,7 @@ use iskworks_core::fitting::{
     FittingError, ItemStats, ModifierSource, ModuleState, ParsedFit, Pilot, SlotKind, SourceRef,
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
     SkillDefinition, TypeSearchResult,
@@ -334,10 +334,14 @@ struct FakeFits(Mutex<Vec<Fit>>);
 
 #[async_trait]
 impl FitRepository for FakeFits {
-    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, InventoryError> {
+    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().clone())
     }
-    async fn fit(&self, _: WorkspaceId, id: FitId) -> Result<Option<Fit>, InventoryError> {
+    async fn fit(
+        &self,
+        _: WorkspaceId,
+        id: FitId,
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         Ok(self
             .0
             .lock()
@@ -351,7 +355,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Fit, InventoryError> {
+    ) -> Result<Fit, iskworks_core::StoreError> {
         let fit = Fit {
             id: FitId(Uuid::new_v4()),
             name: draft.name.clone(),
@@ -371,13 +375,20 @@ impl FitRepository for FakeFits {
         _: FitId,
         _: &FitDraft,
         _: DateTime<Utc>,
-    ) -> Result<Option<Fit>, InventoryError> {
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         unimplemented!()
     }
-    async fn delete_fit(&self, _: WorkspaceId, _: FitId) -> Result<bool, InventoryError> {
+    async fn delete_fit(
+        &self,
+        _: WorkspaceId,
+        _: FitId,
+    ) -> Result<bool, iskworks_core::StoreError> {
         unimplemented!()
     }
-    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+    async fn fit_tags_in_use(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<String>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn replace_fit_tags(
@@ -385,7 +396,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         _: FitId,
         _: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn edit_fit_tags(
@@ -394,7 +405,7 @@ impl FitRepository for FakeFits {
         _: &[FitId],
         _: &[String],
         _: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!()
     }
 }
@@ -404,14 +415,17 @@ struct FakePlans(Mutex<Vec<SkillPlan>>);
 
 #[async_trait]
 impl SkillPlanRepository for FakePlans {
-    async fn list_skill_plans(&self, _: WorkspaceId) -> Result<Vec<SkillPlan>, InventoryError> {
+    async fn list_skill_plans(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<SkillPlan>, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().clone())
     }
     async fn skill_plan(
         &self,
         _: WorkspaceId,
         _: SkillPlanId,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn create_skill_plan(
@@ -419,7 +433,7 @@ impl SkillPlanRepository for FakePlans {
         _: WorkspaceId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlan, InventoryError> {
+    ) -> Result<SkillPlan, iskworks_core::StoreError> {
         let plan = SkillPlan {
             id: SkillPlanId(Uuid::new_v4()),
             name: input.name.clone(),
@@ -437,14 +451,14 @@ impl SkillPlanRepository for FakePlans {
         _: SkillPlanId,
         _: &SkillPlanInput,
         _: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn delete_skill_plan(
         &self,
         _: WorkspaceId,
         _: SkillPlanId,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, iskworks_core::StoreError> {
         unimplemented!()
     }
 }

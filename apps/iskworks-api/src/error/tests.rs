@@ -699,6 +699,21 @@ async fn store_errors_keep_their_http_contracts() {
             "validation_failed",
             "inventory arithmetic exceeds the supported range",
         ),
+        (
+            // Fittings, Skill plans, PI planner and Assets ports and
+            // request parsing keep their validation response.
+            ApiError::from(StoreError::Validation("asset cursor is invalid".into())),
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "validation failed: asset cursor is invalid",
+        ),
+        (
+            // Storage failures stay redacted.
+            ApiError::from(StoreError::Persistence("connection reset".into())),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "persistence_unavailable",
+            "",
+        ),
     ];
     for (error, status, code, message) in cases {
         let response = error.into_response();

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use iskworks_core::fitting::{
     Fit, FitDraft, FitId, FitItem, FitMutation, FitRepository, ModuleState, SlotKind,
 };
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::{StoreError, WorkspaceId};
 use sqlx::types::Json;
 use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
 use uuid::Uuid;
@@ -22,8 +22,8 @@ impl PgFitRepository {
     }
 }
 
-fn persistence(error: impl std::fmt::Display) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn persistence(error: impl std::fmt::Display) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 #[derive(sqlx::FromRow)]
@@ -49,7 +49,7 @@ struct ItemRow {
 }
 
 impl ItemRow {
-    fn into_item(self) -> Result<FitItem, InventoryError> {
+    fn into_item(self) -> Result<FitItem, StoreError> {
         Ok(FitItem {
             type_id: self.type_id,
             slot_kind: self.slot_kind.parse::<SlotKind>().map_err(persistence)?,
@@ -64,7 +64,7 @@ impl ItemRow {
 
 impl PgFitRepository {
     /// The fits' items in saved order and tags by name, attached to their fits.
-    async fn with_children(&self, rows: Vec<FitRow>) -> Result<Vec<Fit>, InventoryError> {
+    async fn with_children(&self, rows: Vec<FitRow>) -> Result<Vec<Fit>, StoreError> {
         let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
         let mut items = HashMap::<Uuid, Vec<FitItem>>::new();
         let mut tags = HashMap::<Uuid, Vec<String>>::new();
@@ -108,7 +108,7 @@ async fn insert_items(
     tx: &mut Transaction<'_, Postgres>,
     fit_id: Uuid,
     items: &[FitItem],
-) -> Result<(), InventoryError> {
+) -> Result<(), StoreError> {
     if items.is_empty() {
         return Ok(());
     }
@@ -147,7 +147,7 @@ async fn insert_items(
 async fn fetch_tags<'e>(
     executor: impl sqlx::PgExecutor<'e>,
     ids: &[Uuid],
-) -> Result<Vec<(Uuid, String)>, InventoryError> {
+) -> Result<Vec<(Uuid, String)>, StoreError> {
     sqlx::query_as::<_, (Uuid, String)>(
         "SELECT fit_id, tag FROM fit_tags WHERE fit_id = ANY($1) ORDER BY fit_id, lower(tag), tag",
     )
@@ -161,7 +161,7 @@ const FIT_COLUMNS: &str = "id, name, description, ship_type_id, created_at, upda
 
 #[async_trait]
 impl FitRepository for PgFitRepository {
-    async fn list_fits(&self, workspace_id: WorkspaceId) -> Result<Vec<Fit>, InventoryError> {
+    async fn list_fits(&self, workspace_id: WorkspaceId) -> Result<Vec<Fit>, StoreError> {
         let rows = sqlx::query_as::<_, FitRow>(&format!(
             "SELECT {FIT_COLUMNS} FROM fits
              WHERE workspace_id = $1
@@ -174,11 +174,7 @@ impl FitRepository for PgFitRepository {
         self.with_children(rows).await
     }
 
-    async fn fit(
-        &self,
-        workspace_id: WorkspaceId,
-        id: FitId,
-    ) -> Result<Option<Fit>, InventoryError> {
+    async fn fit(&self, workspace_id: WorkspaceId, id: FitId) -> Result<Option<Fit>, StoreError> {
         let row = sqlx::query_as::<_, FitRow>(&format!(
             "SELECT {FIT_COLUMNS} FROM fits WHERE workspace_id = $1 AND id = $2"
         ))
@@ -195,7 +191,7 @@ impl FitRepository for PgFitRepository {
         workspace_id: WorkspaceId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Fit, InventoryError> {
+    ) -> Result<Fit, StoreError> {
         let id = Uuid::new_v4();
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         let row = sqlx::query_as::<_, FitRow>(&format!(
@@ -232,7 +228,7 @@ impl FitRepository for PgFitRepository {
         id: FitId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Option<Fit>, InventoryError> {
+    ) -> Result<Option<Fit>, StoreError> {
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         let Some(row) = sqlx::query_as::<_, FitRow>(&format!(
             "UPDATE fits SET name = $3, description = $4, ship_type_id = $5, updated_at = $6
@@ -271,11 +267,7 @@ impl FitRepository for PgFitRepository {
         }))
     }
 
-    async fn delete_fit(
-        &self,
-        workspace_id: WorkspaceId,
-        id: FitId,
-    ) -> Result<bool, InventoryError> {
+    async fn delete_fit(&self, workspace_id: WorkspaceId, id: FitId) -> Result<bool, StoreError> {
         let deleted = sqlx::query("DELETE FROM fits WHERE workspace_id = $1 AND id = $2")
             .bind(workspace_id.0)
             .bind(id.0)
@@ -285,10 +277,7 @@ impl FitRepository for PgFitRepository {
         Ok(deleted.rows_affected() > 0)
     }
 
-    async fn fit_tags_in_use(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<String>, InventoryError> {
+    async fn fit_tags_in_use(&self, workspace_id: WorkspaceId) -> Result<Vec<String>, StoreError> {
         sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT ON (lower(t.tag)) t.tag
              FROM fit_tags t JOIN fits f ON f.id = t.fit_id
@@ -306,7 +295,7 @@ impl FitRepository for PgFitRepository {
         workspace_id: WorkspaceId,
         id: FitId,
         tags: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, StoreError> {
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         let owned = sqlx::query_scalar::<_, Uuid>(
             "SELECT id FROM fits WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
@@ -345,7 +334,7 @@ impl FitRepository for PgFitRepository {
         ids: &[FitId],
         add: &[String],
         remove: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let ids = ids.iter().map(|id| id.0).collect::<Vec<_>>();
         let removed = remove
             .iter()

@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 
 use super::{FitInput, SlotKind};
-use crate::{ConnectedCharacterId, InventoryError, Money, WorkspaceId};
+use crate::{ConnectedCharacterId, Money, StoreError, WorkspaceId};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,7 +139,7 @@ pub trait AssetHoldingsRepository: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         type_ids: &[i64],
-    ) -> Result<Vec<AssetHolding>, InventoryError>;
+    ) -> Result<Vec<AssetHolding>, StoreError>;
 }
 
 #[cfg(test)]

@@ -7,8 +7,8 @@ use iskworks_core::{
     AssetBlueprintSummary, AssetBrowserFacets, AssetBrowserFilters, AssetBrowserItem,
     AssetBrowserQuery, AssetBrowserSummary, AssetFilterOption, AssetLocationPage,
     AssetLocationSummary, AssetReconciliationSummary, AssetSortColumn, AssetSortDirection,
-    AssetSyncState, ConnectedCharacterId, FlatAssetCursor, FlatAssetPage, FlatAssetRow,
-    InventoryError, ValidatedFlatAssetQuery, WorkspaceId,
+    AssetSyncState, ConnectedCharacterId, FlatAssetCursor, FlatAssetPage, FlatAssetRow, StoreError,
+    ValidatedFlatAssetQuery, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -27,7 +27,7 @@ impl PgAssetBrowserRepository {
     pub async fn summary(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<AssetBrowserSummary, InventoryError> {
+    ) -> Result<AssetBrowserSummary, StoreError> {
         let counts = sqlx::query_as::<_, SummaryRow>(
             r#"SELECT COUNT(DISTINCT effective_location_id)::bigint AS location_count,
                       COUNT(DISTINCT connection_id)::bigint AS character_count,
@@ -94,7 +94,7 @@ impl PgAssetBrowserRepository {
         &self,
         workspace_id: WorkspaceId,
         query: &AssetBrowserQuery,
-    ) -> Result<Vec<AssetLocationSummary>, InventoryError> {
+    ) -> Result<Vec<AssetLocationSummary>, StoreError> {
         let search = like_contains(query.query.trim());
         let rows = sqlx::query_as::<_, LocationRow>(
             r#"WITH current_assets AS MATERIALIZED (
@@ -227,7 +227,7 @@ impl PgAssetBrowserRepository {
     pub async fn filters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<AssetBrowserFilters, InventoryError> {
+    ) -> Result<AssetBrowserFilters, StoreError> {
         let owners = sqlx::query_as::<_, FilterRow>(
             r#"SELECT asset.owner_id::text AS value,owner.display_name AS label,
                       COUNT(*)::bigint AS count
@@ -266,7 +266,7 @@ impl PgAssetBrowserRepository {
     async fn group_facets(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<AssetFilterOption>, InventoryError> {
+    ) -> Result<Vec<AssetFilterOption>, StoreError> {
         Ok(sqlx::query_as::<_, FilterRow>(
             r#"SELECT type.group_id::text AS value,type.group_name_en AS label,
                       COUNT(*)::bigint AS count
@@ -291,7 +291,7 @@ impl PgAssetBrowserRepository {
     async fn location_facets(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<AssetFilterOption>, InventoryError> {
+    ) -> Result<Vec<AssetFilterOption>, StoreError> {
         Ok(sqlx::query_as::<_, FilterRow>(
             r#"SELECT asset.effective_location_id::text AS value,
                       MIN(COALESCE(location.location_name,station.name_en,system.name_en,
@@ -333,7 +333,7 @@ impl PgAssetBrowserRepository {
     async fn connection_facets(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<AssetFilterOption>, InventoryError> {
+    ) -> Result<Vec<AssetFilterOption>, StoreError> {
         Ok(sqlx::query_as::<_, FilterRow>(
             r#"SELECT connection_id::text AS value,character_name AS label,
                       COUNT(*)::bigint AS count
@@ -356,12 +356,12 @@ impl PgAssetBrowserRepository {
         workspace_id: WorkspaceId,
         location_id: i64,
         query: &AssetBrowserQuery,
-    ) -> Result<AssetLocationPage, InventoryError> {
+    ) -> Result<AssetLocationPage, StoreError> {
         let locations = self.locations(workspace_id, query).await?;
         let location = locations
             .into_iter()
             .find(|location| location.location_id == location_id)
-            .ok_or(InventoryError::ItemNotFound)?;
+            .ok_or(StoreError::NotFound)?;
         let limit = query.limit.unwrap_or(200).clamp(1, 500);
         let offset = query.offset.unwrap_or(0);
         let search = like_contains(query.query.trim());
@@ -480,7 +480,7 @@ impl PgAssetBrowserRepository {
         &self,
         workspace_id: WorkspaceId,
         query: &ValidatedFlatAssetQuery,
-    ) -> Result<FlatAssetPage, InventoryError> {
+    ) -> Result<FlatAssetPage, StoreError> {
         let offset = query
             .cursor
             .as_ref()
@@ -543,7 +543,7 @@ impl PgAssetBrowserRepository {
         &self,
         workspace_id: WorkspaceId,
         query: &ValidatedFlatAssetQuery,
-    ) -> Result<Vec<FlatAssetRow>, InventoryError> {
+    ) -> Result<Vec<FlatAssetRow>, StoreError> {
         Ok(self
             .flat_item_rows(workspace_id, query, None, 0)
             .await?
@@ -559,7 +559,7 @@ impl PgAssetBrowserRepository {
         query: &ValidatedFlatAssetQuery,
         limit: Option<i64>,
         offset: i64,
-    ) -> Result<Vec<FlatItemRow>, InventoryError> {
+    ) -> Result<Vec<FlatItemRow>, StoreError> {
         let search = like_contains(&query.search);
         let asset_kinds = query
             .asset_kinds
@@ -1131,9 +1131,9 @@ impl ItemRow {
     }
 }
 
-fn map_error(error: sqlx::Error) -> InventoryError {
+fn map_error(error: sqlx::Error) -> StoreError {
     crate::pool_metrics::observe_error(&error);
-    InventoryError::Persistence(error.to_string())
+    StoreError::Persistence(error.to_string())
 }
 
 /// What each character holds of some types, per effective location (a
@@ -1144,7 +1144,7 @@ impl AssetHoldingsRepository for PgAssetBrowserRepository {
         &self,
         workspace_id: WorkspaceId,
         type_ids: &[i64],
-    ) -> Result<Vec<AssetHolding>, InventoryError> {
+    ) -> Result<Vec<AssetHolding>, StoreError> {
         let rows = sqlx::query_as::<_, (Uuid, String, i64, String, i64, i64)>(
             r#"WITH held AS (
                  SELECT asset.connection_id,

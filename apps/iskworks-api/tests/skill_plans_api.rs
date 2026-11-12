@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use iskworks_api::{build_router, AppState};
 use iskworks_app::{FakeSkillsCharacters, SkillsCharacter};
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
     SkillDefinition, TypeSearchResult,
@@ -75,14 +75,17 @@ struct FakePlans(Mutex<HashMap<SkillPlanId, SkillPlan>>);
 
 #[async_trait]
 impl SkillPlanRepository for FakePlans {
-    async fn list_skill_plans(&self, _: WorkspaceId) -> Result<Vec<SkillPlan>, InventoryError> {
+    async fn list_skill_plans(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<SkillPlan>, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().values().cloned().collect())
     }
     async fn skill_plan(
         &self,
         _: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().get(&id).cloned())
     }
     async fn create_skill_plan(
@@ -90,7 +93,7 @@ impl SkillPlanRepository for FakePlans {
         _: WorkspaceId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlan, InventoryError> {
+    ) -> Result<SkillPlan, iskworks_core::StoreError> {
         let plan = SkillPlan {
             id: SkillPlanId(Uuid::new_v4()),
             name: input.name.clone(),
@@ -108,7 +111,7 @@ impl SkillPlanRepository for FakePlans {
         id: SkillPlanId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         let mut plans = self.0.lock().unwrap();
         Ok(plans.get_mut(&id).map(|plan| {
             plan.name = input.name.clone();
@@ -122,7 +125,7 @@ impl SkillPlanRepository for FakePlans {
         &self,
         _: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().remove(&id).is_some())
     }
 }

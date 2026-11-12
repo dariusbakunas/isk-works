@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::InventoryError;
+use crate::StoreError;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,12 +165,12 @@ impl FlatAssetCursor {
         URL_SAFE_NO_PAD.encode(serde_json::to_vec(self).expect("cursor serialization cannot fail"))
     }
 
-    pub fn decode(value: &str) -> Result<Self, InventoryError> {
+    pub fn decode(value: &str) -> Result<Self, StoreError> {
         let bytes = URL_SAFE_NO_PAD
             .decode(value)
-            .map_err(|_| InventoryError::Validation("asset cursor is invalid".to_string()))?;
+            .map_err(|_| StoreError::Validation("asset cursor is invalid".to_string()))?;
         serde_json::from_slice(&bytes)
-            .map_err(|_| InventoryError::Validation("asset cursor is invalid".to_string()))
+            .map_err(|_| StoreError::Validation("asset cursor is invalid".to_string()))
     }
 }
 
@@ -215,10 +215,10 @@ pub struct ValidatedFlatAssetQuery {
 }
 
 impl FlatAssetQuery {
-    pub fn validate(self) -> Result<ValidatedFlatAssetQuery, InventoryError> {
+    pub fn validate(self) -> Result<ValidatedFlatAssetQuery, StoreError> {
         let limit = self.limit.unwrap_or(100);
         if !(1..=200).contains(&limit) {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "asset page size must be between 1 and 200".to_string(),
             ));
         }
@@ -231,7 +231,7 @@ impl FlatAssetQuery {
             .as_ref()
             .is_some_and(|cursor| cursor.sort != self.sort)
         {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "asset cursor does not match the requested sort".to_string(),
             ));
         }
@@ -544,7 +544,7 @@ mod tests {
         .expect("query deserializes");
         assert!(matches!(
             too_large.validate(),
-            Err(InventoryError::Validation(_))
+            Err(StoreError::Validation(_))
         ));
 
         let cursor = FlatAssetCursor {
@@ -561,7 +561,7 @@ mod tests {
         .expect("query deserializes");
         assert!(matches!(
             mismatched.validate(),
-            Err(InventoryError::Validation(_))
+            Err(StoreError::Validation(_))
         ));
     }
 
