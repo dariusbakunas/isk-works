@@ -77,6 +77,19 @@ describe("Jobs › Active", () => {
     expect(within(revelation).getAllByText("Paused")).toHaveLength(2);
   });
 
+  test("a failed load shows the backend's message with its Error ID", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ error: { code: "internal", message: "Jobs are unavailable.", retryable: true, correlationId: "req-42" } }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      ),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/Jobs are unavailable\. \(Error ID: req-42\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
   test("asks a character missing the jobs permission to re-authorize", async () => {
     stubFetch();
     renderPage();

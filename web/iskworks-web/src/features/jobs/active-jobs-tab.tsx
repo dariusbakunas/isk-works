@@ -132,7 +132,7 @@ async function reauthorize() {
 }
 
 export function ActiveJobsTab() {
-  const { data, loading, error, retry } = useActiveJobs();
+  const { data, loading, error, errorMessage, retry } = useActiveJobs();
   const nowMs = useNow();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -167,7 +167,7 @@ export function ActiveJobsTab() {
   if (error && !data) {
     return (
       <InlineAlert title="Jobs unavailable">
-        {error.message} <button className="underline" onClick={retry} type="button">Retry</button>
+        {errorMessage} <button className="underline" onClick={retry} type="button">Retry</button>
       </InlineAlert>
     );
   }

@@ -13,7 +13,6 @@ import {
 import { ApiError } from "../../../../api/workspace";
 import { InlineAlert } from "../../../../components/primitives";
 import { useLoad } from "../../../../hooks/use-load";
-import { apiMessage } from "../../../../api/api-error";
 import { PlanetsPanel, type PlanetFilter } from "./planets-panel";
 import {
   loadCharacters,
@@ -196,7 +195,7 @@ export function PlannerPage() {
       ) : missingSde ? (
         <MissingSde />
       ) : planets.error ? (
-        <InlineAlert title="Planets could not be loaded">{apiMessage(planets.error)}</InlineAlert>
+        <InlineAlert title="Planets could not be loaded">{planets.errorMessage}</InlineAlert>
       ) : planets.data === null ? (
         <p className="text-sm text-muted">Loading planets…</p>
       ) : (
@@ -259,7 +258,7 @@ export function PlannerPage() {
             </div>
             <div className={view === "ranking" ? "min-w-0" : "hidden min-w-0 md:block"}>
               {ranking.error ? (
-                <InlineAlert title="Ranking failed">{apiMessage(ranking.error)}</InlineAlert>
+                <InlineAlert title="Ranking failed">{ranking.errorMessage}</InlineAlert>
               ) : ranking.data === null ? (
                 <p className="text-sm text-muted">Ranking products…</p>
               ) : (
@@ -303,7 +302,7 @@ export function PlannerPage() {
               ) : null}
               {solution.error ? (
                 <InlineAlert title={isSolveTimeout(solution.error) ? "Solve timed out" : "Solve failed"}>
-                  {apiMessage(solution.error)}
+                  {solution.errorMessage}
                 </InlineAlert>
               ) : solution.data === null ? (
                 <p className="flex items-center gap-2 text-sm text-muted" role="status">

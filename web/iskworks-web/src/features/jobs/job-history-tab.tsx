@@ -83,7 +83,7 @@ export function JobHistoryTab() {
   const nowMs = useNow(60_000);
   const to = utcDay(nowMs);
   const days = RANGES.find((option) => option.id === range)!.days;
-  const { data, loading, error, retry } = useJobHistory(daysBefore(to, days - 1), to);
+  const { data, loading, error, errorMessage, retry } = useJobHistory(daysBefore(to, days - 1), to);
   const byId = useMemo(() => characterById(data?.characters ?? []), [data]);
 
   const kpis = data?.kpis;
@@ -113,7 +113,7 @@ export function JobHistoryTab() {
       </div>
       {error ? (
         <InlineAlert title="History unavailable">
-          {error.message} <button className="underline" onClick={retry} type="button">Retry</button>
+          {errorMessage} <button className="underline" onClick={retry} type="button">Retry</button>
         </InlineAlert>
       ) : null}
       {loading && !data ? <div aria-busy="true" aria-label="Loading history" className="h-64 animate-pulse rounded-[2px] bg-panel-strong" role="status" /> : null}
