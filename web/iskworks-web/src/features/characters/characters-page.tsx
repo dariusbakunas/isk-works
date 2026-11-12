@@ -92,7 +92,7 @@ export function CharactersPage() {
     }
   }
 
-  const entries = state.status === "ready" ? state.entries : [];
+  const entries = useMemo(() => (state.status === "ready" ? state.entries : []), [state]);
   const needsAttentionCount = useMemo(
     () => entries.filter((entry) => entry.health !== "healthy").length,
     [entries],

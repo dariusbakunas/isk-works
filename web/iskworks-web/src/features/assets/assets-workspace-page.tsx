@@ -131,17 +131,18 @@ function AssetTable({ assets, onSelect, onSort, order, resetKey, selected, sort,
     const viewport = sentinel.current?.closest<HTMLElement>("[data-operational-table-scroll]");
     if (viewport) viewport.scrollTop = 0;
   }, [resetKey]);
+  const { error: loadError, hasMore, loadMore } = assets;
   useEffect(() => {
     const viewport = sentinel.current?.closest<HTMLElement>("[data-operational-table-scroll]");
     const marker = sentinel.current;
-    if (!viewport || !marker || !assets.hasMore || assets.error) return;
+    if (!viewport || !marker || !hasMore || loadError) return;
     const observer = new IntersectionObserver(
-      (entries) => { if (entries.some(({ isIntersecting }) => isIntersecting)) assets.loadMore(); },
+      (entries) => { if (entries.some(({ isIntersecting }) => isIntersecting)) loadMore(); },
       { root: viewport, rootMargin: "0px 0px 240px 0px" },
     );
     observer.observe(marker);
     return () => observer.disconnect();
-  }, [assets.error, assets.hasMore, assets.loadMore]);
+  }, [loadError, hasMore, loadMore]);
   return (
     <OperationalTable
       ariaLabel="Synchronized assets"

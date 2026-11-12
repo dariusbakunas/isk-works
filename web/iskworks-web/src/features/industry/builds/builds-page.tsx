@@ -43,7 +43,7 @@ export function BuildsPage() {
       .catch((error) => setState({ status: "error", message: apiMessage(error) }));
   }, []);
 
-  const builds = state.status === "ready" ? state.data : [];
+  const builds = useMemo(() => (state.status === "ready" ? state.data : []), [state]);
   const categories = useMemo(() => categoryOptions(builds), [builds]);
   const visibleBuilds = useMemo(() => filterAndSortBuilds(builds, criteria), [builds, criteria]);
   const filtersActive = hasActiveFilters(criteria);

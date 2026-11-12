@@ -116,7 +116,7 @@ export function ChargePicker({
       window.removeEventListener("scroll", moved, true);
       window.removeEventListener("resize", close);
     };
-  }, [open, moduleTypeId, pilot]);
+  }, [open, moduleTypeId, pilot, chargeTypeId]);
 
   const pick = (charge: { typeId: number; name: string } | null) => {
     setOpen(false);

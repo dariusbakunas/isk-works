@@ -158,7 +158,7 @@ export function BuildStagesView({
         ? plan.nodes.some((node) => node.id === selection.nodeId)
         : plan.acquisitions.some((line) => line.typeId === selection.typeId);
     if (!stillExists) setSelection(null);
-  }, [plan, selection]);
+  }, [plan, selection, setSelection]);
 
   // Declared after the stale-selection effect above on purpose: when a sourcing
   // change swaps the selected row for its new producer, the producer select

@@ -105,6 +105,7 @@ export function useFitEditor({
       controller.abort();
     };
     // `key` covers the draft's items, the pilot and the profile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, savedKey, engineAvailable]);
 
   const close = () => {

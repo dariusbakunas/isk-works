@@ -50,7 +50,12 @@ export function CalendarPage() {
     return () => { active = false; };
   }, []);
 
+  // The range as timestamps: `from`/`to` are new Dates every render.
+  const fromTime = from.getTime();
+  const toTime = to.getTime();
   useEffect(() => {
+    const from = new Date(fromTime);
+    const to = new Date(toTime);
     const rangeKey = `${from.toISOString()}:${to.toISOString()}`;
     if (requestedRange.current === rangeKey) return;
     requestedRange.current = rangeKey;
@@ -71,7 +76,7 @@ export function CalendarPage() {
         setError(apiMessage(caught));
         setLoading(false);
       });
-  }, [from.getTime(), to.getTime()]);
+  }, [fromTime, toTime]);
 
   const filtered = milestones.filter((milestone) =>
     (state.type === "all" || milestone.kind === state.type)

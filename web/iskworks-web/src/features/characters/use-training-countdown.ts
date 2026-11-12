@@ -67,6 +67,7 @@ export function useTrainingCountdown(entries: SkillQueueEntry[], onNeedsRefresh:
     }
     previousKeyRef.current = key;
     // Fires on `key` transitions only; `state.kind` matters just for the first evaluation and the callback is read through a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return state;

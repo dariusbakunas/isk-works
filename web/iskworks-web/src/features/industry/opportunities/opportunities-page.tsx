@@ -68,7 +68,7 @@ export function OpportunitiesPage() {
       });
   }, []);
 
-  const scopes = scopesState.status === "ready" ? scopesState.data : [];
+  const scopes = useMemo(() => (scopesState.status === "ready" ? scopesState.data : []), [scopesState]);
   const requestedScope = params.get("scope");
   const activeScope: ProfitabilityScopeDefinition | null = useMemo(() => {
     const requested = scopes.find((scope) => scope.id === requestedScope);

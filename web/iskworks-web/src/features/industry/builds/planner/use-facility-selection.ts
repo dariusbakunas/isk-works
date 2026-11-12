@@ -55,9 +55,10 @@ export function useFacilitySelection({
     fetchAutomaticEivRef.current = fetchAutomaticEiv;
   });
 
+  const selectedFacilityId = selectedFacility?.id;
   useEffect(() => {
     const fetchEiv = fetchAutomaticEivRef.current;
-    if (!enabled || !fetchEiv || !selectedFacility || !runs) return;
+    if (!enabled || !fetchEiv || !selectedFacilityId || !runs) return;
     const controller = new AbortController();
     setEivLoading(true);
     setEivError("");
@@ -76,7 +77,7 @@ export function useFacilitySelection({
         if (!controller.signal.aborted) setEivLoading(false);
       });
     return () => controller.abort();
-  }, [enabled, manualEiv, runs, selectedFacility?.id]);
+  }, [enabled, manualEiv, runs, selectedFacilityId]);
 
   function reset(next: { estimatedItemValue?: string; facilityProfileId?: string; manualEiv?: boolean } = {}) {
     setFacilityId(next.facilityProfileId ?? "");

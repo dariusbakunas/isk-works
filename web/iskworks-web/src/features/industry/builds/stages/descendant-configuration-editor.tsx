@@ -119,6 +119,7 @@ export function DescendantConfigurationEditor({
     setLicensedRuns(manual?.licensedRuns != null ? String(manual.licensedRuns) : "");
     setNotes(manual?.notes ?? "");
     setSelectedObservationId(observedAsset?.observationId ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blueprintTypeId, blueprintSelection?.mode, observedAsset?.observationId]);
 
   if (members.length === 0) {

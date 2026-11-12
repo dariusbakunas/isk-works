@@ -130,6 +130,7 @@ export function useBuildSaveQueue({
     }, 800);
     return () => window.clearTimeout(timer);
     // Only a snapshot change schedules an autosave; `queueSave` and `initialBuild` are read fresh and must not retrigger it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot]);
 
   return { saveStatus, setBuildRevision, queueSave, queueSaveIfChanged };
