@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
+import { ApiError } from "../../api/workspace";
 import { useLoad, type Loaded } from "../use-load";
 
 type Load = ((signal: AbortSignal) => Promise<string>) | null;
@@ -99,5 +100,46 @@ describe("useLoad", () => {
 
     await act(async () => first.resolve("A"));
     expect(result.current.data).toBe("B");
+  });
+
+  test("a reload refetches behind the data: loading stays off while refreshing", async () => {
+    let answer = deferred();
+    const { result } = renderLoad({ load: () => answer.promise, loadKey: "a" });
+    await act(async () => answer.resolve("A"));
+
+    answer = deferred();
+    act(() => result.current.reload());
+    expect(result.current).toMatchObject({ data: "A", loading: false, refreshing: true });
+
+    await act(async () => answer.resolve("A2"));
+    expect(result.current).toMatchObject({ data: "A2", loading: false, refreshing: false });
+  });
+
+  test("a reload with nothing loaded yet, or a new key after one, is a load", async () => {
+    let answer = deferred();
+    const { result, rerender } = renderLoad({ load: () => answer.promise, loadKey: "a" });
+    act(() => result.current.reload());
+    expect(result.current).toMatchObject({ loading: true, refreshing: false });
+    await act(async () => answer.resolve("A"));
+
+    act(() => result.current.reload());
+    answer = deferred();
+    rerender({ load: () => answer.promise, loadKey: "b" });
+    expect(result.current).toMatchObject({ data: "A", loading: true, refreshing: false });
+  });
+
+  test("errorMessage is the user-facing text, with a redacted failure's Error ID", async () => {
+    const { result, rerender } = renderLoad({
+      load: () =>
+        Promise.reject(
+          new ApiError(500, { code: "internal", message: "Something went wrong.", correlationId: "abc-123" }),
+        ),
+      loadKey: "a",
+    });
+    await waitFor(() => expect(result.current.errorMessage).toBe("Something went wrong. (Error ID: abc-123)"));
+
+    rerender({ load: () => Promise.resolve("B"), loadKey: "b" });
+    await waitFor(() => expect(result.current.data).toBe("B"));
+    expect(result.current.errorMessage).toBeNull();
   });
 });
