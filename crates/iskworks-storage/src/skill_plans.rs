@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use iskworks_core::skill_plans::{
     PlanEntry, SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository,
 };
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::{StoreError, WorkspaceId};
 use sqlx::{PgPool, Postgres, QueryBuilder, Transaction};
 use uuid::Uuid;
 
@@ -21,8 +21,8 @@ impl PgSkillPlanRepository {
     }
 }
 
-fn persistence(error: sqlx::Error) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn persistence(error: sqlx::Error) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 #[derive(sqlx::FromRow)]
@@ -43,7 +43,7 @@ struct EntryRow {
 
 impl PgSkillPlanRepository {
     /// The plans' entries in position order, attached to their plans.
-    async fn with_entries(&self, rows: Vec<PlanRow>) -> Result<Vec<SkillPlan>, InventoryError> {
+    async fn with_entries(&self, rows: Vec<PlanRow>) -> Result<Vec<SkillPlan>, StoreError> {
         let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
         let mut entries = HashMap::<Uuid, Vec<PlanEntry>>::new();
         if !ids.is_empty() {
@@ -82,7 +82,7 @@ async fn insert_entries(
     tx: &mut Transaction<'_, Postgres>,
     plan_id: Uuid,
     entries: &[PlanEntry],
-) -> Result<(), InventoryError> {
+) -> Result<(), StoreError> {
     if entries.is_empty() {
         return Ok(());
     }
@@ -110,7 +110,7 @@ impl SkillPlanRepository for PgSkillPlanRepository {
     async fn list_skill_plans(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillPlan>, InventoryError> {
+    ) -> Result<Vec<SkillPlan>, StoreError> {
         let rows = sqlx::query_as::<_, PlanRow>(&format!(
             "SELECT {PLAN_COLUMNS} FROM skill_plans
              WHERE workspace_id = $1
@@ -127,7 +127,7 @@ impl SkillPlanRepository for PgSkillPlanRepository {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, StoreError> {
         let row = sqlx::query_as::<_, PlanRow>(&format!(
             "SELECT {PLAN_COLUMNS} FROM skill_plans WHERE workspace_id = $1 AND id = $2"
         ))
@@ -144,7 +144,7 @@ impl SkillPlanRepository for PgSkillPlanRepository {
         workspace_id: WorkspaceId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlan, InventoryError> {
+    ) -> Result<SkillPlan, StoreError> {
         let id = Uuid::new_v4();
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         let row = sqlx::query_as::<_, PlanRow>(&format!(
@@ -178,7 +178,7 @@ impl SkillPlanRepository for PgSkillPlanRepository {
         id: SkillPlanId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, StoreError> {
         let mut tx = self.pool.begin().await.map_err(persistence)?;
         let Some(row) = sqlx::query_as::<_, PlanRow>(&format!(
             "UPDATE skill_plans SET name = $3, description = $4, updated_at = $5
@@ -217,7 +217,7 @@ impl SkillPlanRepository for PgSkillPlanRepository {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         let deleted = sqlx::query("DELETE FROM skill_plans WHERE workspace_id = $1 AND id = $2")
             .bind(workspace_id.0)
             .bind(id.0)

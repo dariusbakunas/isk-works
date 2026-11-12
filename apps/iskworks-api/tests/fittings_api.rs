@@ -12,7 +12,7 @@ use iskworks_core::fitting::{
     FitRepository, FittingEngine, FittingEngineInfo, FittingError, ModuleState, ParsedFit, Pilot,
     SlotKind,
 };
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::WorkspaceId;
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError, TypeReference,
     TypeSearchResult,
@@ -92,10 +92,14 @@ struct FakeFits(Mutex<Vec<Fit>>);
 
 #[async_trait]
 impl FitRepository for FakeFits {
-    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, InventoryError> {
+    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().clone())
     }
-    async fn fit(&self, _: WorkspaceId, id: FitId) -> Result<Option<Fit>, InventoryError> {
+    async fn fit(
+        &self,
+        _: WorkspaceId,
+        id: FitId,
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         Ok(self
             .0
             .lock()
@@ -109,7 +113,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Fit, InventoryError> {
+    ) -> Result<Fit, iskworks_core::StoreError> {
         let fit = Fit {
             id: FitId(Uuid::new_v4()),
             name: draft.name.trim().to_string(),
@@ -129,7 +133,7 @@ impl FitRepository for FakeFits {
         id: FitId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Option<Fit>, InventoryError> {
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         let mut fits = self.0.lock().unwrap();
         let Some(fit) = fits.iter_mut().find(|fit| fit.id == id) else {
             return Ok(None);
@@ -141,13 +145,20 @@ impl FitRepository for FakeFits {
         fit.updated_at = now;
         Ok(Some(fit.clone()))
     }
-    async fn delete_fit(&self, _: WorkspaceId, id: FitId) -> Result<bool, InventoryError> {
+    async fn delete_fit(
+        &self,
+        _: WorkspaceId,
+        id: FitId,
+    ) -> Result<bool, iskworks_core::StoreError> {
         let mut fits = self.0.lock().unwrap();
         let before = fits.len();
         fits.retain(|fit| fit.id != id);
         Ok(fits.len() < before)
     }
-    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+    async fn fit_tags_in_use(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<String>, iskworks_core::StoreError> {
         let mut tags: Vec<String> = Vec::new();
         for tag in self
             .0
@@ -167,7 +178,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         id: FitId,
         tags: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, iskworks_core::StoreError> {
         let mut fits = self.0.lock().unwrap();
         let Some(fit) = fits.iter_mut().find(|fit| fit.id == id) else {
             return Ok(None);
@@ -181,7 +192,7 @@ impl FitRepository for FakeFits {
         ids: &[FitId],
         add: &[String],
         remove: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         for fit in self
             .0
             .lock()

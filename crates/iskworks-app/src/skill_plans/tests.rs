@@ -78,7 +78,7 @@ impl SkillPlanRepository for FakePlans {
     async fn list_skill_plans(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillPlan>, InventoryError> {
+    ) -> Result<Vec<SkillPlan>, iskworks_core::StoreError> {
         let mut plans = self
             .0
             .lock()
@@ -94,7 +94,7 @@ impl SkillPlanRepository for FakePlans {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         Ok(self
             .0
             .lock()
@@ -108,7 +108,7 @@ impl SkillPlanRepository for FakePlans {
         workspace_id: WorkspaceId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlan, InventoryError> {
+    ) -> Result<SkillPlan, iskworks_core::StoreError> {
         let plan = SkillPlan {
             id: SkillPlanId(Uuid::new_v4()),
             name: input.name.clone(),
@@ -129,7 +129,7 @@ impl SkillPlanRepository for FakePlans {
         id: SkillPlanId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, iskworks_core::StoreError> {
         let mut plans = self.0.lock().unwrap();
         let Some((workspace, plan)) = plans.get_mut(&id) else {
             return Ok(None);
@@ -147,7 +147,7 @@ impl SkillPlanRepository for FakePlans {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, iskworks_core::StoreError> {
         let mut plans = self.0.lock().unwrap();
         if plans
             .get(&id)

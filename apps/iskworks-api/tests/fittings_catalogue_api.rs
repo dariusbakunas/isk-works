@@ -15,7 +15,7 @@ use iskworks_core::fitting::{
     FitCalculation, FitCatalogue, FitInput, FittingEngine, FittingEngineInfo, FittingError,
     Hardpoint, MarketGroup, ParsedFit, Pilot, ShipSlots, SlotKind,
 };
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
     TypeSearchResult,
@@ -285,14 +285,14 @@ impl iskworks_core::fitting::FitRepository for NoFits {
     async fn list_fits(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<iskworks_core::fitting::Fit>, InventoryError> {
+    ) -> Result<Vec<iskworks_core::fitting::Fit>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn fit(
         &self,
         _: WorkspaceId,
         _: iskworks_core::fitting::FitId,
-    ) -> Result<Option<iskworks_core::fitting::Fit>, InventoryError> {
+    ) -> Result<Option<iskworks_core::fitting::Fit>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn create_fit(
@@ -300,7 +300,7 @@ impl iskworks_core::fitting::FitRepository for NoFits {
         _: WorkspaceId,
         _: &iskworks_core::fitting::FitDraft,
         _: chrono::DateTime<Utc>,
-    ) -> Result<iskworks_core::fitting::Fit, InventoryError> {
+    ) -> Result<iskworks_core::fitting::Fit, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn update_fit(
@@ -309,17 +309,20 @@ impl iskworks_core::fitting::FitRepository for NoFits {
         _: iskworks_core::fitting::FitId,
         _: &iskworks_core::fitting::FitDraft,
         _: chrono::DateTime<Utc>,
-    ) -> Result<Option<iskworks_core::fitting::Fit>, InventoryError> {
+    ) -> Result<Option<iskworks_core::fitting::Fit>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn delete_fit(
         &self,
         _: WorkspaceId,
         _: iskworks_core::fitting::FitId,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, iskworks_core::StoreError> {
         unimplemented!()
     }
-    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+    async fn fit_tags_in_use(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<String>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn replace_fit_tags(
@@ -327,7 +330,7 @@ impl iskworks_core::fitting::FitRepository for NoFits {
         _: WorkspaceId,
         _: iskworks_core::fitting::FitId,
         _: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn edit_fit_tags(
@@ -336,7 +339,7 @@ impl iskworks_core::fitting::FitRepository for NoFits {
         _: &[iskworks_core::fitting::FitId],
         _: &[String],
         _: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!()
     }
 }

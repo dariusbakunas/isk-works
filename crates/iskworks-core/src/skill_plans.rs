@@ -16,7 +16,7 @@ use crate::skills::{
     sp_for_level, training_rate, CharacterSkillsSnapshot, CloneState, MAX_SKILL_LEVEL,
 };
 use crate::training::{derive_training_state, TrainingState};
-use crate::{InventoryError, WorkspaceId};
+use crate::{StoreError, WorkspaceId};
 
 /// One level of one skill.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -394,20 +394,20 @@ pub trait SkillPlanRepository: Send + Sync {
     async fn list_skill_plans(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillPlan>, InventoryError>;
+    ) -> Result<Vec<SkillPlan>, StoreError>;
 
     async fn skill_plan(
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<Option<SkillPlan>, InventoryError>;
+    ) -> Result<Option<SkillPlan>, StoreError>;
 
     async fn create_skill_plan(
         &self,
         workspace_id: WorkspaceId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlan, InventoryError>;
+    ) -> Result<SkillPlan, StoreError>;
 
     /// Replaces the name, description and every entry in one transaction.
     /// `None` when the plan isn't in the workspace.
@@ -417,14 +417,14 @@ pub trait SkillPlanRepository: Send + Sync {
         id: SkillPlanId,
         input: &SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError>;
+    ) -> Result<Option<SkillPlan>, StoreError>;
 
     /// `false` when the plan isn't in the workspace.
     async fn delete_skill_plan(
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<bool, InventoryError>;
+    ) -> Result<bool, StoreError>;
 }
 
 // --- Text import / export ---------------------------------------------------

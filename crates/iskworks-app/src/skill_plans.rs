@@ -397,7 +397,7 @@ impl SkillPlanService {
         workspace_id: WorkspaceId,
         id: SkillPlanId,
     ) -> Result<bool, InventoryError> {
-        self.plans.delete_skill_plan(workspace_id, id).await
+        Ok(self.plans.delete_skill_plan(workspace_id, id).await?)
     }
 
     /// A dry run of [`Self::import_text`]: nothing is saved.

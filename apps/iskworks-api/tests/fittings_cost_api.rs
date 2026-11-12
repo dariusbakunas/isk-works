@@ -14,8 +14,8 @@ use iskworks_core::fitting::{
     ModuleState, SlotKind,
 };
 use iskworks_core::{
-    ConnectedCharacterId, InventoryError, MarketError, MarketOrderBook, MarketOrderSide,
-    MarketOrderView, MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
+    ConnectedCharacterId, MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView,
+    MarketPriceSource, MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ImportCounts, ManufacturingRecipe, SdeError, TypeReference,
@@ -131,10 +131,14 @@ fn fit() -> Fit {
 
 #[async_trait]
 impl FitRepository for FakeFits {
-    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, InventoryError> {
+    async fn list_fits(&self, _: WorkspaceId) -> Result<Vec<Fit>, iskworks_core::StoreError> {
         Ok(vec![self.0.clone()])
     }
-    async fn fit(&self, _: WorkspaceId, id: FitId) -> Result<Option<Fit>, InventoryError> {
+    async fn fit(
+        &self,
+        _: WorkspaceId,
+        id: FitId,
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         Ok((self.0.id == id).then(|| self.0.clone()))
     }
     async fn create_fit(
@@ -142,7 +146,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         _: &FitDraft,
         _: chrono::DateTime<Utc>,
-    ) -> Result<Fit, InventoryError> {
+    ) -> Result<Fit, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn update_fit(
@@ -151,13 +155,20 @@ impl FitRepository for FakeFits {
         _: FitId,
         _: &FitDraft,
         _: chrono::DateTime<Utc>,
-    ) -> Result<Option<Fit>, InventoryError> {
+    ) -> Result<Option<Fit>, iskworks_core::StoreError> {
         unimplemented!()
     }
-    async fn delete_fit(&self, _: WorkspaceId, _: FitId) -> Result<bool, InventoryError> {
+    async fn delete_fit(
+        &self,
+        _: WorkspaceId,
+        _: FitId,
+    ) -> Result<bool, iskworks_core::StoreError> {
         unimplemented!()
     }
-    async fn fit_tags_in_use(&self, _: WorkspaceId) -> Result<Vec<String>, InventoryError> {
+    async fn fit_tags_in_use(
+        &self,
+        _: WorkspaceId,
+    ) -> Result<Vec<String>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn replace_fit_tags(
@@ -165,7 +176,7 @@ impl FitRepository for FakeFits {
         _: WorkspaceId,
         _: FitId,
         _: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, iskworks_core::StoreError> {
         unimplemented!()
     }
     async fn edit_fit_tags(
@@ -174,7 +185,7 @@ impl FitRepository for FakeFits {
         _: &[FitId],
         _: &[String],
         _: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         unimplemented!()
     }
 }
@@ -319,7 +330,7 @@ impl AssetHoldingsRepository for FakeHoldings {
         &self,
         _: WorkspaceId,
         type_ids: &[i64],
-    ) -> Result<Vec<AssetHolding>, InventoryError> {
+    ) -> Result<Vec<AssetHolding>, iskworks_core::StoreError> {
         let holding =
             |character: u128, name: &str, location_id, location: &str, type_id, quantity| {
                 AssetHolding {

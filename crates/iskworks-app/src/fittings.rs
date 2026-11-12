@@ -304,7 +304,7 @@ impl FittingService {
         workspace_id: WorkspaceId,
         id: FitId,
     ) -> Result<bool, InventoryError> {
-        self.fits.delete_fit(workspace_id, id).await
+        Ok(self.fits.delete_fit(workspace_id, id).await?)
     }
 
     /// Replaces the fit's tags, in the casing the workspace already uses.
@@ -317,7 +317,7 @@ impl FittingService {
     ) -> Result<Option<Vec<String>>, InventoryError> {
         let in_use = self.fits.fit_tags_in_use(workspace_id).await?;
         let tags = canonical_tags(tags, &in_use).map_err(InventoryError::Validation)?;
-        self.fits.replace_fit_tags(workspace_id, id, &tags).await
+        Ok(self.fits.replace_fit_tags(workspace_id, id, &tags).await?)
     }
 
     /// Adds and removes tags on many fits; fits not in the workspace are
@@ -332,9 +332,10 @@ impl FittingService {
         // Casing only: an edit can add more than a fit may hold, and the
         // per-fit limit is the single-fit form's to keep.
         let add = canonical_tag_casing(&edit.add, &in_use);
-        self.fits
+        Ok(self
+            .fits
             .edit_fit_tags(workspace_id, &edit.fit_ids, &add, &edit.remove)
-            .await
+            .await?)
     }
 
     /// What importing `text` would make; nothing is saved.

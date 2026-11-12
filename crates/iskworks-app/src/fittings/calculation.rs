@@ -434,5 +434,6 @@ impl FittingService {
             )
             .await
             .map(Some)
+            .map_err(Into::into)
     }
 }

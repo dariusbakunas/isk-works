@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{InventoryError, WorkspaceId};
+use crate::{StoreError, WorkspaceId};
 
 mod catalogue;
 mod cost;
@@ -387,20 +387,16 @@ impl FitTagEdit {
 #[async_trait]
 pub trait FitRepository: Send + Sync {
     /// Every fit of the workspace, by name.
-    async fn list_fits(&self, workspace_id: WorkspaceId) -> Result<Vec<Fit>, InventoryError>;
+    async fn list_fits(&self, workspace_id: WorkspaceId) -> Result<Vec<Fit>, StoreError>;
 
-    async fn fit(
-        &self,
-        workspace_id: WorkspaceId,
-        id: FitId,
-    ) -> Result<Option<Fit>, InventoryError>;
+    async fn fit(&self, workspace_id: WorkspaceId, id: FitId) -> Result<Option<Fit>, StoreError>;
 
     async fn create_fit(
         &self,
         workspace_id: WorkspaceId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Fit, InventoryError>;
+    ) -> Result<Fit, StoreError>;
 
     /// Replaces the fit and every item in one transaction. `None` when the
     /// fit isn't in the workspace.
@@ -410,20 +406,13 @@ pub trait FitRepository: Send + Sync {
         id: FitId,
         draft: &FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Option<Fit>, InventoryError>;
+    ) -> Result<Option<Fit>, StoreError>;
 
     /// `false` when the fit isn't in the workspace.
-    async fn delete_fit(
-        &self,
-        workspace_id: WorkspaceId,
-        id: FitId,
-    ) -> Result<bool, InventoryError>;
+    async fn delete_fit(&self, workspace_id: WorkspaceId, id: FitId) -> Result<bool, StoreError>;
 
     /// The tags on the workspace's fits, each once (in one of its casings).
-    async fn fit_tags_in_use(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Result<Vec<String>, InventoryError>;
+    async fn fit_tags_in_use(&self, workspace_id: WorkspaceId) -> Result<Vec<String>, StoreError>;
 
     /// Replaces the fit's tags with `tags`, written as given. `None` when the
     /// fit isn't in the workspace. Doesn't change `updated_at`.
@@ -432,7 +421,7 @@ pub trait FitRepository: Send + Sync {
         workspace_id: WorkspaceId,
         id: FitId,
         tags: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError>;
+    ) -> Result<Option<Vec<String>>, StoreError>;
 
     /// Adds `add` to and removes `remove` from every listed fit of the
     /// workspace, in one transaction; other fits are skipped. Removal ignores
@@ -443,7 +432,7 @@ pub trait FitRepository: Send + Sync {
         ids: &[FitId],
         add: &[String],
         remove: &[String],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 /// Incoming damage, for effective hitpoints. Only the ratios matter.

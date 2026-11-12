@@ -330,7 +330,7 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredDensity>, InventoryError> {
+    ) -> Result<Vec<StoredDensity>, iskworks_core::StoreError> {
         Ok(self
             .densities
             .lock()
@@ -344,7 +344,7 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         workspace_id: WorkspaceId,
         writes: &[DensityWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         let mut densities = self.densities.lock().unwrap();
         for write in writes {
             let key = (workspace_id.0, write.planet_id, write.resource_type_id);
@@ -369,7 +369,7 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         workspace_id: WorkspaceId,
         planet_ids: &[i64],
-    ) -> Result<Vec<StoredPlanetSettings>, InventoryError> {
+    ) -> Result<Vec<StoredPlanetSettings>, iskworks_core::StoreError> {
         Ok(self
             .settings
             .lock()
@@ -383,7 +383,7 @@ impl PiPlannerInputsRepository for FakeInputs {
         &self,
         workspace_id: WorkspaceId,
         writes: &[PlanetSettingsWrite],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         let mut settings = self.settings.lock().unwrap();
         for write in writes {
             let key = (workspace_id.0, write.planet_id);
