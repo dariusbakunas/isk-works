@@ -240,7 +240,7 @@ impl SkillsCharacterSource for FakeCharacters {
         &self,
         _: WorkspaceId,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
+    ) -> Result<Option<SkillsCharacter>, iskworks_core::StoreError> {
         Ok(
             (connection_id == ConnectedCharacterId(Uuid::from_u128(PILOT))).then(|| {
                 SkillsCharacter {
@@ -260,7 +260,7 @@ impl SkillsCharacterSource for FakeCharacters {
     async fn skills_characters(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+    ) -> Result<Vec<SkillsCharacter>, iskworks_core::StoreError> {
         unimplemented!()
     }
 }

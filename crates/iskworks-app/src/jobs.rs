@@ -322,8 +322,10 @@ impl JobsService {
             .expect("midnight exists")
             .and_utc();
         let (stored, earliest, snapshots) = tokio::try_join!(
-            self.jobs.completed_jobs(workspace_id, start, end),
-            self.jobs.earliest_job_seen(workspace_id),
+            async {
+                Ok::<_, InventoryError>(self.jobs.completed_jobs(workspace_id, start, end).await?)
+            },
+            async { Ok::<_, InventoryError>(self.jobs.earliest_job_seen(workspace_id).await?) },
             self.characters.job_characters(workspace_id, now),
         )?;
         let (kpis, weekly) = job_history(&stored, from, to);

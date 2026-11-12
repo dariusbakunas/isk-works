@@ -10,7 +10,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         &self,
         connection: &ConnectedCharacter,
         kind: EsiSyncKind,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         let run = EsiSyncRun {
             id: EsiSyncRunId::new(),
             connection_id: connection.id,
@@ -53,7 +53,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         run_id: EsiSyncRunId,
         code: &str,
         summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         sqlx::query(
             "UPDATE esi_sync_runs SET status = 'failed', phase = 'Failed', completed_at = now(), error_count = error_count + 1, error_code = $2, summary = $3 WHERE id = $1",
         )
@@ -70,7 +70,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         &self,
         run_id: EsiSyncRunId,
         metadata: &iskworks_core::EsiResponseMetadata,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         sqlx::query("UPDATE esi_sync_runs SET rate_limit_metadata = $2 WHERE id = $1")
             .bind(run_id.0)
             .bind(serde_json::to_value(metadata).map_err(map_json)?)
@@ -84,7 +84,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         &self,
         connection_id: ConnectedCharacterId,
         endpoint_kind: &str,
-    ) -> Result<Option<String>, InventoryError> {
+    ) -> Result<Option<String>, StoreError> {
         sqlx::query_scalar(
             "SELECT etag FROM esi_sync_checkpoints WHERE connection_id = $1 AND endpoint_kind = $2",
         )
@@ -101,7 +101,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         run: &EsiSyncRun,
         endpoint_kind: &str,
         summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         sqlx::query(
             "UPDATE esi_sync_checkpoints SET last_successful_sync_at = now() WHERE connection_id = $1 AND endpoint_kind = $2",
@@ -116,7 +116,7 @@ impl EsiSyncRunRepository for PgEsiRepository {
         self.get_sync_run(run.id).await
     }
 
-    async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError> {
+    async fn get_sync_run(&self, id: EsiSyncRunId) -> Result<EsiSyncRun, StoreError> {
         sqlx::query_as::<_, SyncRunRow>(
             "SELECT id, connection_id, requested_kind, status, phase, started_at, completed_at, rate_limit_metadata, imported_count, unchanged_count, skipped_count, error_count, error_code, summary FROM esi_sync_runs WHERE id = $1",
         )
@@ -124,14 +124,14 @@ impl EsiSyncRunRepository for PgEsiRepository {
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)?
-        .ok_or(InventoryError::ItemNotFound)?
+        .ok_or(StoreError::NotFound)?
         .into_domain()
     }
 
     async fn list_sync_runs(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<EsiSyncRun>, InventoryError> {
+    ) -> Result<Vec<EsiSyncRun>, StoreError> {
         sqlx::query_as::<_, SyncRunRow>(
             "SELECT id, connection_id, requested_kind, status, phase, started_at, completed_at, rate_limit_metadata, imported_count, unchanged_count, skipped_count, error_count, error_code, summary FROM esi_sync_runs WHERE workspace_id = $1 ORDER BY started_at DESC LIMIT 50",
         )
@@ -151,13 +151,13 @@ pub(super) async fn finalize_run(
     imported: u64,
     unchanged: u64,
     summary: &str,
-) -> Result<(), InventoryError> {
+) -> Result<(), StoreError> {
     sqlx::query(
         "UPDATE esi_sync_runs SET status = 'succeeded', phase = 'Complete', completed_at = now(), imported_count = $2, unchanged_count = $3, summary = $4 WHERE id = $1",
     )
     .bind(id.0)
-    .bind(i64::try_from(imported).map_err(|_| InventoryError::ArithmeticOverflow)?)
-    .bind(i64::try_from(unchanged).map_err(|_| InventoryError::ArithmeticOverflow)?)
+    .bind(i64::try_from(imported).map_err(|_| StoreError::OutOfRange)?)
+    .bind(i64::try_from(unchanged).map_err(|_| StoreError::OutOfRange)?)
     .bind(summary)
     .execute(&mut **tx)
     .await
@@ -188,7 +188,7 @@ pub(super) struct SyncRunRow {
 }
 
 impl SyncRunRow {
-    pub(super) fn into_domain(self) -> Result<EsiSyncRun, InventoryError> {
+    pub(super) fn into_domain(self) -> Result<EsiSyncRun, StoreError> {
         Ok(EsiSyncRun {
             id: EsiSyncRunId(self.id),
             connection_id: ConnectedCharacterId(self.connection_id),
@@ -220,7 +220,7 @@ pub(super) fn sync_kind_to_str(value: EsiSyncKind) -> &'static str {
     }
 }
 
-pub(super) fn sync_kind_from_str(value: &str) -> Result<EsiSyncKind, InventoryError> {
+pub(super) fn sync_kind_from_str(value: &str) -> Result<EsiSyncKind, StoreError> {
     match value {
         "assets" => Ok(EsiSyncKind::Assets),
         "wallet_transactions" => Ok(EsiSyncKind::WalletTransactions),
@@ -229,7 +229,7 @@ pub(super) fn sync_kind_from_str(value: &str) -> Result<EsiSyncKind, InventoryEr
     }
 }
 
-pub(super) fn sync_status_from_str(value: &str) -> Result<EsiSyncStatus, InventoryError> {
+pub(super) fn sync_status_from_str(value: &str) -> Result<EsiSyncStatus, StoreError> {
     match value {
         "pending" => Ok(EsiSyncStatus::Pending),
         "running" => Ok(EsiSyncStatus::Running),

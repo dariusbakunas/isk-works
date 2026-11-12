@@ -53,6 +53,7 @@ mod production_stage;
 mod retry_policy;
 pub mod skill_plans;
 pub mod skills;
+mod store_error;
 mod training;
 mod type_info;
 mod worksheet;
@@ -171,6 +172,7 @@ pub use opportunity_quality::{
 pub use owner::{Owner, OwnerId, OwnerKind};
 pub use production::*;
 pub use retry_policy::RetryPolicy;
+pub use store_error::StoreError;
 pub use training::{
     derive_training_state, skill_queue_capacity, SkillQueueEntry, TrainingState,
     SKILL_QUEUE_CAPACITY,

@@ -14,7 +14,7 @@ use crate::calendar_event::CharacterCalendarEvent;
 use crate::market_orders::CharacterMarketOrder;
 use crate::{
     CharacterIndustryJobObservation, CharacterSourceKind, CharacterSourceSyncState,
-    ConnectedCharacter, ConnectedCharacterId, EveEntityName, InventoryError, WorkspaceId,
+    ConnectedCharacter, ConnectedCharacterId, EveEntityName, StoreError, WorkspaceId,
 };
 
 /// A workspace's connections and each one's synced sources.
@@ -24,19 +24,19 @@ pub trait CharacterConnectionReader: Send + Sync {
     async fn list_connections(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<ConnectedCharacter>, InventoryError>;
+    ) -> Result<Vec<ConnectedCharacter>, StoreError>;
 
     /// One connection, disconnected or not.
     async fn get_connection(
         &self,
         id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError>;
+    ) -> Result<ConnectedCharacter, StoreError>;
 
     /// The sync state of each of a connection's sources.
     async fn character_source_state(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError>;
+    ) -> Result<Vec<CharacterSourceSyncState>, StoreError>;
 }
 
 /// A workspace character as the Market Orders page needs it.
@@ -59,7 +59,7 @@ pub trait TraderCharacterSource: Send + Sync {
     async fn trader_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError>;
+    ) -> Result<Vec<TraderCharacter>, StoreError>;
 }
 
 /// One connected character's PI-relevant sync state.
@@ -79,7 +79,7 @@ pub trait PlanetaryCharacterSource: Send + Sync {
     async fn planetary_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError>;
+    ) -> Result<Vec<PlanetaryCharacter>, StoreError>;
 }
 
 /// One connected character's skills source.
@@ -99,13 +99,13 @@ pub trait SkillsCharacterSource: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError>;
+    ) -> Result<Option<SkillsCharacter>, StoreError>;
 
     /// Every connected (not disconnected) character in the workspace.
     async fn skills_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError>;
+    ) -> Result<Vec<SkillsCharacter>, StoreError>;
 }
 
 /// Persistence for `character_source_sync_state`, kept narrow (register,
@@ -117,14 +117,14 @@ pub trait CharacterSyncRepository: Send + Sync {
     async fn register_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
     async fn begin_character_source_refresh(
         &self,
         connection_id: ConnectedCharacterId,
         source_kind: CharacterSourceKind,
         attempted_at: DateTime<Utc>,
         lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError>;
+    ) -> Result<Option<DateTime<Utc>>, StoreError>;
     async fn complete_character_source_refresh(
         &self,
         connection_id: ConnectedCharacterId,
@@ -133,7 +133,7 @@ pub trait CharacterSyncRepository: Send + Sync {
         next_refresh_at: DateTime<Utc>,
         summary: Value,
         observed_at: DateTime<Utc>,
-    ) -> Result<bool, InventoryError>;
+    ) -> Result<bool, StoreError>;
     async fn fail_character_source_refresh(
         &self,
         connection_id: ConnectedCharacterId,
@@ -142,18 +142,18 @@ pub trait CharacterSyncRepository: Send + Sync {
         attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: String,
-    ) -> Result<bool, InventoryError>;
+    ) -> Result<bool, StoreError>;
     /// Pushes every due source of this connection out to `until` -- for a
     /// failure that blocks all of them at once (the token refresh).
     async fn defer_character_sources(
         &self,
         connection_id: ConnectedCharacterId,
         until: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
     /// Whatever names are already cached in `eve_entity_names` for these
     /// IDs -- unresolved IDs are simply absent, never fetched here.
-    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError>;
-    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError>;
+    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, StoreError>;
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), StoreError>;
     /// Upserts every job of one jobs sync (running and finished) into the
     /// Jobs history. The source summary keeps only running jobs.
     async fn record_industry_jobs(
@@ -161,7 +161,7 @@ pub trait CharacterSyncRepository: Send + Sync {
         connection_id: ConnectedCharacterId,
         jobs: &[CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
     /// Every source's current persisted state for this connection --
     /// needed so name resolution can also pick up a corporation/solar-system
     /// id that was fetched on some earlier pass (before this ID's name was
@@ -172,20 +172,20 @@ pub trait CharacterSyncRepository: Send + Sync {
     async fn character_source_state(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError>;
+    ) -> Result<Vec<CharacterSourceSyncState>, StoreError>;
     /// Stored copies of these calendar events in the workspace, any
     /// connection's (see `CalendarEventRepository`).
     async fn calendar_event_copies(
         &self,
         workspace_id: WorkspaceId,
         event_ids: &[i64],
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError>;
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError>;
     /// Makes `events` the connection's whole stored calendar.
     async fn store_calendar_events(
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
     /// Makes `orders` the connection's open market orders, closing the rest
     /// (see `CharacterMarketOrderRepository`).
     async fn store_market_orders(
@@ -193,5 +193,5 @@ pub trait CharacterSyncRepository: Send + Sync {
         connection_id: ConnectedCharacterId,
         orders: &[CharacterMarketOrder],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }

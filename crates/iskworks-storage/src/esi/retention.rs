@@ -28,7 +28,7 @@ impl PgEsiRepository {
         &self,
         snapshots_per_chunk: i64,
         max_chunks: u32,
-    ) -> Result<EsiObservationPruneOutcome, InventoryError> {
+    ) -> Result<EsiObservationPruneOutcome, StoreError> {
         self.prune_in_chunks(
             r#"
             WITH doomed AS (
@@ -63,7 +63,7 @@ impl PgEsiRepository {
         &self,
         rows_per_chunk: i64,
         max_chunks: u32,
-    ) -> Result<EsiObservationPruneOutcome, InventoryError> {
+    ) -> Result<EsiObservationPruneOutcome, StoreError> {
         self.prune_in_chunks(
             r#"
             WITH doomed AS (
@@ -97,7 +97,7 @@ impl PgEsiRepository {
         chunk_sql: &str,
         per_chunk: i64,
         max_chunks: u32,
-    ) -> Result<EsiObservationPruneOutcome, InventoryError> {
+    ) -> Result<EsiObservationPruneOutcome, StoreError> {
         let mut outcome = EsiObservationPruneOutcome::default();
         outcome.drained = loop {
             if outcome.chunks_run >= max_chunks {

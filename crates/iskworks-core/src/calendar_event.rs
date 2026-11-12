@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use crate::{ConnectedCharacterId, StoreError, WorkspaceId};
 
 /// A character's answer to an event. Responses are per character, which is
 /// why events are stored per connection.
@@ -85,7 +85,7 @@ pub trait CalendarEventRepository: Send + Sync {
     async fn calendar_events(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError>;
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError>;
 
     /// Stored copies of these events held by any connection in the
     /// workspace, so a corp event one character already synced is not
@@ -94,7 +94,7 @@ pub trait CalendarEventRepository: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         event_ids: &[i64],
-    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError>;
+    ) -> Result<Vec<CharacterCalendarEvent>, StoreError>;
 
     /// Makes `events` the connection's whole set: events not in it are
     /// deleted, the rest inserted or updated.
@@ -102,13 +102,13 @@ pub trait CalendarEventRepository: Send + Sync {
         &self,
         connection_id: ConnectedCharacterId,
         events: &[CharacterCalendarEvent],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Every stored event of the workspace's connected characters.
     async fn workspace_calendar_events(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<WorkspaceCalendarEvent>, InventoryError>;
+    ) -> Result<Vec<WorkspaceCalendarEvent>, StoreError>;
 }
 
 #[cfg(test)]

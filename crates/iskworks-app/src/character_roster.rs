@@ -341,7 +341,7 @@ impl CharacterRosterService {
         entity_ids: HashSet<i64>,
     ) -> Result<HashMap<i64, String>, InventoryError> {
         let ids: Vec<i64> = entity_ids.into_iter().collect();
-        self.entity_names.entity_names(&ids).await
+        Ok(self.entity_names.entity_names(&ids).await?)
     }
 
     /// Skill names come from the local SDE type catalog, not ESI -- a

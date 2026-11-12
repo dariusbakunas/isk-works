@@ -13,7 +13,7 @@ use super::*;
 use crate::opportunity::*;
 use crate::{
     AdjustedPriceRepository, Build, BuildId, FacilityProfileId, IndustryError, IndustryRepository,
-    InventoryError, Money, PriceSource, PriceSourceId, PriceSourceItem,
+    Money, PriceSource, PriceSourceId, PriceSourceItem, StoreError,
 };
 
 struct FixtureIndustryRepository {
@@ -302,7 +302,7 @@ impl AdjustedPriceRepository for FixtureAdjustedPriceRepository {
         &self,
         type_ids: &[i64],
         _: DateTime<Utc>,
-    ) -> Result<BTreeMap<i64, Decimal>, InventoryError> {
+    ) -> Result<BTreeMap<i64, Decimal>, StoreError> {
         self.latest_adjusted_prices_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(type_ids

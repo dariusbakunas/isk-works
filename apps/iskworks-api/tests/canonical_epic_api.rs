@@ -59,7 +59,7 @@ impl iskworks_core::AdjustedPriceRepository for FixtureAdjustedPrices {
         &self,
         type_ids: &[i64],
         _as_of: chrono::DateTime<chrono::Utc>,
-    ) -> Result<BTreeMap<i64, Decimal>, iskworks_core::InventoryError> {
+    ) -> Result<BTreeMap<i64, Decimal>, iskworks_core::StoreError> {
         Ok(type_ids
             .iter()
             .map(|type_id| (*type_id, Decimal::from(10)))

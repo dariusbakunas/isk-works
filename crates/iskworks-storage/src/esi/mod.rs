@@ -7,8 +7,8 @@ use iskworks_core::{
 };
 use iskworks_core::{
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
-    ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, InventoryError,
-    InventoryEventId, InventoryPosting, MarketRefreshState, OwnerId, WorkspaceId,
+    ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, InventoryEventId,
+    InventoryPosting, MarketRefreshState, OwnerId, StoreError, WorkspaceId,
 };
 pub use iskworks_core::{PendingAuthorization, StoredRefreshToken};
 use rust_decimal::Decimal;

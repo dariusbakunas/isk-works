@@ -444,7 +444,7 @@ impl BuildMaterialsCoordinator {
                 .latest_adjusted_prices(&type_ids, now)
                 .await
                 .map_err(|error| {
-                    BuildMaterialsError::Preview(BuildPreviewError::Inventory(error))
+                    BuildMaterialsError::Preview(BuildPreviewError::Inventory(error.into()))
                 })?;
             return Ok((values, Some(now)));
         }

@@ -33,25 +33,25 @@ pub trait AdjustedPriceRepository: Send + Sync {
         &self,
         type_ids: &[i64],
         as_of: DateTime<Utc>,
-    ) -> Result<BTreeMap<i64, Decimal>, crate::InventoryError>;
+    ) -> Result<BTreeMap<i64, Decimal>, crate::StoreError>;
 
     async fn latest_adjusted_price_observed_at(
         &self,
         _type_ids: &[i64],
-    ) -> Result<Option<DateTime<Utc>>, crate::InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, crate::StoreError> {
         Ok(None)
     }
 
     async fn adjusted_price_refresh_overlay(
         &self,
-    ) -> Result<EvidenceRefreshOverlay, crate::InventoryError> {
+    ) -> Result<EvidenceRefreshOverlay, crate::StoreError> {
         Ok(EvidenceRefreshOverlay::default())
     }
 
     async fn register_adjusted_price_refresh(
         &self,
         _now: DateTime<Utc>,
-    ) -> Result<(), crate::InventoryError> {
+    ) -> Result<(), crate::StoreError> {
         Ok(())
     }
 
@@ -59,28 +59,28 @@ pub trait AdjustedPriceRepository: Send + Sync {
         &self,
         _solar_system_id: i64,
         _now: DateTime<Utc>,
-    ) -> Result<(), crate::InventoryError> {
+    ) -> Result<(), crate::StoreError> {
         Ok(())
     }
 
     async fn latest_system_cost_index(
         &self,
         _solar_system_id: i64,
-    ) -> Result<Option<(Decimal, DateTime<Utc>)>, crate::InventoryError> {
+    ) -> Result<Option<(Decimal, DateTime<Utc>)>, crate::StoreError> {
         Ok(None)
     }
 
     async fn system_cost_index_refresh_overlay(
         &self,
         _solar_system_id: i64,
-    ) -> Result<EvidenceRefreshOverlay, crate::InventoryError> {
+    ) -> Result<EvidenceRefreshOverlay, crate::StoreError> {
         Ok(EvidenceRefreshOverlay::default())
     }
 
     async fn prioritize_adjusted_price_refresh(
         &self,
         _now: DateTime<Utc>,
-    ) -> Result<bool, crate::InventoryError> {
+    ) -> Result<bool, crate::StoreError> {
         Ok(false)
     }
 
@@ -88,7 +88,7 @@ pub trait AdjustedPriceRepository: Send + Sync {
         &self,
         _solar_system_id: i64,
         _now: DateTime<Utc>,
-    ) -> Result<bool, crate::InventoryError> {
+    ) -> Result<bool, crate::StoreError> {
         Ok(false)
     }
 }

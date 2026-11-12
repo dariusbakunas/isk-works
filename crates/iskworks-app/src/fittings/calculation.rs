@@ -159,7 +159,7 @@ impl FittingService {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SkillsCharacter>, InventoryError> {
         match &self.characters {
-            Some(characters) => characters.skills_characters(workspace_id).await,
+            Some(characters) => Ok(characters.skills_characters(workspace_id).await?),
             None => Ok(Vec::new()),
         }
     }

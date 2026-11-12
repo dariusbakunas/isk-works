@@ -24,13 +24,16 @@ pub(super) fn integration_response(error: EsiApplicationError) -> (StatusCode, E
         | EsiApplicationError::Protocol(iskworks_esi::EsiError::InvalidIdentity) => {
             (StatusCode::BAD_GATEWAY, "invalid_esi_response", true)
         }
-        EsiApplicationError::Persistence(InventoryError::RevisionConflict) => {
+        EsiApplicationError::Persistence(StoreError::Conflict)
+        | EsiApplicationError::Inventory(InventoryError::RevisionConflict) => {
             (StatusCode::CONFLICT, "revision_conflict", false)
         }
-        EsiApplicationError::Persistence(InventoryError::ItemNotFound) => {
+        EsiApplicationError::Persistence(StoreError::NotFound)
+        | EsiApplicationError::Inventory(InventoryError::ItemNotFound) => {
             (StatusCode::NOT_FOUND, "integration_record_not_found", false)
         }
-        EsiApplicationError::Persistence(InventoryError::Validation(_)) => {
+        EsiApplicationError::Persistence(StoreError::Validation(_))
+        | EsiApplicationError::Inventory(InventoryError::Validation(_)) => {
             (StatusCode::BAD_REQUEST, "validation_failed", false)
         }
         EsiApplicationError::Configuration(_) => {

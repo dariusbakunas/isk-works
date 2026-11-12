@@ -1,7 +1,7 @@
 use iskworks_core::{
     apply_inventory_event, exact_total, purchase_posting, CostInputQuality,
-    FinanceInventoryRecording, InventoryBalance, InventoryItemKey, InventoryPreview,
-    PostInventoryCommand, WorkspaceId,
+    FinanceInventoryRecording, InventoryBalance, InventoryError, InventoryItemKey,
+    InventoryPreview, PostInventoryCommand, WorkspaceId,
 };
 
 use super::*;

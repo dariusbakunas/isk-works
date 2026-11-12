@@ -28,7 +28,7 @@ impl SkillsCharacterSource for FakeSkillsCharacters {
         &self,
         _workspace_id: WorkspaceId,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
+    ) -> Result<Option<SkillsCharacter>, iskworks_core::StoreError> {
         Ok(self
             .0
             .iter()
@@ -39,7 +39,7 @@ impl SkillsCharacterSource for FakeSkillsCharacters {
     async fn skills_characters(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+    ) -> Result<Vec<SkillsCharacter>, iskworks_core::StoreError> {
         Ok(self.0.clone())
     }
 }

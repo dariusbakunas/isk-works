@@ -11,7 +11,7 @@ use iskworks_core::order::OrderError;
 use iskworks_core::{
     AppError, AuthError, BlueprintError, BuildPlanningError, ComponentExpansionError,
     FacilityError, FinanceError, IndustryError, InventoryError, MarketError, OpportunityError,
-    ProductionError, ReactionPlanningError,
+    ProductionError, ReactionPlanningError, StoreError,
 };
 use iskworks_sde::SdeError;
 use serde::Serialize;
@@ -191,6 +191,15 @@ impl From<IndustryError> for ApiError {
 impl From<InventoryError> for ApiError {
     fn from(value: InventoryError) -> Self {
         Self::Inventory(value)
+    }
+}
+
+/// A store port's error reaches the client as the `InventoryError` it was
+/// before those ports had their own error, so its code and message are
+/// unchanged.
+impl From<StoreError> for ApiError {
+    fn from(value: StoreError) -> Self {
+        Self::Inventory(value.into())
     }
 }
 
@@ -530,11 +539,20 @@ fn opportunity_internal_failure(
     }
 }
 
-/// `EsiApplicationError::Persistence` wraps an `InventoryError`. Three of its
+/// `EsiApplicationError::Persistence` wraps a `StoreError`. Three of its
 /// variants have deliberate cross-cutting HTTP mappings
 /// (`revision_conflict`, `integration_record_not_found`, `validation_failed`)
 /// and stay curated; every other value is a raw storage failure.
-fn integration_internal_failure(
+fn integration_internal_failure(error: &StoreError) -> Option<(InternalFailureCategory, String)> {
+    match error {
+        StoreError::Conflict | StoreError::NotFound | StoreError::Validation(_) => None,
+        other => persistence_failure(format!("integration persistence: {other}")),
+    }
+}
+
+/// `EsiApplicationError::Inventory` (recording a wallet purchase) keeps the
+/// same three curated mappings; anything else is redacted like storage.
+fn integration_inventory_internal_failure(
     error: &InventoryError,
 ) -> Option<(InternalFailureCategory, String)> {
     match error {
@@ -596,6 +614,9 @@ impl ApiError {
             Self::Opportunity(error) => opportunity_internal_failure(error),
             Self::Integration(EsiApplicationError::Persistence(inner)) => {
                 integration_internal_failure(inner)
+            }
+            Self::Integration(EsiApplicationError::Inventory(inner)) => {
+                integration_inventory_internal_failure(inner)
             }
             Self::Auth(AuthApplicationError::Persistence(AuthError::Persistence(detail))) => {
                 persistence_failure(format!("auth persistence: {detail}"))

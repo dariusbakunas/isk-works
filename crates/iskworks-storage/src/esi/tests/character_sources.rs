@@ -556,7 +556,7 @@ async fn mark_connection_unrefreshable_rejects_non_failure_statuses(pool: PgPool
             repository
                 .mark_connection_unrefreshable(connection.id, status, "nope")
                 .await,
-            Err(InventoryError::Validation(_))
+            Err(StoreError::Validation(_))
         ));
     }
 }

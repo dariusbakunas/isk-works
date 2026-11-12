@@ -15,7 +15,7 @@ use serde::Serialize;
 use crate::order::TicketId;
 use crate::{
     bucket_start, next_bucket, CharacterIndustryJobObservation, ConnectedCharacterId, Granularity,
-    IndustryActivity, InventoryError, Money, WorkspaceId,
+    IndustryActivity, Money, StoreError, WorkspaceId,
 };
 
 /// Longest history window the API accepts.
@@ -89,18 +89,18 @@ pub trait IndustryJobRepository: Send + Sync {
         workspace_id: WorkspaceId,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<StoredIndustryJob>, InventoryError>;
+    ) -> Result<Vec<StoredIndustryJob>, StoreError>;
     /// When ISK Works first stored any job in the workspace.
     async fn earliest_job_seen(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError>;
+    ) -> Result<Option<DateTime<Utc>>, StoreError>;
     /// The Board ticket each of these jobs is linked to, if any.
     async fn ticket_links(
         &self,
         workspace_id: WorkspaceId,
         job_ids: &[i64],
-    ) -> Result<HashMap<i64, JobTicketLink>, InventoryError>;
+    ) -> Result<HashMap<i64, JobTicketLink>, StoreError>;
     /// Upserts every job of one connection's jobs sync (running and
     /// finished). Unchanged rows only bump `last_seen_at`; `first_seen_at`
     /// is kept.
@@ -109,7 +109,7 @@ pub trait IndustryJobRepository: Send + Sync {
         connection_id: ConnectedCharacterId,
         jobs: &[CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 /// Counts for the Active tab's summary strip.

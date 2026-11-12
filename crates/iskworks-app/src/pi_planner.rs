@@ -66,6 +66,13 @@ pub enum PiPlannerError {
     Solver(String),
 }
 
+/// A store port's error, as the `InventoryError` it was before.
+impl From<iskworks_core::StoreError> for PiPlannerError {
+    fn from(error: iskworks_core::StoreError) -> Self {
+        Self::Inventory(error.into())
+    }
+}
+
 fn invalid(message: &str) -> PiPlannerError {
     PiPlannerError::Inventory(InventoryError::Validation(message.to_string()))
 }

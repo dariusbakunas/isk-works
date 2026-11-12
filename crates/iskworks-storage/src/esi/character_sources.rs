@@ -6,8 +6,8 @@ use iskworks_core::esi_scope::{MARKET_ORDERS_SCOPE, PLANETS_SCOPE, SKILLS_SCOPE}
 use iskworks_core::market_orders::accounting_level;
 use iskworks_core::{
     CharacterConnectionReader, CharacterSourceKind, ConnectedCharacter, ConnectedCharacterId,
-    InventoryError, MarketRefreshState, PlanetaryCharacter, PlanetaryCharacterSource,
-    SkillsCharacter, SkillsCharacterSource, TraderCharacter, TraderCharacterSource, WorkspaceId,
+    MarketRefreshState, PlanetaryCharacter, PlanetaryCharacterSource, SkillsCharacter,
+    SkillsCharacterSource, StoreError, TraderCharacter, TraderCharacterSource, WorkspaceId,
 };
 
 use super::PgEsiRepository;
@@ -17,7 +17,7 @@ impl TraderCharacterSource for PgEsiRepository {
     async fn trader_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<TraderCharacter>, InventoryError> {
+    ) -> Result<Vec<TraderCharacter>, StoreError> {
         let mut characters = Vec::new();
         for connection in self.list_connections(workspace_id).await? {
             if connection.disconnected_at.is_some() {
@@ -53,7 +53,7 @@ impl PlanetaryCharacterSource for PgEsiRepository {
     async fn planetary_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
+    ) -> Result<Vec<PlanetaryCharacter>, StoreError> {
         let connections = self.list_connections(workspace_id).await?;
         let mut characters = Vec::with_capacity(connections.len());
         for connection in connections
@@ -89,7 +89,7 @@ impl SkillsCharacterSource for PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         connection_id: ConnectedCharacterId,
-    ) -> Result<Option<SkillsCharacter>, InventoryError> {
+    ) -> Result<Option<SkillsCharacter>, StoreError> {
         let Some(connection) =
             self.list_connections(workspace_id)
                 .await?
@@ -106,7 +106,7 @@ impl SkillsCharacterSource for PgEsiRepository {
     async fn skills_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+    ) -> Result<Vec<SkillsCharacter>, StoreError> {
         let mut characters = Vec::new();
         for connection in self
             .list_connections(workspace_id)
@@ -123,7 +123,7 @@ impl SkillsCharacterSource for PgEsiRepository {
 async fn skills_character(
     repository: &PgEsiRepository,
     connection: ConnectedCharacter,
-) -> Result<SkillsCharacter, InventoryError> {
+) -> Result<SkillsCharacter, StoreError> {
     let skills = repository
         .character_source_state(connection.id)
         .await?

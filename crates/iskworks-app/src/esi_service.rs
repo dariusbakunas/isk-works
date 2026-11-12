@@ -17,8 +17,8 @@ use iskworks_core::{
     ConnectedCharacter, ConnectedCharacterId, ConnectionStatus, EntityNameRepository,
     EsiAssetSnapshotRepository, EsiConnectionRepository, EsiSyncKind, EsiSyncRun,
     EsiSyncRunRepository, EsiWalletRepository, EvidenceRefreshRepository, FacilityError,
-    InventoryError, OwnerId, PendingAuthorization, StoredRefreshToken, StructureNameRepository,
-    WorkspaceId,
+    InventoryError, OwnerId, PendingAuthorization, StoreError, StoredRefreshToken,
+    StructureNameRepository, WorkspaceId,
 };
 use iskworks_esi::{
     authorization_url, hash_state, new_pkce, AssetObservation, BlueprintAssetObservation,
@@ -121,7 +121,11 @@ pub enum EsiApplicationError {
     #[error("{0}")]
     Protocol(#[from] EsiError),
     #[error("{0}")]
-    Persistence(#[from] InventoryError),
+    Persistence(#[from] StoreError),
+    /// Recording a wallet purchase into inventory (an inventory rule, not
+    /// ESI storage).
+    #[error("{0}")]
+    Inventory(#[from] InventoryError),
     #[error("{0}")]
     Facility(#[from] FacilityError),
     #[error("{0}")]

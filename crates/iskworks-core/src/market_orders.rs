@@ -24,7 +24,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::{ConnectedCharacterId, InventoryError, MarketOrderSide, WorkspaceId};
+use crate::{ConnectedCharacterId, MarketOrderSide, StoreError, WorkspaceId};
 
 /// How far a buy order reaches. Sell orders are always `Region` in ESI, but
 /// only sell to buyers at their own location.
@@ -177,13 +177,13 @@ pub trait CharacterMarketOrderRepository: Send + Sync {
         connection_id: ConnectedCharacterId,
         orders: &[CharacterMarketOrder],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Every open order of the workspace's connected characters.
     async fn open_market_orders(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<WorkspaceMarketOrder>, InventoryError>;
+    ) -> Result<Vec<WorkspaceMarketOrder>, StoreError>;
 }
 
 #[cfg(test)]

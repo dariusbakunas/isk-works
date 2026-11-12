@@ -341,7 +341,7 @@ impl PlanetaryCharacterSource for FakeCharacters {
     async fn planetary_characters(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
+    ) -> Result<Vec<PlanetaryCharacter>, iskworks_core::StoreError> {
         Ok(vec![PlanetaryCharacter {
             connection_id: ConnectedCharacterId(Uuid::from_u128(1)),
             eve_character_id: 2_119_000_001,
@@ -364,14 +364,14 @@ impl PlanetaryPreferencesRepository for FakePreferences {
     async fn planetary_preferences(
         &self,
         _: WorkspaceId,
-    ) -> Result<PlanetaryPreferences, InventoryError> {
+    ) -> Result<PlanetaryPreferences, iskworks_core::StoreError> {
         Ok(PlanetaryPreferences::default())
     }
     async fn save_planetary_preferences(
         &self,
         _: WorkspaceId,
         _: &PlanetaryPreferences,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         Ok(())
     }
 }

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    AssetObservation, BlueprintAssetObservation, ConnectedCharacter, EsiSyncRun, InventoryError,
+    AssetObservation, BlueprintAssetObservation, ConnectedCharacter, EsiSyncRun, StoreError,
     StructureInformation,
 };
 
@@ -30,7 +30,7 @@ pub trait EsiAssetSnapshotRepository: Send + Sync {
         observations: &[AssetObservation],
         etag: Option<&str>,
         skipped_blueprints: u64,
-    ) -> Result<SyncCompletion, InventoryError>;
+    ) -> Result<SyncCompletion, StoreError>;
 
     /// One durable row per `(workspace_id, owner_id, eve_item_id)`: upsert
     /// every blueprint ESI reports and delete the rows for any this
@@ -51,7 +51,7 @@ pub trait EsiAssetSnapshotRepository: Send + Sync {
         connection: &ConnectedCharacter,
         observations: &[BlueprintAssetObservation],
         retained_item_ids: &[i64],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Stores the pages fetched so far as an inactive, incomplete snapshot
     /// and fails the run, so the previous complete snapshot stays active.
@@ -61,7 +61,7 @@ pub trait EsiAssetSnapshotRepository: Send + Sync {
         pages: u32,
         observations: &[AssetObservation],
         summary: &str,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]
@@ -71,7 +71,7 @@ pub trait StructureNameRepository: Send + Sync {
     async fn unresolved_structure_ids(
         &self,
         connection: &ConnectedCharacter,
-    ) -> Result<Vec<i64>, InventoryError>;
+    ) -> Result<Vec<i64>, StoreError>;
 
     /// Which of `structure_ids` this character should look up now: those
     /// without a workspace name resolved since `stale_before` (pass `None`
@@ -83,14 +83,14 @@ pub trait StructureNameRepository: Send + Sync {
         structure_ids: &[i64],
         stale_before: Option<DateTime<Utc>>,
         now: DateTime<Utc>,
-    ) -> Result<Vec<i64>, InventoryError>;
+    ) -> Result<Vec<i64>, StoreError>;
 
     /// Stores looked-up structure names for the connection's workspace.
     async fn cache_structure_names(
         &self,
         connection: &ConnectedCharacter,
         structures: &[StructureInformation],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 
     /// Remembers that this character can't look these structures up (ESI
     /// answered 403 or 404) until `denied_until`.
@@ -99,5 +99,5 @@ pub trait StructureNameRepository: Send + Sync {
         connection: &ConnectedCharacter,
         structure_ids: &[i64],
         denied_until: DateTime<Utc>,
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }

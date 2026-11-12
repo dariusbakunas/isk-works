@@ -16,7 +16,7 @@ impl IndustryJobRepository for PgEsiRepository {
         workspace_id: WorkspaceId,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<StoredIndustryJob>, InventoryError> {
+    ) -> Result<Vec<StoredIndustryJob>, StoreError> {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(
             Uuid,
@@ -85,7 +85,7 @@ impl IndustryJobRepository for PgEsiRepository {
     async fn earliest_job_seen(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         sqlx::query_scalar(
             "SELECT MIN(first_seen_at) FROM character_industry_jobs WHERE workspace_id = $1",
         )
@@ -99,7 +99,7 @@ impl IndustryJobRepository for PgEsiRepository {
         &self,
         workspace_id: WorkspaceId,
         job_ids: &[i64],
-    ) -> Result<HashMap<i64, JobTicketLink>, InventoryError> {
+    ) -> Result<HashMap<i64, JobTicketLink>, StoreError> {
         if job_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -132,7 +132,7 @@ impl IndustryJobRepository for PgEsiRepository {
         connection_id: ConnectedCharacterId,
         jobs: &[iskworks_core::CharacterIndustryJobObservation],
         observed_at: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         if jobs.is_empty() {
             return Ok(());
         }

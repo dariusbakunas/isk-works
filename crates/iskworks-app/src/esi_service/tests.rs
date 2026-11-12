@@ -1547,21 +1547,21 @@ impl CharacterConnectionReader for RacedRefreshConnections {
     async fn list_connections(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<ConnectedCharacter>, InventoryError> {
+    ) -> Result<Vec<ConnectedCharacter>, StoreError> {
         unimplemented!("refresh never lists connections")
     }
 
     async fn get_connection(
         &self,
         _id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         unimplemented!("a refresh that lost the race never saved, so never re-reads")
     }
 
     async fn character_source_state(
         &self,
         _connection_id: ConnectedCharacterId,
-    ) -> Result<Vec<iskworks_core::CharacterSourceSyncState>, InventoryError> {
+    ) -> Result<Vec<iskworks_core::CharacterSourceSyncState>, StoreError> {
         unimplemented!("refresh never reads source state")
     }
 }
@@ -1575,14 +1575,14 @@ impl EsiConnectionRepository for RacedRefreshConnections {
         _owner_id: OwnerId,
         _verifier: EncryptedSecret,
         _scopes: &[String],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         unimplemented!("refresh never starts a login")
     }
 
     async fn consume_authorization(
         &self,
         _state_hash: &str,
-    ) -> Result<PendingAuthorization, InventoryError> {
+    ) -> Result<PendingAuthorization, StoreError> {
         unimplemented!("refresh never completes a login")
     }
 
@@ -1594,7 +1594,7 @@ impl EsiConnectionRepository for RacedRefreshConnections {
         _scopes: &[String],
         _expires_at: chrono::DateTime<Utc>,
         _refresh_token: EncryptedSecret,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         unimplemented!("refresh never completes a login")
     }
 
@@ -1604,14 +1604,14 @@ impl EsiConnectionRepository for RacedRefreshConnections {
         _owner_id: OwnerId,
         _envelope: EncryptedSecret,
         _scopes: &[String],
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         unimplemented!("refresh never connects")
     }
 
     async fn load_refresh_token(
         &self,
         _id: ConnectedCharacterId,
-    ) -> Result<StoredRefreshToken, InventoryError> {
+    ) -> Result<StoredRefreshToken, StoreError> {
         let cipher = SecretCipher::for_tests();
         let mut loads = self.loads.lock().unwrap();
         *loads += 1;
@@ -1640,7 +1640,7 @@ impl EsiConnectionRepository for RacedRefreshConnections {
         _access_token: EncryptedSecret,
         _scopes: &[String],
         _expires_at: chrono::DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         self.saved_revisions
             .lock()
             .unwrap()
@@ -1653,14 +1653,14 @@ impl EsiConnectionRepository for RacedRefreshConnections {
         _id: ConnectedCharacterId,
         _status: ConnectionStatus,
         _error_code: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         unimplemented!("losing the race does not flag the connection")
     }
 
     async fn disconnect(
         &self,
         _id: ConnectedCharacterId,
-    ) -> Result<ConnectedCharacter, InventoryError> {
+    ) -> Result<ConnectedCharacter, StoreError> {
         unimplemented!("refresh never disconnects")
     }
 }
@@ -1717,7 +1717,7 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         &self,
         connection: &ConnectedCharacter,
         kind: EsiSyncKind,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         self.record(format!("start {kind:?}"));
         Ok(EsiSyncRun {
             id: EsiSyncRunId(uuid::Uuid::nil()),
@@ -1742,7 +1742,7 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         _run_id: EsiSyncRunId,
         _code: &str,
         _summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         unimplemented!("an unchanged sync does not fail")
     }
 
@@ -1750,7 +1750,7 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         &self,
         _run_id: EsiSyncRunId,
         metadata: &iskworks_core::EsiResponseMetadata,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.record(format!("metadata etag={:?}", metadata.etag));
         Ok(())
     }
@@ -1759,7 +1759,7 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         &self,
         _connection_id: ConnectedCharacterId,
         endpoint_kind: &str,
-    ) -> Result<Option<String>, InventoryError> {
+    ) -> Result<Option<String>, StoreError> {
         self.record(format!("checkpoint {endpoint_kind}"));
         Ok(Some("\"stored-etag\"".to_string()))
     }
@@ -1769,7 +1769,7 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         run: &EsiSyncRun,
         endpoint_kind: &str,
         _summary: &str,
-    ) -> Result<EsiSyncRun, InventoryError> {
+    ) -> Result<EsiSyncRun, StoreError> {
         self.record(format!("unchanged {endpoint_kind}"));
         Ok(EsiSyncRun {
             status: iskworks_core::EsiSyncStatus::Succeeded,
@@ -1779,14 +1779,14 @@ impl EsiSyncRunRepository for RecordingSyncRuns {
         })
     }
 
-    async fn get_sync_run(&self, _id: EsiSyncRunId) -> Result<EsiSyncRun, InventoryError> {
+    async fn get_sync_run(&self, _id: EsiSyncRunId) -> Result<EsiSyncRun, StoreError> {
         unimplemented!("the service returns the completed run it was given")
     }
 
     async fn list_sync_runs(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<EsiSyncRun>, InventoryError> {
+    ) -> Result<Vec<EsiSyncRun>, StoreError> {
         unimplemented!("syncing never lists runs")
     }
 }
@@ -1914,7 +1914,7 @@ impl EsiAssetSnapshotRepository for RecordingAssetSnapshots {
         _observations: &[AssetObservation],
         _etag: Option<&str>,
         _skipped_blueprints: u64,
-    ) -> Result<iskworks_core::SyncCompletion, InventoryError> {
+    ) -> Result<iskworks_core::SyncCompletion, StoreError> {
         panic!("a sync whose pages changed must not store a complete snapshot")
     }
 
@@ -1923,7 +1923,7 @@ impl EsiAssetSnapshotRepository for RecordingAssetSnapshots {
         _connection: &ConnectedCharacter,
         _observations: &[BlueprintAssetObservation],
         _retained_item_ids: &[i64],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         panic!("a sync whose pages changed never reaches blueprints")
     }
 
@@ -1933,7 +1933,7 @@ impl EsiAssetSnapshotRepository for RecordingAssetSnapshots {
         pages: u32,
         observations: &[AssetObservation],
         summary: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.incomplete.lock().unwrap().push((
             pages,
             observations.iter().map(|asset| asset.item_id).collect(),
@@ -2061,7 +2061,7 @@ impl EsiWalletRepository for UnresolvedClientsWallet {
         _run: &EsiSyncRun,
         _observations: &[WalletTransactionObservation],
         _etag: Option<&str>,
-    ) -> Result<iskworks_core::SyncCompletion, InventoryError> {
+    ) -> Result<iskworks_core::SyncCompletion, StoreError> {
         unimplemented!("enrichment never stores transactions")
     }
 
@@ -2069,7 +2069,7 @@ impl EsiWalletRepository for UnresolvedClientsWallet {
         &self,
         _connection_id: ConnectedCharacterId,
         _entries: &[iskworks_esi::WalletJournalObservation],
-    ) -> Result<u64, InventoryError> {
+    ) -> Result<u64, StoreError> {
         unimplemented!("enrichment never stores the journal")
     }
 
@@ -2079,14 +2079,14 @@ impl EsiWalletRepository for UnresolvedClientsWallet {
         _balance: Decimal,
         _observed_at: chrono::DateTime<Utc>,
         _source_checksum: &str,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         unimplemented!("enrichment never stores the balance")
     }
 
     async fn unresolved_wallet_client_ids(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         Ok(self.client_ids.clone())
     }
 }
@@ -2103,11 +2103,11 @@ impl EntityNameRepository for RecordingEntityNames {
     async fn entity_names(
         &self,
         _ids: &[i64],
-    ) -> Result<std::collections::HashMap<i64, String>, InventoryError> {
+    ) -> Result<std::collections::HashMap<i64, String>, StoreError> {
         unimplemented!("enrichment only writes names")
     }
 
-    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), StoreError> {
         self.cached
             .lock()
             .unwrap()
@@ -2115,7 +2115,7 @@ impl EntityNameRepository for RecordingEntityNames {
         Ok(())
     }
 
-    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), InventoryError> {
+    async fn record_entity_name_misses(&self, ids: &[i64]) -> Result<(), StoreError> {
         self.misses.lock().unwrap().extend_from_slice(ids);
         Ok(())
     }
@@ -2168,7 +2168,7 @@ impl AdjustedPriceRepository for StoredAdjustedPrices {
         &self,
         type_ids: &[i64],
         _as_of: DateTime<Utc>,
-    ) -> Result<std::collections::BTreeMap<i64, Decimal>, InventoryError> {
+    ) -> Result<std::collections::BTreeMap<i64, Decimal>, StoreError> {
         *self.reads.lock().unwrap() += 1;
         Ok(type_ids
             .iter()
@@ -2189,17 +2189,14 @@ type PriceSave = (Vec<i64>, DateTime<Utc>, Option<String>);
 
 #[async_trait::async_trait]
 impl EvidenceRefreshRepository for RecordingPriceSaves {
-    async fn adjusted_price_refresh_due(
-        &self,
-        _now: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    async fn adjusted_price_refresh_due(&self, _now: DateTime<Utc>) -> Result<bool, StoreError> {
         unimplemented!()
     }
     async fn begin_adjusted_price_refresh(
         &self,
         _attempted_at: DateTime<Utc>,
         _lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         unimplemented!()
     }
     async fn complete_adjusted_price_refresh(
@@ -2210,7 +2207,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,
         _etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!()
     }
     async fn fail_adjusted_price_refresh(
@@ -2219,7 +2216,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _attempted_at: DateTime<Utc>,
         _next_refresh_at: DateTime<Utc>,
         _error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!()
     }
     async fn save_adjusted_prices(
@@ -2228,7 +2225,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _observed_at: DateTime<Utc>,
         expires_at: DateTime<Utc>,
         etag: Option<&str>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.saves.lock().unwrap().push((
             prices.iter().map(|price| price.type_id).collect(),
             expires_at,
@@ -2240,7 +2237,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         &self,
         _now: DateTime<Utc>,
         _limit: i64,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         unimplemented!()
     }
     async fn begin_system_cost_index_refresh(
@@ -2248,7 +2245,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _solar_system_id: i64,
         _attempted_at: DateTime<Utc>,
         _lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         unimplemented!()
     }
     async fn complete_system_cost_index_refresh(
@@ -2260,7 +2257,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,
         _etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!()
     }
     async fn fail_system_cost_index_refresh(
@@ -2270,7 +2267,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _attempted_at: DateTime<Utc>,
         _next_refresh_at: DateTime<Utc>,
         _error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         unimplemented!()
     }
 }

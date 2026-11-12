@@ -9,9 +9,9 @@ use iskworks_api::{build_router, AppState};
 use iskworks_app::{FakePlanetaryCharacters, PlanetaryCharacter};
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
-    CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId, InventoryError,
-    MarketError, MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource,
-    MarketRefreshState, MarketScope, Money, PriceSourceId, WorkspaceId,
+    CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacterId, MarketError,
+    MarketOrderBook, MarketOrderSide, MarketOrderView, MarketPriceSource, MarketRefreshState,
+    MarketScope, Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
     ActiveSde, PlanetReference, PlanetSchematic, PlanetSchematicLine, SdeError, TypeReference,
@@ -91,14 +91,14 @@ impl PlanetaryPreferencesRepository for FakePreferences {
     async fn planetary_preferences(
         &self,
         _: WorkspaceId,
-    ) -> Result<PlanetaryPreferences, InventoryError> {
+    ) -> Result<PlanetaryPreferences, iskworks_core::StoreError> {
         Ok(self.0.lock().unwrap().clone())
     }
     async fn save_planetary_preferences(
         &self,
         _: WorkspaceId,
         preferences: &PlanetaryPreferences,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         *self.0.lock().unwrap() = preferences.clone();
         Ok(())
     }

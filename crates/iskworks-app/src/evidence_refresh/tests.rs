@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use iskworks_core::{AdjustedPrice, InventoryError};
+use iskworks_core::{AdjustedPrice, StoreError};
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, EsiResponse, EsiResponseMetadata,
     IndustrySystemCostIndex, PkceVerifier, RefreshedToken, StructureInformation,
@@ -67,14 +67,11 @@ impl AdjustedPriceRepository for FakeEvidence {
         &self,
         _type_ids: &[i64],
         _as_of: DateTime<Utc>,
-    ) -> Result<BTreeMap<i64, Decimal>, InventoryError> {
+    ) -> Result<BTreeMap<i64, Decimal>, StoreError> {
         unimplemented!("refresh never reads prices")
     }
 
-    async fn register_adjusted_price_refresh(
-        &self,
-        _now: DateTime<Utc>,
-    ) -> Result<(), InventoryError> {
+    async fn register_adjusted_price_refresh(&self, _now: DateTime<Utc>) -> Result<(), StoreError> {
         self.record(Write::Registered);
         Ok(())
     }
@@ -82,10 +79,7 @@ impl AdjustedPriceRepository for FakeEvidence {
 
 #[async_trait]
 impl EvidenceRefreshRepository for FakeEvidence {
-    async fn adjusted_price_refresh_due(
-        &self,
-        _now: DateTime<Utc>,
-    ) -> Result<bool, InventoryError> {
+    async fn adjusted_price_refresh_due(&self, _now: DateTime<Utc>) -> Result<bool, StoreError> {
         Ok(self.prices_due)
     }
 
@@ -93,7 +87,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         &self,
         _attempted_at: DateTime<Utc>,
         _lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         Ok(Some(claim_at()))
     }
 
@@ -105,7 +99,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,
         _etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         assert_eq!(claim, claim_at());
         self.record(Write::PricesCompleted {
             type_ids: prices.iter().map(|price| price.type_id).collect(),
@@ -120,7 +114,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         _attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         _error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         assert_eq!(claim, claim_at());
         self.record(Write::PricesFailed { next_refresh_at });
         Ok(true)
@@ -132,7 +126,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         _observed_at: DateTime<Utc>,
         _expires_at: DateTime<Utc>,
         _etag: Option<&str>,
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         unimplemented!("refresh completes its claim instead")
     }
 
@@ -140,7 +134,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         &self,
         _now: DateTime<Utc>,
         _limit: i64,
-    ) -> Result<Vec<i64>, InventoryError> {
+    ) -> Result<Vec<i64>, StoreError> {
         Ok(self.candidates.clone())
     }
 
@@ -149,7 +143,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         solar_system_id: i64,
         _attempted_at: DateTime<Utc>,
         _lease_expires_at: DateTime<Utc>,
-    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+    ) -> Result<Option<DateTime<Utc>>, StoreError> {
         Ok((!self.lost_claims.contains(&solar_system_id)).then(claim_at))
     }
 
@@ -162,7 +156,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,
         _etag: Option<&str>,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         assert_eq!(claim, claim_at());
         self.record(Write::IndexCompleted {
             system_id: solar_system_id,
@@ -179,7 +173,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         _attempted_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         error_message: &str,
-    ) -> Result<bool, InventoryError> {
+    ) -> Result<bool, StoreError> {
         assert_eq!(claim, claim_at());
         self.record(Write::IndexFailed {
             system_id: solar_system_id,

@@ -39,7 +39,7 @@ impl PlanetaryCharacterSource for FakePlanetaryCharacters {
     async fn planetary_characters(
         &self,
         _workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryCharacter>, InventoryError> {
+    ) -> Result<Vec<PlanetaryCharacter>, iskworks_core::StoreError> {
         Ok(self.0.clone())
     }
 }
@@ -236,7 +236,7 @@ impl PlanetaryService {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<PlanetaryPreferences, InventoryError> {
-        self.preferences.planetary_preferences(workspace_id).await
+        Ok(self.preferences.planetary_preferences(workspace_id).await?)
     }
 
     pub async fn save_preferences(
