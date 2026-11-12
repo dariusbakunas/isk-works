@@ -7,6 +7,7 @@ import { InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { rackLabel } from "./fittings-format";
 import { apiMessage } from "../../api/api-error";
+import { useStableCallback } from "../../hooks/use-stable-callback";
 
 /** The racks a preview lists, in the client's order. */
 const PREVIEW_RACKS: SlotKind[] = ["high", "med", "low", "rig", "subsystem", "service", "drone_bay", "fighter_bay", "cargo"];
@@ -46,6 +47,13 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Names the fit from the preview unless the name was edited, as it is
+  // when the preview lands (not when the text changed).
+  const showPreview = useStableCallback((result: FitTextPreview) => {
+    setPreview(result);
+    if (result.fit && !nameEdited) setName(result.fit.name);
+  });
+
   useEffect(() => {
     if (!text.trim()) {
       setPreview(null);
@@ -54,10 +62,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       previewFitText(text, controller.signal)
-        .then((result) => {
-          setPreview(result);
-          if (result.fit && !nameEdited) setName(result.fit.name);
-        })
+        .then(showPreview)
         .catch((reason: unknown) => {
           if (!controller.signal.aborted) setError(apiMessage(reason));
         });
@@ -67,7 +72,7 @@ export function ImportDialog({ onClose, onImported }: { onClose: () => void; onI
       controller.abort();
     };
     // Only the text drives a new preview.
-  }, [text]);
+  }, [text, showPreview]);
 
   const unknown = preview?.unknownLines ?? [];
   const canSave = Boolean(preview?.fit) && unknown.length === 0 && !preview?.error && name.trim() !== "" && !saving;
