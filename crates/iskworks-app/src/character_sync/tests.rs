@@ -22,6 +22,7 @@ use iskworks_esi::{
     WalletBalanceObservation, WalletTransactionObservation,
 };
 
+use super::policy::retry_interval;
 use super::*;
 
 fn connection(granted_scopes: Vec<String>) -> ConnectedCharacter {
