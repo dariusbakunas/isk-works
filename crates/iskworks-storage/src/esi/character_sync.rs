@@ -1,6 +1,13 @@
 use super::*;
 use async_trait::async_trait;
-use iskworks_core::{CharacterSourceRefreshRepository, RetryPolicy};
+use iskworks_core::calendar_event::{CalendarEventRepository, CharacterCalendarEvent};
+use iskworks_core::market_orders::{CharacterMarketOrder, CharacterMarketOrderRepository};
+use iskworks_core::{
+    CharacterConnectionReader, CharacterIndustryJobObservation, CharacterSourceRefreshRepository,
+    CharacterSyncRepository, EntityNameRepository, EveEntityName, IndustryJobRepository,
+    RetryPolicy,
+};
+use std::collections::HashMap;
 
 pub(super) fn parse_refresh_state(value: &str) -> MarketRefreshState {
     match value {
@@ -251,5 +258,138 @@ impl CharacterSourceRefreshRepository for PgEsiRepository {
         .await
         .map_err(map_sqlx)?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl CharacterSyncRepository for PgEsiRepository {
+    async fn record_industry_jobs(
+        &self,
+        connection_id: ConnectedCharacterId,
+        jobs: &[CharacterIndustryJobObservation],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        IndustryJobRepository::record_industry_jobs(self, connection_id, jobs, observed_at).await
+    }
+
+    async fn register_character_sources(
+        &self,
+        connection_id: ConnectedCharacterId,
+    ) -> Result<(), InventoryError> {
+        CharacterSourceRefreshRepository::register_character_sources(self, connection_id).await
+    }
+
+    async fn begin_character_source_refresh(
+        &self,
+        connection_id: ConnectedCharacterId,
+        source_kind: CharacterSourceKind,
+        attempted_at: DateTime<Utc>,
+        lease_expires_at: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, InventoryError> {
+        CharacterSourceRefreshRepository::begin_character_source_refresh(
+            self,
+            connection_id,
+            source_kind,
+            attempted_at,
+            lease_expires_at,
+        )
+        .await
+    }
+
+    async fn complete_character_source_refresh(
+        &self,
+        connection_id: ConnectedCharacterId,
+        source_kind: CharacterSourceKind,
+        claim: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        summary: Value,
+        observed_at: DateTime<Utc>,
+    ) -> Result<bool, InventoryError> {
+        CharacterSourceRefreshRepository::complete_character_source_refresh(
+            self,
+            connection_id,
+            source_kind,
+            claim,
+            next_refresh_at,
+            summary,
+            observed_at,
+        )
+        .await
+    }
+
+    async fn fail_character_source_refresh(
+        &self,
+        connection_id: ConnectedCharacterId,
+        source_kind: CharacterSourceKind,
+        claim: DateTime<Utc>,
+        attempted_at: DateTime<Utc>,
+        next_refresh_at: DateTime<Utc>,
+        error_message: String,
+    ) -> Result<bool, InventoryError> {
+        CharacterSourceRefreshRepository::fail_character_source_refresh(
+            self,
+            connection_id,
+            source_kind,
+            claim,
+            attempted_at,
+            next_refresh_at,
+            error_message,
+        )
+        .await
+    }
+
+    async fn defer_character_sources(
+        &self,
+        connection_id: ConnectedCharacterId,
+        until: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        CharacterSourceRefreshRepository::defer_character_sources(self, connection_id, until).await
+    }
+
+    async fn entity_names(&self, ids: &[i64]) -> Result<HashMap<i64, String>, InventoryError> {
+        EntityNameRepository::entity_names(self, ids).await
+    }
+
+    async fn cache_entity_names(&self, names: &[EveEntityName]) -> Result<(), InventoryError> {
+        EntityNameRepository::cache_entity_names(self, names).await
+    }
+
+    async fn character_source_state(
+        &self,
+        connection_id: ConnectedCharacterId,
+    ) -> Result<Vec<CharacterSourceSyncState>, InventoryError> {
+        CharacterConnectionReader::character_source_state(self, connection_id).await
+    }
+
+    async fn calendar_event_copies(
+        &self,
+        workspace_id: WorkspaceId,
+        event_ids: &[i64],
+    ) -> Result<Vec<CharacterCalendarEvent>, InventoryError> {
+        CalendarEventRepository::workspace_calendar_event_copies(self, workspace_id, event_ids)
+            .await
+    }
+
+    async fn store_calendar_events(
+        &self,
+        connection_id: ConnectedCharacterId,
+        events: &[CharacterCalendarEvent],
+    ) -> Result<(), InventoryError> {
+        CalendarEventRepository::replace_calendar_events(self, connection_id, events).await
+    }
+
+    async fn store_market_orders(
+        &self,
+        connection_id: ConnectedCharacterId,
+        orders: &[CharacterMarketOrder],
+        observed_at: DateTime<Utc>,
+    ) -> Result<(), InventoryError> {
+        CharacterMarketOrderRepository::replace_open_orders(
+            self,
+            connection_id,
+            orders,
+            observed_at,
+        )
+        .await
     }
 }

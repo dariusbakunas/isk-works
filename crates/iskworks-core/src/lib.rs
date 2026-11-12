@@ -86,8 +86,9 @@ pub use build_cost::{
 };
 pub use candidate::*;
 pub use character_sources::{
-    CharacterConnectionReader, PlanetaryCharacter, PlanetaryCharacterSource, SkillsCharacter,
-    SkillsCharacterSource, TraderCharacter, TraderCharacterSource,
+    CharacterConnectionReader, CharacterSyncRepository, PlanetaryCharacter,
+    PlanetaryCharacterSource, SkillsCharacter, SkillsCharacterSource, TraderCharacter,
+    TraderCharacterSource,
 };
 pub use component_expansion::{
     ComponentExpansion, ComponentExpansionError, ComponentExpansionService,

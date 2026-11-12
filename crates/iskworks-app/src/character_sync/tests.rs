@@ -8,7 +8,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use iskworks_core::{
-    ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId, EsiSyncStatus, OwnerId, WorkspaceId,
+    CharacterSourceSyncState, ConnectionStatus, EsiSyncKind, EsiSyncRun, EsiSyncRunId,
+    EsiSyncStatus, InventoryError, OwnerId, WorkspaceId,
 };
 use iskworks_esi::{
     AssetObservation, AuthenticatedToken, BlueprintAssetObservation,
