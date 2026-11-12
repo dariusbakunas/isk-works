@@ -147,3 +147,6 @@ fn opposite(
         .map(row)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;
