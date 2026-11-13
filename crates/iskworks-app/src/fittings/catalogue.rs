@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use iskworks_core::fitting::{
     CatalogueEntry, CatalogueKind, FitCatalogue, FittingEngine, Hardpoint, SlotKind,
 };
-use iskworks_core::{InventoryError, WorkspaceId};
+use iskworks_core::{StoreError, WorkspaceId};
 use serde::Serialize;
 
 use super::calculation::PilotChoice;
@@ -75,7 +75,7 @@ impl FittingService {
         query: CatalogueQuery,
         text: Option<&str>,
         pilot: PilotChoice,
-    ) -> Result<CatalogueView, InventoryError> {
+    ) -> Result<CatalogueView, StoreError> {
         let catalogue = engine.catalogue();
         let entries = match query {
             CatalogueQuery::Modules { ship_type_id, slot } => {
@@ -83,7 +83,7 @@ impl FittingService {
                     .entry(ship_type_id)
                     .filter(|entry| entry.kind == CatalogueKind::Ship)
                     .ok_or_else(|| {
-                        InventoryError::Validation(format!("type {ship_type_id} is not a ship"))
+                        StoreError::Validation(format!("type {ship_type_id} is not a ship"))
                     })?;
                 catalogue.modules_for(ship, slot, text)
             }
@@ -92,7 +92,7 @@ impl FittingService {
                     .entry(module_type_id)
                     .filter(|entry| entry.kind == CatalogueKind::Module)
                     .ok_or_else(|| {
-                        InventoryError::Validation(format!("type {module_type_id} is not a module"))
+                        StoreError::Validation(format!("type {module_type_id} is not a module"))
                     })?;
                 catalogue.charges_for(module)
             }
@@ -116,7 +116,7 @@ impl FittingService {
         engine: &dyn FittingEngine,
         type_id: i64,
         pilot: PilotChoice,
-    ) -> Result<CatalogueView, InventoryError> {
+    ) -> Result<CatalogueView, StoreError> {
         let catalogue = engine.catalogue();
         let family = catalogue.variations(type_id);
         Ok(CatalogueView {
@@ -133,7 +133,7 @@ impl FittingService {
         catalogue: &FitCatalogue,
         entries: &[&CatalogueEntry],
         pilot: PilotChoice,
-    ) -> Result<Vec<CatalogueItem>, InventoryError> {
+    ) -> Result<Vec<CatalogueItem>, StoreError> {
         let (_, snapshot) = self.resolve_pilot(workspace_id, pilot).await?;
         let required = match &snapshot {
             Some(_) => self

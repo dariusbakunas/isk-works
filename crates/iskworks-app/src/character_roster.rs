@@ -7,8 +7,8 @@ use iskworks_core::EntityNameRepository;
 use iskworks_core::{
     character_health, industry_job_slot_max, CharacterConnectionReader, CharacterHealth,
     CharacterSourceKind, CharacterSourceSyncState, ConnectedCharacter, ConnectedCharacterId,
-    ConnectionStatus, IndustryActivity, IndustrySlotBucket, InventoryError, MarketRefreshState,
-    Money, WorkspaceId, ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
+    ConnectionStatus, IndustryActivity, IndustrySlotBucket, MarketRefreshState, Money, StoreError,
+    WorkspaceId, ADVANCED_LABORATORY_OPERATION_SKILL_ID, ADVANCED_MASS_PRODUCTION_SKILL_ID,
     ADVANCED_MASS_REACTIONS_SKILL_ID, LABORATORY_OPERATION_SKILL_ID, MASS_PRODUCTION_SKILL_ID,
     MASS_REACTIONS_SKILL_ID,
 };
@@ -214,7 +214,7 @@ impl CharacterRosterService {
     pub async fn list(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<CharacterRosterEntry>, InventoryError> {
+    ) -> Result<Vec<CharacterRosterEntry>, StoreError> {
         let connections: Vec<ConnectedCharacter> = self
             .repository
             .list_connections(workspace_id)
@@ -255,7 +255,7 @@ impl CharacterRosterService {
     pub async fn detail(
         &self,
         connection_id: ConnectedCharacterId,
-    ) -> Result<CharacterDetail, InventoryError> {
+    ) -> Result<CharacterDetail, StoreError> {
         let connection = self.repository.get_connection(connection_id).await?;
         let sources = self
             .repository
@@ -309,7 +309,7 @@ impl CharacterRosterService {
         &self,
         workspace_id: WorkspaceId,
         jobs: &mut [IndustryJobDto],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         let mut type_ids = HashSet::new();
         let mut facility_ids = HashSet::new();
         for job in jobs.iter() {
@@ -339,9 +339,9 @@ impl CharacterRosterService {
     async fn resolve_names(
         &self,
         entity_ids: HashSet<i64>,
-    ) -> Result<HashMap<i64, String>, InventoryError> {
+    ) -> Result<HashMap<i64, String>, StoreError> {
         let ids: Vec<i64> = entity_ids.into_iter().collect();
-        Ok(self.entity_names.entity_names(&ids).await?)
+        self.entity_names.entity_names(&ids).await
     }
 
     /// Skill names come from the local SDE type catalog, not ESI -- a
@@ -617,7 +617,7 @@ fn collect_industry_job_ids(jobs_summary: Option<&Value>) -> (Vec<i64>, Vec<i64>
 pub(crate) async fn workspace_job_observations(
     repository: &dyn CharacterConnectionReader,
     workspace_id: WorkspaceId,
-) -> Result<Vec<(ConnectedCharacterId, Vec<IndustryJobDto>)>, InventoryError> {
+) -> Result<Vec<(ConnectedCharacterId, Vec<IndustryJobDto>)>, StoreError> {
     let mut observations = Vec::new();
     for connection in repository.list_connections(workspace_id).await? {
         if connection.disconnected_at.is_some() {

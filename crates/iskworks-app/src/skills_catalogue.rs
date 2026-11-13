@@ -11,7 +11,7 @@ use iskworks_core::skills::{
     build_catalogue, parse_skills_summary, CharacterAttributes, CloneState, SkillCatalogue,
     TrainingRate,
 };
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use iskworks_sde::SdeReadRepository;
 use serde::Serialize;
 
@@ -92,7 +92,7 @@ impl SkillCatalogueService {
         workspace_id: WorkspaceId,
         character: Option<ConnectedCharacterId>,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillCatalogueResponse>, InventoryError> {
+    ) -> Result<Option<SkillCatalogueResponse>, StoreError> {
         let character = match character {
             Some(connection_id) => {
                 match self
@@ -110,7 +110,7 @@ impl SkillCatalogueService {
             .sde
             .skill_catalogue()
             .await
-            .map_err(|error| InventoryError::Persistence(error.to_string()))?;
+            .map_err(|error| StoreError::Persistence(error.to_string()))?;
         let snapshot = character.as_ref().and_then(|character| {
             let summary = character.skills_summary.as_ref()?;
             let snapshot = parse_skills_summary(summary);

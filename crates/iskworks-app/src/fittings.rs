@@ -14,7 +14,7 @@ use iskworks_core::fitting::{
 };
 use iskworks_core::skill_plans::SkillPlanRepository;
 use iskworks_core::skills::CharacterSkillsSnapshot;
-use iskworks_core::{ConnectedCharacterId, InventoryError, MarketRepository, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, MarketRepository, StoreError, WorkspaceId};
 use iskworks_sde::{SdeReadRepository, TypeReference};
 use serde::Serialize;
 
@@ -129,8 +129,8 @@ pub struct FittingService {
     catalogue: Option<Arc<FitCatalogue>>,
 }
 
-fn sde_error(error: impl std::fmt::Display) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn sde_error(error: impl std::fmt::Display) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 /// `Ship fit` for a text that names no fit.
@@ -200,7 +200,7 @@ impl FittingService {
     async fn references(
         &self,
         inputs: &[(i64, &[FitItem])],
-    ) -> Result<BTreeMap<i64, TypeReference>, InventoryError> {
+    ) -> Result<BTreeMap<i64, TypeReference>, StoreError> {
         let ids: BTreeSet<i64> = inputs
             .iter()
             .flat_map(|(ship, items)| {
@@ -217,7 +217,7 @@ impl FittingService {
             .map_err(sde_error)
     }
 
-    pub async fn list(&self, workspace_id: WorkspaceId) -> Result<Vec<FitSummary>, InventoryError> {
+    pub async fn list(&self, workspace_id: WorkspaceId) -> Result<Vec<FitSummary>, StoreError> {
         let fits = self.fits.list_fits(workspace_id).await?;
         let ships: Vec<(i64, &[FitItem])> =
             fits.iter().map(|fit| (fit.ship_type_id, &[][..])).collect();
@@ -267,7 +267,7 @@ impl FittingService {
         &self,
         workspace_id: WorkspaceId,
         id: FitId,
-    ) -> Result<Option<FitDetail>, InventoryError> {
+    ) -> Result<Option<FitDetail>, StoreError> {
         match self.fits.fit(workspace_id, id).await? {
             Some(fit) => Ok(Some(self.detail(fit).await?)),
             None => Ok(None),
@@ -279,8 +279,8 @@ impl FittingService {
         workspace_id: WorkspaceId,
         draft: FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<FitDetail, InventoryError> {
-        draft.validate().map_err(InventoryError::Validation)?;
+    ) -> Result<FitDetail, StoreError> {
+        draft.validate().map_err(StoreError::Validation)?;
         let fit = self.fits.create_fit(workspace_id, &draft, now).await?;
         self.detail(fit).await
     }
@@ -291,20 +291,16 @@ impl FittingService {
         id: FitId,
         draft: FitDraft,
         now: DateTime<Utc>,
-    ) -> Result<Option<FitDetail>, InventoryError> {
-        draft.validate().map_err(InventoryError::Validation)?;
+    ) -> Result<Option<FitDetail>, StoreError> {
+        draft.validate().map_err(StoreError::Validation)?;
         match self.fits.update_fit(workspace_id, id, &draft, now).await? {
             Some(fit) => Ok(Some(self.detail(fit).await?)),
             None => Ok(None),
         }
     }
 
-    pub async fn delete(
-        &self,
-        workspace_id: WorkspaceId,
-        id: FitId,
-    ) -> Result<bool, InventoryError> {
-        Ok(self.fits.delete_fit(workspace_id, id).await?)
+    pub async fn delete(&self, workspace_id: WorkspaceId, id: FitId) -> Result<bool, StoreError> {
+        self.fits.delete_fit(workspace_id, id).await
     }
 
     /// Replaces the fit's tags, in the casing the workspace already uses.
@@ -314,10 +310,10 @@ impl FittingService {
         workspace_id: WorkspaceId,
         id: FitId,
         tags: &[String],
-    ) -> Result<Option<Vec<String>>, InventoryError> {
+    ) -> Result<Option<Vec<String>>, StoreError> {
         let in_use = self.fits.fit_tags_in_use(workspace_id).await?;
-        let tags = canonical_tags(tags, &in_use).map_err(InventoryError::Validation)?;
-        Ok(self.fits.replace_fit_tags(workspace_id, id, &tags).await?)
+        let tags = canonical_tags(tags, &in_use).map_err(StoreError::Validation)?;
+        self.fits.replace_fit_tags(workspace_id, id, &tags).await
     }
 
     /// Adds and removes tags on many fits; fits not in the workspace are
@@ -326,16 +322,15 @@ impl FittingService {
         &self,
         workspace_id: WorkspaceId,
         edit: &FitTagEdit,
-    ) -> Result<(), InventoryError> {
-        let edit = edit.validate().map_err(InventoryError::Validation)?;
+    ) -> Result<(), StoreError> {
+        let edit = edit.validate().map_err(StoreError::Validation)?;
         let in_use = self.fits.fit_tags_in_use(workspace_id).await?;
         // Casing only: an edit can add more than a fit may hold, and the
         // per-fit limit is the single-fit form's to keep.
         let add = canonical_tag_casing(&edit.add, &in_use);
-        Ok(self
-            .fits
+        self.fits
             .edit_fit_tags(workspace_id, &edit.fit_ids, &add, &edit.remove)
-            .await?)
+            .await
     }
 
     /// What importing `text` would make; nothing is saved.
@@ -343,7 +338,7 @@ impl FittingService {
         &self,
         engine: &dyn FittingEngine,
         text: &str,
-    ) -> Result<FitTextPreview, InventoryError> {
+    ) -> Result<FitTextPreview, StoreError> {
         match engine.parse_eft(text) {
             Ok(parsed) => {
                 let references = self
@@ -386,12 +381,10 @@ impl FittingService {
         text: &str,
         name: Option<String>,
         now: DateTime<Utc>,
-    ) -> Result<FitDetail, InventoryError> {
+    ) -> Result<FitDetail, StoreError> {
         let parsed = engine.parse_eft(text).map_err(|error| match error {
-            EftError::UnknownLines(lines) => {
-                InventoryError::Validation(unknown_lines_message(&lines))
-            }
-            EftError::Invalid(message) => InventoryError::Validation(message),
+            EftError::UnknownLines(lines) => StoreError::Validation(unknown_lines_message(&lines)),
+            EftError::Invalid(message) => StoreError::Validation(message),
         })?;
         let name = match name.filter(|name| !name.trim().is_empty()).or(parsed.name) {
             Some(name) => name,
@@ -420,7 +413,7 @@ impl FittingService {
         workspace_id: WorkspaceId,
         engine: &dyn FittingEngine,
         id: FitId,
-    ) -> Result<Option<String>, InventoryError> {
+    ) -> Result<Option<String>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
@@ -429,14 +422,14 @@ impl FittingService {
             .write_eft(&fit.name, &input)
             .map(Some)
             .map_err(|error| match error {
-                FittingError::UnknownShip(type_id) => InventoryError::Validation(format!(
+                FittingError::UnknownShip(type_id) => StoreError::Validation(format!(
                     "the fitting engine doesn't know ship type {type_id}"
                 )),
-                other => InventoryError::Persistence(format!("could not write the fit: {other:?}")),
+                other => StoreError::Persistence(format!("could not write the fit: {other:?}")),
             })
     }
 
-    async fn detail(&self, fit: Fit) -> Result<FitDetail, InventoryError> {
+    async fn detail(&self, fit: Fit) -> Result<FitDetail, StoreError> {
         let references = self.references(&[(fit.ship_type_id, &fit.items)]).await?;
         Ok(FitDetail {
             id: fit.id,

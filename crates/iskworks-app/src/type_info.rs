@@ -8,9 +8,9 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use iskworks_core::{
     attribute_groups, parse_rich_text, requirement_summary, requirement_tree,
-    summarize_scoped_orders, trait_groups, AttributeGroup, InventoryError, MarketRepository,
-    MarketScope, Money, NameMaps, RequirementPilot, RequirementSummary, RichSegment, SkillNode,
-    TraitGroup, WorkspaceId,
+    summarize_scoped_orders, trait_groups, AttributeGroup, MarketRepository, MarketScope, Money,
+    NameMaps, RequirementPilot, RequirementSummary, RichSegment, SkillNode, StoreError, TraitGroup,
+    WorkspaceId,
 };
 use iskworks_sde::{CandidateRecipeKind, SdeReadRepository, TypeListEntry, UsedWithKind};
 use rust_decimal::Decimal;
@@ -197,8 +197,8 @@ fn named(id: Option<i64>, name: Option<String>) -> Option<NamedId> {
     })
 }
 
-fn sde_error(error: impl std::fmt::Display) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn sde_error(error: impl std::fmt::Display) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 impl TypeInfoService {
@@ -235,7 +235,7 @@ impl TypeInfoService {
         pilot: PilotChoice,
         price_scope: Option<MarketScope>,
         now: DateTime<Utc>,
-    ) -> Result<Option<TypeInfoView>, InventoryError> {
+    ) -> Result<Option<TypeInfoView>, StoreError> {
         let Some(base) = self.sde.type_info_base(type_id).await.map_err(sde_error)? else {
             return Ok(None);
         };
@@ -407,13 +407,13 @@ impl TypeInfoService {
 
     /// `type_id`'s variation family by meta group; empty for a type the
     /// import doesn't have.
-    pub async fn variations(&self, type_id: i64) -> Result<Vec<MetaGroupList>, InventoryError> {
+    pub async fn variations(&self, type_id: i64) -> Result<Vec<MetaGroupList>, StoreError> {
         let entries = self.sde.type_variations(type_id).await.map_err(sde_error)?;
         Ok(meta_groups(entries))
     }
 
     /// What `type_id` loads, or what loads it, by meta group.
-    pub async fn used_with(&self, type_id: i64) -> Result<UsedWithView, InventoryError> {
+    pub async fn used_with(&self, type_id: i64) -> Result<UsedWithView, StoreError> {
         Ok(
             match self.sde.types_used_with(type_id).await.map_err(sde_error)? {
                 Some((kind, entries)) => UsedWithView {
@@ -435,7 +435,7 @@ impl TypeInfoService {
         type_id: i64,
         limit: u32,
         offset: u32,
-    ) -> Result<UsedInPage, InventoryError> {
+    ) -> Result<UsedInPage, StoreError> {
         let limit = limit.clamp(1, MAX_USED_IN_LIMIT);
         let (usages, total) = self
             .sde

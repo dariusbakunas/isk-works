@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use chrono::TimeZone;
-use iskworks_core::{ConnectedCharacterId, InventoryError};
+use iskworks_core::{ConnectedCharacterId, StoreError};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, ProductRecipeRefs, RecipeLine,
     RequiredSkill, SdeError, SkillAttribute, SkillDefinition, TypeAttributeValue, TypeBonusLine,
@@ -377,7 +377,7 @@ fn service() -> TypeInfoService {
         .with_characters(Arc::new(FakeSkillsCharacters(vec![aura()])))
 }
 
-async fn info(type_id: i64, pilot: PilotChoice) -> Result<Option<TypeInfoView>, InventoryError> {
+async fn info(type_id: i64, pilot: PilotChoice) -> Result<Option<TypeInfoView>, StoreError> {
     service()
         .info(WorkspaceId::new(), type_id, pilot, None, now())
         .await
@@ -560,7 +560,7 @@ async fn an_unknown_character_is_a_validation_error() {
     )
     .await
     .unwrap_err();
-    assert!(matches!(error, InventoryError::Validation(_)), "{error:?}");
+    assert!(matches!(error, StoreError::Validation(_)), "{error:?}");
 }
 
 #[tokio::test]

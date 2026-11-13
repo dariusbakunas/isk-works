@@ -3,7 +3,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use iskworks_app::{CalendarMilestone, CalendarRange};
-use iskworks_core::InventoryError;
+use iskworks_core::StoreError;
 use serde::Deserialize;
 
 use crate::{workspace_context, ApiError, AppState};
@@ -32,18 +32,15 @@ async fn get_calendar(
 fn parse_range(query: CalendarQuery) -> Result<CalendarRange, ApiError> {
     let parse = |value: &str, field: &str| {
         value.parse::<DateTime<Utc>>().map_err(|_| {
-            ApiError::Inventory(InventoryError::Validation(format!(
+            ApiError::from(StoreError::Validation(format!(
                 "{field} must be an RFC3339 timestamp"
             )))
         })
     };
     let from = parse(&query.from, "from")?;
     let to = parse(&query.to, "to")?;
-    CalendarRange::new(from, to).map_err(|_| {
-        ApiError::Inventory(InventoryError::Validation(
-            "from must be before to".to_string(),
-        ))
-    })
+    CalendarRange::new(from, to)
+        .map_err(|_| ApiError::from(StoreError::Validation("from must be before to".to_string())))
 }
 
 #[cfg(test)]

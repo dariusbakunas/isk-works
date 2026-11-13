@@ -15,7 +15,7 @@ use iskworks_core::fitting::{
 };
 use iskworks_core::skill_plans::SkillPlan;
 use iskworks_core::{
-    ConnectedCharacterId, InventoryError, MarketCoverageRegistration, MarketScope, WorkspaceId,
+    ConnectedCharacterId, MarketCoverageRegistration, MarketScope, StoreError, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -245,7 +245,7 @@ async fn export_fit(
 }
 
 fn bad_request(message: String) -> ApiError {
-    ApiError::Inventory(InventoryError::Validation(message))
+    ApiError::from(StoreError::Validation(message))
 }
 
 /// `allV` (the default), `allZero`, or a character's connection id.

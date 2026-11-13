@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use iskworks_core::calendar_event::{
     CalendarEventRepository, CalendarEventResponse, WorkspaceCalendarEvent,
 };
-use iskworks_core::{ConnectedCharacterId, IndustryActivity, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, IndustryActivity, StoreError, WorkspaceId};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -49,7 +49,7 @@ pub trait CalendarCharacterSource: Send + Sync {
     async fn calendar_details(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<CharacterDetail>, InventoryError>;
+    ) -> Result<Vec<CharacterDetail>, StoreError>;
 }
 
 #[async_trait]
@@ -57,7 +57,7 @@ impl CalendarCharacterSource for CharacterRosterService {
     async fn calendar_details(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<CharacterDetail>, InventoryError> {
+    ) -> Result<Vec<CharacterDetail>, StoreError> {
         let roster = self.list(workspace_id).await?;
         let mut details = Vec::with_capacity(roster.len());
         for character in roster {
@@ -72,7 +72,7 @@ pub trait CalendarPlanetarySource: Send + Sync {
     async fn planetary_timers(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryTimer>, InventoryError>;
+    ) -> Result<Vec<PlanetaryTimer>, StoreError>;
 }
 
 #[async_trait]
@@ -80,7 +80,7 @@ impl CalendarPlanetarySource for PlanetaryService {
     async fn planetary_timers(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryTimer>, InventoryError> {
+    ) -> Result<Vec<PlanetaryTimer>, StoreError> {
         self.timers(workspace_id).await
     }
 }
@@ -119,7 +119,7 @@ impl CalendarService {
         &self,
         workspace_id: WorkspaceId,
         range: CalendarRange,
-    ) -> Result<Vec<CalendarMilestone>, InventoryError> {
+    ) -> Result<Vec<CalendarMilestone>, StoreError> {
         let details = self.source.calendar_details(workspace_id).await?;
         let mut milestones = project_calendar_milestones(&details, range);
         if let Some(planetary) = &self.planetary {

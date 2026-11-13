@@ -12,8 +12,8 @@ use iskworks_app::{
 };
 use iskworks_core::order::TicketId;
 use iskworks_core::{
-    ConnectedCharacterId, IndustryActivity, IndustryJobRepository, InventoryError, JobTicketLink,
-    Money, StoredIndustryJob, WorkspaceId,
+    ConnectedCharacterId, IndustryActivity, IndustryJobRepository, JobTicketLink, Money,
+    StoredIndustryJob, WorkspaceId,
 };
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -56,7 +56,7 @@ impl JobsCharacterSource for FakeCharacters {
         &self,
         _workspace_id: WorkspaceId,
         _now: DateTime<Utc>,
-    ) -> Result<Vec<JobCharacterSnapshot>, InventoryError> {
+    ) -> Result<Vec<JobCharacterSnapshot>, iskworks_core::StoreError> {
         let now = self.now;
         Ok(vec![
             JobCharacterSnapshot {
@@ -104,7 +104,7 @@ impl JobsCharacterSource for FakeCharacters {
         &self,
         _workspace_id: WorkspaceId,
         jobs: &mut [IndustryJobDto],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), iskworks_core::StoreError> {
         for job in jobs {
             job.blueprint_name = Some(format!("Blueprint {}", job.blueprint_type_id));
         }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use iskworks_core::fitting::{fit_cost, fit_needs, AssetHolding, CostLine, FitCost, FitId};
-use iskworks_core::{summarize_scoped_orders, InventoryError, MarketScope, Money, WorkspaceId};
+use iskworks_core::{summarize_scoped_orders, MarketScope, Money, StoreError, WorkspaceId};
 use serde::Serialize;
 
 use super::{fit_type, sde_error, FittingService};
@@ -52,13 +52,14 @@ impl FittingService {
         workspace_id: WorkspaceId,
         id: FitId,
         scope: MarketScope,
-    ) -> Result<Option<FitCostView>, InventoryError> {
+    ) -> Result<Option<FitCostView>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
-        let market = self.market.as_ref().ok_or_else(|| {
-            InventoryError::Persistence("Market data is unavailable.".to_string())
-        })?;
+        let market = self
+            .market
+            .as_ref()
+            .ok_or_else(|| StoreError::Persistence("Market data is unavailable.".to_string()))?;
         let input = fit.input();
         let type_ids: Vec<i64> = fit_needs(&input).into_keys().collect();
         let books = market
@@ -109,14 +110,14 @@ impl FittingService {
         &self,
         workspace_id: WorkspaceId,
         id: FitId,
-    ) -> Result<Option<FitAssetsView>, InventoryError> {
+    ) -> Result<Option<FitAssetsView>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
         let holdings_source = self
             .holdings
             .as_ref()
-            .ok_or_else(|| InventoryError::Persistence("Asset data is unavailable.".to_string()))?;
+            .ok_or_else(|| StoreError::Persistence("Asset data is unavailable.".to_string()))?;
         let type_ids: Vec<i64> = fit_needs(&fit.input()).into_keys().collect();
         let mut holdings = holdings_source
             .type_holdings(workspace_id, &type_ids)
