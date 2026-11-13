@@ -6,38 +6,7 @@ use super::recording_preview::*;
 use super::recording_queries::*;
 
 #[async_trait]
-impl OrderRepository for PgOrderRepository {
-    async fn verify_ticket_references(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: Option<OrderId>,
-        assignee_character_id: Option<ConnectedCharacterId>,
-        price_source_id: Option<PriceSourceId>,
-    ) -> Result<(), OrderError> {
-        let all_owned: bool = sqlx::query_scalar(
-            r#"
-            SELECT ($2::uuid IS NULL
-                    OR EXISTS (SELECT 1 FROM orders WHERE id = $2 AND workspace_id = $1))
-               AND ($3::uuid IS NULL
-                    OR EXISTS (SELECT 1 FROM eve_connections WHERE id = $3 AND workspace_id = $1))
-               AND ($4::uuid IS NULL
-                    OR EXISTS (SELECT 1 FROM price_sources WHERE id = $4 AND workspace_id = $1))
-            "#,
-        )
-        .bind(workspace_id.0)
-        .bind(order_id.map(|id| id.0))
-        .bind(assignee_character_id.map(|id| id.0))
-        .bind(price_source_id.map(|id| id.0))
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if all_owned {
-            Ok(())
-        } else {
-            Err(OrderError::TicketReferenceNotFound)
-        }
-    }
-
+impl OrderStore for PgOrderRepository {
     async fn create_order(
         &self,
         new_order: NewOrder,
@@ -311,17 +280,6 @@ impl OrderRepository for PgOrderRepository {
         }))
     }
 
-    async fn create_ticket(
-        &self,
-        new_ticket: NewTicket,
-    ) -> Result<(Ticket, Vec<TicketPrerequisite>), OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let created =
-            insert_ticket_with_prerequisites(&mut tx, new_ticket, crate::db_now()).await?;
-        tx.commit().await.map_err(map_error)?;
-        Ok(created)
-    }
-
     async fn create_order_plan(
         &self,
         new_plan: NewOrderPlan,
@@ -565,6 +523,324 @@ impl OrderRepository for PgOrderRepository {
         })
     }
 
+    async fn reserve_order_inventory(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<CappedReservationPlan, OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let plan = super::reservations::top_up_order_reservations(
+            &mut tx,
+            workspace_id,
+            order_id,
+            crate::db_now(),
+        )
+        .await?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(plan)
+    }
+
+    async fn requirement_reservation_totals(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
+        self.requirement_reservation_totals_for_orders(workspace_id, &[order_id])
+            .await
+    }
+
+    async fn requirement_reservation_totals_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
+        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT r.id, \
+               COALESCE(SUM(a.quantity) FILTER \
+                 (WHERE a.released_at IS NULL AND a.consumed_at IS NULL), 0)::bigint, \
+               COALESCE(SUM(a.quantity) FILTER \
+                 (WHERE a.released_at IS NULL AND a.consumed_at IS NOT NULL), 0)::bigint \
+             FROM order_requirements r \
+             JOIN orders o ON o.id = r.order_id \
+             LEFT JOIN inventory_allocations a ON a.order_requirement_id = r.id \
+             WHERE r.order_id = ANY($1) AND o.workspace_id = $2 \
+             GROUP BY r.id",
+        )
+        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
+        .bind(workspace_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?;
+        rows.into_iter()
+            .map(|(id, reserved, consumed)| {
+                Ok(RequirementReservationTotals {
+                    requirement_id: OrderRequirementId(id),
+                    reserved: u64_from_i64(reserved)?,
+                    consumed: u64_from_i64(consumed)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn list_order_requirement_fulfillments(
+        &self,
+        order_requirement_id: OrderRequirementId,
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
+        self.list_order_requirement_fulfillments_for_requirements(&[order_requirement_id])
+            .await
+    }
+
+    async fn list_order_requirement_fulfillments_for_requirements(
+        &self,
+        order_requirement_ids: &[OrderRequirementId],
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
+        sqlx::query_as::<_, OrderRequirementFulfillmentRow>(
+            "SELECT id, order_requirement_id, ticket_id, allocated_quantity, linked_at \
+             FROM order_requirement_fulfillments WHERE order_requirement_id = ANY($1) \
+             ORDER BY order_requirement_id, linked_at",
+        )
+        .bind(
+            order_requirement_ids
+                .iter()
+                .map(|id| id.0)
+                .collect::<Vec<_>>(),
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_error)?
+        .into_iter()
+        .map(OrderRequirementFulfillmentRow::into_fulfillment)
+        .collect()
+    }
+
+    async fn start_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError> {
+        let now = crate::db_now();
+        let result = sqlx::query(
+            "UPDATE orders SET started_at = $1, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 \
+             AND started_at IS NULL AND completed_at IS NULL AND canceled_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            return Err(self
+                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotStartable)
+                .await?);
+        }
+        self.get_order(workspace_id, order_id).await
+    }
+
+    async fn complete_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError> {
+        // Stamp `completed_at` and release whatever the Epic still holds
+        // (actuals that differed from the plan, skipped or unrecorded
+        // work): a completed Epic has nothing left to use it for. No
+        // inventory event, no balance/cost-basis change, no ticket
+        // mutation, no recording-completeness check. Final production
+        // output is posted by the root ticket's `record_ticket_production`.
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let result = sqlx::query(
+            "UPDATE orders SET completed_at = $1, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 \
+             AND started_at IS NOT NULL AND completed_at IS NULL AND canceled_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
+            return Err(self
+                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCompletable)
+                .await?);
+        }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
+        self.get_order(workspace_id, order_id).await
+    }
+
+    async fn cancel_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError> {
+        // Stamp `canceled_at` and release the Epic's reservations back to
+        // free stock in one transaction (no ledger event: nothing was
+        // used). It never cascades onto linked tickets -- a shared ticket
+        // may still be needed by other work.
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let result = sqlx::query(
+            "UPDATE orders SET canceled_at = $1, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 \
+             AND completed_at IS NULL AND canceled_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
+            return Err(self
+                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCancelable)
+                .await?);
+        }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
+        self.get_order(workspace_id, order_id).await
+    }
+
+    async fn archive_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError> {
+        // Archiving releases the Epic's reservations too; restoring does
+        // not re-reserve (see `reserve_order_inventory`).
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let result = sqlx::query(
+            "UPDATE orders SET archived_at = $1, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await.map_err(map_error)?;
+            return Err(self
+                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotArchivable)
+                .await?);
+        }
+        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
+        tx.commit().await.map_err(map_error)?;
+        self.get_order(workspace_id, order_id).await
+    }
+
+    async fn restore_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError> {
+        let now = crate::db_now();
+        let result = sqlx::query(
+            "UPDATE orders SET archived_at = NULL, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NOT NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            return Err(self
+                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotRestorable)
+                .await?);
+        }
+        self.get_order(workspace_id, order_id).await
+    }
+
+    async fn delete_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<(), OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let price_snapshot_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT price_snapshot_id FROM orders WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(workspace_id.0)
+        .bind(order_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        let price_snapshot_id = price_snapshot_id.ok_or(OrderError::OrderNotFound)?;
+        sqlx::query("DELETE FROM orders WHERE workspace_id = $1 AND id = $2")
+            .bind(workspace_id.0)
+            .bind(order_id.0)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_error)?;
+        // The frozen snapshot is Epic-owned once captured. Delete it only
+        // after the Epic row is gone, and only if no surviving Epic can
+        // reference it (the FK is UNIQUE today; the guard is future-safe).
+        sqlx::query(
+            "DELETE FROM price_snapshots ps WHERE ps.id = $1 \
+             AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.price_snapshot_id = ps.id)",
+        )
+        .bind(price_snapshot_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TicketStore for PgOrderRepository {
+    async fn verify_ticket_references(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: Option<OrderId>,
+        assignee_character_id: Option<ConnectedCharacterId>,
+        price_source_id: Option<PriceSourceId>,
+    ) -> Result<(), OrderError> {
+        let all_owned: bool = sqlx::query_scalar(
+            r#"
+            SELECT ($2::uuid IS NULL
+                    OR EXISTS (SELECT 1 FROM orders WHERE id = $2 AND workspace_id = $1))
+               AND ($3::uuid IS NULL
+                    OR EXISTS (SELECT 1 FROM eve_connections WHERE id = $3 AND workspace_id = $1))
+               AND ($4::uuid IS NULL
+                    OR EXISTS (SELECT 1 FROM price_sources WHERE id = $4 AND workspace_id = $1))
+            "#,
+        )
+        .bind(workspace_id.0)
+        .bind(order_id.map(|id| id.0))
+        .bind(assignee_character_id.map(|id| id.0))
+        .bind(price_source_id.map(|id| id.0))
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if all_owned {
+            Ok(())
+        } else {
+            Err(OrderError::TicketReferenceNotFound)
+        }
+    }
+
+    async fn create_ticket(
+        &self,
+        new_ticket: NewTicket,
+    ) -> Result<(Ticket, Vec<TicketPrerequisite>), OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let created =
+            insert_ticket_with_prerequisites(&mut tx, new_ticket, crate::db_now()).await?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(created)
+    }
+
     async fn get_ticket(
         &self,
         workspace_id: WorkspaceId,
@@ -678,65 +954,6 @@ impl OrderRepository for PgOrderRepository {
         .map(TicketRow::into_ticket)
         .collect::<Result<Vec<_>, _>>()?;
         super::reservations::with_operations(&self.pool, tickets).await
-    }
-
-    async fn reserve_order_inventory(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<CappedReservationPlan, OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let plan = super::reservations::top_up_order_reservations(
-            &mut tx,
-            workspace_id,
-            order_id,
-            crate::db_now(),
-        )
-        .await?;
-        tx.commit().await.map_err(map_error)?;
-        Ok(plan)
-    }
-
-    async fn requirement_reservation_totals(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
-        self.requirement_reservation_totals_for_orders(workspace_id, &[order_id])
-            .await
-    }
-
-    async fn requirement_reservation_totals_for_orders(
-        &self,
-        workspace_id: WorkspaceId,
-        order_ids: &[OrderId],
-    ) -> Result<Vec<RequirementReservationTotals>, OrderError> {
-        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
-            "SELECT r.id, \
-               COALESCE(SUM(a.quantity) FILTER \
-                 (WHERE a.released_at IS NULL AND a.consumed_at IS NULL), 0)::bigint, \
-               COALESCE(SUM(a.quantity) FILTER \
-                 (WHERE a.released_at IS NULL AND a.consumed_at IS NOT NULL), 0)::bigint \
-             FROM order_requirements r \
-             JOIN orders o ON o.id = r.order_id \
-             LEFT JOIN inventory_allocations a ON a.order_requirement_id = r.id \
-             WHERE r.order_id = ANY($1) AND o.workspace_id = $2 \
-             GROUP BY r.id",
-        )
-        .bind(order_ids.iter().map(|id| id.0).collect::<Vec<_>>())
-        .bind(workspace_id.0)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_error)?;
-        rows.into_iter()
-            .map(|(id, reserved, consumed)| {
-                Ok(RequirementReservationTotals {
-                    requirement_id: OrderRequirementId(id),
-                    reserved: u64_from_i64(reserved)?,
-                    consumed: u64_from_i64(consumed)?,
-                })
-            })
-            .collect()
     }
 
     async fn list_ticket_prerequisites(
@@ -1022,37 +1239,6 @@ impl OrderRepository for PgOrderRepository {
         Ok(OperationTicketCreation::Created(Box::new(ticket)))
     }
 
-    async fn list_order_requirement_fulfillments(
-        &self,
-        order_requirement_id: OrderRequirementId,
-    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
-        self.list_order_requirement_fulfillments_for_requirements(&[order_requirement_id])
-            .await
-    }
-
-    async fn list_order_requirement_fulfillments_for_requirements(
-        &self,
-        order_requirement_ids: &[OrderRequirementId],
-    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError> {
-        sqlx::query_as::<_, OrderRequirementFulfillmentRow>(
-            "SELECT id, order_requirement_id, ticket_id, allocated_quantity, linked_at \
-             FROM order_requirement_fulfillments WHERE order_requirement_id = ANY($1) \
-             ORDER BY order_requirement_id, linked_at",
-        )
-        .bind(
-            order_requirement_ids
-                .iter()
-                .map(|id| id.0)
-                .collect::<Vec<_>>(),
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_error)?
-        .into_iter()
-        .map(OrderRequirementFulfillmentRow::into_fulfillment)
-        .collect()
-    }
-
     async fn link_ticket_prerequisite_to_ticket(
         &self,
         ticket_prerequisite_id: TicketPrerequisiteId,
@@ -1186,99 +1372,6 @@ impl OrderRepository for PgOrderRepository {
         self.get_tickets(workspace_id, &members).await
     }
 
-    async fn available_quantity(
-        &self,
-        workspace_id: WorkspaceId,
-        owner_id: OwnerId,
-        type_id: i64,
-    ) -> Result<u64, OrderError> {
-        let balance: Option<i64> = sqlx::query_scalar(
-            "SELECT quantity FROM inventory_balances WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3",
-        )
-        .bind(workspace_id.0)
-        .bind(owner_id.0)
-        .bind(type_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_error)?;
-        let balance = u64_from_i64(balance.unwrap_or(0))?;
-
-        let allocated: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(quantity), 0)::bigint FROM inventory_allocations \
-             WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3 \
-             AND released_at IS NULL AND consumed_at IS NULL",
-        )
-        .bind(workspace_id.0)
-        .bind(owner_id.0)
-        .bind(type_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_error)?;
-        let allocated = u64_from_i64(allocated)?;
-
-        Ok(balance.saturating_sub(allocated))
-    }
-
-    async fn start_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError> {
-        let now = crate::db_now();
-        let result = sqlx::query(
-            "UPDATE orders SET started_at = $1, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 \
-             AND started_at IS NULL AND completed_at IS NULL AND canceled_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(self
-                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotStartable)
-                .await?);
-        }
-        self.get_order(workspace_id, order_id).await
-    }
-
-    async fn complete_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError> {
-        // Stamp `completed_at` and release whatever the Epic still holds
-        // (actuals that differed from the plan, skipped or unrecorded
-        // work): a completed Epic has nothing left to use it for. No
-        // inventory event, no balance/cost-basis change, no ticket
-        // mutation, no recording-completeness check. Final production
-        // output is posted by the root ticket's `record_ticket_production`.
-        let now = crate::db_now();
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let result = sqlx::query(
-            "UPDATE orders SET completed_at = $1, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 \
-             AND started_at IS NOT NULL AND completed_at IS NULL AND canceled_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            tx.rollback().await.map_err(map_error)?;
-            return Err(self
-                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCompletable)
-                .await?);
-        }
-        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
-        tx.commit().await.map_err(map_error)?;
-        self.get_order(workspace_id, order_id).await
-    }
-
     async fn start_ticket(
         &self,
         workspace_id: WorkspaceId,
@@ -1334,6 +1427,215 @@ impl OrderRepository for PgOrderRepository {
             .await?;
         tx.commit().await.map_err(map_error)?;
         self.get_ticket(workspace_id, ticket_id).await
+    }
+
+    /// Workflow-only, like `set_ticket_status`/`complete_ticket`: sets
+    /// `status = 'canceled'`/`updated_at` and nothing else. Tickets own no
+    /// reservations, so there is nothing to release, and no *other* ticket's
+    /// status is ever recomputed. "Canceled" means "I am no longer tracking
+    /// this work as active," not "undo accounting/history." Valid from
+    /// `todo` or `in_progress` (a `complete`/`canceled` ticket is left
+    /// alone).
+    async fn cancel_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError> {
+        let now = crate::db_now();
+        let result = sqlx::query(
+            "UPDATE tickets SET status = 'canceled', updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 \
+             AND status IN ('todo', 'in_progress')",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            return Err(self
+                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotCancelable)
+                .await?);
+        }
+        self.get_ticket(workspace_id, ticket_id).await
+    }
+
+    async fn archive_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError> {
+        let now = crate::db_now();
+        let result = sqlx::query(
+            "UPDATE tickets SET archived_at = $1, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            return Err(self
+                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotArchivable)
+                .await?);
+        }
+        self.get_ticket(workspace_id, ticket_id).await
+    }
+
+    async fn restore_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError> {
+        let now = crate::db_now();
+        let result = sqlx::query(
+            "UPDATE tickets SET archived_at = NULL, updated_at = $1 \
+             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NOT NULL",
+        )
+        .bind(now)
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(map_error)?;
+        if result.rows_affected() == 0 {
+            return Err(self
+                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotRestorable)
+                .await?);
+        }
+        self.get_ticket(workspace_id, ticket_id).await
+    }
+
+    async fn delete_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<(), OrderError> {
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        let exists: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM tickets WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
+        )
+        .bind(workspace_id.0)
+        .bind(ticket_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if exists.is_none() {
+            return Err(OrderError::TicketNotFound);
+        }
+        crate::cascade::teardown_tickets(&mut tx, &[ticket_id.0])
+            .await
+            .map_err(map_error)?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(())
+    }
+
+    async fn set_ticket_status(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        status: TicketStatus,
+    ) -> Result<Ticket, OrderError> {
+        self.update_ticket(
+            workspace_id,
+            ticket_id,
+            TicketMetadataUpdate::default(),
+            Some(status),
+        )
+        .await
+    }
+
+    async fn update_ticket_metadata(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        update: TicketMetadataUpdate,
+    ) -> Result<Ticket, OrderError> {
+        self.update_ticket(workspace_id, ticket_id, update, None)
+            .await
+    }
+
+    /// Metadata, then status, then the Epic auto-completion a status write
+    /// may trigger, in one transaction. See `ticket_updates` for each write.
+    async fn update_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+        metadata: TicketMetadataUpdate,
+        status: Option<TicketStatus>,
+    ) -> Result<Ticket, OrderError> {
+        if let Some(status) = status {
+            super::combine::guard_merged_status(&self.pool, workspace_id, ticket_id, status)
+                .await?;
+        }
+        let now = crate::db_now();
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        super::ticket_updates::write_ticket_metadata(
+            &mut tx,
+            workspace_id,
+            ticket_id,
+            metadata,
+            now,
+        )
+        .await?;
+        if let Some(status) = status {
+            super::ticket_updates::write_ticket_status(
+                &mut tx,
+                workspace_id,
+                ticket_id,
+                status,
+                now,
+            )
+            .await?;
+            super::epic_completion::complete_epic_if_finished(
+                &mut tx,
+                workspace_id,
+                ticket_id,
+                now,
+            )
+            .await?;
+        }
+        tx.commit().await.map_err(map_error)?;
+        self.get_ticket(workspace_id, ticket_id).await
+    }
+}
+
+#[async_trait]
+impl RecordingStore for PgOrderRepository {
+    async fn available_quantity(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        type_id: i64,
+    ) -> Result<u64, OrderError> {
+        let balance: Option<i64> = sqlx::query_scalar(
+            "SELECT quantity FROM inventory_balances WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_error)?;
+        let balance = u64_from_i64(balance.unwrap_or(0))?;
+
+        let allocated: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(quantity), 0)::bigint FROM inventory_allocations \
+             WHERE workspace_id = $1 AND owner_id = $2 AND type_id = $3 \
+             AND released_at IS NULL AND consumed_at IS NULL",
+        )
+        .bind(workspace_id.0)
+        .bind(owner_id.0)
+        .bind(type_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_error)?;
+        let allocated = u64_from_i64(allocated)?;
+
+        Ok(balance.saturating_sub(allocated))
     }
 
     async fn record_ticket_acquisition(
@@ -1760,303 +2062,10 @@ impl OrderRepository for PgOrderRepository {
         }
         Ok(recordings)
     }
+}
 
-    async fn cancel_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError> {
-        // Stamp `canceled_at` and release the Epic's reservations back to
-        // free stock in one transaction (no ledger event: nothing was
-        // used). It never cascades onto linked tickets -- a shared ticket
-        // may still be needed by other work.
-        let now = crate::db_now();
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let result = sqlx::query(
-            "UPDATE orders SET canceled_at = $1, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 \
-             AND completed_at IS NULL AND canceled_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            tx.rollback().await.map_err(map_error)?;
-            return Err(self
-                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotCancelable)
-                .await?);
-        }
-        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
-        tx.commit().await.map_err(map_error)?;
-        self.get_order(workspace_id, order_id).await
-    }
-
-    async fn archive_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError> {
-        // Archiving releases the Epic's reservations too; restoring does
-        // not re-reserve (see `reserve_order_inventory`).
-        let now = crate::db_now();
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let result = sqlx::query(
-            "UPDATE orders SET archived_at = $1, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            tx.rollback().await.map_err(map_error)?;
-            return Err(self
-                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotArchivable)
-                .await?);
-        }
-        super::reservations::release_order_allocations(&mut tx, order_id, now).await?;
-        tx.commit().await.map_err(map_error)?;
-        self.get_order(workspace_id, order_id).await
-    }
-
-    async fn restore_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError> {
-        let now = crate::db_now();
-        let result = sqlx::query(
-            "UPDATE orders SET archived_at = NULL, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NOT NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(self
-                .order_precondition_error(workspace_id, order_id, OrderError::OrderNotRestorable)
-                .await?);
-        }
-        self.get_order(workspace_id, order_id).await
-    }
-
-    async fn delete_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<(), OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let price_snapshot_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT price_snapshot_id FROM orders WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
-        )
-        .bind(workspace_id.0)
-        .bind(order_id.0)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        let price_snapshot_id = price_snapshot_id.ok_or(OrderError::OrderNotFound)?;
-        sqlx::query("DELETE FROM orders WHERE workspace_id = $1 AND id = $2")
-            .bind(workspace_id.0)
-            .bind(order_id.0)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_error)?;
-        // The frozen snapshot is Epic-owned once captured. Delete it only
-        // after the Epic row is gone, and only if no surviving Epic can
-        // reference it (the FK is UNIQUE today; the guard is future-safe).
-        sqlx::query(
-            "DELETE FROM price_snapshots ps WHERE ps.id = $1 \
-             AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.price_snapshot_id = ps.id)",
-        )
-        .bind(price_snapshot_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        tx.commit().await.map_err(map_error)?;
-        Ok(())
-    }
-
-    /// Workflow-only, like `set_ticket_status`/`complete_ticket`: sets
-    /// `status = 'canceled'`/`updated_at` and nothing else. Tickets own no
-    /// reservations, so there is nothing to release, and no *other* ticket's
-    /// status is ever recomputed. "Canceled" means "I am no longer tracking
-    /// this work as active," not "undo accounting/history." Valid from
-    /// `todo` or `in_progress` (a `complete`/`canceled` ticket is left
-    /// alone).
-    async fn cancel_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError> {
-        let now = crate::db_now();
-        let result = sqlx::query(
-            "UPDATE tickets SET status = 'canceled', updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 \
-             AND status IN ('todo', 'in_progress')",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(self
-                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotCancelable)
-                .await?);
-        }
-        self.get_ticket(workspace_id, ticket_id).await
-    }
-
-    async fn archive_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError> {
-        let now = crate::db_now();
-        let result = sqlx::query(
-            "UPDATE tickets SET archived_at = $1, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(self
-                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotArchivable)
-                .await?);
-        }
-        self.get_ticket(workspace_id, ticket_id).await
-    }
-
-    async fn restore_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError> {
-        let now = crate::db_now();
-        let result = sqlx::query(
-            "UPDATE tickets SET archived_at = NULL, updated_at = $1 \
-             WHERE workspace_id = $2 AND id = $3 AND archived_at IS NOT NULL",
-        )
-        .bind(now)
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(map_error)?;
-        if result.rows_affected() == 0 {
-            return Err(self
-                .ticket_precondition_error(workspace_id, ticket_id, OrderError::TicketNotRestorable)
-                .await?);
-        }
-        self.get_ticket(workspace_id, ticket_id).await
-    }
-
-    async fn delete_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<(), OrderError> {
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        let exists: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM tickets WHERE workspace_id = $1 AND id = $2 FOR UPDATE",
-        )
-        .bind(workspace_id.0)
-        .bind(ticket_id.0)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(map_error)?;
-        if exists.is_none() {
-            return Err(OrderError::TicketNotFound);
-        }
-        crate::cascade::teardown_tickets(&mut tx, &[ticket_id.0])
-            .await
-            .map_err(map_error)?;
-        tx.commit().await.map_err(map_error)?;
-        Ok(())
-    }
-
-    async fn set_ticket_status(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-        status: TicketStatus,
-    ) -> Result<Ticket, OrderError> {
-        self.update_ticket(
-            workspace_id,
-            ticket_id,
-            TicketMetadataUpdate::default(),
-            Some(status),
-        )
-        .await
-    }
-
-    async fn update_ticket_metadata(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-        update: TicketMetadataUpdate,
-    ) -> Result<Ticket, OrderError> {
-        self.update_ticket(workspace_id, ticket_id, update, None)
-            .await
-    }
-
-    /// Metadata, then status, then the Epic auto-completion a status write
-    /// may trigger, in one transaction. See `ticket_updates` for each write.
-    async fn update_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-        metadata: TicketMetadataUpdate,
-        status: Option<TicketStatus>,
-    ) -> Result<Ticket, OrderError> {
-        if let Some(status) = status {
-            super::combine::guard_merged_status(&self.pool, workspace_id, ticket_id, status)
-                .await?;
-        }
-        let now = crate::db_now();
-        let mut tx = self.pool.begin().await.map_err(map_error)?;
-        super::ticket_updates::write_ticket_metadata(
-            &mut tx,
-            workspace_id,
-            ticket_id,
-            metadata,
-            now,
-        )
-        .await?;
-        if let Some(status) = status {
-            super::ticket_updates::write_ticket_status(
-                &mut tx,
-                workspace_id,
-                ticket_id,
-                status,
-                now,
-            )
-            .await?;
-            super::epic_completion::complete_epic_if_finished(
-                &mut tx,
-                workspace_id,
-                ticket_id,
-                now,
-            )
-            .await?;
-        }
-        tx.commit().await.map_err(map_error)?;
-        self.get_ticket(workspace_id, ticket_id).await
-    }
-
+#[async_trait]
+impl AcquisitionRunStore for PgOrderRepository {
     // Acquisition Run batching for standalone tickets -- implementations
     // live in `acquisition.rs` (see that module's own doc comment for why
     // this trait's methods can't live in a second `impl` block there).
