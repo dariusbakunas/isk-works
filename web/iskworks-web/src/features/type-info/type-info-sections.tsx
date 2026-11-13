@@ -27,6 +27,20 @@ export function LoadingRows() {
   );
 }
 
+/** A tab's own fetch failed; the rest of the window still works. */
+export function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="p-4">
+      <p className="text-[10px] text-warning" role="alert">
+        {message}
+      </p>
+      <button className="mt-1 h-8 text-[9px] text-primary hover:underline" onClick={onRetry} type="button">
+        Retry
+      </button>
+    </div>
+  );
+}
+
 export function NotInStaticData() {
   return (
     <div className="grid h-full place-items-center p-8 text-center">

@@ -328,6 +328,20 @@ describe("Type Info window", () => {
     expect(within(dialog).getByRole("button", { name: "Merlin" })).toBeInTheDocument();
   });
 
+  test("a tab whose fetch fails says why and can retry", async () => {
+    api.getTypeVariations.mockRejectedValueOnce(
+      new ApiError(503, { code: "persistence_unavailable", message: "Storage is unavailable." }),
+    );
+    const dialog = await openInfo("Harpy");
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Variations" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Storage is unavailable.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    expect(await within(dialog).findByRole("button", { name: "Merlin" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    expect(api.getTypeVariations).toHaveBeenCalledTimes(2);
+  });
+
   test("used with lists the modules by meta group", async () => {
     const dialog = await openInfo("Missile Range Disruption Script");
     fireEvent.click(within(dialog).getByRole("tab", { name: "Used with" }));
@@ -345,6 +359,29 @@ describe("Type Info window", () => {
     await waitFor(() => expect(within(dialog).getAllByText("314 / run")).toHaveLength(10));
     expect(within(dialog).queryByRole("button", { name: /Show more/ })).not.toBeInTheDocument();
     expect(api.getTypeUsedIn).toHaveBeenLastCalledWith(TRITANIUM, { limit: 50, offset: 8 });
+  });
+
+  test("another item's used-in list never shows while the next item's loads", async () => {
+    const usedInScript = { ...script, industry: { ...script.industry, usedInCount: 3 } };
+    const reprocessesIntoScript = info({
+      ...tritanium,
+      industry: { ...tritanium.industry, reprocessesInto: [{ typeId: SCRIPT, name: script.name, quantity: 1 }] },
+    });
+    api.getTypeInfo.mockImplementation(async (typeId: number) => (typeId === SCRIPT ? usedInScript : reprocessesIntoScript));
+    const tritaniumUsedIn = api.getTypeUsedIn.getMockImplementation()!;
+    // The script's own used-in page never arrives.
+    api.getTypeUsedIn.mockImplementation((typeId: number, options: { limit?: number; offset?: number }) =>
+      typeId === SCRIPT ? new Promise(() => {}) : tritaniumUsedIn(typeId, options),
+    );
+    const dialog = await openInfo("Tritanium");
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Industry" }));
+    expect(await within(dialog).findAllByText("314 / run")).toHaveLength(8);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: script.name }));
+    // A new item opens on its first tab; go back to Industry.
+    fireEvent.click(await within(dialog).findByRole("tab", { name: "Industry" }));
+    await waitFor(() => expect(api.getTypeUsedIn).toHaveBeenLastCalledWith(SCRIPT, { limit: 8 }, expect.anything()));
+    expect(within(dialog).queryByText("314 / run")).not.toBeInTheDocument();
   });
 
   test("industry shows producers and reprocessing", async () => {

@@ -1,5 +1,5 @@
 import { ChevronDown, Copy } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
@@ -17,6 +17,7 @@ import { ApiError } from "../../api/workspace";
 import { formatIskCompact, formatIskSummary } from "../../components/money";
 import type { ToolWindowRenderProps } from "../../components/tool-windows/tool-windows-context";
 import { useToolWindows } from "../../components/tool-windows/tool-windows-context";
+import { useLoad, type Loaded } from "../../hooks/use-load";
 import {
   TYPE_INFO_KIND,
   currentEntry,
@@ -37,10 +38,10 @@ import {
   MetaGroupLists,
   NotInStaticData,
   RequirementsSection,
+  SectionError,
   TraitsSection,
   hasBasics,
 } from "./type-info-sections";
-import { apiMessage } from "../../api/api-error";
 
 export type TypeInfoTab = "Description" | "Attributes" | "Traits" | "Requirements" | "Variations" | "Used with" | "Industry";
 
@@ -67,34 +68,11 @@ export function visibleTabs(info: TypeInfo): TypeInfoTab[] {
   return tabs.filter(([, shown]) => shown).map(([tab]) => tab);
 }
 
-type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "missing" } | { status: "failed"; message: string };
-
-function failure(reason: unknown): Load<never> {
-  if (reason instanceof ApiError && reason.status === 404) return { status: "missing" };
-  return { status: "failed", message: apiMessage(reason) };
-}
-
-/** Loads `fetcher` whenever `key` changes; `null` key loads nothing. */
-function useLoad<T>(key: string | null, fetcher: (signal: AbortSignal) => Promise<T>): Load<T> | null {
-  const [load, setLoad] = useState<Load<T> | null>(null);
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-  useEffect(() => {
-    if (key === null) {
-      setLoad(null);
-      return;
-    }
-    const controller = new AbortController();
-    setLoad({ status: "loading" });
-    fetcherRef
-      .current(controller.signal)
-      .then((value) => setLoad({ status: "ready", value }))
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setLoad(failure(reason));
-      });
-    return () => controller.abort();
-  }, [key]);
-  return load;
+/** A load's payload for the current request: `useLoad` keeps the last
+ * payload while it waits or refetches, which must not show for another
+ * type or an inactive tab. */
+function current<T>(load: Loaded<T>, active: boolean): T | null {
+  return active && !load.loading && !load.error ? load.data : null;
 }
 
 function Tabs({
@@ -228,8 +206,8 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
   const latest = useRef(state);
   latest.current = state;
 
-  const info = useLoad(`${entry.typeId}:${pilot ?? "none"}`, (signal) => getTypeInfo(entry.typeId, pilot, signal));
-  const loaded = info?.status === "ready" ? info.value : null;
+  const info = useLoad((signal) => getTypeInfo(entry.typeId, pilot, signal), `${entry.typeId}:${pilot ?? "none"}`);
+  const loaded = current(info, true);
 
   // Name the window (and its dock entry) once the type has loaded.
   useEffect(() => {
@@ -241,23 +219,30 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
   const tabs = loaded ? visibleTabs(loaded) : [];
   const active = (tabs.find((tab) => tab === state.tab) ?? tabs[0]) as TypeInfoTab | undefined;
 
-  const variations = useLoad<MetaGroupList[]>(active === "Variations" ? `v${entry.typeId}` : null, (signal) =>
-    getTypeVariations(entry.typeId, signal),
+  const variationsLoad = useLoad<MetaGroupList[]>(
+    active === "Variations" ? (signal) => getTypeVariations(entry.typeId, signal) : null,
+    `v${entry.typeId}`,
   );
-  const usedWith = useLoad<UsedWithView>(active === "Used with" ? `w${entry.typeId}` : null, (signal) =>
-    getTypeUsedWith(entry.typeId, signal),
+  const variations = current(variationsLoad, active === "Variations");
+  const usedWithLoad = useLoad<UsedWithView>(
+    active === "Used with" ? (signal) => getTypeUsedWith(entry.typeId, signal) : null,
+    `w${entry.typeId}`,
   );
-  const firstUsedIn = useLoad<UsedInPage>(
-    active === "Industry" && loaded && loaded.industry.usedInCount > 0 ? `i${entry.typeId}` : null,
-    (signal) => getTypeUsedIn(entry.typeId, { limit: FIRST_USED_IN_PAGE }, signal),
+  const usedWith = current(usedWithLoad, active === "Used with");
+  const usedInActive = active === "Industry" && loaded !== null && loaded.industry.usedInCount > 0;
+  const firstUsedInLoad = useLoad<UsedInPage>(
+    usedInActive ? (signal) => getTypeUsedIn(entry.typeId, { limit: FIRST_USED_IN_PAGE }, signal) : null,
+    `i${entry.typeId}`,
   );
+  const firstUsedIn = current(firstUsedInLoad, usedInActive);
   const [usedIn, setUsedIn] = useState<UsedInPage | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  useEffect(() => setUsedIn(firstUsedIn?.status === "ready" ? firstUsedIn.value : null), [firstUsedIn]);
+  useEffect(() => setUsedIn(firstUsedIn), [firstUsedIn]);
 
-  const characters = useLoad<CharacterRosterEntry[]>(active === "Requirements" ? "characters" : null, () => listCharacters());
+  const charactersLoad = useLoad<CharacterRosterEntry[]>(active === "Requirements" ? () => listCharacters() : null, "characters");
+  const characters = current(charactersLoad, active === "Requirements");
   // Only characters whose skills have synced can be checked against.
-  const skilled = characters?.status === "ready" ? characters.value.filter((character) => character.totalSp !== null) : null;
+  const skilled = useMemo(() => characters?.filter((character) => character.totalSp !== null) ?? null, [characters]);
 
   // Check against the first such character until one is picked.
   useEffect(() => {
@@ -281,10 +266,10 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
     }
   }
 
-  if (!info || info.status === "loading") return <LoadingRows />;
-  if (info.status === "missing") return <NotInStaticData />;
-  if (info.status === "failed") return <p className="p-4 text-[10px] text-warning">{info.message}</p>;
-  const value = info.value;
+  if (info.error instanceof ApiError && info.error.status === 404) return <NotInStaticData />;
+  if (info.errorMessage) return <p className="p-4 text-[10px] text-warning">{info.errorMessage}</p>;
+  if (!loaded) return <LoadingRows />;
+  const value = loaded;
 
   let section: ReactNode = <p className="p-4 text-[10px] text-subtle">Nothing more is known about this item.</p>;
   switch (active) {
@@ -309,15 +294,22 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
       );
       break;
     case "Variations":
-      section =
-        variations?.status === "ready" ? (
-          <MetaGroupLists currentTypeId={value.typeId} groups={variations.value} onOpen={onOpen} />
-        ) : (
-          <LoadingRows />
-        );
+      section = variationsLoad.errorMessage ? (
+        <SectionError message={variationsLoad.errorMessage} onRetry={variationsLoad.retry} />
+      ) : variations ? (
+        <MetaGroupLists currentTypeId={value.typeId} groups={variations} onOpen={onOpen} />
+      ) : (
+        <LoadingRows />
+      );
       break;
     case "Used with":
-      section = usedWith?.status === "ready" ? <MetaGroupLists groups={usedWith.value.groups} onOpen={onOpen} /> : <LoadingRows />;
+      section = usedWithLoad.errorMessage ? (
+        <SectionError message={usedWithLoad.errorMessage} onRetry={usedWithLoad.retry} />
+      ) : usedWith ? (
+        <MetaGroupLists groups={usedWith.groups} onOpen={onOpen} />
+      ) : (
+        <LoadingRows />
+      );
       break;
     case "Industry":
       section = <IndustrySection info={value} loadingMore={loadingMore} onMore={() => void loadMore()} onOpen={onOpen} usedIn={usedIn} />;
