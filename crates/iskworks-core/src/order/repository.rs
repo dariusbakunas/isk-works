@@ -1,6 +1,6 @@
 use super::*;
 
-/// Outcome of `OrderRepository::create_ticket_for_order_requirement`.
+/// Outcome of `TicketStore::create_ticket_for_order_requirement`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RequirementTicketCreation {
     /// The ticket was created and linked to the requirement.
@@ -9,7 +9,7 @@ pub enum RequirementTicketCreation {
     AlreadyLinked(TicketId),
 }
 
-/// Outcome of `OrderRepository::create_operation_ticket`.
+/// Outcome of `TicketStore::create_operation_ticket`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum OperationTicketCreation {
     /// The ticket was created for the operation.
@@ -138,7 +138,7 @@ pub struct NewPlanTicket {
     pub parent_occurrence_key: Option<String>,
 }
 
-/// [`OrderRepository::create_order_plan`]'s result -- everything the caller
+/// [`OrderStore::create_order_plan`]'s result -- everything the caller
 /// (the `create_order` route) needs to build its response, already
 /// resolved (real `TicketId`s, `display_id`s, timestamps).
 #[derive(Debug, Clone, PartialEq)]

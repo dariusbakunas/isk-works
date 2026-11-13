@@ -435,7 +435,7 @@ pub(super) async fn record_order_acquisition_progress(
 }
 
 /// The delivery transaction -- see the trait doc comment on
-/// `OrderRepository::complete_order_acquisition_run`. This is an explicit
+/// `AcquisitionRunStore::complete_order_acquisition_run`. This is an explicit
 /// recording/accounting action: for each distinct `type_id` it posts
 /// exactly one `Purchase` event for the *full* recorded acquired total
 /// (surplus included), allocates that total across member tickets via

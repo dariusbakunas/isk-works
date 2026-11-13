@@ -927,7 +927,7 @@ pub(super) async fn complete_order(
 }
 
 /// Cancellation is a purely stored-state precondition (see
-/// `OrderRepository::cancel_order`'s own doc) -- unlike `start_order`/
+/// `OrderStore::cancel_order`'s own doc) -- unlike `start_order`/
 /// `complete_order`, no derived-status guard needs computing here first.
 pub(super) async fn cancel_order(
     State(state): State<AppState>,

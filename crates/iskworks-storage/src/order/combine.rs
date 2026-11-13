@@ -119,7 +119,7 @@ async fn prerequisites_of(
     Ok(by_ticket)
 }
 
-/// See `OrderRepository::combine_tickets`.
+/// See `TicketStore::combine_tickets`.
 pub(super) async fn combine_tickets(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -253,7 +253,7 @@ pub(super) async fn combine_tickets(
     Ok(combined.id)
 }
 
-/// See `OrderRepository::split_ticket`. Returns the restored members' ids.
+/// See `TicketStore::split_ticket`. Returns the restored members' ids.
 pub(super) async fn split_ticket(
     pool: &PgPool,
     workspace_id: WorkspaceId,

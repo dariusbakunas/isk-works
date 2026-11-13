@@ -420,7 +420,7 @@ pub(super) async fn create_ticket_route(
 /// An Epic without reservations (versions 1 and 2) maps to an empty set or
 /// is absent. Two reads for any number of Epics.
 pub(super) async fn held_requirement_keys_by_order(
-    repository: &dyn OrderRepository,
+    repository: &dyn OrderStore,
     workspace_id: iskworks_core::WorkspaceId,
     order_ids: &[OrderId],
 ) -> Result<HashMap<OrderId, HashSet<(String, i64)>>, ApiError> {
@@ -602,7 +602,7 @@ pub(super) async fn start_ticket(
     ))
 }
 
-/// Workflow-only -- see `OrderRepository::complete_ticket`'s own doc. Takes
+/// Workflow-only -- see `TicketStore::complete_ticket`'s own doc. Takes
 /// no body: completion prices and posts nothing, so there is nothing to
 /// pass in. Any JSON a legacy caller still sends (e.g. a
 /// stale `actualUnitCost`) is simply never read, not rejected.

@@ -110,7 +110,7 @@ async fn get_order_acquisition_run(
 
 /// No preview/confirm step: Order status is derived, so starting a Run
 /// locks nothing and there is nothing to warn about -- see
-/// `OrderRepository::start_order_acquisition_run`'s own doc.
+/// `AcquisitionRunStore::start_order_acquisition_run`'s own doc.
 async fn start_order_acquisition_run(
     State(state): State<AppState>,
     Path(run_id): Path<uuid::Uuid>,
