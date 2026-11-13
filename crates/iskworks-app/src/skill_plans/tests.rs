@@ -6,7 +6,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use iskworks_core::skill_plans::{
     PlanEntry, SkillPlan, SkillPlanId, SkillPlanInput, SkillPlanRepository,
 };
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use iskworks_sde::{
     ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
     SkillDefinition, TypeSearchResult,
@@ -239,7 +239,7 @@ async fn a_blank_name_or_broken_order_is_a_validation_error() {
         .create(workspace, input("   ", vec![entry(DRONES, 1)]), now())
         .await
         .unwrap_err();
-    assert!(matches!(blank, InventoryError::Validation(_)));
+    assert!(matches!(blank, StoreError::Validation(_)));
 
     let order = service
         .create(
@@ -250,7 +250,7 @@ async fn a_blank_name_or_broken_order_is_a_validation_error() {
         .await
         .unwrap_err();
     match order {
-        InventoryError::Validation(message) => {
+        StoreError::Validation(message) => {
             assert_eq!(message, "Drones I must come before Scout Drone Operation I")
         }
         other => panic!("expected a validation error, got {other:?}"),
@@ -424,7 +424,7 @@ async fn importing_text_creates_the_plan_and_keeps_the_unusable_lines() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(nothing, InventoryError::Validation(_)));
+    assert!(matches!(nothing, StoreError::Validation(_)));
 }
 
 #[tokio::test]

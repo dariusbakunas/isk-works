@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use iskworks_core::{
-    CharacterHealth, ConnectedCharacterId, ConnectionStatus, IndustryActivity, InventoryError,
+    CharacterHealth, ConnectedCharacterId, ConnectionStatus, IndustryActivity, StoreError,
     WorkspaceId,
 };
 use uuid::Uuid;
@@ -251,7 +251,7 @@ impl CalendarCharacterSource for FakeCalendarSource {
     async fn calendar_details(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<CharacterDetail>, InventoryError> {
+    ) -> Result<Vec<CharacterDetail>, StoreError> {
         self.requested.lock().unwrap().push(workspace_id);
         Ok(self.details.get(&workspace_id).cloned().unwrap_or_default())
     }
@@ -295,10 +295,10 @@ impl super::CalendarPlanetarySource for FakePlanetary {
     async fn planetary_timers(
         &self,
         _: WorkspaceId,
-    ) -> Result<Vec<crate::planetary::PlanetaryTimer>, InventoryError> {
+    ) -> Result<Vec<crate::planetary::PlanetaryTimer>, StoreError> {
         self.0
             .clone()
-            .map_err(|()| InventoryError::Persistence("boom".into()))
+            .map_err(|()| StoreError::Persistence("boom".into()))
     }
 }
 

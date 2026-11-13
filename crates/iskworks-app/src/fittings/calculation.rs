@@ -13,7 +13,7 @@ use iskworks_core::fitting::{
 };
 use iskworks_core::skill_plans::{SkillPlan, SkillPlanInput};
 use iskworks_core::skills::{parse_skills_summary, CharacterSkillsSnapshot};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use iskworks_sde::{RequiredSkill, SkillDefinition};
 use serde::Serialize;
 
@@ -103,7 +103,7 @@ pub(crate) async fn character_snapshot(
     characters: Option<&Arc<dyn SkillsCharacterSource>>,
     workspace_id: WorkspaceId,
     connection_id: ConnectedCharacterId,
-) -> Result<CharacterSkillsSnapshot, InventoryError> {
+) -> Result<CharacterSkillsSnapshot, StoreError> {
     let character = match characters {
         Some(characters) => {
             characters
@@ -112,9 +112,9 @@ pub(crate) async fn character_snapshot(
         }
         None => None,
     }
-    .ok_or_else(|| InventoryError::Validation("no such character in the workspace".to_string()))?;
+    .ok_or_else(|| StoreError::Validation("no such character in the workspace".to_string()))?;
     snapshot(&character).ok_or_else(|| {
-        InventoryError::Validation(format!(
+        StoreError::Validation(format!(
             "{} has no synced skills to calculate with",
             character.name
         ))
@@ -122,7 +122,7 @@ pub(crate) async fn character_snapshot(
 }
 
 /// The levels a character can use: active, so an Alpha's cap applies.
-fn pilot_skills(snapshot: &CharacterSkillsSnapshot) -> Result<Pilot, InventoryError> {
+fn pilot_skills(snapshot: &CharacterSkillsSnapshot) -> Result<Pilot, StoreError> {
     let levels = snapshot
         .skills
         .iter()
@@ -130,7 +130,7 @@ fn pilot_skills(snapshot: &CharacterSkillsSnapshot) -> Result<Pilot, InventoryEr
         .collect();
     PilotSkills::new(levels)
         .map(Pilot::Skills)
-        .map_err(|error| InventoryError::Validation(format!("unusable skill data: {error:?}")))
+        .map_err(|error| StoreError::Validation(format!("unusable skill data: {error:?}")))
 }
 
 fn status_rank(status: Option<FlyabilityStatus>) -> u8 {
@@ -142,8 +142,8 @@ fn status_rank(status: Option<FlyabilityStatus>) -> u8 {
     }
 }
 
-fn calculation_error(error: FittingError) -> InventoryError {
-    InventoryError::Validation(match error {
+fn calculation_error(error: FittingError) -> StoreError {
+    StoreError::Validation(match error {
         FittingError::UnknownShip(type_id) => {
             format!("the fitting engine doesn't know ship type {type_id}")
         }
@@ -157,7 +157,7 @@ impl FittingService {
     pub(super) async fn workspace_characters(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<SkillsCharacter>, InventoryError> {
+    ) -> Result<Vec<SkillsCharacter>, StoreError> {
         match &self.characters {
             Some(characters) => Ok(characters.skills_characters(workspace_id).await?),
             None => Ok(Vec::new()),
@@ -168,7 +168,7 @@ impl FittingService {
     pub(super) async fn requirement_data(
         &self,
         fits: &[&FitInput],
-    ) -> Result<(BTreeMap<i64, Vec<RequiredSkill>>, Vec<SkillDefinition>), InventoryError> {
+    ) -> Result<(BTreeMap<i64, Vec<RequiredSkill>>, Vec<SkillDefinition>), StoreError> {
         let ids: BTreeSet<i64> = fits
             .iter()
             .flat_map(|fit| {
@@ -193,7 +193,7 @@ impl FittingService {
         &self,
         workspace_id: WorkspaceId,
         choice: PilotChoice,
-    ) -> Result<(Pilot, Option<CharacterSkillsSnapshot>), InventoryError> {
+    ) -> Result<(Pilot, Option<CharacterSkillsSnapshot>), StoreError> {
         match choice {
             PilotChoice::AllV => Ok((Pilot::AllV, None)),
             PilotChoice::AllZero => Ok((Pilot::AllZero, None)),
@@ -215,7 +215,7 @@ impl FittingService {
         pilot: PilotChoice,
         profile: &DamageProfile,
         now: DateTime<Utc>,
-    ) -> Result<FitStatsView, InventoryError> {
+    ) -> Result<FitStatsView, StoreError> {
         let (pilot, snapshot) = self.resolve_pilot(workspace_id, pilot).await?;
         let calculation = engine
             .calculate(fit, &pilot, profile)
@@ -250,7 +250,7 @@ impl FittingService {
         profile: &DamageProfile,
         target: ExplainTarget,
         attribute: &str,
-    ) -> Result<Option<AttributeView>, InventoryError> {
+    ) -> Result<Option<AttributeView>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
@@ -315,7 +315,7 @@ impl FittingService {
         pilot: PilotChoice,
         profile: &DamageProfile,
         now: DateTime<Utc>,
-    ) -> Result<Option<FitStatsView>, InventoryError> {
+    ) -> Result<Option<FitStatsView>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
@@ -334,7 +334,7 @@ impl FittingService {
         id: FitId,
         profile: &DamageProfile,
         now: DateTime<Utc>,
-    ) -> Result<Option<Vec<FitPilot>>, InventoryError> {
+    ) -> Result<Option<Vec<FitPilot>>, StoreError> {
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
         };
@@ -397,9 +397,9 @@ impl FittingService {
         id: FitId,
         connection_id: Option<ConnectedCharacterId>,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlan>, InventoryError> {
+    ) -> Result<Option<SkillPlan>, StoreError> {
         let skill_plans = self.skill_plans.clone().ok_or_else(|| {
-            InventoryError::Persistence("Skill plan persistence is unavailable.".to_string())
+            StoreError::Persistence("Skill plan persistence is unavailable.".to_string())
         })?;
         let Some(fit) = self.fits.fit(workspace_id, id).await? else {
             return Ok(None);
@@ -416,9 +416,9 @@ impl FittingService {
         let (required, definitions) = self.requirement_data(&[&input]).await?;
         let requirements: FitRequirements = fit_requirements(&input, &required);
         let entries = requirement_plan(&requirements, &definitions, snapshot.as_ref())
-            .map_err(|error| InventoryError::Validation(format!("{error:?}")))?;
+            .map_err(|error| StoreError::Validation(format!("{error:?}")))?;
         if entries.is_empty() {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "nothing left to train for this fit".to_string(),
             ));
         }
@@ -434,6 +434,5 @@ impl FittingService {
             )
             .await
             .map(Some)
-            .map_err(Into::into)
     }
 }

@@ -26,6 +26,13 @@ pub enum TicketJobError {
     Order(#[from] OrderError),
 }
 
+/// A store port's error, as the `InventoryError` it was before.
+impl From<iskworks_core::StoreError> for TicketJobError {
+    fn from(error: iskworks_core::StoreError) -> Self {
+        Self::Inventory(error.into())
+    }
+}
+
 /// Told when a workspace's ESI industry jobs were refreshed.
 #[async_trait]
 pub trait IndustryJobsSynced: Send + Sync {

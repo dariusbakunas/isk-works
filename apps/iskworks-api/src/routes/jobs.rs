@@ -6,7 +6,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{Duration, NaiveDate, Utc};
 use iskworks_app::{ActiveJobs, JobHistoryView};
-use iskworks_core::InventoryError;
+use iskworks_core::StoreError;
 use serde::Deserialize;
 
 use crate::{workspace_context, ApiError, AppState};
@@ -37,12 +37,12 @@ struct HistoryParams {
     to: Option<String>,
 }
 
-fn parse_date(value: Option<&str>, name: &str) -> Result<Option<NaiveDate>, InventoryError> {
+fn parse_date(value: Option<&str>, name: &str) -> Result<Option<NaiveDate>, StoreError> {
     value
         .filter(|value| !value.is_empty())
         .map(|value| {
             NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| InventoryError::Validation(format!("{name} must be YYYY-MM-DD")))
+                .map_err(|_| StoreError::Validation(format!("{name} must be YYYY-MM-DD")))
         })
         .transpose()
 }

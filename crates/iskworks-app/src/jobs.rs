@@ -10,9 +10,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use iskworks_core::{
     job_history, job_status, summarize_running, CharacterSourceKind, ConnectedCharacterId,
-    IndustryActivity, IndustryJobRepository, InventoryError, JobHistoryKpis, JobStatus,
-    JobTicketLink, MarketRefreshState, Money, RunningJobSummary, StoredIndustryJob,
-    WeeklyCompletions, WorkspaceId, MAX_JOB_HISTORY_DAYS,
+    IndustryActivity, IndustryJobRepository, JobHistoryKpis, JobStatus, JobTicketLink,
+    MarketRefreshState, Money, RunningJobSummary, StoreError, StoredIndustryJob, WeeklyCompletions,
+    WorkspaceId, MAX_JOB_HISTORY_DAYS,
 };
 use serde::Serialize;
 
@@ -67,13 +67,13 @@ pub trait JobsCharacterSource: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         now: DateTime<Utc>,
-    ) -> Result<Vec<JobCharacterSnapshot>, InventoryError>;
+    ) -> Result<Vec<JobCharacterSnapshot>, StoreError>;
     /// Fills in blueprint, product and facility names, best-effort.
     async fn label_jobs(
         &self,
         workspace_id: WorkspaceId,
         jobs: &mut [IndustryJobDto],
-    ) -> Result<(), InventoryError>;
+    ) -> Result<(), StoreError>;
 }
 
 /// How current a character's jobs are, from its `industry_jobs` source.
@@ -110,7 +110,7 @@ impl JobsCharacterSource for CharacterRosterService {
         &self,
         workspace_id: WorkspaceId,
         now: DateTime<Utc>,
-    ) -> Result<Vec<JobCharacterSnapshot>, InventoryError> {
+    ) -> Result<Vec<JobCharacterSnapshot>, StoreError> {
         let roster = self.list(workspace_id).await?;
         let mut characters = Vec::with_capacity(roster.len());
         for character in roster {
@@ -153,7 +153,7 @@ impl JobsCharacterSource for CharacterRosterService {
         &self,
         workspace_id: WorkspaceId,
         jobs: &mut [IndustryJobDto],
-    ) -> Result<(), InventoryError> {
+    ) -> Result<(), StoreError> {
         self.label_industry_jobs(workspace_id, jobs).await
     }
 }
@@ -249,7 +249,7 @@ impl JobsService {
         &self,
         workspace_id: WorkspaceId,
         now: DateTime<Utc>,
-    ) -> Result<ActiveJobs, InventoryError> {
+    ) -> Result<ActiveJobs, StoreError> {
         let snapshots = self.characters.job_characters(workspace_id, now).await?;
         let job_ids: Vec<i64> = snapshots
             .iter()
@@ -302,14 +302,12 @@ impl JobsService {
         from: NaiveDate,
         to: NaiveDate,
         now: DateTime<Utc>,
-    ) -> Result<JobHistoryView, InventoryError> {
+    ) -> Result<JobHistoryView, StoreError> {
         if from > to {
-            return Err(InventoryError::Validation(
-                "from must not be after to".into(),
-            ));
+            return Err(StoreError::Validation("from must not be after to".into()));
         }
         if (to - from).num_days() + 1 > MAX_JOB_HISTORY_DAYS {
-            return Err(InventoryError::Validation(format!(
+            return Err(StoreError::Validation(format!(
                 "range must be at most {MAX_JOB_HISTORY_DAYS} days"
             )));
         }
@@ -322,10 +320,8 @@ impl JobsService {
             .expect("midnight exists")
             .and_utc();
         let (stored, earliest, snapshots) = tokio::try_join!(
-            async {
-                Ok::<_, InventoryError>(self.jobs.completed_jobs(workspace_id, start, end).await?)
-            },
-            async { Ok::<_, InventoryError>(self.jobs.earliest_job_seen(workspace_id).await?) },
+            self.jobs.completed_jobs(workspace_id, start, end),
+            self.jobs.earliest_job_seen(workspace_id),
             self.characters.job_characters(workspace_id, now),
         )?;
         let (kpis, weekly) = job_history(&stored, from, to);

@@ -15,8 +15,8 @@ use iskworks_core::planetary::{
     SchematicRecipe, StorageKind, TypeFacts,
 };
 use iskworks_core::{
-    summarize_scoped_orders, ConnectedCharacterId, InventoryError, MarketRefreshState,
-    MarketRepository, MarketScope, WorkspaceId,
+    summarize_scoped_orders, ConnectedCharacterId, MarketRefreshState, MarketRepository,
+    MarketScope, StoreError, WorkspaceId,
 };
 use iskworks_sde::{PlanetReference, SdeReadRepository};
 use rust_decimal::Decimal;
@@ -195,8 +195,8 @@ fn fmt(value: Decimal) -> String {
     value.round_dp(2).normalize().to_string()
 }
 
-fn sde_error(error: impl std::fmt::Display) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn sde_error(error: impl std::fmt::Display) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 /// Parsed colonies for one character, or `None` when it has no usable
@@ -235,15 +235,15 @@ impl PlanetaryService {
     pub async fn preferences(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<PlanetaryPreferences, InventoryError> {
-        Ok(self.preferences.planetary_preferences(workspace_id).await?)
+    ) -> Result<PlanetaryPreferences, StoreError> {
+        self.preferences.planetary_preferences(workspace_id).await
     }
 
     pub async fn save_preferences(
         &self,
         workspace_id: WorkspaceId,
         mut preferences: PlanetaryPreferences,
-    ) -> Result<PlanetaryPreferences, InventoryError> {
+    ) -> Result<PlanetaryPreferences, StoreError> {
         let mut seen = BTreeSet::new();
         preferences
             .excluded_exports
@@ -260,7 +260,7 @@ impl PlanetaryService {
         &self,
         workspace_id: WorkspaceId,
         scope: MarketScope,
-    ) -> Result<PlanetaryOverview, InventoryError> {
+    ) -> Result<PlanetaryOverview, StoreError> {
         self.assemble(workspace_id, Some(scope)).await
     }
 
@@ -270,7 +270,7 @@ impl PlanetaryService {
     pub async fn timers(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Vec<PlanetaryTimer>, InventoryError> {
+    ) -> Result<Vec<PlanetaryTimer>, StoreError> {
         let overview = self.assemble(workspace_id, None).await?;
         Ok(planetary_timers(&overview))
     }
@@ -279,7 +279,7 @@ impl PlanetaryService {
         &self,
         workspace_id: WorkspaceId,
         scope: Option<MarketScope>,
-    ) -> Result<PlanetaryOverview, InventoryError> {
+    ) -> Result<PlanetaryOverview, StoreError> {
         let now = Utc::now();
         let mut characters = self.characters.planetary_characters(workspace_id).await?;
         let preferences = self.preferences.planetary_preferences(workspace_id).await?;

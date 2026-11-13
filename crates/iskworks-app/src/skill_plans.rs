@@ -11,7 +11,7 @@ use iskworks_core::skill_plans::{
     UnrecognizedLine,
 };
 use iskworks_core::skills::{parse_skills_summary, sp_for_level};
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use iskworks_sde::{SdeReadRepository, SkillAttribute, SkillDefinition};
 use serde::Serialize;
 
@@ -118,8 +118,8 @@ pub struct SkillPlanService {
     sde: Arc<dyn SdeReadRepository>,
 }
 
-fn sde_error(error: impl std::fmt::Display) -> InventoryError {
-    InventoryError::Persistence(error.to_string())
+fn sde_error(error: impl std::fmt::Display) -> StoreError {
+    StoreError::Persistence(error.to_string())
 }
 
 fn label(graph: &SkillGraph<'_>, entry: PlanEntry) -> String {
@@ -134,8 +134,8 @@ fn label(graph: &SkillGraph<'_>, entry: PlanEntry) -> String {
     format!("{name} {level}")
 }
 
-fn plan_error(graph: &SkillGraph<'_>, error: SkillPlanError) -> InventoryError {
-    InventoryError::Validation(match error {
+fn plan_error(graph: &SkillGraph<'_>, error: SkillPlanError) -> StoreError {
+    StoreError::Validation(match error {
         SkillPlanError::UnknownSkill(type_id) => format!("unknown skill {type_id}"),
         SkillPlanError::InvalidLevel(entry) => format!(
             "level {} is not a skill level (1-5) for {}",
@@ -205,7 +205,7 @@ impl SkillPlanService {
         }
     }
 
-    async fn definitions(&self) -> Result<Vec<SkillDefinition>, InventoryError> {
+    async fn definitions(&self) -> Result<Vec<SkillDefinition>, StoreError> {
         self.sde.skill_catalogue().await.map_err(sde_error)
     }
 
@@ -216,7 +216,7 @@ impl SkillPlanService {
         workspace_id: WorkspaceId,
         character: Option<ConnectedCharacterId>,
         now: DateTime<Utc>,
-    ) -> Result<Option<Vec<SkillPlanSummary>>, InventoryError> {
+    ) -> Result<Option<Vec<SkillPlanSummary>>, StoreError> {
         let character = match character {
             Some(connection_id) => {
                 match self
@@ -273,7 +273,7 @@ impl SkillPlanService {
         workspace_id: WorkspaceId,
         id: SkillPlanId,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlanDetail>, InventoryError> {
+    ) -> Result<Option<SkillPlanDetail>, StoreError> {
         let Some(plan) = self.plans.skill_plan(workspace_id, id).await? else {
             return Ok(None);
         };
@@ -291,7 +291,7 @@ impl SkillPlanService {
         definitions: &[SkillDefinition],
         inserted: Vec<PlanEntry>,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlanDetail, InventoryError> {
+    ) -> Result<SkillPlanDetail, StoreError> {
         let entries = entry_views(&SkillGraph::new(definitions), &plan.entries);
         let mut characters = self
             .characters
@@ -334,10 +334,10 @@ impl SkillPlanService {
     fn prepare(
         input: SkillPlanInput,
         graph: &SkillGraph<'_>,
-    ) -> Result<(SkillPlanInput, Vec<PlanEntry>), InventoryError> {
+    ) -> Result<(SkillPlanInput, Vec<PlanEntry>), StoreError> {
         let name = input.name.trim().to_string();
         if name.is_empty() {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "a skill plan needs a name".to_string(),
             ));
         }
@@ -358,7 +358,7 @@ impl SkillPlanService {
         workspace_id: WorkspaceId,
         input: SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<SkillPlanDetail, InventoryError> {
+    ) -> Result<SkillPlanDetail, StoreError> {
         let definitions = self.definitions().await?;
         let (input, inserted) = Self::prepare(input, &SkillGraph::new(&definitions))?;
         let plan = self
@@ -376,7 +376,7 @@ impl SkillPlanService {
         id: SkillPlanId,
         input: SkillPlanInput,
         now: DateTime<Utc>,
-    ) -> Result<Option<SkillPlanDetail>, InventoryError> {
+    ) -> Result<Option<SkillPlanDetail>, StoreError> {
         let definitions = self.definitions().await?;
         let (input, inserted) = Self::prepare(input, &SkillGraph::new(&definitions))?;
         let Some(plan) = self
@@ -396,12 +396,12 @@ impl SkillPlanService {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<bool, InventoryError> {
-        Ok(self.plans.delete_skill_plan(workspace_id, id).await?)
+    ) -> Result<bool, StoreError> {
+        self.plans.delete_skill_plan(workspace_id, id).await
     }
 
     /// A dry run of [`Self::import_text`]: nothing is saved.
-    pub async fn preview_text(&self, text: &str) -> Result<PlanTextPreview, InventoryError> {
+    pub async fn preview_text(&self, text: &str) -> Result<PlanTextPreview, StoreError> {
         let definitions = self.definitions().await?;
         let graph = SkillGraph::new(&definitions);
         let parsed = parse_plan_text(text, &definitions);
@@ -417,7 +417,7 @@ impl SkillPlanService {
                 inserted: Vec::new(),
                 unrecognized: parsed.unrecognized,
                 error: match plan_error(&graph, error) {
-                    InventoryError::Validation(message) => Some(message),
+                    StoreError::Validation(message) => Some(message),
                     other => Some(other.to_string()),
                 },
             },
@@ -434,11 +434,11 @@ impl SkillPlanService {
         description: String,
         text: &str,
         now: DateTime<Utc>,
-    ) -> Result<ImportedSkillPlan, InventoryError> {
+    ) -> Result<ImportedSkillPlan, StoreError> {
         let definitions = self.definitions().await?;
         let parsed = parse_plan_text(text, &definitions);
         if parsed.entries.is_empty() {
-            return Err(InventoryError::Validation(
+            return Err(StoreError::Validation(
                 "the pasted text has no skill plan entries".to_string(),
             ));
         }
@@ -465,7 +465,7 @@ impl SkillPlanService {
         &self,
         workspace_id: WorkspaceId,
         id: SkillPlanId,
-    ) -> Result<Option<String>, InventoryError> {
+    ) -> Result<Option<String>, StoreError> {
         let Some(plan) = self.plans.skill_plan(workspace_id, id).await? else {
             return Ok(None);
         };
