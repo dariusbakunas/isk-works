@@ -83,11 +83,10 @@ impl From<InventoryError> for OpportunityError {
     }
 }
 
-/// The adjusted-price port's error, worded as it was when the port
-/// returned `InventoryError`.
+/// The adjusted-price port's error; always a redacted storage failure.
 impl From<crate::StoreError> for OpportunityError {
     fn from(error: crate::StoreError) -> Self {
-        InventoryError::from(error).into()
+        Self::AdjustedPrices(error.to_string())
     }
 }
 

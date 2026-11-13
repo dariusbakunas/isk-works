@@ -331,9 +331,9 @@ async fn resolve_structure(
 ) -> Result<Json<ResolveStructureResponse>, ApiError> {
     let (workspace_id, _) = workspace_context(&state).await?;
     if request.structure_id <= 0 {
-        return Err(ApiError::Inventory(
-            iskworks_core::InventoryError::Validation("Structure ID must be positive.".to_string()),
-        ));
+        return Err(ApiError::from(iskworks_core::StoreError::Validation(
+            "Structure ID must be positive.".to_string(),
+        )));
     }
     let facility_repository = state.facility_repository()?;
     if let Some(known) = facility_repository

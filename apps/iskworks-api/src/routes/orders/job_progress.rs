@@ -141,7 +141,7 @@ pub(super) async fn unlink_ticket_job(
 
 fn api_error(error: TicketJobError) -> ApiError {
     match error {
-        TicketJobError::Inventory(error) => error.into(),
+        TicketJobError::Store(error) => error.into(),
         TicketJobError::Order(error) => error.into(),
     }
 }

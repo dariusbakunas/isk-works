@@ -443,9 +443,7 @@ impl BuildMaterialsCoordinator {
             let values = repository
                 .latest_adjusted_prices(&type_ids, now)
                 .await
-                .map_err(|error| {
-                    BuildMaterialsError::Preview(BuildPreviewError::Inventory(error.into()))
-                })?;
+                .map_err(|error| BuildMaterialsError::Preview(BuildPreviewError::Store(error)))?;
             return Ok((values, Some(now)));
         }
         Ok((std::collections::BTreeMap::new(), None))
