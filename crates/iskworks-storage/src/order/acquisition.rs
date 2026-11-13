@@ -4,12 +4,8 @@
 //! (crate-root `iskworks_core`); member `order::Ticket`s are returned
 //! separately rather than embedded in the run itself.
 //!
-//! `OrderRepository`'s trait methods for these operations
-//! (`crates/iskworks-core/src/order/repository.rs`) delegate straight into
-//! the free functions here; they can't live in a second
-//! `impl OrderRepository for PgOrderRepository` block (Rust forbids two
-//! impls of the same trait for the same type), so `repository_impl.rs`'s
-//! impl block keeps one-line bodies calling into this module.
+//! `AcquisitionRunStore` for Postgres, at the end of this file, delegates
+//! straight into the free functions here.
 
 use super::inventory_posting::{post_purchase_in_transaction, InventoryPostingLine};
 use super::*;
@@ -602,4 +598,88 @@ pub(super) async fn complete_order_acquisition_run(
 
     tx.commit().await.map_err(map_error)?;
     load_order_acquisition_run(pool, workspace_id, run_id).await
+}
+
+#[async_trait]
+impl AcquisitionRunStore for PgOrderRepository {
+    // Acquisition Run batching for standalone tickets -- implementations
+    // live in `acquisition.rs` (see that module's own doc comment for why
+    // this trait's methods can't live in a second `impl` block there).
+    async fn create_order_acquisition_run(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        name: Option<String>,
+        ticket_ids: Vec<TicketId>,
+    ) -> Result<AcquisitionRun, OrderError> {
+        acquisition::create_order_acquisition_run(
+            &self.pool,
+            workspace_id,
+            owner_id,
+            name,
+            ticket_ids,
+        )
+        .await
+    }
+
+    async fn list_order_acquisition_runs(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+    ) -> Result<Vec<AcquisitionRun>, OrderError> {
+        acquisition::list_order_acquisition_runs(&self.pool, workspace_id, owner_id).await
+    }
+
+    async fn get_order_acquisition_run(
+        &self,
+        workspace_id: WorkspaceId,
+        run_id: AcquisitionRunId,
+    ) -> Result<AcquisitionRun, OrderError> {
+        acquisition::get_order_acquisition_run(&self.pool, workspace_id, run_id).await
+    }
+
+    async fn list_order_acquisition_run_tickets(
+        &self,
+        workspace_id: WorkspaceId,
+        run_id: AcquisitionRunId,
+    ) -> Result<Vec<Ticket>, OrderError> {
+        acquisition::list_order_acquisition_run_tickets(&self.pool, workspace_id, run_id).await
+    }
+
+    async fn list_order_acquisition_run_items(
+        &self,
+        workspace_id: WorkspaceId,
+        run_id: AcquisitionRunId,
+    ) -> Result<Vec<AcquisitionRunItem>, OrderError> {
+        acquisition::list_order_acquisition_run_items(&self.pool, workspace_id, run_id).await
+    }
+
+    async fn start_order_acquisition_run(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        run_id: AcquisitionRunId,
+    ) -> Result<AcquisitionRun, OrderError> {
+        acquisition::start_order_acquisition_run(&self.pool, workspace_id, owner_id, run_id).await
+    }
+
+    async fn record_order_acquisition_progress(
+        &self,
+        workspace_id: WorkspaceId,
+        run_id: AcquisitionRunId,
+        items: Vec<AcquisitionProgressUpdate>,
+    ) -> Result<AcquisitionRun, OrderError> {
+        acquisition::record_order_acquisition_progress(&self.pool, workspace_id, run_id, items)
+            .await
+    }
+
+    async fn complete_order_acquisition_run(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        run_id: AcquisitionRunId,
+    ) -> Result<AcquisitionRun, OrderError> {
+        acquisition::complete_order_acquisition_run(&self.pool, workspace_id, owner_id, run_id)
+            .await
+    }
 }
