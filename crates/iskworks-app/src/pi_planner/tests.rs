@@ -9,7 +9,7 @@ use iskworks_core::pi_planner::{StoredDensity, StoredPlanetSettings};
 use iskworks_core::{
     ConnectedCharacterId, MarketImportBatch, MarketImportBatchId, MarketOrderBook, MarketOrderSide,
     MarketOrderView, MarketPriceSource, Money, PriceSourceId, ResolvedMarketExport,
-    ResolvedMarketLocation,
+    ResolvedMarketLocation, StoreError,
 };
 use iskworks_sde::{
     ActiveSde, PlanetCommodity, PlanetPinType, PlanetSchematic, PlannerPlanet, TypeReference,
@@ -538,11 +538,11 @@ async fn planets_rejects_an_unknown_system_and_a_wide_radius() {
     let (service, _) = service(FakeSde::planner());
     assert!(matches!(
         service.planets(workspace(), 1, 0).await,
-        Err(PiPlannerError::Inventory(InventoryError::Validation(_)))
+        Err(PiPlannerError::Store(StoreError::Validation(_)))
     ));
     assert!(matches!(
         service.planets(workspace(), HOME, 6).await,
-        Err(PiPlannerError::Inventory(InventoryError::Validation(_)))
+        Err(PiPlannerError::Store(StoreError::Validation(_)))
     ));
 }
 
@@ -668,7 +668,7 @@ async fn rank_validates_the_scenario() {
         assert!(
             matches!(
                 service.rank(workspace(), scope(), request).await,
-                Err(PiPlannerError::Inventory(InventoryError::Validation(_)))
+                Err(PiPlannerError::Store(StoreError::Validation(_)))
             ),
             "should be invalid"
         );

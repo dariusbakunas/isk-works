@@ -7,7 +7,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use iskworks_app::{MarketAccessResolution, MarketAccessResolver};
 use iskworks_core::{
-    InventoryError, MarketError, MarketLocationClassification, ResolvedMarketLocation,
+    MarketError, MarketLocationClassification, ResolvedMarketLocation, StoreError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ async fn resolve_market_locations(
         || requested.len() > 50
         || requested.iter().any(|id| *id <= 0)
     {
-        return Err(ApiError::Inventory(InventoryError::Validation(
+        return Err(ApiError::from(StoreError::Validation(
             "Select between 1 and 50 unique positive location IDs.".to_string(),
         )));
     }

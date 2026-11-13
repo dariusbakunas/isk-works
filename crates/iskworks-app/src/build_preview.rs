@@ -65,6 +65,8 @@ pub enum BuildPreviewError {
     #[error(transparent)]
     Inventory(#[from] InventoryError),
     #[error(transparent)]
+    Store(#[from] iskworks_core::StoreError),
+    #[error(transparent)]
     Esi(#[from] EsiApplicationError),
     #[error(transparent)]
     StaticData(#[from] SdeError),

@@ -13,8 +13,7 @@ use iskworks_core::pi_planner::{
     SecurityBand, YieldSource, INTERVAL_DAYS,
 };
 use iskworks_core::{
-    summarize_scoped_orders, InventoryError, MarketError, MarketRepository, MarketScope,
-    WorkspaceId,
+    summarize_scoped_orders, MarketError, MarketRepository, MarketScope, StoreError, WorkspaceId,
 };
 use iskworks_sde::{SdeError, SdeReadRepository, SystemDistance};
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
@@ -54,7 +53,7 @@ pub enum PiPlannerError {
     #[error("the active SDE import has no PI Planner data")]
     SdeMissingPlannerData,
     #[error(transparent)]
-    Inventory(#[from] InventoryError),
+    Store(#[from] StoreError),
     #[error(transparent)]
     Sde(#[from] SdeError),
     #[error(transparent)]
@@ -66,15 +65,8 @@ pub enum PiPlannerError {
     Solver(String),
 }
 
-/// A store port's error, as the `InventoryError` it was before.
-impl From<iskworks_core::StoreError> for PiPlannerError {
-    fn from(error: iskworks_core::StoreError) -> Self {
-        Self::Inventory(error.into())
-    }
-}
-
 fn invalid(message: &str) -> PiPlannerError {
-    PiPlannerError::Inventory(InventoryError::Validation(message.to_string()))
+    PiPlannerError::Store(StoreError::Validation(message.to_string()))
 }
 
 #[derive(Clone)]

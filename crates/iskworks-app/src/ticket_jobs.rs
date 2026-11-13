@@ -13,7 +13,7 @@ use iskworks_core::order::{
     TicketId, TicketIndustryJob, TicketJobChoice, TicketJobRepository,
 };
 use iskworks_core::CharacterConnectionReader;
-use iskworks_core::{ConnectedCharacterId, InventoryError, WorkspaceId};
+use iskworks_core::{ConnectedCharacterId, StoreError, WorkspaceId};
 use thiserror::Error;
 
 use crate::character_roster::workspace_job_observations;
@@ -21,16 +21,9 @@ use crate::character_roster::workspace_job_observations;
 #[derive(Debug, Error)]
 pub enum TicketJobError {
     #[error(transparent)]
-    Inventory(#[from] InventoryError),
+    Store(#[from] StoreError),
     #[error(transparent)]
     Order(#[from] OrderError),
-}
-
-/// A store port's error, as the `InventoryError` it was before.
-impl From<iskworks_core::StoreError> for TicketJobError {
-    fn from(error: iskworks_core::StoreError) -> Self {
-        Self::Inventory(error.into())
-    }
 }
 
 /// Told when a workspace's ESI industry jobs were refreshed.

@@ -93,6 +93,8 @@ pub enum ApiError {
     ComponentExpansion(ComponentExpansionError),
     Industry(IndustryError),
     Inventory(InventoryError),
+    /// A store port's error (everything that is not the inventory ledger).
+    Store(StoreError),
     Production(ProductionError),
     Order(OrderError),
     Facility(FacilityError),
@@ -194,12 +196,9 @@ impl From<InventoryError> for ApiError {
     }
 }
 
-/// A store port's error reaches the client as the `InventoryError` it was
-/// before those ports had their own error, so its code and message are
-/// unchanged.
 impl From<StoreError> for ApiError {
     fn from(value: StoreError) -> Self {
-        Self::Inventory(value.into())
+        Self::Store(value)
     }
 }
 
@@ -237,7 +236,7 @@ impl From<iskworks_app::PiPlannerError> for ApiError {
     fn from(value: iskworks_app::PiPlannerError) -> Self {
         match value {
             iskworks_app::PiPlannerError::SdeMissingPlannerData => Self::SdeMissingPlannerData,
-            iskworks_app::PiPlannerError::Inventory(error) => Self::Inventory(error),
+            iskworks_app::PiPlannerError::Store(error) => Self::Store(error),
             iskworks_app::PiPlannerError::Sde(error) => error.into(),
             iskworks_app::PiPlannerError::Market(error) => Self::Market(error),
             iskworks_app::PiPlannerError::SolveTimeout => Self::SolveTimeout,
@@ -251,6 +250,7 @@ impl From<iskworks_app::MarketOrdersError> for ApiError {
         match value {
             iskworks_app::MarketOrdersError::Market(error) => Self::Market(error),
             iskworks_app::MarketOrdersError::Inventory(error) => Self::Inventory(error),
+            iskworks_app::MarketOrdersError::Store(error) => Self::Store(error),
             iskworks_app::MarketOrdersError::Sde(error) => error.into(),
         }
     }
@@ -287,6 +287,7 @@ impl From<BuildPreviewError> for ApiError {
             BuildPreviewError::ComponentExpansion(error) => Self::ComponentExpansion(error),
             BuildPreviewError::Production(error) => Self::Production(error),
             BuildPreviewError::Inventory(error) => Self::Inventory(error),
+            BuildPreviewError::Store(error) => Self::Store(error),
             BuildPreviewError::Esi(error) => Self::Integration(error),
             BuildPreviewError::StaticData(error) => Self::StaticData(error),
             BuildPreviewError::ProductionUnavailable => Self::Production(ProductionError::Persistence(
@@ -589,6 +590,9 @@ impl ApiError {
             Self::Inventory(InventoryError::Persistence(detail)) => {
                 persistence_failure(format!("inventory persistence: {detail}"))
             }
+            Self::Store(error @ (StoreError::Persistence(_) | StoreError::InvalidData)) => {
+                persistence_failure(format!("store persistence: {error}"))
+            }
             Self::ServiceUnavailable(detail) => {
                 persistence_failure(format!("service unavailable: {detail}"))
             }
@@ -680,6 +684,7 @@ mod inventory;
 mod market;
 mod opportunity;
 mod order;
+mod store;
 use facility::*;
 use industry::*;
 use integration::*;
@@ -691,6 +696,7 @@ pub(crate) use order::{
     EpicReusePreview, HolderView, InsufficientAvailableDetail, ReservationDriftDetail, ReuseLine,
     ShortageView,
 };
+use store::*;
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -778,6 +784,7 @@ impl IntoResponse for ApiError {
             ),
             Self::Industry(error) => industry_response(error),
             Self::Inventory(error) => inventory_response(error),
+            Self::Store(error) => store_response(error),
             Self::Production(error) => production_response(error),
             Self::Order(error) => order_response(error),
             Self::Facility(error) => facility_response(error),

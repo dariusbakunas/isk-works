@@ -688,16 +688,23 @@ async fn store_errors_keep_their_http_contracts() {
             "",
         ),
         (
+            // A store's missing record has its own code, not the inventory one.
             ApiError::from(StoreError::NotFound),
             StatusCode::NOT_FOUND,
-            "inventory_item_not_found",
-            "inventory item was not found",
+            "record_not_found",
+            "record was not found",
+        ),
+        (
+            ApiError::from(StoreError::Conflict),
+            StatusCode::CONFLICT,
+            "revision_conflict",
+            "record changed while this form was open",
         ),
         (
             ApiError::from(StoreError::OutOfRange),
             StatusCode::BAD_REQUEST,
             "validation_failed",
-            "inventory arithmetic exceeds the supported range",
+            "value is out of the supported range",
         ),
         (
             // Fittings, Skill plans, PI planner and Assets ports and
@@ -714,13 +721,51 @@ async fn store_errors_keep_their_http_contracts() {
             "persistence_unavailable",
             "",
         ),
+        (
+            // Unreadable stored data is ours, not the caller's: redacted.
+            ApiError::from(StoreError::InvalidData),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "persistence_unavailable",
+            "",
+        ),
+        (
+            // Wrapping errors pass a store error through unchanged.
+            ApiError::from(iskworks_app::PiPlannerError::Store(StoreError::Validation(
+                "radius is too large".into(),
+            ))),
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "validation failed: radius is too large",
+        ),
+        (
+            ApiError::from(iskworks_app::MarketOrdersError::Store(StoreError::NotFound)),
+            StatusCode::NOT_FOUND,
+            "record_not_found",
+            "record was not found",
+        ),
+        (
+            ApiError::from(BuildPreviewError::Store(StoreError::Persistence(
+                "pool timed out".into(),
+            ))),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "persistence_unavailable",
+            "",
+        ),
     ];
     for (error, status, code, message) in cases {
         let response = error.into_response();
         assert_eq!(response.status(), status, "{code}");
         let body = response_json(response).await;
         assert_eq!(body["error"]["code"], code);
-        if !message.is_empty() {
+        if message.is_empty() {
+            // Redacted: a correlation id, and none of the storage detail.
+            assert!(body["error"]["correlationId"].is_string(), "{body}");
+            let text = body.to_string();
+            assert!(
+                !text.contains("connection reset") && !text.contains("pool timed out"),
+                "{text}"
+            );
+        } else {
             assert_eq!(body["error"]["message"], message, "{code}");
         }
     }
