@@ -156,3 +156,26 @@ fn without_estimates_scan_first_prices_the_unscanned_readings() {
         .windows(2)
         .all(|pair| pair[0].isk_per_month >= pair[1].isk_per_month));
 }
+
+#[test]
+fn a_systems_limit_is_priced_against_the_plan_without_it() {
+    let planets = q3hs5()
+        .into_iter()
+        .zip([1, 1, 2, 2])
+        .map(|(planet, system)| in_system(planet, system))
+        .collect::<Vec<_>>();
+    let limited = RankScenario {
+        max_systems_per_character: Some(1),
+        ..scenario(vec![character(5)])
+    };
+    let (plan, what_ifs) = run(&limited, &planets);
+    let free = what_ifs.without_system_limit.expect("priced with a limit");
+    assert!(
+        free >= plan.isk_per_month - 1.0,
+        "{free} vs {}",
+        plan.isk_per_month
+    );
+
+    let (_, unlimited) = run(&scenario(vec![character(5)]), &planets);
+    assert_eq!(unlimited.without_system_limit, None);
+}
