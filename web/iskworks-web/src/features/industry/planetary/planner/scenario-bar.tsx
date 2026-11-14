@@ -29,6 +29,7 @@ function fromConnected(character: PlannerCharacterSkills): ScenarioCharacter {
     name: character.name,
     interplanetaryConsolidation: clampLevel(character.interplanetaryConsolidation ?? 0),
     commandCenterUpgrades: clampLevel(character.commandCenterUpgrades ?? 0),
+    eveCharacterId: character.eveCharacterId,
   };
 }
 

@@ -64,6 +64,13 @@ describe("planner-format", () => {
     expect(settingsFromQuery(new URLSearchParams("sys=1")).maxSystemsPerCharacter).toBe(1);
   });
 
+  test("a prefilled character keeps its EVE id", () => {
+    storeCharacters([{ name: "Valka", interplanetaryConsolidation: 4, commandCenterUpgrades: 5, eveCharacterId: 2_119_000_001 }]);
+    expect(loadCharacters()[0].eveCharacterId).toBe(2_119_000_001);
+    window.localStorage.setItem("iskworks.piPlanner.characters", JSON.stringify([{ name: "X", eveCharacterId: "junk" }]));
+    expect(loadCharacters()[0]).not.toHaveProperty("eveCharacterId");
+  });
+
   test("characters are remembered, clamped, and survive blocked storage", () => {
     storeCharacters([{ name: "Valka", interplanetaryConsolidation: 4, commandCenterUpgrades: 5 }]);
     expect(loadCharacters()).toEqual([{ name: "Valka", interplanetaryConsolidation: 4, commandCenterUpgrades: 5 }]);

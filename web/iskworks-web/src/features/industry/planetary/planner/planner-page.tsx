@@ -25,6 +25,7 @@ import {
 import { PlanetarySectionTabs } from "../planetary-section-tabs";
 import { PlanPanel } from "./plan-panel";
 import { RankingPanel } from "./ranking-panel";
+import { SavePlanButton } from "./save-plan-button";
 import { ScenarioBar } from "./scenario-bar";
 
 /** Re-rank once the scenario has been still for this long. */
@@ -311,6 +312,19 @@ export function PlannerPage() {
                 </p>
               ) : (
                 <section aria-label="Plan" className="iw-panel min-w-0">
+                  {scenario ? (
+                    <div className="flex justify-end border-b border-border px-3 py-2">
+                      <SavePlanButton
+                        // A new solve is a different plan: forget the last save.
+                        key={solveKey}
+                        characters={characters}
+                        disabled={solution.loading}
+                        homeName={homeSystem?.name ?? null}
+                        scenario={{ ...scenario, targetTypeId: target }}
+                        solution={solution.data}
+                      />
+                    </div>
+                  ) : null}
                   <PlanPanel
                     characterNames={characters.map((character) => character.name)}
                     haulDays={settings.haulDays}

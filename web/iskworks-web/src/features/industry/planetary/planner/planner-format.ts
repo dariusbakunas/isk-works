@@ -68,7 +68,8 @@ export function percentRate(text: string): string | null {
 }
 
 /** A scenario character: skill levels plus a label for the page. */
-export type ScenarioCharacter = PlannerCharacter & { name: string };
+/** `eveCharacterId` is set when the character was prefilled from a connected one. */
+export type ScenarioCharacter = PlannerCharacter & { name: string; eveCharacterId?: number };
 
 export function colonies(character: PlannerCharacter): number {
   return 1 + Math.min(MAX_SKILL_LEVEL, character.interplanetaryConsolidation);
@@ -156,11 +157,16 @@ export function loadCharacters(): ScenarioCharacter[] {
     if (!raw) return DEFAULT_CHARACTERS;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_CHARACTERS;
-    return parsed.map((entry, index) => ({
-      name: typeof entry?.name === "string" && entry.name ? entry.name : `Character ${index + 1}`,
-      interplanetaryConsolidation: clampLevel(Number(entry?.interplanetaryConsolidation)),
-      commandCenterUpgrades: clampLevel(Number(entry?.commandCenterUpgrades)),
-    }));
+    return parsed.map((entry, index) => {
+      const character: ScenarioCharacter = {
+        name: typeof entry?.name === "string" && entry.name ? entry.name : `Character ${index + 1}`,
+        interplanetaryConsolidation: clampLevel(Number(entry?.interplanetaryConsolidation)),
+        commandCenterUpgrades: clampLevel(Number(entry?.commandCenterUpgrades)),
+      };
+      const eveCharacterId = Number(entry?.eveCharacterId);
+      if (Number.isInteger(eveCharacterId) && eveCharacterId > 0) character.eveCharacterId = eveCharacterId;
+      return character;
+    });
   } catch {
     return DEFAULT_CHARACTERS;
   }
