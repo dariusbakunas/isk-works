@@ -40,6 +40,8 @@ describe("PlanPanel", () => {
     const colonies = screen.getByRole("table", { name: "Colonies" });
     expect(within(colonies).getByText("Valka")).toBeInTheDocument();
     expect(within(colonies).getByText("Alt")).toBeInTheDocument();
+    expect(within(colonies).getByText(/2 colonies · 1 system · /)).toBeInTheDocument();
+    expect(within(colonies).getByText(/1 colony · 1 system · /)).toBeInTheDocument();
     expect(within(colonies).getByText("Factory")).toBeInTheDocument();
     expect(within(colonies).getAllByText("Extract + refine")).toHaveLength(2);
     expect(within(colonies).getByText("+1 storage")).toBeInTheDocument();

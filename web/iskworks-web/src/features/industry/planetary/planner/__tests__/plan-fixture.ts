@@ -35,6 +35,8 @@ export const TEMPLATE: ColonyTemplate = {
 
 function colony(overrides: Partial<PlanColony> & Pick<PlanColony, "index" | "character" | "planetId" | "planetName">): PlanColony {
   return {
+    systemId: 30_000_001,
+    systemName: "Q-3HS5",
     jumps: 0,
     role: "extraction",
     setup: { ecus: 1, heads: 10, launchpads: 1, extraStorage: 0, processors: [{ typeId: 2473, name: "Basic Industry Facility", count: 4 }] },
@@ -87,6 +89,7 @@ export const SOLUTION: PlannerSolution = {
       { resourceTypeId: 2267, resourceName: "Base Metals", planetId: 4, planetName: "Q-3HS5 IV", source: "default", contested: false },
     ],
     sharedHotspots: [{ planetId: 4, planetName: "Q-3HS5 IV", resourceTypeId: 2267, resourceName: "Base Metals", characters: 2 }],
+    systemsByCharacter: [1, 1],
   },
   whatIfs: {
     perCharacter: ["800000000", "1420000000"],

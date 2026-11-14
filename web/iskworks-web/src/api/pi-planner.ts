@@ -207,6 +207,8 @@ export interface PlanColony {
   character: number;
   planetId: number;
   planetName: string;
+  systemId: number;
+  systemName: string;
   jumps: number;
   role: "extraction" | "factory";
   setup: {
@@ -283,6 +285,8 @@ export interface PiPlan {
     resourceName: string;
     characters: number;
   }[];
+  /** Distinct solar systems per scenario character. */
+  systemsByCharacter: number[];
 }
 
 export interface EffortCell {
