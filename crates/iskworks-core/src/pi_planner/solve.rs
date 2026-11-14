@@ -903,28 +903,68 @@ struct PlanValues<'a> {
     costs: BTreeMap<i64, (f64, f64)>,
 }
 
-/// Deals each group's colonies to its characters: fewest colonies first,
-/// never two on one planet.
-fn assign(groups: &[Group], wanted: &[(usize, usize)]) -> Vec<usize> {
+/// Deals each group's colonies to its characters one system at a time, so
+/// each character visits as few systems as the plan allows: the system with
+/// the most colonies first, each colony to a character already there, else
+/// the one in the fewest systems. A character never takes more than its
+/// colonies, nor two on one planet. Returns a character per `wanted` entry.
+fn assign(groups: &[Group], planets: &[CandidatePlanet], wanted: &[(usize, usize)]) -> Vec<usize> {
+    let system = |planet: usize| planets[planet].system_id;
+    let mut per_system: BTreeMap<(usize, i64), usize> = BTreeMap::new();
+    for (group, planet) in wanted {
+        *per_system.entry((*group, system(*planet))).or_default() += 1;
+    }
+    let mut order = (0..wanted.len()).collect::<Vec<_>>();
+    order.sort_by_key(|&index| {
+        let (group, planet) = wanted[index];
+        let system = system(planet);
+        (
+            group,
+            std::cmp::Reverse(per_system[&(group, system)]),
+            system,
+            planets[planet].planet_id,
+            index,
+        )
+    });
+
     let mut held: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    wanted
-        .iter()
-        .map(|(group, planet)| {
-            let characters = &groups[*group].characters;
-            let character = characters
-                .iter()
-                .copied()
-                .filter(|character| {
-                    !held
-                        .get(character)
-                        .is_some_and(|planets| planets.contains(planet))
-                })
-                .min_by_key(|character| held.get(character).map_or(0, Vec::len))
-                .unwrap_or(characters[0]);
-            held.entry(character).or_default().push(*planet);
-            character
-        })
-        .collect()
+    let mut owners = vec![0; wanted.len()];
+    for index in order {
+        let (group, planet) = wanted[index];
+        let group = &groups[group];
+        let here = system(planet);
+        let colonies = |character: &usize| held.get(character).map_or(&[][..], Vec::as_slice);
+        let free = group.characters.iter().copied().filter(|character| {
+            let mine = colonies(character);
+            mine.len() < group.colonies_each as usize && !mine.contains(&planet)
+        });
+        let character = free
+            .min_by_key(|character| {
+                let mine = colonies(character);
+                let systems = mine
+                    .iter()
+                    .map(|planet| system(*planet))
+                    .collect::<BTreeSet<_>>();
+                (
+                    !systems.contains(&here),
+                    systems.len(),
+                    mine.len(),
+                    *character,
+                )
+            })
+            .or_else(|| {
+                // The solver's totals rule this out; keep every colony owned.
+                group
+                    .characters
+                    .iter()
+                    .copied()
+                    .min_by_key(|character| (colonies(character).len(), *character))
+            })
+            .unwrap_or(0);
+        held.entry(character).or_default().push(planet);
+        owners[index] = character;
+    }
+    owners
 }
 
 fn build_plan(
@@ -947,7 +987,7 @@ fn build_plan(
             wanted.push((site.group, site.planet));
         }
     }
-    let characters = assign(groups, &wanted);
+    let characters = assign(groups, planets, &wanted);
     let mut colonies = Vec::new();
     let mut slot = characters.into_iter();
     for (pattern, count, made) in &values.extraction {
