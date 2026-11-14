@@ -2,6 +2,7 @@
 // age, and the scenario's URL / localStorage round trip.
 
 import { INTERVAL_DAYS, MAX_RADIUS, type PlannerCharacter, type PlannerResource, type PlannerScenario } from "../../../../api/pi-planner";
+import type { SavedPlanScenario } from "../../../../api/pi-plans";
 
 const DAY_MS = 86_400_000;
 /** Hotspots move and deplete: older readings are flagged. */
@@ -178,4 +179,32 @@ export function storeCharacters(characters: ScenarioCharacter[]): void {
   } catch {
     // Private windows and blocked storage: the list just isn't remembered.
   }
+}
+
+/** A saved plan's scenario, back as planner settings and characters. */
+export function scenarioFromSnapshot(snapshot: SavedPlanScenario): {
+  settings: ScenarioSettings;
+  characters: ScenarioCharacter[];
+} {
+  const { characters, characterNames, eveCharacterIds, targetTypeId: _target, ...settings } = snapshot;
+  return {
+    settings: { ...DEFAULT_SETTINGS, ...settings },
+    characters: characters.map((character, index) => {
+      const restored: ScenarioCharacter = {
+        name: characterNames[index] ?? `Character ${index + 1}`,
+        interplanetaryConsolidation: clampLevel(character.interplanetaryConsolidation),
+        commandCenterUpgrades: clampLevel(character.commandCenterUpgrades),
+      };
+      const eveCharacterId = eveCharacterIds?.[index];
+      if (eveCharacterId) restored.eveCharacterId = eveCharacterId;
+      return restored;
+    }),
+  };
+}
+
+/** Same names and skills, in the same order. */
+export function sameCharacters(a: ScenarioCharacter[], b: ScenarioCharacter[]): boolean {
+  const key = (list: ScenarioCharacter[]) =>
+    JSON.stringify(list.map((c) => [c.name, c.interplanetaryConsolidation, c.commandCenterUpgrades]));
+  return key(a) === key(b);
 }

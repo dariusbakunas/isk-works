@@ -1,4 +1,4 @@
-import { ArrowLeft, Globe2, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Globe2, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -15,6 +15,14 @@ import { useLoad } from "../../../../hooks/use-load";
 import { formatDate } from "../../../../lib/formatting";
 import { PlanetarySectionTabs } from "../planetary-section-tabs";
 import { PlanPanel } from "../planner/plan-panel";
+import {
+  DEFAULT_CHARACTERS,
+  loadCharacters,
+  sameCharacters,
+  scenarioFromSnapshot,
+  settingsToQuery,
+  storeCharacters,
+} from "../planner/planner-format";
 import { PlanNameDialog } from "./plan-name-dialog";
 
 /** Planetary › Plans › one plan: the snapshot as saved, and its set-up checklist. */
@@ -50,6 +58,7 @@ function SavedPlanView({ plan }: { plan: SavedPlan }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   // Ticks save one after another, so the last one sent is the one kept.
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   const colonies = plan.solution.plan.colonies.length;
@@ -68,6 +77,22 @@ function SavedPlanView({ plan }: { plan: SavedPlan }) {
         setSetUp((current) => (current === next ? previous : current));
         setFailure(apiMessage(error));
       });
+  }
+
+  /** Puts the snapshot's scenario back in the planner, for a fresh solve. */
+  function loadScenario(confirmed = false) {
+    const { settings, characters } = scenarioFromSnapshot(plan.scenario);
+    const current = loadCharacters();
+    const untouched = sameCharacters(current, DEFAULT_CHARACTERS) || sameCharacters(current, characters);
+    if (!confirmed && !untouched) {
+      setReplacing(true);
+      return;
+    }
+    setReplacing(false);
+    storeCharacters(characters);
+    const query = settingsToQuery(settings, new URLSearchParams());
+    if (plan.scenario.targetTypeId) query.set("plan", String(plan.scenario.targetTypeId));
+    navigate(`/planetary/planner?${query}`, { state: { view: "plan" } });
   }
 
   async function rename(newName: string) {
@@ -108,6 +133,15 @@ function SavedPlanView({ plan }: { plan: SavedPlan }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            className="iw-button-secondary flex items-center gap-1.5"
+            onClick={() => loadScenario()}
+            title="Open this plan's scenario in the Planner, to solve it again on today's prices"
+            type="button"
+          >
+            <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+            Load scenario
+          </button>
           <button className="iw-button-secondary flex items-center gap-1.5" onClick={() => setRenaming(true)} type="button">
             <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
             Rename
@@ -144,6 +178,16 @@ function SavedPlanView({ plan }: { plan: SavedPlan }) {
           title="Rename plan"
         />
       ) : null}
+      <ConfirmDialog
+        confirmLabel="Replace"
+        onCancel={() => setReplacing(false)}
+        onConfirm={() => loadScenario(true)}
+        open={replacing}
+        title="Replace your planner characters?"
+      >
+        The Planner's character list becomes this plan's {plan.scenario.characterNames.length}. The characters you have
+        there now aren't kept.
+      </ConfirmDialog>
       <ConfirmDialog
         confirmLabel="Delete"
         onCancel={() => setDeleting(false)}

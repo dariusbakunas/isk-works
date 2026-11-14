@@ -95,6 +95,37 @@ describe("SavedPlanPage", () => {
     expect(screen.queryByRole("table", { name: "Colonies" })).not.toBeInTheDocument();
   });
 
+  test("load scenario fills the planner and opens its Plan tab", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Load scenario" }));
+
+    await waitFor(() => expect(location).toMatch(/^\/planetary\/planner\?/));
+    const query = new URLSearchParams(location.split("?")[1]);
+    expect(Object.fromEntries(query)).toEqual({ system: "30000797", radius: "2", tax: "5", haul: "7", sys: "1", estimate: "1" });
+    expect(JSON.parse(window.localStorage.getItem("iskworks.piPlanner.characters") ?? "[]")).toEqual([
+      { name: "Valka", interplanetaryConsolidation: 1, commandCenterUpgrades: 4 },
+      { name: "Alt", interplanetaryConsolidation: 0, commandCenterUpgrades: 4 },
+    ]);
+  });
+
+  test("load scenario asks before replacing other characters", async () => {
+    const user = userEvent.setup();
+    const mine = [{ name: "Someone else", interplanetaryConsolidation: 5, commandCenterUpgrades: 5 }];
+    window.localStorage.setItem("iskworks.piPlanner.characters", JSON.stringify(mine));
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Load scenario" }));
+    const dialog = screen.getByRole("dialog", { name: "Replace your planner characters?" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(location).toBe("/planetary/plans/plan-1");
+    expect(JSON.parse(window.localStorage.getItem("iskworks.piPlanner.characters") ?? "[]")).toEqual(mine);
+
+    await user.click(screen.getByRole("button", { name: "Load scenario" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(location).toMatch(/^\/planetary\/planner\?/));
+    expect(JSON.parse(window.localStorage.getItem("iskworks.piPlanner.characters") ?? "[]")[0].name).toBe("Valka");
+  });
+
   test("deleting goes back to the list", async () => {
     const user = userEvent.setup();
     api.deleteSavedPlan.mockResolvedValue(undefined);

@@ -95,9 +95,10 @@ function Spy() {
   return null;
 }
 
-function renderPage(path = `/planetary/planner?system=${HOME}`) {
+function renderPage(path = `/planetary/planner?system=${HOME}`, state?: unknown) {
+  const [pathname, search = ""] = path.split("?");
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[{ pathname, search: search ? `?${search}` : "", state }]}>
       <Routes>
         <Route
           element={
@@ -249,6 +250,12 @@ describe("PlannerPage", () => {
     });
     expect(await screen.findByRole("link", { name: "Open saved plan" })).toHaveAttribute("href", "/planetary/plans/plan-9");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("arriving from a saved plan opens the Plan tab", async () => {
+    api.solvePlan.mockResolvedValue(SOLUTION);
+    renderPage(`/planetary/planner?system=${HOME}`, { view: "plan" });
+    expect(await screen.findByRole("table", { name: "Colonies" })).toBeInTheDocument();
   });
 
   test("an empty plan can't be saved", async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { AlertTriangle, Construction, Globe2, RefreshCw, X } from "lucide-react";
 
 import {
@@ -115,7 +115,9 @@ export function PlannerPage() {
   const [filter, setFilter] = useState<PlanetFilter>("all");
   // Below md each of the three is its own tab; wider, Planets and Ranking
   // share the screen and the Plan takes all of it.
-  const [view, setView] = useState<"planets" | "ranking" | "plan">("planets");
+  const arrival = useLocation().state as { view?: string } | null;
+  // "Load scenario" on a saved plan lands on the Plan tab.
+  const [view, setView] = useState<"planets" | "ranking" | "plan">(() => (arrival?.view === "plan" ? "plan" : "planets"));
   const [highlight, setHighlight] = useState<{ planetId: number; resourceTypeId: number } | null>(null);
   const [revision, setRevision] = useState(0);
   const [nowMs] = useState(() => Date.now());
