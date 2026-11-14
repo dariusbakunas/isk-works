@@ -8,7 +8,9 @@
 //!   sized for capacity and buffers like the ranking does;
 //! - a factory site is a colony on one planet with its CPU and power left
 //!   for processors after a launchpad; storage facilities are one more whole
-//!   count, pooled across the sites like the factories.
+//!   count, pooled across the sites like the factories;
+//! - with a systems-per-character limit, a station counts how many of a
+//!   group's characters have colonies in one solar system.
 //!
 //! Characters with the same skills form a group, so the solver never
 //! branches on which of two identical characters gets a colony. Factory
@@ -480,14 +482,17 @@ struct Model<'a> {
     groups: Vec<Group>,
     patterns: Vec<ExtractionPattern>,
     sites: Vec<FactorySite>,
+    /// With a systems-per-character limit: each (group, system) the group can
+    /// colonise, counting how many of its characters are stationed there.
+    stations: Vec<(usize, i64)>,
     upper: Vec<&'a Recipe>,
     costs: BTreeMap<i64, (f64, f64)>,
     storage_cost: (f64, f64),
     traded: BTreeSet<i64>,
 }
 
-/// One LP relaxation: whole counts (patterns, sites, then factory storage
-/// facilities) and flows.
+/// One LP relaxation: whole counts (patterns, sites, stations, then factory
+/// storage facilities) and flows.
 #[derive(Clone)]
 struct Relaxed {
     objective: f64,
@@ -528,6 +533,18 @@ impl<'a> Model<'a> {
             .map(|recipe| recipe.output_type_id)
             .collect::<BTreeSet<_>>();
         let storage_cost = storage_cost(catalogue, &sites);
+        let stations = if scenario.max_systems_per_character.is_some() {
+            patterns
+                .iter()
+                .map(|pattern| (pattern.group, pattern.planet))
+                .chain(sites.iter().map(|site| (site.group, site.planet)))
+                .map(|(group, planet)| (group, planets[planet].system_id))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        } else {
+            Vec::new()
+        };
         Self {
             catalogue,
             scenario,
@@ -536,6 +553,7 @@ impl<'a> Model<'a> {
             groups,
             patterns,
             sites,
+            stations,
             upper,
             costs,
             storage_cost,
@@ -543,13 +561,15 @@ impl<'a> Model<'a> {
         }
     }
 
-    /// Each whole count's bounds before branching: colonies from none up to
-    /// the group's size, and the storage facilities.
+    /// Each whole count's bounds before branching: colonies and stationed
+    /// characters from none up to the group's size, and the storage
+    /// facilities.
     fn bounds(&self) -> Vec<(f64, f64)> {
         self.patterns
             .iter()
             .map(|pattern| pattern.group)
             .chain(self.sites.iter().map(|site| site.group))
+            .chain(self.stations.iter().map(|(group, _)| *group))
             .map(|group| (0.0, self.groups[group].characters.len() as f64))
             .chain(std::iter::once((0.0, MAX_STORAGE)))
             .collect()
@@ -566,6 +586,7 @@ impl<'a> Model<'a> {
             groups,
             patterns,
             sites,
+            stations,
             upper,
             costs,
             storage_cost,
@@ -579,6 +600,9 @@ impl<'a> Model<'a> {
         };
         let x: Vec<Variable> = patterns.iter().map(|_| count_var(&mut vars)).collect();
         let y: Vec<Variable> = sites.iter().map(|_| count_var(&mut vars)).collect();
+        let z: Vec<Variable> = stations.iter().map(|_| count_var(&mut vars)).collect();
+        let stationed: BTreeMap<(usize, i64), Variable> =
+            stations.iter().copied().zip(z.iter().copied()).collect();
         let storage = count_var(&mut vars);
         let extracted: Vec<Vec<Variable>> = patterns
             .iter()
@@ -641,7 +665,13 @@ impl<'a> Model<'a> {
                 .sum::<f64>();
             objective -= per_unit_tax * made[&recipe.output_type_id];
         }
-        for var in x.iter().chain(&y).chain(std::iter::once(&storage)) {
+        // Stationed characters cost like colonies, so none sit idle.
+        for var in x
+            .iter()
+            .chain(&y)
+            .chain(&z)
+            .chain(std::iter::once(&storage))
+        {
             objective -= COLONY_PENALTY * *var;
         }
 
@@ -653,7 +683,10 @@ impl<'a> Model<'a> {
                 problem = problem.with((Expression::from(*var) - output.rate * *count).leq(0.0));
             }
         }
-        // Colonies per group, one per character per planet, and the cap.
+        // Colonies per group, one per character per planet, and the cap. With
+        // a systems limit, a planet's colonies need that many characters
+        // stationed in its system, a system's colonies fit their stationed
+        // characters, and each character is stationed in at most the limit.
         for (group_index, group) in groups.iter().enumerate() {
             let mut total = Expression::from(0.0);
             let mut per_planet: BTreeMap<usize, Expression> = BTreeMap::new();
@@ -670,10 +703,29 @@ impl<'a> Model<'a> {
                 }
             }
             let characters = group.characters.len() as f64;
-            problem = problem.with(total.leq(characters * f64::from(group.colonies_each)));
-            for expression in per_planet.into_values() {
-                problem = problem.with(expression.leq(characters));
+            let each = f64::from(group.colonies_each);
+            problem = problem.with(total.leq(characters * each));
+            let Some(limit) = scenario.max_systems_per_character else {
+                for expression in per_planet.into_values() {
+                    problem = problem.with(expression.leq(characters));
+                }
+                continue;
+            };
+            let mut per_system: BTreeMap<i64, Expression> = BTreeMap::new();
+            for (planet, expression) in per_planet {
+                let system = planets[planet].system_id;
+                let station = stationed[&(group_index, system)];
+                *per_system.entry(system).or_default() += expression.clone();
+                problem = problem.with((expression - station).leq(0.0));
             }
+            for (system, expression) in per_system {
+                let station = stationed[&(group_index, system)];
+                problem = problem.with((expression - each * station).leq(0.0));
+            }
+            let stations = stationed
+                .range((group_index, i64::MIN)..=(group_index, i64::MAX))
+                .fold(Expression::from(0.0), |sum, (_, var)| sum + *var);
+            problem = problem.with(stations.leq(f64::from(limit) * characters));
         }
         if let Some(cap) = scenario.max_colonies {
             let total = x
@@ -767,6 +819,7 @@ impl<'a> Model<'a> {
         let counts: Vec<f64> = x
             .iter()
             .chain(&y)
+            .chain(&z)
             .chain(std::iter::once(&storage))
             .map(|var| value(*var))
             .collect();
@@ -908,9 +961,15 @@ struct PlanValues<'a> {
 /// Deals each group's colonies to its characters one system at a time, so
 /// each character visits as few systems as the plan allows: the system with
 /// the most colonies first, each colony to a character already there, else
-/// the one in the fewest systems. A character never takes more than its
-/// colonies, nor two on one planet. Returns a character per `wanted` entry.
-fn assign(groups: &[Group], planets: &[CandidatePlanet], wanted: &[(usize, usize)]) -> Vec<usize> {
+/// the one in the fewest systems, preferring one still under `limit`. A
+/// character never takes more than its colonies, nor two on one planet.
+/// Returns a character per `wanted` entry.
+fn assign(
+    groups: &[Group],
+    planets: &[CandidatePlanet],
+    wanted: &[(usize, usize)],
+    limit: Option<u32>,
+) -> Vec<usize> {
     let system = |planet: usize| planets[planet].system_id;
     let mut per_system: BTreeMap<(usize, i64), usize> = BTreeMap::new();
     for (group, planet) in wanted {
@@ -947,12 +1006,9 @@ fn assign(groups: &[Group], planets: &[CandidatePlanet], wanted: &[(usize, usize
                     .iter()
                     .map(|planet| system(*planet))
                     .collect::<BTreeSet<_>>();
-                (
-                    !systems.contains(&here),
-                    systems.len(),
-                    mine.len(),
-                    *character,
-                )
+                let elsewhere = !systems.contains(&here);
+                let over = elsewhere && limit.is_some_and(|limit| systems.len() as u32 >= limit);
+                (elsewhere, over, systems.len(), mine.len(), *character)
             })
             .or_else(|| {
                 // The solver's totals rule this out; keep every colony owned.
@@ -989,7 +1045,7 @@ fn build_plan(
             wanted.push((site.group, site.planet));
         }
     }
-    let characters = assign(groups, planets, &wanted);
+    let characters = assign(groups, planets, &wanted, scenario.max_systems_per_character);
     let mut colonies = Vec::new();
     let mut slot = characters.into_iter();
     for (pattern, count, made) in &values.extraction {

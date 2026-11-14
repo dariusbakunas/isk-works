@@ -320,18 +320,18 @@ fn colonies_are_handed_out_one_system_at_a_time() {
     // first, both characters would land in both.
     let planets = spread(&[1, 1, 1, 2, 2, 2]);
     let wanted = (0..6).map(|planet| (0, planet)).collect::<Vec<_>>();
-    let held = assign(&pair(6), &planets, &wanted);
+    let held = assign(&pair(6), &planets, &wanted, None);
 
     assert_eq!(systems_of(&planets, &wanted, &held, 0).len(), 1, "{held:?}");
     assert_eq!(systems_of(&planets, &wanted, &held, 1).len(), 1, "{held:?}");
-    assert_eq!(assign(&pair(6), &planets, &wanted), held, "stable");
+    assert_eq!(assign(&pair(6), &planets, &wanted, None), held, "stable");
 }
 
 #[test]
 fn the_handout_keeps_each_character_within_its_colonies() {
     let planets = spread(&[1, 1, 1, 1]);
     let wanted = (0..4).map(|planet| (0, planet)).collect::<Vec<_>>();
-    let held = assign(&pair(2), &planets, &wanted);
+    let held = assign(&pair(2), &planets, &wanted, None);
 
     for character in [0, 1] {
         assert_eq!(
@@ -346,7 +346,7 @@ fn the_handout_keeps_each_character_within_its_colonies() {
 fn the_handout_never_puts_two_colonies_of_one_character_on_a_planet() {
     let planets = spread(&[1, 1]);
     let wanted = vec![(0, 0), (0, 0), (0, 1)];
-    let held = assign(&pair(6), &planets, &wanted);
+    let held = assign(&pair(6), &planets, &wanted, None);
 
     assert_ne!(held[0], held[1], "{held:?}");
 }
@@ -381,4 +381,83 @@ fn the_plan_counts_each_characters_systems() {
 fn an_unused_character_visits_no_systems() {
     let result = plan(&scenario(vec![character(4)]), &q3hs5(), &Prices::default());
     assert_eq!(result.systems_by_character, vec![0]);
+}
+
+/// Q-3HS5's planets spread over systems: `systems[i]` is planet i's.
+fn q3hs5_over(systems: [i64; 4]) -> Vec<CandidatePlanet> {
+    q3hs5()
+        .into_iter()
+        .zip(systems)
+        .map(|(planet, system)| in_system(planet, system))
+        .collect()
+}
+
+fn limited(characters: Vec<PlannerCharacter>, systems: u32) -> RankScenario {
+    RankScenario {
+        max_systems_per_character: Some(systems),
+        ..scenario(characters)
+    }
+}
+
+#[test]
+fn one_system_per_character_keeps_a_character_in_one_system() {
+    let planets = q3hs5_over([1, 1, 2, 2]);
+    let free = plan(&scenario(vec![character(5)]), &planets, &market());
+    assert_eq!(
+        free.systems_by_character,
+        vec![2],
+        "the unlimited plan spreads: {free:#?}"
+    );
+
+    let one = plan(&limited(vec![character(5)], 1), &planets, &market());
+    assert_eq!(one.systems_by_character, vec![1], "{one:#?}");
+    assert!(one.isk_per_month > 0.0);
+    assert!(one.isk_per_month <= free.isk_per_month + 1.0);
+}
+
+#[test]
+fn one_system_per_character_holds_across_groups() {
+    let planets = q3hs5_over([1, 1, 2, 2]);
+    let characters = vec![character(5), character(3), character(3)];
+    let result = plan(&limited(characters, 1), &planets, &market());
+    assert!(result.isk_per_month > 0.0);
+    assert!(
+        result.systems_by_character.iter().all(|count| *count <= 1),
+        "{result:#?}"
+    );
+}
+
+#[test]
+fn two_systems_per_character_holds_over_three_systems() {
+    let planets = q3hs5_over([1, 2, 2, 3]);
+    let characters = vec![
+        character(5),
+        character(5),
+        character(4),
+        PlannerCharacter {
+            interplanetary_consolidation: 5,
+            command_center_upgrades: 3,
+        },
+    ];
+    let result = plan(&limited(characters, 2), &planets, &market());
+    assert!(result.isk_per_month > 0.0);
+    assert!(
+        result.systems_by_character.iter().all(|count| *count <= 2),
+        "{result:#?}"
+    );
+}
+
+#[test]
+fn a_limited_plan_still_buys_factory_storage() {
+    let only_robotics = prices(&[(ROBOTICS, 200_000.0)]);
+    let mut long_hauls = limited(vec![character(5)], 1);
+    long_hauls.effort.haul_days = 14;
+    let result = plan(&long_hauls, &q3hs5(), &only_robotics);
+
+    let factory = result
+        .colonies
+        .iter()
+        .find(|colony| colony.role == ColonyRole::Factory)
+        .expect("a factory colony");
+    assert!(factory.layout.extra_storage > 0, "{factory:#?}");
 }
