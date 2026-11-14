@@ -207,6 +207,9 @@ pub struct PlannerScenarioDto {
     pub buy_intermediates: bool,
     #[serde(default)]
     pub max_colonies: Option<u32>,
+    /// Each character's colonies fall within this many solar systems.
+    #[serde(default)]
+    pub max_systems_per_character: Option<u32>,
     /// Plan unscanned resources at the security band's default density.
     #[serde(default)]
     pub estimate_unscanned: bool,
@@ -838,6 +841,9 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
     if request.max_colonies == Some(0) {
         return Err(invalid("maxColonies must be at least 1"));
     }
+    if request.max_systems_per_character == Some(0) {
+        return Err(invalid("maxSystemsPerCharacter must be at least 1"));
+    }
     Ok(RankScenario {
         characters: request
             .characters
@@ -855,6 +861,7 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
         default_customs_rate: to_f64(request.default_customs_rate),
         buy_intermediates: request.buy_intermediates,
         max_colonies: request.max_colonies,
+        max_systems_per_character: request.max_systems_per_character,
         estimate_unscanned: request.estimate_unscanned,
         target: request.target_type_id,
     })

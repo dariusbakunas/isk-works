@@ -50,6 +50,9 @@ pub struct WhatIfs {
     pub grid: Vec<EffortCell>,
     /// Unscanned readings first, then entered ones; most ISK first.
     pub scan_first: Vec<ScanFirst>,
+    /// ISK/month without the scenario's systems-per-character limit; `None`
+    /// when it has none.
+    pub without_system_limit: Option<f64>,
 }
 
 /// Runs every job on a few threads; `None` where a solve failed.
@@ -193,6 +196,13 @@ pub fn what_ifs(
     } else {
         (estimating, planets.to_vec())
     });
+    if scenario.max_systems_per_character.is_some() {
+        let unlimited = RankScenario {
+            max_systems_per_character: None,
+            ..scenario.clone()
+        };
+        jobs.push((unlimited, planets.to_vec()));
+    }
 
     let mut results = solve_all(catalogue, prices, jobs).into_iter();
     let mut per_character = (1..characters)
@@ -229,6 +239,9 @@ pub fn what_ifs(
         })
         .collect::<Vec<_>>();
     let other = results.next().flatten();
+    let without_system_limit = scenario
+        .max_systems_per_character
+        .map(|_| isk(results.next().flatten().as_ref()));
     let (estimated, base) = if scenario.estimate_unscanned {
         (Some(plan), other.as_ref())
     } else {
@@ -281,6 +294,7 @@ pub fn what_ifs(
         per_radius,
         grid,
         scan_first,
+        without_system_limit,
     }
 }
 
