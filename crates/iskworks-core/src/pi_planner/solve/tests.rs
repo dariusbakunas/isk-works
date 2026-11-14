@@ -281,3 +281,103 @@ fn nothing_priced_means_an_empty_plan() {
     assert!(result.colonies.is_empty());
     assert_eq!(result.isk_per_month, 0.0);
 }
+
+fn pair(colonies_each: u32) -> Vec<Group> {
+    vec![Group {
+        characters: vec![0, 1],
+        colonies_each,
+        level: 4,
+    }]
+}
+
+/// Planets by index: `systems[i]` is planet i's system.
+fn spread(systems: &[i64]) -> Vec<CandidatePlanet> {
+    systems
+        .iter()
+        .enumerate()
+        .map(|(index, system)| in_system(planet(40_000_000 + index as i64, BARREN, &[]), *system))
+        .collect()
+}
+
+fn systems_of(
+    planets: &[CandidatePlanet],
+    wanted: &[(usize, usize)],
+    held: &[usize],
+    character: usize,
+) -> BTreeSet<i64> {
+    wanted
+        .iter()
+        .zip(held)
+        .filter(|(_, owner)| **owner == character)
+        .map(|((_, planet), _)| planets[*planet].system_id)
+        .collect()
+}
+
+#[test]
+fn colonies_are_handed_out_one_system_at_a_time() {
+    // Three planets in system 1, then three in 2: dealt by fewest colonies
+    // first, both characters would land in both.
+    let planets = spread(&[1, 1, 1, 2, 2, 2]);
+    let wanted = (0..6).map(|planet| (0, planet)).collect::<Vec<_>>();
+    let held = assign(&pair(6), &planets, &wanted);
+
+    assert_eq!(systems_of(&planets, &wanted, &held, 0).len(), 1, "{held:?}");
+    assert_eq!(systems_of(&planets, &wanted, &held, 1).len(), 1, "{held:?}");
+    assert_eq!(assign(&pair(6), &planets, &wanted), held, "stable");
+}
+
+#[test]
+fn the_handout_keeps_each_character_within_its_colonies() {
+    let planets = spread(&[1, 1, 1, 1]);
+    let wanted = (0..4).map(|planet| (0, planet)).collect::<Vec<_>>();
+    let held = assign(&pair(2), &planets, &wanted);
+
+    for character in [0, 1] {
+        assert_eq!(
+            held.iter().filter(|owner| **owner == character).count(),
+            2,
+            "{held:?}"
+        );
+    }
+}
+
+#[test]
+fn the_handout_never_puts_two_colonies_of_one_character_on_a_planet() {
+    let planets = spread(&[1, 1]);
+    let wanted = vec![(0, 0), (0, 0), (0, 1)];
+    let held = assign(&pair(6), &planets, &wanted);
+
+    assert_ne!(held[0], held[1], "{held:?}");
+}
+
+#[test]
+fn the_plan_counts_each_characters_systems() {
+    let planets = q3hs5()
+        .into_iter()
+        .enumerate()
+        .map(|(index, planet)| in_system(planet, index as i64 + 1))
+        .collect::<Vec<_>>();
+    let result = plan(
+        &scenario(vec![character(5), character(5)]),
+        &planets,
+        &market(),
+    );
+
+    assert_eq!(result.systems_by_character.len(), 2);
+    for (character, count) in result.systems_by_character.iter().enumerate() {
+        // Every planet is its own system here.
+        let systems = result
+            .colonies
+            .iter()
+            .filter(|colony| colony.character == character)
+            .map(|colony| colony.planet_id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(*count as usize, systems.len(), "{result:?}");
+    }
+}
+
+#[test]
+fn an_unused_character_visits_no_systems() {
+    let result = plan(&scenario(vec![character(4)]), &q3hs5(), &Prices::default());
+    assert_eq!(result.systems_by_character, vec![0]);
+}

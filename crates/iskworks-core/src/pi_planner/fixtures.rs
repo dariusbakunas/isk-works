@@ -302,6 +302,7 @@ pub fn scanned(pct: f64) -> DensityEntry {
 pub fn planet(planet_id: i64, type_id: i64, densities: &[(i64, f64)]) -> CandidatePlanet {
     CandidatePlanet {
         planet_id,
+        system_id: planet_id,
         type_id,
         radius_m: Some(5_000_000),
         jumps: 0,
@@ -315,9 +316,20 @@ pub fn planet(planet_id: i64, type_id: i64, densities: &[(i64, f64)]) -> Candida
     }
 }
 
+/// Q-3HS5's solar system; the fixture's planets all sit in it.
+pub const Q3HS5_SYSTEM: i64 = 30_000_001;
+
+/// `planet` moved into `system_id`.
+pub fn in_system(planet: CandidatePlanet, system_id: i64) -> CandidatePlanet {
+    CandidatePlanet {
+        system_id,
+        ..planet
+    }
+}
+
 /// Q-3HS5's Lava, Barren and Plasma planets with the densities read in game.
 pub fn q3hs5() -> Vec<CandidatePlanet> {
-    vec![
+    [
         planet(
             LAVA_I,
             LAVA,
@@ -352,6 +364,12 @@ pub fn q3hs5() -> Vec<CandidatePlanet> {
             ],
         ),
     ]
+    .into_iter()
+    .map(|planet| CandidatePlanet {
+        system_id: Q3HS5_SYSTEM,
+        ..planet
+    })
+    .collect()
 }
 
 pub fn prices(best_buy: &[(i64, f64)]) -> Prices {

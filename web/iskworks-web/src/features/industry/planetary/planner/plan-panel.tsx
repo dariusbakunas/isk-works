@@ -114,6 +114,7 @@ export function PlanPanel({
   const [templateFor, setTemplateFor] = useState<PlanColony | null>(null);
   const { plan, whatIfs } = solution;
   const logins = plan.effort.loginsPerWeekByCharacter.map(Number);
+  const systems = plan.systemsByCharacter;
   const averageLogins = logins.length ? logins.reduce((sum, value) => sum + value, 0) / logins.length : 0;
   const hotspots = new Set(plan.sharedHotspots.map((hotspot) => `${hotspot.planetId}:${hotspot.resourceTypeId}`));
   const sharedWith = (colony: PlanColony, typeId: number) =>
@@ -215,6 +216,9 @@ export function PlanPanel({
                     summary={
                       <span className="font-mono text-xs">
                         {mine.length} {mine.length === 1 ? "colony" : "colonies"}
+                        {systems[character] !== undefined
+                          ? ` · ${systems[character]} ${systems[character] === 1 ? "system" : "systems"}`
+                          : null}
                         {logins[character] !== undefined ? ` · ${logins[character].toFixed(1)} logins/wk` : null}
                       </span>
                     }

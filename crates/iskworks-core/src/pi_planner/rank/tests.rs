@@ -16,6 +16,7 @@ fn scanned(pct: f64) -> DensityEntry {
 fn planet(planet_id: i64, type_id: i64, densities: &[(i64, DensityEntry)]) -> CandidatePlanet {
     CandidatePlanet {
         planet_id,
+        system_id: planet_id,
         type_id,
         radius_m: Some(5_000_000),
         jumps: 0,
@@ -26,9 +27,12 @@ fn planet(planet_id: i64, type_id: i64, densities: &[(i64, DensityEntry)]) -> Ca
     }
 }
 
+/// Q-3HS5's solar system; the fixture's planets all sit in it.
+const Q3HS5_SYSTEM: i64 = 30_000_001;
+
 /// Q-3HS5's Lava, Barren and Plasma planets with the densities read in game.
 fn q3hs5() -> Vec<CandidatePlanet> {
-    vec![
+    [
         planet(
             LAVA_I,
             LAVA,
@@ -72,6 +76,12 @@ fn q3hs5() -> Vec<CandidatePlanet> {
             ],
         ),
     ]
+    .into_iter()
+    .map(|planet| CandidatePlanet {
+        system_id: Q3HS5_SYSTEM,
+        ..planet
+    })
+    .collect()
 }
 
 fn scenario(interplanetary_consolidation: u8, customs_rate: f64) -> RankScenario {
