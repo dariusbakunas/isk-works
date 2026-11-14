@@ -711,7 +711,7 @@ async fn solved() -> PlannerSolutionDto {
     let (service, _) = service(FakeSde::planner());
     enter_q3hs5(&service).await;
     let mut request = scenario_request(0);
-    request.characters.push(request.characters[0].clone());
+    request.characters.push(request.characters[0]);
     service.solve(workspace(), scope(), request).await.unwrap()
 }
 

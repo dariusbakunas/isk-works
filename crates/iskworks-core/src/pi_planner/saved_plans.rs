@@ -141,7 +141,7 @@ impl PiSavedPlansRepository for FakePiSavedPlans {
             .filter(|(workspace, _)| *workspace == workspace_id)
             .map(|(_, plan)| plan.summary.clone())
             .collect();
-        plans.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        plans.sort_by_key(|plan| std::cmp::Reverse(plan.updated_at));
         Ok(plans)
     }
 
