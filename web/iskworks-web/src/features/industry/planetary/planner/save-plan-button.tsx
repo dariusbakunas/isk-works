@@ -16,11 +16,13 @@ export function savedScenario(scenario: PlannerScenario, characters: ScenarioCha
   };
 }
 
-/** What the plan mostly sells: the highest tier sold, then the most units. */
+/** What the plan sells, by its top tier: trickles under 1 unit/h don't count. */
 function mainProduct(solution: PlannerSolution): string | null {
-  const sold = solution.plan.flows.filter((flow) => flow.to === null);
+  const sold = solution.plan.flows.filter((flow) => flow.to === null && Number(flow.unitsPerHour) >= 1);
   sold.sort((a, b) => b.tier - a.tier || Number(b.unitsPerHour) - Number(a.unitsPerHour));
-  return sold[0]?.name ?? null;
+  const products = new Set(sold.map((flow) => flow.name));
+  if (sold.length === 0) return null;
+  return products.size > 1 ? `${sold[0].name} + ${products.size - 1} more` : sold[0].name;
 }
 
 export function defaultPlanName(homeName: string | null, solution: PlannerSolution, now = new Date()): string {
