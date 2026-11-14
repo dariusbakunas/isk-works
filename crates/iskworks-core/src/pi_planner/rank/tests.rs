@@ -98,6 +98,7 @@ fn scenario(interplanetary_consolidation: u8, customs_rate: f64) -> RankScenario
         default_customs_rate: customs_rate,
         buy_intermediates: false,
         max_colonies: None,
+        max_systems_per_character: None,
         estimate_unscanned: true,
         target: None,
     }

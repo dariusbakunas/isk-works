@@ -43,6 +43,8 @@ pub struct RankScenario {
     /// A P1 no planet in range yields may be bought at best sell.
     pub buy_intermediates: bool,
     pub max_colonies: Option<u32>,
+    /// Each character's colonies fall within this many solar systems.
+    pub max_systems_per_character: Option<u32>,
     /// Unscanned resources yield the security band's default density.
     /// Off, only what the player entered is extracted.
     pub estimate_unscanned: bool,

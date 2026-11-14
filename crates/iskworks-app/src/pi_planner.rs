@@ -855,6 +855,7 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
         default_customs_rate: to_f64(request.default_customs_rate),
         buy_intermediates: request.buy_intermediates,
         max_colonies: request.max_colonies,
+        max_systems_per_character: None,
         estimate_unscanned: request.estimate_unscanned,
         target: request.target_type_id,
     })
