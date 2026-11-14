@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
@@ -6,7 +6,7 @@ import { edgeWeight, edges } from "../flow-diagram";
 import { PlanPanel } from "../plan-panel";
 import { SOLUTION } from "./plan-fixture";
 
-function renderPanel(solving = false) {
+function renderPanel(solving = false, solution = SOLUTION) {
   const onCadence = vi.fn();
   const onScanFirst = vi.fn();
   render(
@@ -16,7 +16,7 @@ function renderPanel(solving = false) {
       onCadence={onCadence}
       onScanFirst={onScanFirst}
       resetDays={3}
-      solution={SOLUTION}
+      solution={solution}
       solving={solving}
     />,
   );
@@ -24,6 +24,29 @@ function renderPanel(solving = false) {
 }
 
 describe("PlanPanel", () => {
+  test("a systems limit shows what it costs, and almost nothing reads as such", () => {
+    const priced = { ...SOLUTION, whatIfs: { ...SOLUTION.whatIfs, withoutSystemLimit: "1520000000" } };
+    renderPanel(false, priced);
+    const limit = screen.getByText(/Without the system limit/);
+    expect(limit).toHaveTextContent("+100M");
+    expect(limit.querySelector("[title]")).toHaveAttribute("title", expect.stringContaining("100,000,000"));
+    cleanup();
+
+    // The node-limited search can land a limited plan above the free one.
+    renderPanel(false, { ...SOLUTION, whatIfs: { ...SOLUTION.whatIfs, withoutSystemLimit: "1400000000" } });
+    expect(screen.getByText("The system limit costs almost nothing.")).toBeInTheDocument();
+  });
+
+  test("no systems limit, no system-limit what-if", () => {
+    renderPanel();
+    expect(screen.queryByText(/system limit/)).not.toBeInTheDocument();
+  });
+
+  test("a plan over the systems limit warns", () => {
+    renderPanel(false, { ...SOLUTION, plan: { ...SOLUTION.plan, systemsOverLimit: true } });
+    expect(screen.getByText(/The systems limit couldn't be met exactly/)).toBeInTheDocument();
+  });
+
   test("summarises the plan and lists colonies per character", () => {
     renderPanel();
     expect(screen.getAllByText("1.4B")[0].closest("[title]")).toHaveAttribute(
