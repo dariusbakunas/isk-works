@@ -119,6 +119,115 @@ pub trait PiSavedPlansRepository: Send + Sync {
     ) -> Result<(), StoreError>;
 }
 
+/// An in-memory [`PiSavedPlansRepository`] for tests.
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Default)]
+pub struct FakePiSavedPlans {
+    plans: std::sync::Mutex<Vec<(WorkspaceId, SavedPlan)>>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[async_trait]
+impl PiSavedPlansRepository for FakePiSavedPlans {
+    async fn saved_plans(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SavedPlanSummary>, StoreError> {
+        let mut plans: Vec<SavedPlanSummary> = self
+            .plans
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(workspace, _)| *workspace == workspace_id)
+            .map(|(_, plan)| plan.summary.clone())
+            .collect();
+        plans.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        Ok(plans)
+    }
+
+    async fn saved_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: Uuid,
+    ) -> Result<SavedPlan, StoreError> {
+        self.plans
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(workspace, plan)| *workspace == workspace_id && plan.summary.id == id)
+            .map(|(_, plan)| plan.clone())
+            .ok_or(StoreError::NotFound)
+    }
+
+    async fn create_saved_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        plan: NewSavedPlan,
+    ) -> Result<SavedPlan, StoreError> {
+        let now = Utc::now();
+        let saved = SavedPlan {
+            summary: SavedPlanSummary {
+                id: Uuid::new_v4(),
+                name: plan.name,
+                isk_per_month: plan.isk_per_month,
+                colonies: plan.colonies,
+                set_up: 0,
+                home_system_id: plan.home_system_id,
+                home_system_name: plan.home_system_name,
+                price_observed_at: plan.price_observed_at,
+                created_at: now,
+                updated_at: now,
+            },
+            snapshot_version: plan.snapshot_version,
+            scenario: plan.scenario,
+            solution: plan.solution,
+            set_up_colonies: Vec::new(),
+        };
+        self.plans
+            .lock()
+            .unwrap()
+            .push((workspace_id, saved.clone()));
+        Ok(saved)
+    }
+
+    async fn update_saved_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: Uuid,
+        update: SavedPlanUpdate,
+    ) -> Result<SavedPlan, StoreError> {
+        let mut plans = self.plans.lock().unwrap();
+        let (_, plan) = plans
+            .iter_mut()
+            .find(|(workspace, plan)| *workspace == workspace_id && plan.summary.id == id)
+            .ok_or(StoreError::NotFound)?;
+        if let Some(name) = update.name {
+            plan.summary.name = name;
+        }
+        if let Some(set_up) = update.set_up_colonies {
+            plan.summary.set_up = set_up.len() as i32;
+            plan.set_up_colonies = set_up;
+        }
+        plan.summary.updated_at =
+            Utc::now().max(plan.summary.updated_at + chrono::Duration::microseconds(1));
+        Ok(plan.clone())
+    }
+
+    async fn delete_saved_plan(
+        &self,
+        workspace_id: WorkspaceId,
+        id: Uuid,
+    ) -> Result<(), StoreError> {
+        let mut plans = self.plans.lock().unwrap();
+        let before = plans.len();
+        plans.retain(|(workspace, plan)| !(*workspace == workspace_id && plan.summary.id == id));
+        if plans.len() == before {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

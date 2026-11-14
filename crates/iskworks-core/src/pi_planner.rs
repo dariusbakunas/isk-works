@@ -37,6 +37,8 @@ pub use rank::{
     rank, CandidatePlanet, OutOfReach, PlannerCharacter, Prices, RankScenario, RankedInput,
     RankedProduct, Ranking,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use saved_plans::FakePiSavedPlans;
 pub use saved_plans::{
     saved_plan_name, set_up_colonies, NewSavedPlan, PiSavedPlansRepository, SavedPlan,
     SavedPlanSummary, SavedPlanUpdate, SAVED_PLAN_NAME_MAX,

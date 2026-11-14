@@ -902,8 +902,13 @@ fn candidates(area: &Neighbourhood) -> Vec<CandidatePlanet> {
         .collect()
 }
 
+mod saved_plans;
 mod solve;
 
+pub use saved_plans::{
+    PiSavedPlansService, SavePlanRequestDto, SavedPlanDto, SavedPlanSummaryDto, SavedPlanUpdateDto,
+    SAVED_PLAN_SNAPSHOT_VERSION,
+};
 pub use solve::{traded_types, PlannerSolutionDto};
 
 #[cfg(test)]

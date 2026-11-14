@@ -723,3 +723,167 @@ async fn a_solution_round_trips_through_json() {
     let parsed: PlannerSolutionDto = serde_json::from_value(json.clone()).unwrap();
     assert_eq!(serde_json::to_value(&parsed).unwrap(), json);
 }
+
+fn saved_plans() -> PiSavedPlansService {
+    PiSavedPlansService::new(Arc::new(
+        iskworks_core::pi_planner::FakePiSavedPlans::default(),
+    ))
+}
+
+/// The request the Plan tab sends: the scenario with names, and the solve.
+async fn save_request(name: &str) -> SavePlanRequestDto {
+    let solution = solved().await;
+    // `solved()`'s request, as the web sends it.
+    let scenario = json!({
+        "homeSystemId": HOME,
+        "radius": 0,
+        "characters": [
+            { "interplanetaryConsolidation": 4, "commandCenterUpgrades": 4 },
+            { "interplanetaryConsolidation": 4, "commandCenterUpgrades": 4 },
+        ],
+        "characterNames": ["Valka", "Alt"],
+        "defaultCustomsRate": "0.1",
+        "resetDays": 3,
+        "haulDays": 3,
+        "upliftAtLogin": true,
+        "buyIntermediates": false,
+        "maxColonies": null,
+        "maxSystemsPerCharacter": null,
+        "estimateUnscanned": true,
+        "targetTypeId": null,
+    });
+    SavePlanRequestDto {
+        name: name.to_string(),
+        scenario,
+        solution: serde_json::to_value(&solution).unwrap(),
+    }
+}
+
+#[tokio::test]
+async fn a_saved_plan_keeps_its_snapshot_unchanged() {
+    let service = saved_plans();
+    let request = save_request("  Q-3HS5 · first  ").await;
+    let saved = service.save(workspace(), request.clone()).await.unwrap();
+
+    assert_eq!(saved.summary.name, "Q-3HS5 · first");
+    assert_eq!(saved.snapshot_version, SAVED_PLAN_SNAPSHOT_VERSION);
+    assert_eq!(saved.scenario, request.scenario);
+    assert_eq!(saved.solution, request.solution);
+    assert_eq!(saved.summary.home_system_id, HOME);
+    assert_eq!(saved.summary.home_system_name.as_deref(), Some("Q-3HS5"));
+    let colonies = request.solution["plan"]["colonies"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert_eq!(saved.summary.colonies as usize, colonies);
+    assert_eq!(
+        saved.summary.isk_per_month,
+        request.solution["plan"]["iskPerMonth"].as_str().unwrap()
+    );
+    assert!(saved.set_up_colonies.is_empty());
+
+    let reopened = service
+        .saved_plan(workspace(), saved.summary.id)
+        .await
+        .unwrap();
+    assert_eq!(reopened.solution, request.solution);
+    assert_eq!(service.saved_plans(workspace()).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn saving_rejects_what_it_cannot_reopen() {
+    let service = saved_plans();
+    let valid = save_request("Plan").await;
+    let mut cases = Vec::new();
+    let mut junk = valid.clone();
+    junk.solution = json!({ "plan": "nope" });
+    cases.push(junk);
+    let mut no_scenario = valid.clone();
+    no_scenario.scenario = json!({ "characterNames": [] });
+    cases.push(no_scenario);
+    let mut names = valid.clone();
+    names.scenario["characterNames"] = json!(["Only one"]);
+    cases.push(names);
+    let mut empty = valid.clone();
+    empty.solution["plan"]["colonies"] = json!([]);
+    cases.push(empty);
+    let mut blank = valid.clone();
+    blank.name = "   ".to_string();
+    cases.push(blank);
+    let mut long = valid.clone();
+    long.name = "x".repeat(121);
+    cases.push(long);
+
+    for request in cases {
+        assert!(
+            matches!(
+                service.save(workspace(), request.clone()).await,
+                Err(StoreError::Validation(_))
+            ),
+            "should be invalid: {request:?}"
+        );
+    }
+    assert!(service.saved_plans(workspace()).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ticks_and_renames_are_checked_against_the_plan() {
+    let service = saved_plans();
+    let saved = service
+        .save(workspace(), save_request("Plan").await)
+        .await
+        .unwrap();
+    let id = saved.summary.id;
+    let colonies = saved.summary.colonies;
+
+    let ticked = service
+        .update(
+            workspace(),
+            id,
+            SavedPlanUpdateDto {
+                name: Some(" Renamed ".to_string()),
+                set_up_colonies: Some(vec![colonies - 1, 0]),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(ticked.summary.name, "Renamed");
+    assert_eq!(ticked.set_up_colonies, vec![0, colonies - 1]);
+    assert_eq!(ticked.summary.set_up, 2);
+    assert!(ticked.summary.updated_at > saved.summary.updated_at);
+
+    for update in [
+        SavedPlanUpdateDto {
+            name: None,
+            set_up_colonies: Some(vec![colonies]),
+        },
+        SavedPlanUpdateDto {
+            name: None,
+            set_up_colonies: Some(vec![0, 0]),
+        },
+        SavedPlanUpdateDto {
+            name: Some(String::new()),
+            set_up_colonies: None,
+        },
+    ] {
+        assert!(matches!(
+            service.update(workspace(), id, update).await,
+            Err(StoreError::Validation(_))
+        ));
+    }
+
+    let elsewhere = WorkspaceId(uuid::Uuid::from_u128(2));
+    assert_eq!(
+        service.saved_plan(elsewhere, id).await.unwrap_err(),
+        StoreError::NotFound
+    );
+    assert_eq!(
+        service.delete(elsewhere, id).await.unwrap_err(),
+        StoreError::NotFound
+    );
+    service.delete(workspace(), id).await.unwrap();
+    assert_eq!(
+        service.saved_plan(workspace(), id).await.unwrap_err(),
+        StoreError::NotFound
+    );
+}

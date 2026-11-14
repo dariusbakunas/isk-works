@@ -75,6 +75,10 @@ pub use pi_planner::{
     PlanetSettingsWriteDto, PlannerCharacterSkillsDto, PlannerPlanetsDto, PlannerRankingDto,
     PlannerScenarioDto, PlannerSolutionDto, MAX_PLANNER_RADIUS,
 };
+pub use pi_planner::{
+    PiSavedPlansService, SavePlanRequestDto, SavedPlanDto, SavedPlanSummaryDto, SavedPlanUpdateDto,
+    SAVED_PLAN_SNAPSHOT_VERSION,
+};
 #[cfg(any(test, feature = "test-support"))]
 pub use planetary::FakePlanetaryCharacters;
 pub use planetary::{
