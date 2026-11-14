@@ -1,6 +1,6 @@
 use super::*;
 
-/// Outcome of `OrderRepository::create_ticket_for_order_requirement`.
+/// Outcome of `TicketStore::create_ticket_for_order_requirement`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RequirementTicketCreation {
     /// The ticket was created and linked to the requirement.
@@ -9,7 +9,7 @@ pub enum RequirementTicketCreation {
     AlreadyLinked(TicketId),
 }
 
-/// Outcome of `OrderRepository::create_operation_ticket`.
+/// Outcome of `TicketStore::create_operation_ticket`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum OperationTicketCreation {
     /// The ticket was created for the operation.
@@ -138,7 +138,7 @@ pub struct NewPlanTicket {
     pub parent_occurrence_key: Option<String>,
 }
 
-/// [`OrderRepository::create_order_plan`]'s result -- everything the caller
+/// [`OrderStore::create_order_plan`]'s result -- everything the caller
 /// (the `create_order` route) needs to build its response, already
 /// resolved (real `TicketId`s, `display_id`s, timestamps).
 #[derive(Debug, Clone, PartialEq)]
@@ -598,23 +598,29 @@ pub enum OrderError {
 /// way to compute that without re-fetching and re-deriving everything the
 /// caller likely already has in hand, and duplicating the derivation here
 /// would risk it drifting from `order::derive_order_status` itself.
-#[async_trait::async_trait]
-pub trait OrderRepository: Send + Sync {
-    /// Fails with `TicketReferenceNotFound` unless every given id belongs to
-    /// `workspace_id`. Ticket foreign keys are single-column, so this is
-    /// what keeps a ticket from referencing another workspace's rows.
-    async fn verify_ticket_references(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: Option<OrderId>,
-        assignee_character_id: Option<ConnectedCharacterId>,
-        price_source_id: Option<PriceSourceId>,
-    ) -> Result<(), OrderError>;
+///
+/// The port is split by role -- [`OrderStore`], [`TicketStore`],
+/// [`RecordingStore`] and [`AcquisitionRunStore`] -- so code and fakes can
+/// depend on only the role they use. `OrderRepository` is all four, and
+/// anything implementing all four is one.
+pub trait OrderRepository: OrderStore + TicketStore + RecordingStore + AcquisitionRunStore {}
 
+impl<T> OrderRepository for T where
+    T: OrderStore + TicketStore + RecordingStore + AcquisitionRunStore + ?Sized
+{
+}
+
+/// Orders (Epics): creation and the frozen plan, their requirements,
+/// reservations and fulfillments, and the Order lifecycle.
+///
+/// One of [`OrderRepository`]'s roles; see its doc for the shared rules.
+#[async_trait::async_trait]
+pub trait OrderStore: Send + Sync {
     async fn create_order(
         &self,
         new_order: NewOrder,
     ) -> Result<(Order, Vec<OrderRequirement>), OrderError>;
+
     /// The whole-tree counterpart of `create_order` +
     /// `create_ticket` combined -- one atomic transaction persisting the
     /// Order, its price snapshot, every frozen `PlanOperation`, every
@@ -635,11 +641,13 @@ pub trait OrderRepository: Send + Sync {
         &self,
         new_plan: NewOrderPlan,
     ) -> Result<OrderPlanResult, OrderError>;
+
     async fn get_order(
         &self,
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Order, OrderError>;
+
     /// The workspace's Orders among `order_ids`, in one read. Ids that
     /// match none are left out; order is unspecified.
     async fn get_orders(
@@ -647,15 +655,18 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_ids: &[OrderId],
     ) -> Result<Vec<Order>, OrderError>;
+
     async fn list_orders(
         &self,
         workspace_id: WorkspaceId,
         owner_id: OwnerId,
     ) -> Result<Vec<Order>, OrderError>;
+
     async fn list_order_requirements(
         &self,
         order_id: OrderId,
     ) -> Result<Vec<OrderRequirement>, OrderError>;
+
     /// `list_order_requirements` for several Orders in one read, so a
     /// list view doesn't query once per Epic. Grouped by Order, each in
     /// `list_order_requirements`' order.
@@ -672,6 +683,7 @@ pub trait OrderRepository: Send + Sync {
         &self,
         order_id: OrderId,
     ) -> Result<Vec<PlanOperation>, OrderError>;
+
     /// `list_order_plan_operations` for several Orders in one read.
     /// Grouped by Order, each in `list_order_plan_operations`' order.
     async fn list_order_plan_operations_for_orders(
@@ -703,15 +715,143 @@ pub trait OrderRepository: Send + Sync {
         price_snapshot_id: PriceSnapshotId,
     ) -> Result<Option<crate::MarketScope>, OrderError>;
 
+    /// Per requirement of `order_id`: Σ its active (`reserved`) and
+    /// consumed allocations. A requirement with no allocation reports
+    /// zeros; every requirement of the order is present.
+    /// The Epic's explicit "Reserve inventory" (top-up): for each frozen
+    /// requirement, reserve up to `reused_quantity - held` (held = active
+    /// + consumed) from free stock, in serving order, under the balance
+    /// lock. Partial by design; what free stock can't cover comes back as
+    /// shortfalls. Version-3, open (not completed, canceled or archived)
+    /// Epics only.
+    async fn reserve_order_inventory(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<CappedReservationPlan, OrderError>;
+
+    async fn requirement_reservation_totals(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
+
+    /// `requirement_reservation_totals` for several Orders in one read.
+    async fn requirement_reservation_totals_for_orders(
+        &self,
+        workspace_id: WorkspaceId,
+        order_ids: &[OrderId],
+    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
+
+    async fn list_order_requirement_fulfillments(
+        &self,
+        order_requirement_id: OrderRequirementId,
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
+
+    /// `list_order_requirement_fulfillments` for several requirements in
+    /// one read. Grouped by requirement, each oldest link first.
+    async fn list_order_requirement_fulfillments_for_requirements(
+        &self,
+        order_requirement_ids: &[OrderRequirementId],
+    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
+
+    /// Organizational only: stamps `started_at`. Requires `started_at IS
+    /// NULL AND canceled_at IS NULL AND completed_at IS NULL`. Reserves,
+    /// consumes, and posts nothing. See the trait's own doc for why the
+    /// *readiness* precondition (every requirement satisfied) is the
+    /// caller's job, not this method's.
+    async fn start_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError>;
+
+    /// Organizational only: stamps `completed_at`. Requires `started_at IS
+    /// NOT NULL AND completed_at IS NULL AND canceled_at IS NULL`.
+    ///
+    /// **Posts no inventory** -- no `Consumption`, no `ProductionOutput`,
+    /// no balance/cost-basis change, no ticket mutation, no
+    /// recording-completeness check. Releases whatever reservations the
+    /// Order still holds, in the same transaction. Final production
+    /// output is posted by the root Manufacturing ticket's explicit
+    /// `record_ticket_production`. Workflow status and recording state are
+    /// independent (Complete Order + unrecorded root ticket, or open Order +
+    /// recorded root ticket, are both valid).
+    async fn complete_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError>;
+
+    /// Organizational only: stamps `canceled_at`. Valid any time before
+    /// `completed_at` (requires `completed_at IS NULL AND canceled_at IS
+    /// NULL`) -- a purely stored-state precondition. Releases the Order's
+    /// active reservations in the same transaction (no ledger event) and
+    /// never touches linked tickets -- a shared ticket may still be needed
+    /// by other work, and Order status never controls Ticket status.
+    async fn cancel_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError>;
+
+    /// Orthogonal to workflow state -- valid from any status, requires
+    /// only `archived_at IS NULL`. Releases the Order's active
+    /// reservations in the same transaction; `restore_order` does not
+    /// re-reserve.
+    async fn archive_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError>;
+
+    /// Requires `archived_at IS NOT NULL`.
+    async fn restore_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<Order, OrderError>;
+
+    /// Permanently delete an Epic/Order and its frozen plan. Member tickets
+    /// survive with `order_id = NULL`; their recordings and inventory history
+    /// are independent domain facts. Unlike `cancel_order` / `archive_order`
+    /// this removes the row. `OrderNotFound` if it does not exist in the
+    /// workspace.
+    async fn delete_order(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: OrderId,
+    ) -> Result<(), OrderError>;
+}
+
+/// Tickets: creation (standalone, per requirement, per operation),
+/// reads, prerequisites, combine/split, and the Ticket lifecycle.
+///
+/// One of [`OrderRepository`]'s roles; see its doc for the shared rules.
+#[async_trait::async_trait]
+pub trait TicketStore: Send + Sync {
+    /// Fails with `TicketReferenceNotFound` unless every given id belongs to
+    /// `workspace_id`. Ticket foreign keys are single-column, so this is
+    /// what keeps a ticket from referencing another workspace's rows.
+    async fn verify_ticket_references(
+        &self,
+        workspace_id: WorkspaceId,
+        order_id: Option<OrderId>,
+        assignee_character_id: Option<ConnectedCharacterId>,
+        price_source_id: Option<PriceSourceId>,
+    ) -> Result<(), OrderError>;
+
     async fn create_ticket(
         &self,
         new_ticket: NewTicket,
     ) -> Result<(Ticket, Vec<TicketPrerequisite>), OrderError>;
+
     async fn get_ticket(
         &self,
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError>;
+
     /// The workspace's tickets among `ticket_ids`, in one read. An id
     /// with no such ticket is simply absent (`get_ticket` would fail with
     /// `TicketNotFound`).
@@ -720,6 +860,7 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         ticket_ids: &[TicketId],
     ) -> Result<Vec<Ticket>, OrderError>;
+
     async fn list_tickets(
         &self,
         workspace_id: WorkspaceId,
@@ -740,6 +881,7 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_id: OrderId,
     ) -> Result<Vec<Ticket>, OrderError>;
+
     /// `list_tickets_for_order` for several Orders in one read, each
     /// ticket once. Grouped by `order_id`, each in `list_tickets_for_order`'
     /// order; tickets with no `order_id` (combined tickets) come last.
@@ -748,35 +890,12 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         order_ids: &[OrderId],
     ) -> Result<Vec<Ticket>, OrderError>;
-    /// Per requirement of `order_id`: Σ its active (`reserved`) and
-    /// consumed allocations. A requirement with no allocation reports
-    /// zeros; every requirement of the order is present.
-    /// The Epic's explicit "Reserve inventory" (top-up): for each frozen
-    /// requirement, reserve up to `reused_quantity - held` (held = active
-    /// + consumed) from free stock, in serving order, under the balance
-    /// lock. Partial by design; what free stock can't cover comes back as
-    /// shortfalls. Version-3, open (not completed, canceled or archived)
-    /// Epics only.
-    async fn reserve_order_inventory(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<CappedReservationPlan, OrderError>;
-    async fn requirement_reservation_totals(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
-    /// `requirement_reservation_totals` for several Orders in one read.
-    async fn requirement_reservation_totals_for_orders(
-        &self,
-        workspace_id: WorkspaceId,
-        order_ids: &[OrderId],
-    ) -> Result<Vec<RequirementReservationTotals>, OrderError>;
+
     async fn list_ticket_prerequisites(
         &self,
         ticket_id: TicketId,
     ) -> Result<Vec<TicketPrerequisite>, OrderError>;
+
     /// `list_ticket_prerequisites` for several tickets in one read.
     /// Grouped by ticket, each in `list_ticket_prerequisites`' order.
     async fn list_ticket_prerequisites_for_tickets(
@@ -793,6 +912,7 @@ pub trait OrderRepository: Send + Sync {
         ticket_id: TicketId,
         allocated_quantity: u64,
     ) -> Result<OrderRequirementFulfillment, OrderError>;
+
     /// Mints `new_ticket` for an Order requirement and links it
     /// (`allocated_quantity`) in **one transaction**: a failed link leaves
     /// no ticket behind. At most one active (non-canceled) ticket can be
@@ -821,6 +941,7 @@ pub trait OrderRepository: Send + Sync {
         new_ticket: NewTicket,
         links: &[(OrderRequirementId, u64)],
     ) -> Result<RequirementTicketCreation, OrderError>;
+
     /// Creates the ticket for one frozen operation of a version-3 Epic
     /// (see `order::operation_ticket`), in one transaction. At most one
     /// active (non-canceled) ticket per operation -- claimed in
@@ -834,16 +955,6 @@ pub trait OrderRepository: Send + Sync {
         order_id: OrderId,
         occurrence_key: &str,
     ) -> Result<OperationTicketCreation, OrderError>;
-    async fn list_order_requirement_fulfillments(
-        &self,
-        order_requirement_id: OrderRequirementId,
-    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
-    /// `list_order_requirement_fulfillments` for several requirements in
-    /// one read. Grouped by requirement, each oldest link first.
-    async fn list_order_requirement_fulfillments_for_requirements(
-        &self,
-        order_requirement_ids: &[OrderRequirementId],
-    ) -> Result<Vec<OrderRequirementFulfillment>, OrderError>;
 
     /// Same idempotency rule as `link_order_requirement_to_ticket`.
     async fn link_ticket_prerequisite_to_ticket(
@@ -852,16 +963,19 @@ pub trait OrderRepository: Send + Sync {
         fulfilling_ticket_id: TicketId,
         allocated_quantity: u64,
     ) -> Result<TicketPrerequisiteFulfillment, OrderError>;
+
     async fn list_ticket_prerequisite_fulfillments(
         &self,
         ticket_prerequisite_id: TicketPrerequisiteId,
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
+
     /// `list_ticket_prerequisite_fulfillments` for several prerequisites
     /// in one read. Grouped by prerequisite, each oldest link first.
     async fn list_ticket_prerequisite_fulfillments_for_prerequisites(
         &self,
         ticket_prerequisite_ids: &[TicketPrerequisiteId],
     ) -> Result<Vec<TicketPrerequisiteFulfillment>, OrderError>;
+
     /// The frozen operations each ticket executes (see [`TicketOperation`]),
     /// each ticket's sorted by `(order_id, occurrence_key)`. Tickets that
     /// execute none (acquisition, generic, standalone) are absent.
@@ -891,47 +1005,6 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Vec<Ticket>, OrderError>;
-
-    /// `available = physical_balance - active allocations`, read-only, no
-    /// lock. Neither `create_order` nor `create_ticket` allocates anything,
-    /// so for any newly created row this equals the physical balance; a
-    /// non-zero active-allocation term can only come from old allocation
-    /// rows (released en masse by migration `202609040001`, so in practice
-    /// zero).
-    async fn available_quantity(
-        &self,
-        workspace_id: WorkspaceId,
-        owner_id: OwnerId,
-        type_id: i64,
-    ) -> Result<u64, OrderError>;
-
-    /// Organizational only: stamps `started_at`. Requires `started_at IS
-    /// NULL AND canceled_at IS NULL AND completed_at IS NULL`. Reserves,
-    /// consumes, and posts nothing. See the trait's own doc for why the
-    /// *readiness* precondition (every requirement satisfied) is the
-    /// caller's job, not this method's.
-    async fn start_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError>;
-
-    /// Organizational only: stamps `completed_at`. Requires `started_at IS
-    /// NOT NULL AND completed_at IS NULL AND canceled_at IS NULL`.
-    ///
-    /// **Posts no inventory** -- no `Consumption`, no `ProductionOutput`,
-    /// no balance/cost-basis change, no ticket mutation, no
-    /// recording-completeness check. Releases whatever reservations the
-    /// Order still holds, in the same transaction. Final production
-    /// output is posted by the root Manufacturing ticket's explicit
-    /// `record_ticket_production`. Workflow status and recording state are
-    /// independent (Complete Order + unrecorded root ticket, or open Order +
-    /// recorded root ticket, are both valid).
-    async fn complete_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError>;
 
     /// `Ready -> InProgress`. Requires `status = 'ready'`.
     async fn start_ticket(
@@ -1015,6 +1088,70 @@ pub trait OrderRepository: Send + Sync {
         workspace_id: WorkspaceId,
         ticket_id: TicketId,
     ) -> Result<Ticket, OrderError>;
+
+    /// Valid from `Todo | InProgress` (requires `status IN ('todo',
+    /// 'in_progress')`). Workflow-only, like `set_ticket_status`: sets
+    /// `status = 'canceled'`/`updated_at` and **nothing else**. Touches no
+    /// inventory (a Ticket owns no reservations, so there is nothing to
+    /// release), no recording, no prerequisite/allocation row, and no
+    /// *other* ticket's status. "Canceled" means "I am no longer
+    /// tracking this work as active," not "undo accounting/history" --
+    /// explicit accounting reversal, if ever added, is a separate,
+    /// deliberately invoked operation.
+    async fn cancel_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError>;
+
+    /// Orthogonal to `status` -- valid from any status, requires only
+    /// `archived_at IS NULL`.
+    async fn archive_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError>;
+
+    /// Requires `archived_at IS NOT NULL`.
+    async fn restore_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<Ticket, OrderError>;
+
+    /// Permanently delete a ticket -- including an acquisition ("shopping
+    /// trip") ticket -- and its workflow-owned rows: prerequisite/requirement
+    /// fulfillments, `ticket_prerequisites` (cascade), and an
+    /// `acquisition_runs` row it solely owns (its items cascade). Historical
+    /// inventory recordings retain the original Ticket UUID and survive.
+    /// Its `order_id` link, if any, just goes away. Unlike
+    /// `cancel_ticket` / `archive_ticket` this removes the row.
+    /// `TicketNotFound` if it does not exist in the workspace.
+    async fn delete_ticket(
+        &self,
+        workspace_id: WorkspaceId,
+        ticket_id: TicketId,
+    ) -> Result<(), OrderError>;
+}
+
+/// Ticket inventory recordings: the only execution/accounting
+/// paths (acquisition and production), their previews and reversal.
+///
+/// One of [`OrderRepository`]'s roles; see its doc for the shared rules.
+#[async_trait::async_trait]
+pub trait RecordingStore: Send + Sync {
+    /// `available = physical_balance - active allocations`, read-only, no
+    /// lock. Neither `create_order` nor `create_ticket` allocates anything,
+    /// so for any newly created row this equals the physical balance; a
+    /// non-zero active-allocation term can only come from old allocation
+    /// rows (released en masse by migration `202609040001`, so in practice
+    /// zero).
+    async fn available_quantity(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        type_id: i64,
+    ) -> Result<u64, OrderError>;
 
     /// Explicit "I acquired this" recording against a standalone
     /// Acquisition ticket -- the first of the explicit inventory-recording
@@ -1117,97 +1254,20 @@ pub trait OrderRepository: Send + Sync {
         &self,
         ticket_id: TicketId,
     ) -> Result<Vec<TicketInventoryRecording>, OrderError>;
+
     /// `list_ticket_inventory_recordings` for several tickets in one read
     /// (plus one for their effects). Grouped by ticket, each oldest first.
     async fn list_ticket_inventory_recordings_for_tickets(
         &self,
         ticket_ids: &[TicketId],
     ) -> Result<Vec<TicketInventoryRecording>, OrderError>;
+}
 
-    /// Organizational only: stamps `canceled_at`. Valid any time before
-    /// `completed_at` (requires `completed_at IS NULL AND canceled_at IS
-    /// NULL`) -- a purely stored-state precondition. Releases the Order's
-    /// active reservations in the same transaction (no ledger event) and
-    /// never touches linked tickets -- a shared ticket may still be needed
-    /// by other work, and Order status never controls Ticket status.
-    async fn cancel_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError>;
-
-    /// Orthogonal to workflow state -- valid from any status, requires
-    /// only `archived_at IS NULL`. Releases the Order's active
-    /// reservations in the same transaction; `restore_order` does not
-    /// re-reserve.
-    async fn archive_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError>;
-
-    /// Requires `archived_at IS NOT NULL`.
-    async fn restore_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<Order, OrderError>;
-
-    /// Permanently delete an Epic/Order and its frozen plan. Member tickets
-    /// survive with `order_id = NULL`; their recordings and inventory history
-    /// are independent domain facts. Unlike `cancel_order` / `archive_order`
-    /// this removes the row. `OrderNotFound` if it does not exist in the
-    /// workspace.
-    async fn delete_order(
-        &self,
-        workspace_id: WorkspaceId,
-        order_id: OrderId,
-    ) -> Result<(), OrderError>;
-
-    /// Valid from `Todo | InProgress` (requires `status IN ('todo',
-    /// 'in_progress')`). Workflow-only, like `set_ticket_status`: sets
-    /// `status = 'canceled'`/`updated_at` and **nothing else**. Touches no
-    /// inventory (a Ticket owns no reservations, so there is nothing to
-    /// release), no recording, no prerequisite/allocation row, and no
-    /// *other* ticket's status. "Canceled" means "I am no longer
-    /// tracking this work as active," not "undo accounting/history" --
-    /// explicit accounting reversal, if ever added, is a separate,
-    /// deliberately invoked operation.
-    async fn cancel_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError>;
-
-    /// Orthogonal to `status` -- valid from any status, requires only
-    /// `archived_at IS NULL`.
-    async fn archive_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError>;
-
-    /// Requires `archived_at IS NOT NULL`.
-    async fn restore_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<Ticket, OrderError>;
-
-    /// Permanently delete a ticket -- including an acquisition ("shopping
-    /// trip") ticket -- and its workflow-owned rows: prerequisite/requirement
-    /// fulfillments, `ticket_prerequisites` (cascade), and an
-    /// `acquisition_runs` row it solely owns (its items cascade). Historical
-    /// inventory recordings retain the original Ticket UUID and survive.
-    /// Its `order_id` link, if any, just goes away. Unlike
-    /// `cancel_ticket` / `archive_ticket` this removes the row.
-    /// `TicketNotFound` if it does not exist in the workspace.
-    async fn delete_ticket(
-        &self,
-        workspace_id: WorkspaceId,
-        ticket_id: TicketId,
-    ) -> Result<(), OrderError>;
-
+/// Acquisition Runs batching standalone Acquisition tickets.
+///
+/// One of [`OrderRepository`]'s roles; see its doc for the shared rules.
+#[async_trait::async_trait]
+pub trait AcquisitionRunStore: Send + Sync {
     /// Groups `ticket_ids` into one shopping trip, using the
     /// `AcquisitionRun`/`AcquisitionRunItem` domain types and
     /// `acquisition_runs`/`acquisition_run_items` tables. Requires every named ticket to belong to

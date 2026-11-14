@@ -1,4 +1,4 @@
-//! The bare ticket writes behind `OrderRepository::update_ticket`, run in
+//! The bare ticket writes behind `TicketStore::update_ticket`, run in
 //! the caller's transaction.
 
 use super::*;

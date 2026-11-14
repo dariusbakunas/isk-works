@@ -116,7 +116,7 @@ pub(super) async fn release_order_allocations(
     Ok(result.rows_affected())
 }
 
-/// `OrderRepository::reserve_order_inventory`, inside the caller's
+/// `OrderStore::reserve_order_inventory`, inside the caller's
 /// transaction.
 pub(super) async fn top_up_order_reservations(
     tx: &mut Transaction<'_, Postgres>,

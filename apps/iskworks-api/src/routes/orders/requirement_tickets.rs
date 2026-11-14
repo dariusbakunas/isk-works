@@ -174,7 +174,7 @@ pub(super) async fn linked_build_plan_for_ticket(
 /// Idempotent: if a non-canceled ticket already covers this requirement's
 /// `fresh_quantity` (or is at least linked and not canceled), returns that
 /// ticket instead of creating a duplicate -- mirroring
-/// `OrderRepository::link_order_requirement_to_ticket`'s own idempotency
+/// `TicketStore::link_order_requirement_to_ticket`'s own idempotency
 /// one level up, since a bulk-create retry or a double-click shouldn't
 /// spawn a second ticket for the same requirement.
 pub(super) async fn create_ticket_for_requirement(

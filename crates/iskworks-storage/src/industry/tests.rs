@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::*;
 use crate::PgOrderRepository;
 use iskworks_core::{
-    order::{OrderId, OrderRepository, PlanOperationEvidence},
+    order::{OrderId, OrderStore, PlanOperationEvidence},
     CapturedReactionFormula, IndustryService, MarketPricingPolicy, NewBuild, OwnerId,
     RecipeCurrency,
 };
