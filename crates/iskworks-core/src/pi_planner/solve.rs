@@ -120,6 +120,9 @@ pub struct PiPlan {
     pub shared_hotspots: Vec<SharedHotspot>,
     /// Distinct solar systems each scenario character has colonies in.
     pub systems_by_character: Vec<u32>,
+    /// The handout had to put a character in more systems than the
+    /// scenario's limit allows.
+    pub systems_over_limit: bool,
 }
 
 impl PiPlan {
@@ -1385,7 +1388,8 @@ fn build_plan(
             held.insert(system);
         }
     }
-    let systems_by_character = systems.iter().map(|held| held.len() as u32).collect();
+    let systems_by_character: Vec<u32> = systems.iter().map(|held| held.len() as u32).collect();
+    let systems_over_limit = over_limit(&systems_by_character, scenario.max_systems_per_character);
 
     PiPlan {
         isk_per_month: (sales - purchases - customs_tax) * HOURS_PER_MONTH,
@@ -1398,7 +1402,13 @@ fn build_plan(
         inputs,
         shared_hotspots,
         systems_by_character,
+        systems_over_limit,
     }
+}
+
+/// Some character visits more systems than `limit`.
+fn over_limit(systems_by_character: &[u32], limit: Option<u32>) -> bool {
+    limit.is_some_and(|limit| systems_by_character.iter().any(|count| *count > limit))
 }
 
 #[cfg(test)]

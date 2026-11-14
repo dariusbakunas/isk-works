@@ -411,6 +411,8 @@ fn one_system_per_character_keeps_a_character_in_one_system() {
 
     let one = plan(&limited(vec![character(5)], 1), &planets, &market());
     assert_eq!(one.systems_by_character, vec![1], "{one:#?}");
+    assert!(!one.systems_over_limit);
+    assert!(!free.systems_over_limit, "no limit, nothing to exceed");
     assert!(one.isk_per_month > 0.0);
     assert!(one.isk_per_month <= free.isk_per_month + 1.0);
 }
@@ -460,4 +462,20 @@ fn a_limited_plan_still_buys_factory_storage() {
         .find(|colony| colony.role == ColonyRole::Factory)
         .expect("a factory colony");
     assert!(factory.layout.extra_storage > 0, "{factory:#?}");
+}
+
+#[test]
+fn a_handout_that_cannot_meet_the_limit_still_places_every_colony() {
+    // One character, colonies wanted in two systems, a limit of one.
+    let planets = spread(&[1, 2]);
+    let solo = vec![Group {
+        characters: vec![0],
+        colonies_each: 6,
+        level: 4,
+    }];
+    let held = assign(&solo, &planets, &[(0, 0), (0, 1)], Some(1));
+    assert_eq!(held, vec![0, 0]);
+    assert!(over_limit(&[2], Some(1)));
+    assert!(!over_limit(&[1, 0], Some(1)));
+    assert!(!over_limit(&[3], None));
 }
