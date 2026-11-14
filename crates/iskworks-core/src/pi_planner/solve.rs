@@ -18,10 +18,9 @@
 //! chosen sites and prices every transfer at its own planet's tax.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
-use good_lp::{
-    default_solver, variable, Expression, ProblemVariables, Solution, SolverModel, Variable,
-};
+use good_lp::{default_solver, variable, Expression, ProblemVariables, SolverModel, Variable};
 
 use super::capacity::{ColonyBudget, ColonyLayout};
 use super::catalogue::{PiCatalogue, Recipe};
@@ -506,6 +505,52 @@ struct Relaxed {
     bought: BTreeMap<i64, f64>,
 }
 
+/// Where each value sits among a relaxation's solver variables, which are
+/// numbered in the order they were added.
+struct Handles {
+    vars: Vec<microlp::Variable>,
+    /// The whole counts come first.
+    counts: usize,
+    extracted: Vec<Vec<usize>>,
+    made: BTreeMap<i64, usize>,
+    sold: BTreeMap<i64, usize>,
+    bought: BTreeMap<i64, usize>,
+}
+
+/// One more bound on a whole count.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Bound {
+    AtMost(f64),
+    AtLeast(f64),
+}
+
+/// A solved LP relaxation, kept with its solver so a branch restarts from
+/// this basis instead of building and solving its own LP.
+struct Relaxation {
+    solution: microlp::Solution,
+    handles: Rc<Handles>,
+}
+
+impl Relaxation {
+    /// This relaxation with whole count `index` held to `bound`; `None` when
+    /// that leaves nothing feasible.
+    fn branch(&self, index: usize, bound: Bound) -> Option<Self> {
+        let (comparison, value) = match bound {
+            Bound::AtMost(value) => (microlp::ComparisonOp::Le, value),
+            Bound::AtLeast(value) => (microlp::ComparisonOp::Ge, value),
+        };
+        let solution = self
+            .solution
+            .clone()
+            .add_constraint([(self.handles.vars[index], 1.0)], comparison, value)
+            .ok()?;
+        Some(Self {
+            solution,
+            handles: Rc::clone(&self.handles),
+        })
+    }
+}
+
 impl<'a> Model<'a> {
     fn new(
         catalogue: &'a PiCatalogue,
@@ -581,6 +626,42 @@ impl<'a> Model<'a> {
     /// The LP relaxation with colony counts held to `bounds`; `None` when
     /// infeasible.
     fn relax(&self, bounds: &[(f64, f64)]) -> Option<Relaxed> {
+        self.relaxation(bounds)
+            .map(|relaxation| self.read(&relaxation))
+    }
+
+    /// A relaxation's counts and flows.
+    fn read(&self, relaxation: &Relaxation) -> Relaxed {
+        let Relaxation { solution, handles } = relaxation;
+        let value = |index: usize| solution.var_value(handles.vars[index]).max(0.0);
+        let rates = |vars: &BTreeMap<i64, usize>| {
+            vars.iter()
+                .map(|(type_id, index)| (*type_id, value(*index)))
+                .filter(|(_, rate)| *rate > 1e-6)
+                .collect::<BTreeMap<_, _>>()
+        };
+        let counts: Vec<f64> = (0..handles.counts).map(value).collect();
+        let sold = rates(&handles.sold);
+        let bought = rates(&handles.bought);
+        let made = rates(&handles.made);
+        let extracted: Vec<Vec<f64>> = handles
+            .extracted
+            .iter()
+            .map(|indices| indices.iter().map(|index| value(*index)).collect())
+            .collect();
+        Relaxed {
+            objective: self.objective(&counts, &extracted, &made, &sold, &bought),
+            counts,
+            extracted,
+            made,
+            sold,
+            bought,
+        }
+    }
+
+    /// Builds and solves the LP relaxation with colony counts held to
+    /// `bounds`; `None` when infeasible.
+    fn relaxation(&self, bounds: &[(f64, f64)]) -> Option<Relaxation> {
         let Self {
             catalogue,
             scenario,
@@ -636,6 +717,23 @@ impl<'a> Model<'a> {
         } else {
             BTreeMap::new()
         };
+        // The solver numbers variables in the order added above: the whole
+        // counts, then each group of flows.
+        let counts = x.len() + y.len() + z.len() + 1;
+        let mut next = counts;
+        let mut number = |len: usize| {
+            let indices = next..next + len;
+            next += len;
+            indices
+        };
+        let extracted_at: Vec<Vec<usize>> = extracted
+            .iter()
+            .map(|vars| number(vars.len()).collect())
+            .collect();
+        let made_at: BTreeMap<i64, usize> = made.keys().copied().zip(number(made.len())).collect();
+        let sold_at: BTreeMap<i64, usize> = sold.keys().copied().zip(number(sold.len())).collect();
+        let bought_at: BTreeMap<i64, usize> =
+            bought.keys().copied().zip(number(bought.len())).collect();
         // Objective, per hour, with factory-side tax at the default rate; the
         // plan reprices every transfer at its own planet afterwards.
         let default_rate = scenario.default_customs_rate;
@@ -811,35 +909,18 @@ impl<'a> Model<'a> {
             problem = problem.with((held.skyhook_m3 * through - SKYHOOK_M3 * factories).leq(0.0));
         }
 
-        let solution = problem.solve().ok()?;
-        let value = |var: Variable| solution.value(var).max(0.0);
-        let rates = |vars: &BTreeMap<i64, Variable>| {
-            vars.iter()
-                .map(|(type_id, var)| (*type_id, value(*var)))
-                .filter(|(_, rate)| *rate > 1e-6)
-                .collect::<BTreeMap<_, _>>()
-        };
-        let counts: Vec<f64> = x
-            .iter()
-            .chain(&y)
-            .chain(&z)
-            .chain(std::iter::once(&storage))
-            .map(|var| value(*var))
-            .collect();
-        let sold = rates(&sold);
-        let bought = rates(&bought);
-        let made = rates(&made);
-        let extracted: Vec<Vec<f64>> = extracted
-            .iter()
-            .map(|vars| vars.iter().map(|var| value(*var)).collect())
-            .collect();
-        Some(Relaxed {
-            objective: self.objective(&counts, &extracted, &made, &sold, &bought),
-            counts,
-            extracted,
-            made,
-            sold,
-            bought,
+        let solution = problem.solve().ok()?.into_inner();
+        let vars: Vec<microlp::Variable> = solution.iter().map(|(var, _)| var).collect();
+        Some(Relaxation {
+            solution,
+            handles: Rc::new(Handles {
+                vars,
+                counts,
+                extracted: extracted_at,
+                made: made_at,
+                sold: sold_at,
+                bought: bought_at,
+            }),
         })
     }
 

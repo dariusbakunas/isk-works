@@ -22,6 +22,9 @@ license = "AGPL-3.0-or-later"
 # PI Planner optimiser. Pinned while the workspace MSRV was 1.78 (1.12.0
 # resolves microlp 0.2.x); unpinning is a separate change.
 good_lp = { version = "=1.12.0", default-features = false, features = ["microlp"] }
+# The LP solver under good_lp, named so a branch can restart from its parent's
+# solved relaxation. Keep it on the version good_lp resolves.
+microlp = "0.2"
 async-trait = "0.1"
 aes-gcm = "0.10"
 axum = { version = "0.7", features = ["multipart"] }

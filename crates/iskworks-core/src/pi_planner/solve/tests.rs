@@ -479,3 +479,51 @@ fn a_handout_that_cannot_meet_the_limit_still_places_every_colony() {
     assert!(!over_limit(&[1, 0], Some(1)));
     assert!(!over_limit(&[3], None));
 }
+
+#[test]
+fn a_branch_restarted_from_its_parent_matches_solving_it_from_scratch() {
+    let catalogue = catalogue();
+    let scenario = scenario(vec![character(5), character(5), character(4)]);
+    let planets = q3hs5();
+    let prices = market();
+    let model = Model::new(&catalogue, &scenario, &planets, &prices);
+    let mut bounds = model.bounds();
+    let mut node = model.relaxation(&bounds).expect("the root is feasible");
+
+    // Walk down the tree, alternating sides, as the search does.
+    let mut branched = 0;
+    for depth in 0..8 {
+        let Some((index, value)) = bnb::most_fractional(&model.read(&node).counts) else {
+            break;
+        };
+        let bound = if depth % 2 == 0 {
+            bounds[index].1 = value.floor();
+            Bound::AtMost(value.floor())
+        } else {
+            bounds[index].0 = value.ceil();
+            Bound::AtLeast(value.ceil())
+        };
+        let restarted = node.branch(index, bound);
+        let from_scratch = model.relax(&bounds);
+        let (Some(restarted), Some(from_scratch)) = (restarted, from_scratch) else {
+            panic!("{bound:?} at depth {depth} left one of the two infeasible");
+        };
+        let read = model.read(&restarted);
+        let scale = from_scratch.objective.abs().max(1.0);
+        assert!(
+            (read.objective - from_scratch.objective).abs() <= 1e-6 * scale,
+            "{bound:?} at depth {depth}: restarted {} vs from scratch {}",
+            read.objective,
+            from_scratch.objective
+        );
+        let (low, high) = bounds[index];
+        assert!(
+            read.counts[index] >= low - 1e-6 && read.counts[index] <= high + 1e-6,
+            "{bound:?} at depth {depth}: count {} outside {low}..={high}",
+            read.counts[index]
+        );
+        node = restarted;
+        branched += 1;
+    }
+    assert!(branched >= 2, "only {branched} branches to compare");
+}
