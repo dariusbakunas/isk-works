@@ -71,6 +71,7 @@ impl RankScenario {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CandidatePlanet {
     pub planet_id: i64,
+    pub system_id: i64,
     pub type_id: i64,
     pub radius_m: Option<i64>,
     pub jumps: u8,

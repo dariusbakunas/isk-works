@@ -868,6 +868,7 @@ fn candidates(area: &Neighbourhood) -> Vec<CandidatePlanet> {
             let settings = area.settings.get(&planet.planet_id);
             CandidatePlanet {
                 planet_id: planet.planet_id,
+                system_id: planet.solar_system_id,
                 type_id: planet.type_id,
                 radius_m: planet.radius_m,
                 jumps: system.map_or(0, |system| system.jumps),
