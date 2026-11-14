@@ -9,7 +9,7 @@ use iskworks_core::pi_planner::{
 };
 use iskworks_core::{MarketScope, WorkspaceId};
 use iskworks_sde::PlanetPinKind;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     effort_dto, fmt_f64, ranked_input, Catalogue, EffortDto, NamedTypeDto, Neighbourhood,
@@ -19,7 +19,7 @@ use super::{
 /// A solve and its what-ifs together; past this the request gives up.
 pub const SOLVE_DEADLINE: Duration = Duration::from_secs(20);
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannerSolutionDto {
     pub price_observed_at: Option<DateTime<Utc>>,
@@ -28,7 +28,7 @@ pub struct PlannerSolutionDto {
     pub what_ifs: WhatIfsDto,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDto {
     pub isk_per_month: String,
@@ -46,14 +46,14 @@ pub struct PlanDto {
     pub systems_over_limit: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ColonyRoleDto {
     Extraction,
     Factory,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RateDto {
     pub type_id: i64,
@@ -62,7 +62,7 @@ pub struct RateDto {
     pub units_per_hour: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StructureCountDto {
     pub type_id: i64,
@@ -70,7 +70,7 @@ pub struct StructureCountDto {
     pub count: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupDto {
     pub ecus: u32,
@@ -80,7 +80,7 @@ pub struct SetupDto {
     pub processors: Vec<StructureCountDto>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeDto {
     pub type_id: i64,
@@ -90,7 +90,7 @@ pub struct RecipeDto {
     pub factories: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColonyDto {
     /// Position in `colonies`; flows refer to it.
@@ -119,7 +119,7 @@ pub struct ColonyDto {
     pub template: Option<ColonyTemplateDto>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TemplatePinKindDto {
     Launchpad,
@@ -128,7 +128,7 @@ pub enum TemplatePinKindDto {
     Extractor,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplatePinDto {
     pub kind: TemplatePinKindDto,
@@ -142,7 +142,7 @@ pub struct TemplatePinDto {
     pub y_km: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColonyTemplateDto {
     /// What the player pastes into Save from Clipboard.
@@ -156,7 +156,7 @@ pub struct ColonyTemplateDto {
     pub fits: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowDto {
     /// Colony index; `null` is the market.
@@ -171,7 +171,7 @@ pub struct FlowDto {
     pub cross_character: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedHotspotDto {
     pub planet_id: i64,
@@ -181,14 +181,14 @@ pub struct SharedHotspotDto {
     pub characters: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RadiusValueDto {
     pub jumps: u8,
     pub isk_per_month: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffortCellDto {
     pub reset_days: u32,
@@ -197,7 +197,7 @@ pub struct EffortCellDto {
     pub logins_per_week: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanFirstDto {
     pub planet_id: i64,
@@ -208,7 +208,7 @@ pub struct ScanFirstDto {
     pub isk_per_month: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WhatIfsDto {
     /// ISK/month with the first 1..=N characters.

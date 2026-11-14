@@ -97,7 +97,7 @@ pub struct PlannerSystemDto {
     pub jumps: u8,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SecurityBandDto {
     High,
@@ -245,7 +245,7 @@ pub struct RankedProductDto {
     pub haul_constrained_days: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RankedInputDto {
     pub resource_type_id: i64,
@@ -256,7 +256,7 @@ pub struct RankedInputDto {
     pub contested: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum YieldSourceDto {
     HeadValue,
@@ -274,14 +274,14 @@ impl From<YieldSource> for YieldSourceDto {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamedTypeDto {
     pub type_id: i64,
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffortDto {
     pub logins_per_week_by_character: Vec<String>,

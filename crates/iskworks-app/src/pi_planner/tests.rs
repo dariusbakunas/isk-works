@@ -705,3 +705,21 @@ async fn characters_prefill_pi_skills_from_the_skills_sync() {
     assert_eq!(characters[0].command_center_upgrades, Some(5));
     assert_eq!(characters[1].interplanetary_consolidation, None);
 }
+
+/// A solve of the Q-3HS5 fixtures with readings entered, estimating the rest.
+async fn solved() -> PlannerSolutionDto {
+    let (service, _) = service(FakeSde::planner());
+    enter_q3hs5(&service).await;
+    let mut request = scenario_request(0);
+    request.characters.push(request.characters[0].clone());
+    service.solve(workspace(), scope(), request).await.unwrap()
+}
+
+#[tokio::test]
+async fn a_solution_round_trips_through_json() {
+    let solution = solved().await;
+    assert!(!solution.plan.colonies.is_empty());
+    let json = serde_json::to_value(&solution).unwrap();
+    let parsed: PlannerSolutionDto = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), json);
+}
