@@ -9,8 +9,8 @@ use iskworks_api::{build_router, AppState};
 use iskworks_app::{PlanetaryCharacter, PlanetaryCharacterSource};
 use iskworks_core::pi_planner::fixtures::{self, *};
 use iskworks_core::pi_planner::{
-    DensityWrite, PiPlannerInputsRepository, PlanetSettingsWrite, StoredDensity,
-    StoredPlanetSettings,
+    DensityWrite, FakePiSavedPlans, NewSavedPlan, PiPlannerInputsRepository,
+    PiSavedPlansRepository, PlanetSettingsWrite, StoredDensity, StoredPlanetSettings,
 };
 use iskworks_core::planetary::{PlanetaryPreferences, PlanetaryPreferencesRepository};
 use iskworks_core::{
@@ -379,18 +379,21 @@ impl PlanetaryPreferencesRepository for FakePreferences {
 struct Harness {
     app: axum::Router,
     market: Arc<FakeMarket>,
+    saved: Arc<FakePiSavedPlans>,
 }
 
 fn harness(planner_data: bool) -> Harness {
     let market = Arc::new(FakeMarket::default());
+    let saved = Arc::new(FakePiSavedPlans::default());
     let app = build_router(
         AppState::new(Arc::new(configured_workspace("PI Planner Test")))
             .with_sde_repository(Arc::new(FakeSde { planner_data }))
             .with_market_repository(market.clone())
             .with_pi_planner_repository(Arc::new(FakeInputs::default()))
+            .with_pi_saved_plans_repository(saved.clone())
             .with_planetary_repositories(Arc::new(FakeCharacters), Arc::new(FakePreferences)),
     );
-    Harness { app, market }
+    Harness { app, market, saved }
 }
 
 async fn send(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -785,4 +788,136 @@ async fn an_sde_without_planner_data_is_a_409() {
         assert_eq!(status, StatusCode::CONFLICT, "{body}");
         assert_eq!(body["error"]["code"], "sde_missing_planner_data");
     }
+}
+
+/// Solves the estimated scenario and returns the body the Plan tab would save.
+async fn save_body(harness: &Harness, name: &str) -> Value {
+    let mut request = scenario();
+    request["estimateUnscanned"] = json!(true);
+    let (status, solution) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &request),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{solution}");
+    request["characterNames"] = json!(["Valka"]);
+    json!({ "name": name, "scenario": request, "solution": solution })
+}
+
+#[tokio::test]
+async fn a_saved_plan_reopens_unchanged_and_keeps_its_ticks() {
+    let harness = harness(true);
+    let body = save_body(&harness, "Q-3HS5 · first").await;
+    let (status, saved) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/plans", &body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    let id = saved["id"].as_str().unwrap().to_string();
+    assert_eq!(saved["name"], "Q-3HS5 · first");
+    assert_eq!(saved["snapshotVersion"], 1);
+    assert_eq!(saved["homeSystemName"], "Q-3HS5");
+    assert_eq!(saved["setUp"], 0);
+
+    let (status, list) = send(&harness.app, get("/api/planetary/plans")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["id"], id.as_str());
+    assert!(
+        list[0].get("solution").is_none(),
+        "the list leaves snapshots out"
+    );
+
+    let (status, reopened) = send(&harness.app, get(&format!("/api/planetary/plans/{id}"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reopened["solution"], body["solution"]);
+    assert_eq!(reopened["scenario"], body["scenario"]);
+
+    let (status, ticked) = send(
+        &harness.app,
+        with_json(
+            "PATCH",
+            &format!("/api/planetary/plans/{id}"),
+            &json!({ "setUpColonies": [0] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{ticked}");
+    assert_eq!(ticked["setUpColonies"], json!([0]));
+    assert_eq!(ticked["setUp"], 1);
+
+    let (status, _) = send(
+        &harness.app,
+        with_json(
+            "PATCH",
+            &format!("/api/planetary/plans/{id}"),
+            &json!({ "setUpColonies": [999] }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let delete = Request::delete(format!("/api/planetary/plans/{id}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(&harness.app, delete).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(&harness.app, get(&format!("/api/planetary/plans/{id}"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn saving_junk_is_rejected() {
+    let harness = harness(true);
+    let mut body = save_body(&harness, "Plan").await;
+    body["solution"] = json!({ "plan": {} });
+    let (status, _) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/plans", &body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn another_workspaces_plan_is_not_found() {
+    let harness = harness(true);
+    let body = save_body(&harness, "Elsewhere").await;
+    let elsewhere = WorkspaceId(Uuid::from_u128(42));
+    let saved = harness
+        .saved
+        .create_saved_plan(
+            elsewhere,
+            NewSavedPlan {
+                name: "Elsewhere".to_string(),
+                snapshot_version: 1,
+                scenario: body["scenario"].clone(),
+                solution: body["solution"].clone(),
+                isk_per_month: Decimal::ONE,
+                colonies: 1,
+                home_system_id: HOME,
+                home_system_name: None,
+                price_observed_at: None,
+            },
+        )
+        .await
+        .unwrap();
+    let id = saved.summary.id;
+
+    let (status, list) = send(&harness.app, get("/api/planetary/plans")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list.as_array().unwrap().is_empty());
+    let (status, _) = send(&harness.app, get(&format!("/api/planetary/plans/{id}"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = send(
+        &harness.app,
+        with_json(
+            "PATCH",
+            &format!("/api/planetary/plans/{id}"),
+            &json!({ "name": "Mine now" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

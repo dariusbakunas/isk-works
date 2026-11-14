@@ -26,6 +26,8 @@ pub(crate) struct CharacterViewDeps {
         Option<Arc<dyn iskworks_core::planetary::PlanetaryPreferencesRepository>>,
     pub(super) pi_planner_repository:
         Option<Arc<dyn iskworks_core::pi_planner::PiPlannerInputsRepository>>,
+    pub(super) pi_saved_plans_repository:
+        Option<Arc<dyn iskworks_core::pi_planner::PiSavedPlansRepository>>,
     pub(super) asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
     pub(super) fit_asset_holdings: Option<Arc<dyn iskworks_core::fitting::AssetHoldingsRepository>>,
 }
@@ -50,6 +52,15 @@ impl AppState {
         repository: Arc<dyn iskworks_core::pi_planner::PiPlannerInputsRepository>,
     ) -> Self {
         self.character_views.pi_planner_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_pi_saved_plans_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::pi_planner::PiSavedPlansRepository>,
+    ) -> Self {
+        self.character_views.pi_saved_plans_repository = Some(repository);
         self
     }
 
@@ -155,6 +166,20 @@ impl AppState {
             Some(characters) => service.with_characters(characters),
             None => service,
         })
+    }
+
+    /// Saved PI plans.
+    pub(crate) fn pi_saved_plans_service(
+        &self,
+    ) -> Result<iskworks_app::PiSavedPlansService, ApiError> {
+        let repository = self
+            .character_views
+            .pi_saved_plans_repository
+            .clone()
+            .ok_or(ApiError::ServiceUnavailable(
+                "Saved PI plans are unavailable.",
+            ))?;
+        Ok(iskworks_app::PiSavedPlansService::new(repository))
     }
 
     pub(crate) fn skill_catalogue_service(

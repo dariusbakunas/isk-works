@@ -62,6 +62,7 @@ pub use production::PgProductionRepository;
 
 mod fits;
 mod pi_planner;
+mod pi_saved_plans;
 mod sde_categories;
 mod sde_import;
 mod sde_read;
@@ -72,6 +73,7 @@ mod wallet_recording;
 mod workspace;
 pub use fits::PgFitRepository;
 pub use pi_planner::PgPiPlannerInputsRepository;
+pub use pi_saved_plans::PgPiSavedPlansRepository;
 pub use sde_import::PgSdeRepository;
 pub use skill_plans::PgSkillPlanRepository;
 pub use workspace::PgWorkspaceRepository;
