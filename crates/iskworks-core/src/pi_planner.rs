@@ -10,6 +10,7 @@ mod chain;
 mod effort;
 mod inputs;
 mod rank;
+mod saved_plans;
 mod solve;
 mod template;
 mod what_if;
@@ -35,6 +36,10 @@ pub use inputs::{
 pub use rank::{
     rank, CandidatePlanet, OutOfReach, PlannerCharacter, Prices, RankScenario, RankedInput,
     RankedProduct, Ranking,
+};
+pub use saved_plans::{
+    saved_plan_name, set_up_colonies, NewSavedPlan, PiSavedPlansRepository, SavedPlan,
+    SavedPlanSummary, SavedPlanUpdate, SAVED_PLAN_NAME_MAX,
 };
 pub use solve::{
     solve, ColonyRole, FlowEnd, PiPlan, PlannedColony, PlannedFlow, SharedHotspot, SolveError,
