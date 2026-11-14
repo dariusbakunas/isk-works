@@ -45,6 +45,7 @@ describe("planner-format", () => {
       upliftAtLogin: false,
       buyIntermediates: true,
       maxColonies: 6,
+      maxSystemsPerCharacter: 2,
       estimateUnscanned: true,
     };
     const query = settingsToQuery(settings, new URLSearchParams("tab=x"));
@@ -53,9 +54,14 @@ describe("planner-format", () => {
   });
 
   test("bad query values fall back to defaults", () => {
-    expect(settingsFromQuery(new URLSearchParams("system=abc&radius=9&reset=5&tax=200&max=0"))).toEqual(
+    expect(settingsFromQuery(new URLSearchParams("system=abc&radius=9&reset=5&tax=200&max=0&sys=junk"))).toEqual(
       DEFAULT_SETTINGS,
     );
+  });
+
+  test("a zero systems limit reads as none", () => {
+    expect(settingsFromQuery(new URLSearchParams("sys=0")).maxSystemsPerCharacter).toBeNull();
+    expect(settingsFromQuery(new URLSearchParams("sys=1")).maxSystemsPerCharacter).toBe(1);
   });
 
   test("characters are remembered, clamped, and survive blocked storage", () => {

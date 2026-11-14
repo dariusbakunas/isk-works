@@ -90,8 +90,10 @@ export const SOLUTION: PlannerSolution = {
     ],
     sharedHotspots: [{ planetId: 4, planetName: "Q-3HS5 IV", resourceTypeId: 2267, resourceName: "Base Metals", characters: 2 }],
     systemsByCharacter: [1, 1],
+    systemsOverLimit: false,
   },
   whatIfs: {
+    withoutSystemLimit: null,
     perCharacter: ["800000000", "1420000000"],
     perRadius: [
       { jumps: 0, iskPerMonth: "1000000000" },

@@ -95,6 +95,7 @@ export const DEFAULT_SETTINGS: ScenarioSettings = {
   upliftAtLogin: true,
   buyIntermediates: false,
   maxColonies: null,
+  maxSystemsPerCharacter: null,
   estimateUnscanned: false,
 };
 
@@ -112,6 +113,7 @@ export function settingsFromQuery(params: URLSearchParams): ScenarioSettings {
   const radius = Number(params.get("radius") ?? DEFAULT_SETTINGS.radius);
   const tax = params.get("tax");
   const max = Number(params.get("max"));
+  const systems = Number(params.get("sys"));
   return {
     homeSystemId: Number.isInteger(system) && system > 0 ? system : null,
     radius: Number.isInteger(radius) && radius >= 0 && radius <= MAX_RADIUS ? radius : DEFAULT_SETTINGS.radius,
@@ -121,6 +123,7 @@ export function settingsFromQuery(params: URLSearchParams): ScenarioSettings {
     upliftAtLogin: params.get("uplift") !== "0",
     buyIntermediates: params.get("buy") === "1",
     maxColonies: Number.isInteger(max) && max > 0 ? max : null,
+    maxSystemsPerCharacter: Number.isInteger(systems) && systems > 0 ? systems : null,
     estimateUnscanned: params.get("estimate") === "1",
   };
 }
@@ -140,6 +143,7 @@ export function settingsToQuery(settings: ScenarioSettings, params: URLSearchPar
   put("uplift", settings.upliftAtLogin ? null : "0");
   put("buy", settings.buyIntermediates ? "1" : null);
   put("max", settings.maxColonies === null ? null : String(settings.maxColonies));
+  put("sys", settings.maxSystemsPerCharacter === null ? null : String(settings.maxSystemsPerCharacter));
   put("estimate", settings.estimateUnscanned ? "1" : null);
   return next;
 }
