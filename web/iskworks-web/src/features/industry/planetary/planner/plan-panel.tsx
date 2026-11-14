@@ -135,6 +135,12 @@ export function PlanPanel({
   const sharedPlanets = new Set(plan.sharedHotspots.map((hotspot) => hotspot.planetId)).size;
   const characters = [...new Set(plan.colonies.map((colony) => colony.character))].sort((a, b) => a - b);
   const best = Math.max(1, ...whatIfs.perCharacter.map(Number));
+  // What the systems limit costs; the node-limited search can put the
+  // limited plan above the free one, which reads as costing nothing.
+  const limitCost =
+    whatIfs.withoutSystemLimit === null ? null : Number(whatIfs.withoutSystemLimit) - Number(plan.iskPerMonth);
+  const limitCheap =
+    limitCost !== null && limitCost < Math.abs(Number(whatIfs.withoutSystemLimit)) * 0.01;
 
   if (plan.colonies.length === 0) {
     const unscanned = whatIfs.scanFirst.filter((entry) => entry.source === "default");
@@ -192,6 +198,15 @@ export function PlanPanel({
         </div>
         <div className="grid items-start gap-3 p-3 min-[1900px]:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0 space-y-3">
+            {plan.systemsOverLimit ? (
+              <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs" role="note">
+                <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                <span>
+                  The systems limit couldn't be met exactly: some characters visit more systems than it allows. Each
+                  character's system count is in its header below.
+                </span>
+              </p>
+            ) : null}
             {sharedPlanets > 0 ? (
               <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs" role="note">
                 <AlertTriangle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -402,6 +417,22 @@ export function PlanPanel({
                 ))}
               </div>
             </section>
+            {limitCost !== null ? (
+              <section>
+                <h3 className="iw-eyebrow mb-1 text-muted">System limit</h3>
+                {limitCheap ? (
+                  <p>The system limit costs almost nothing.</p>
+                ) : (
+                  <p>
+                    Without the system limit:{" "}
+                    <span className="font-mono">
+                      +<IskCompact value={String(limitCost)} />
+                    </span>
+                    /mo
+                  </p>
+                )}
+              </section>
+            ) : null}
             {whatIfs.scanFirst.length > 0 ? (
               <section>
                 <h3 className="iw-eyebrow mb-1 text-muted">Scan these first</h3>

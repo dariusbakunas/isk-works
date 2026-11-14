@@ -91,6 +91,8 @@ export interface PlannerScenario {
   upliftAtLogin: boolean;
   buyIntermediates: boolean;
   maxColonies: number | null;
+  /** Each character's colonies fall within this many solar systems. */
+  maxSystemsPerCharacter: number | null;
   /** Plan unscanned resources at the security band's default density;
    * off, only entered readings are planned. */
   estimateUnscanned: boolean;
@@ -287,6 +289,8 @@ export interface PiPlan {
   }[];
   /** Distinct solar systems per scenario character. */
   systemsByCharacter: number[];
+  /** Some character visits more systems than the scenario's limit. */
+  systemsOverLimit: boolean;
 }
 
 export interface EffortCell {
@@ -315,6 +319,8 @@ export interface PlannerSolution {
     perRadius: { jumps: number; iskPerMonth: string }[];
     grid: EffortCell[];
     scanFirst: ScanFirst[];
+    /** ISK/month without the systems-per-character limit; null without one. */
+    withoutSystemLimit: string | null;
   };
 }
 
