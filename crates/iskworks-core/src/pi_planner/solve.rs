@@ -116,6 +116,8 @@ pub struct PiPlan {
     /// Each (planet, resource) the plan extracts, with its reading's source.
     pub inputs: Vec<RankedInput>,
     pub shared_hotspots: Vec<SharedHotspot>,
+    /// Distinct solar systems each scenario character has colonies in.
+    pub systems_by_character: Vec<u32>,
 }
 
 impl PiPlan {
@@ -1317,6 +1319,17 @@ fn build_plan(
             },
         )
         .collect();
+    let mut systems: Vec<BTreeSet<i64>> = vec![BTreeSet::new(); scenario.characters.len()];
+    for colony in &colonies {
+        let system = planets
+            .iter()
+            .find(|planet| planet.planet_id == colony.planet_id)
+            .map(|planet| planet.system_id);
+        if let (Some(held), Some(system)) = (systems.get_mut(colony.character), system) {
+            held.insert(system);
+        }
+    }
+    let systems_by_character = systems.iter().map(|held| held.len() as u32).collect();
 
     PiPlan {
         isk_per_month: (sales - purchases - customs_tax) * HOURS_PER_MONTH,
@@ -1328,6 +1341,7 @@ fn build_plan(
         effort,
         inputs,
         shared_hotspots,
+        systems_by_character,
     }
 }
 

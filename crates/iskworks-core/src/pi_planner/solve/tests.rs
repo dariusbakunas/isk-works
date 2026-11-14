@@ -349,3 +349,35 @@ fn the_handout_never_puts_two_colonies_of_one_character_on_a_planet() {
 
     assert_ne!(held[0], held[1], "{held:?}");
 }
+
+#[test]
+fn the_plan_counts_each_characters_systems() {
+    let planets = q3hs5()
+        .into_iter()
+        .enumerate()
+        .map(|(index, planet)| in_system(planet, index as i64 + 1))
+        .collect::<Vec<_>>();
+    let result = plan(
+        &scenario(vec![character(5), character(5)]),
+        &planets,
+        &market(),
+    );
+
+    assert_eq!(result.systems_by_character.len(), 2);
+    for (character, count) in result.systems_by_character.iter().enumerate() {
+        // Every planet is its own system here.
+        let systems = result
+            .colonies
+            .iter()
+            .filter(|colony| colony.character == character)
+            .map(|colony| colony.planet_id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(*count as usize, systems.len(), "{result:?}");
+    }
+}
+
+#[test]
+fn an_unused_character_visits_no_systems() {
+    let result = plan(&scenario(vec![character(4)]), &q3hs5(), &Prices::default());
+    assert_eq!(result.systems_by_character, vec![0]);
+}
