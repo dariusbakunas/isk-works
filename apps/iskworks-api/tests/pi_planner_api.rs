@@ -653,6 +653,17 @@ async fn solve_returns_a_plan_with_what_ifs() {
     assert!(first["planetName"].as_str().unwrap().starts_with("Q-3HS5"));
     assert!(["extraction", "factory"].contains(&first["role"].as_str().unwrap()));
     assert!(first["cpuUsed"].is_string());
+    assert_eq!(first["systemId"], HOME);
+    assert_eq!(first["systemName"], "Q-3HS5");
+    // Both characters' colonies sit in the one home system.
+    let systems = plan["systemsByCharacter"].as_array().unwrap();
+    assert_eq!(systems.len(), 2, "{plan}");
+    for (character, count) in systems.iter().enumerate() {
+        let used = colonies
+            .iter()
+            .any(|colony| colony["character"] == character);
+        assert_eq!(count, &json!(u32::from(used)), "{plan}");
+    }
     // Flows end at the market or a colony index.
     assert!(plan["flows"]
         .as_array()

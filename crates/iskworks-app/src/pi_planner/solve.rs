@@ -40,6 +40,8 @@ pub struct PlanDto {
     pub flows: Vec<FlowDto>,
     pub inputs: Vec<RankedInputDto>,
     pub shared_hotspots: Vec<SharedHotspotDto>,
+    /// Distinct solar systems per scenario character.
+    pub systems_by_character: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -95,6 +97,8 @@ pub struct ColonyDto {
     pub character: usize,
     pub planet_id: i64,
     pub planet_name: String,
+    pub system_id: i64,
+    pub system_name: String,
     pub jumps: u8,
     pub role: ColonyRoleDto,
     pub setup: SetupDto,
@@ -290,12 +294,11 @@ fn plan_dto(
     templates: &[Option<ColonyTemplate>],
 ) -> PlanDto {
     let planet_name = |planet_id: i64| area.planet_name(planet_id);
-    let jumps = |planet_id: i64| {
+    let system = |planet_id: i64| {
         area.planets
             .iter()
             .find(|planet| planet.planet_id == planet_id)
             .and_then(|planet| area.system(planet.solar_system_id))
-            .map_or(0, |system| system.jumps)
     };
     let colonies = plan
         .colonies
@@ -306,7 +309,11 @@ fn plan_dto(
             character: colony.character,
             planet_id: colony.planet_id,
             planet_name: planet_name(colony.planet_id),
-            jumps: jumps(colony.planet_id),
+            system_id: system(colony.planet_id).map_or(0, |system| system.solar_system_id),
+            system_name: system(colony.planet_id)
+                .map(|system| system.name.clone())
+                .unwrap_or_default(),
+            jumps: system(colony.planet_id).map_or(0, |system| system.jumps),
             role: match colony.role {
                 ColonyRole::Extraction => ColonyRoleDto::Extraction,
                 ColonyRole::Factory => ColonyRoleDto::Factory,
@@ -404,6 +411,7 @@ fn plan_dto(
                 characters: hotspot.characters,
             })
             .collect(),
+        systems_by_character: plan.systems_by_character,
     }
 }
 
