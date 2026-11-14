@@ -20,6 +20,7 @@ pub(crate) mod opportunities;
 pub(crate) mod order_acquisition_runs;
 pub(crate) mod orders;
 pub(crate) mod pi_planner;
+pub(crate) mod pi_saved_plans;
 pub(crate) mod planetary;
 pub(crate) mod sde;
 pub(crate) mod skills;
