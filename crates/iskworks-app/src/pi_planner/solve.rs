@@ -42,6 +42,8 @@ pub struct PlanDto {
     pub shared_hotspots: Vec<SharedHotspotDto>,
     /// Distinct solar systems per scenario character.
     pub systems_by_character: Vec<u32>,
+    /// Some character visits more systems than the scenario's limit.
+    pub systems_over_limit: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -214,6 +216,9 @@ pub struct WhatIfsDto {
     pub per_radius: Vec<RadiusValueDto>,
     pub grid: Vec<EffortCellDto>,
     pub scan_first: Vec<ScanFirstDto>,
+    /// ISK/month without the scenario's systems-per-character limit; null
+    /// when it has none.
+    pub without_system_limit: Option<String>,
 }
 
 fn rates(catalogue: &Catalogue, rates: impl IntoIterator<Item = (i64, f64)>) -> Vec<RateDto> {
@@ -412,6 +417,7 @@ fn plan_dto(
             })
             .collect(),
         systems_by_character: plan.systems_by_character,
+        systems_over_limit: plan.systems_over_limit,
     }
 }
 
@@ -440,6 +446,7 @@ fn what_ifs_dto(catalogue: &Catalogue, area: &Neighbourhood, what_ifs: WhatIfs) 
                 logins_per_week: fmt_f64(cell.logins_per_week, 2),
             })
             .collect(),
+        without_system_limit: what_ifs.without_system_limit.map(|isk| fmt_f64(isk, 2)),
         scan_first: what_ifs
             .scan_first
             .iter()

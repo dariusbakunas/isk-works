@@ -674,6 +674,37 @@ async fn solve_returns_a_plan_with_what_ifs() {
     assert_eq!(what_ifs["grid"].as_array().unwrap().len(), 12);
     assert_eq!(what_ifs["perCharacter"].as_array().unwrap().len(), 2);
     assert_eq!(what_ifs["perRadius"][0]["jumps"], 0);
+    assert_eq!(plan["systemsOverLimit"], false);
+    assert!(what_ifs["withoutSystemLimit"].is_null(), "no limit set");
+}
+
+#[tokio::test]
+async fn solve_with_a_systems_limit_prices_it() {
+    let harness = harness(true);
+    let mut limited = scenario();
+    limited["estimateUnscanned"] = json!(true);
+    limited["maxSystemsPerCharacter"] = json!(1);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &limited),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["plan"]["systemsOverLimit"], false, "{body}");
+    assert!(body["plan"]["systemsByCharacter"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|count| count.as_u64().unwrap() <= 1));
+    assert!(body["whatIfs"]["withoutSystemLimit"].is_string(), "{body}");
+
+    limited["maxSystemsPerCharacter"] = json!(0);
+    let (status, _) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &limited),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

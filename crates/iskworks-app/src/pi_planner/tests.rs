@@ -465,6 +465,7 @@ fn scenario_request(radius: u8) -> PlannerScenarioDto {
         uplift_at_login: true,
         buy_intermediates: false,
         max_colonies: None,
+        max_systems_per_character: None,
         estimate_unscanned: true,
         target_type_id: None,
     }
@@ -663,6 +664,7 @@ async fn rank_validates_the_scenario() {
         invalid(|request| request.characters[0].command_center_upgrades = 6),
         invalid(|request| request.default_customs_rate = d("1.5")),
         invalid(|request| request.max_colonies = Some(0)),
+        invalid(|request| request.max_systems_per_character = Some(0)),
         invalid(|request| request.radius = 6),
     ] {
         assert!(
