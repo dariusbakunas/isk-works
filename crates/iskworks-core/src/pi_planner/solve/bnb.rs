@@ -1,17 +1,25 @@
 //! The branch and bound over the colony counts: the LP relaxation (from
 //! [`Model`]) gives fractional counts, and this search rounds them to the
-//! best whole plan it finds within [`NODE_LIMIT`] nodes.
+//! best whole plan it finds within [`NODE_LIMIT`] nodes. The LP is built
+//! once per search; every node below the root adds one bound to its
+//! parent's solved relaxation.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
-use super::{Model, Relaxed, SolveError};
+use super::{Bound, Model, Relaxation, Relaxed, SolveError};
 
 /// Branch-and-bound nodes per solve; past this the best plan found so far
 /// stands. Keeps every solve (and the what-ifs' dozens) bounded.
 const NODE_LIMIT: usize = 250;
 
+/// A node yet to be solved: its parent's relaxation and the bound on one
+/// whole count that sets it apart. The root is solved already and has no
+/// bound.
+type Node = (Rc<Relaxation>, Option<(usize, Bound)>);
+
 /// The colony count furthest from a whole number, if any isn't whole.
-fn most_fractional(counts: &[f64]) -> Option<(usize, f64)> {
+pub(super) fn most_fractional(counts: &[f64]) -> Option<(usize, f64)> {
     counts
         .iter()
         .enumerate()
@@ -48,24 +56,30 @@ fn search(
     root_bounds: Vec<(f64, f64)>,
     incumbent: Option<Relaxed>,
 ) -> Result<Relaxed, SolveError> {
-    let root = model
-        .relax(&root_bounds)
+    let root_relaxation = model
+        .relaxation(&root_bounds)
         .ok_or_else(|| SolveError::Solver("the relaxation is infeasible".to_string()))?;
+    let root = model.read(&root_relaxation);
     // Doing nothing is always possible and earns nothing.
     let mut best_objective = incumbent
         .as_ref()
         .map_or(0.0, |plan| plan.objective.max(0.0));
     let mut best = incumbent;
-    let mut stack = vec![(root_bounds, Some(root.clone()))];
+    let mut stack: Vec<Node> = vec![(Rc::new(root_relaxation), None)];
     let mut nodes = 0;
-    while let Some((bounds, relaxed)) = stack.pop() {
+    while let Some((parent, branch)) = stack.pop() {
         if nodes >= NODE_LIMIT {
             break;
         }
         nodes += 1;
-        let Some(relaxed) = relaxed.or_else(|| model.relax(&bounds)) else {
-            continue;
+        let relaxation = match branch {
+            None => parent,
+            Some((index, bound)) => match parent.branch(index, bound) {
+                Some(relaxation) => Rc::new(relaxation),
+                None => continue,
+            },
         };
+        let relaxed = model.read(&relaxation);
         if relaxed.objective <= best_objective + 1e-6 {
             continue;
         }
@@ -75,17 +89,18 @@ fn search(
                 best = Some(relaxed);
             }
             Some((index, value)) => {
-                let mut down = bounds.clone();
-                down[index].1 = value.floor();
-                let mut up = bounds;
-                up[index].0 = value.ceil();
+                let down = (
+                    Rc::clone(&relaxation),
+                    Some((index, Bound::AtMost(value.floor()))),
+                );
+                let up = (relaxation, Some((index, Bound::AtLeast(value.ceil()))));
                 // The nearer side is explored first, so it goes on last.
                 if value - value.floor() >= 0.5 {
-                    stack.push((down, None));
-                    stack.push((up, None));
+                    stack.push(down);
+                    stack.push(up);
                 } else {
-                    stack.push((up, None));
-                    stack.push((down, None));
+                    stack.push(up);
+                    stack.push(down);
                 }
             }
         }

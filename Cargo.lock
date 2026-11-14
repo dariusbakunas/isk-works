@@ -1566,6 +1566,7 @@ dependencies = [
  "csv",
  "good_lp",
  "iskworks-sde",
+ "microlp",
  "rand 0.8.7",
  "rust_decimal",
  "serde",

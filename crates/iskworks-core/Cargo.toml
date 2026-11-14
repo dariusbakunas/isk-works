@@ -12,6 +12,7 @@ chrono.workspace = true
 csv.workspace = true
 good_lp.workspace = true
 iskworks-sde = { path = "../iskworks-sde" }
+microlp.workspace = true
 rand.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
