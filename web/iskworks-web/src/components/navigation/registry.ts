@@ -100,7 +100,10 @@ export const navGroups: NavGroup[] = [
         path: "/planetary",
         icon: Globe2,
         keywords: ["pi"],
-        children: [{ label: "Planner", path: "/planetary/planner" }],
+        children: [
+          { label: "Planner", path: "/planetary/planner" },
+          { label: "Plans", path: "/planetary/plans" },
+        ],
       },
       { label: "Opportunities", path: "/opportunities", icon: BarChart2 },
     ],

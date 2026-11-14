@@ -20,6 +20,11 @@ vi.mock("../../../../../api/pi-planner", async () => ({
   ...(await vi.importActual("../../../../../api/pi-planner")),
   ...api,
 }));
+const plansApi = vi.hoisted(() => ({ savePlan: vi.fn() }));
+vi.mock("../../../../../api/pi-plans", async () => ({
+  ...(await vi.importActual("../../../../../api/pi-plans")),
+  ...plansApi,
+}));
 
 const HOME = 30_000_797;
 
@@ -90,9 +95,10 @@ function Spy() {
   return null;
 }
 
-function renderPage(path = `/planetary/planner?system=${HOME}`) {
+function renderPage(path = `/planetary/planner?system=${HOME}`, state?: unknown) {
+  const [pathname, search = ""] = path.split("?");
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[{ pathname, search: search ? `?${search}` : "", state }]}>
       <Routes>
         <Route
           element={
@@ -111,6 +117,7 @@ function renderPage(path = `/planetary/planner?system=${HOME}`) {
 beforeEach(() => {
   window.localStorage.clear();
   Object.values(api).forEach((mock) => mock.mockReset());
+  Object.values(plansApi).forEach((mock) => mock.mockReset());
   api.getPlannerPlanets.mockResolvedValue(planets("40"));
   api.getPlannerCharacters.mockResolvedValue([]);
   api.rankProducts.mockResolvedValue(RANKING);
@@ -207,6 +214,57 @@ describe("PlannerPage", () => {
     await waitFor(() =>
       expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ maxSystemsPerCharacter: null })),
     );
+  });
+
+  test("saves the plan on screen with the scenario's character names", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue(SOLUTION);
+    plansApi.savePlan.mockResolvedValue({ id: "plan-9", name: "Mine" });
+    window.localStorage.setItem(
+      "iskworks.piPlanner.characters",
+      JSON.stringify([{ name: "Valka", interplanetaryConsolidation: 4, commandCenterUpgrades: 4, eveCharacterId: 2_119_000_001 }]),
+    );
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
+    await screen.findByRole("table", { name: "Colonies" });
+
+    await user.click(screen.getByRole("button", { name: "Save plan" }));
+    const dialog = screen.getByRole("dialog", { name: "Save plan" });
+    const name = within(dialog).getByLabelText("Name");
+    expect((name as HTMLInputElement).value).toMatch(/^Q-3HS5 · Mechanical Parts · /);
+    await user.clear(name);
+    await user.type(name, "Mine");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(plansApi.savePlan).toHaveBeenCalledWith({
+      name: "Mine",
+      scenario: expect.objectContaining({
+        homeSystemId: HOME,
+        characters: [{ interplanetaryConsolidation: 4, commandCenterUpgrades: 4 }],
+        characterNames: ["Valka"],
+        eveCharacterIds: [2_119_000_001],
+        targetTypeId: null,
+      }),
+      solution: SOLUTION,
+    });
+    expect(await screen.findByRole("link", { name: "Open saved plan" })).toHaveAttribute("href", "/planetary/plans/plan-9");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("arriving from a saved plan opens the Plan tab", async () => {
+    api.solvePlan.mockResolvedValue(SOLUTION);
+    renderPage(`/planetary/planner?system=${HOME}`, { view: "plan" });
+    expect(await screen.findByRole("table", { name: "Colonies" })).toBeInTheDocument();
+  });
+
+  test("an empty plan can't be saved", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue({ ...SOLUTION, plan: { ...SOLUTION.plan, colonies: [], flows: [] } });
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
+    expect(await screen.findByRole("button", { name: "Save plan" })).toBeDisabled();
   });
 
   test("add character picks one connected character at a time", async () => {

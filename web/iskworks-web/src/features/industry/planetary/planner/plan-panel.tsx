@@ -16,6 +16,14 @@ import { FlowDiagram } from "./flow-diagram";
 const GRID_RESET = [1, 3, 7];
 const GRID_HAUL = [1, 3, 7, 14];
 
+/** A saved plan's checklist: which colonies are built in game. */
+export interface SetUpChecklist {
+  indexes: ReadonlySet<number>;
+  onToggle: (index: number, setUp: boolean) => void;
+}
+
+const SET_UP_COLUMN: OperationalColumn = { key: "done", label: "Set up", width: "3.5rem" };
+
 const COLUMNS: OperationalColumn[] = [
   { key: "planet", label: "Planet", width: "7rem" },
   { key: "role", label: "Role", width: "6.5rem" },
@@ -60,21 +68,23 @@ function ScanFirstList({
   onScanFirst,
 }: {
   entries: ScanFirst[];
-  onScanFirst: (planetId: number, resourceTypeId: number) => void;
+  /** Absent in a saved plan: there is no Planets view to jump to. */
+  onScanFirst?: (planetId: number, resourceTypeId: number) => void;
 }) {
+  const Entry = onScanFirst ? "button" : "div";
   return (
     <ul className="space-y-1">
       {entries.map((entry) => (
         <li key={`${entry.planetId}:${entry.resourceTypeId}`}>
-          <button
-            className="flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left hover:bg-primary/10"
-            onClick={() => onScanFirst(entry.planetId, entry.resourceTypeId)}
+          <Entry
+            className={`flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left ${onScanFirst ? "hover:bg-primary/10" : ""}`}
+            onClick={onScanFirst ? () => onScanFirst(entry.planetId, entry.resourceTypeId) : undefined}
             title={
               entry.source === "default"
                 ? `At a typical density, this reading alone adds ${formatIskSummary(entry.iskPerMonth)}/mo`
                 : `10 points lower costs ${formatIskSummary(entry.iskPerMonth)}/mo`
             }
-            type="button"
+            type={onScanFirst ? "button" : undefined}
           >
             <span className="min-w-0 flex-1 truncate">
               {entry.planetName} · {entry.resourceName}
@@ -85,7 +95,7 @@ function ScanFirstList({
                 ? "0"
                 : `${entry.source === "default" ? "+" : "−"}${formatIskCompact(entry.iskPerMonth)}`}
             </span>
-          </button>
+          </Entry>
         </li>
       ))}
     </ul>
@@ -99,17 +109,25 @@ export function PlanPanel({
   onCadence,
   onScanFirst,
   resetDays,
+  setUp,
   solution,
   solving,
 }: {
   characterNames: string[];
   haulDays: number;
-  onCadence: (resetDays: number, haulDays: number) => void;
-  onScanFirst: (planetId: number, resourceTypeId: number) => void;
+  /** Absent for a saved plan, whose cadence is fixed. */
+  onCadence?: (resetDays: number, haulDays: number) => void;
+  /** Absent for a saved plan. */
+  onScanFirst?: (planetId: number, resourceTypeId: number) => void;
   resetDays: number;
+  /** A saved plan's set-up ticks: adds a checkbox per colony. */
+  setUp?: SetUpChecklist;
   solution: PlannerSolution;
   solving: boolean;
 }) {
+  const columns = setUp ? [SET_UP_COLUMN, ...COLUMNS] : COLUMNS;
+  // A saved plan shows the grid without changing its cadence.
+  const CadenceCell = onCadence ? "button" : "div";
   const [hovered, setHovered] = useState<number | null>(null);
   const [templateFor, setTemplateFor] = useState<PlanColony | null>(null);
   const { plan, whatIfs } = solution;
@@ -217,15 +235,17 @@ export function PlanPanel({
                 </span>
               </p>
             ) : null}
-            <OperationalTable ariaLabel="Colonies" columns={COLUMNS} onSelectRow={() => {}} selectedRowKey={null}>
+            <OperationalTable ariaLabel="Colonies" columns={columns} onSelectRow={() => {}} selectedRowKey={null}>
               {characters.map((character) => {
                 const mine = plan.colonies.filter((colony) => colony.character === character);
+                const name = characterNames[character] ?? `Character ${character + 1}`;
+                const done = setUp ? mine.filter((colony) => setUp.indexes.has(colony.index)).length : 0;
                 return (
                   <OperationalTableGroup
                     groupKey={`character-${character}`}
                     itemCount={mine.length}
                     key={character}
-                    label={characterNames[character] ?? `Character ${character + 1}`}
+                    label={name}
                     labelCase="normal"
                     labelPrivate
                     summary={
@@ -235,6 +255,7 @@ export function PlanPanel({
                           ? ` · ${systems[character]} ${systems[character] === 1 ? "system" : "systems"}`
                           : null}
                         {logins[character] !== undefined ? ` · ${logins[character].toFixed(1)} logins/wk` : null}
+                        {setUp ? ` · ${done} of ${mine.length} set up` : null}
                       </span>
                     }
                   >
@@ -245,6 +266,15 @@ export function PlanPanel({
                       return (
                         <OperationalTableRow
                           cells={{
+                            done: setUp ? (
+                              <input
+                                aria-label={`${colony.planetName} set up (${name})`}
+                                checked={setUp.indexes.has(colony.index)}
+                                className="h-3.5 w-3.5 accent-primary"
+                                onChange={(event) => setUp.onToggle(colony.index, event.target.checked)}
+                                type="checkbox"
+                              />
+                            ) : null,
                             planet: (
                               <span
                                 className={`block rounded-sm px-1 ${hovered === colony.index ? "ring-1 ring-primary" : ""}`}
@@ -366,21 +396,21 @@ export function PlanPanel({
                         const current = reset === resetDays && haul === haulDays;
                         return (
                           <td className="p-0.5" key={haul}>
-                            <button
+                            <CadenceCell
                               aria-label={`Reset every ${reset}d, haul every ${haul}d`}
-                              aria-pressed={current}
+                              aria-pressed={onCadence ? current : undefined}
                               className={`w-full rounded-sm border px-1 py-1 text-left ${
                                 current ? "border-primary bg-primary/15" : "border-border hover:border-primary/60"
                               }`}
-                              onClick={() => onCadence(reset, haul)}
+                              onClick={onCadence ? () => onCadence(reset, haul) : undefined}
                               title={cell ? `${formatIskSummary(cell.iskPerMonth)}/mo · ${Number(cell.loginsPerWeek).toFixed(1)} logins per week` : undefined}
-                              type="button"
+                              type={onCadence ? "button" : undefined}
                             >
                               <b className="block font-mono text-[0.7rem]">{cell ? formatIskCompact(cell.iskPerMonth) : "—"}</b>
                               <span className="block text-[0.6rem] text-muted">
                                 {cell ? `${Number(cell.loginsPerWeek).toFixed(1)} logins` : ""}
                               </span>
-                            </button>
+                            </CadenceCell>
                           </td>
                         );
                       })}
