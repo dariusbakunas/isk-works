@@ -336,6 +336,20 @@ export function ScenarioBar({
             value={settings.maxColonies ?? ""}
           />
         </label>
+        <label className="flex items-center gap-1.5" title="Each character's colonies stay within this many solar systems.">
+          Max systems / char
+          <input
+            aria-label="Max systems per character"
+            className="iw-input min-h-7 w-12 text-center font-mono text-xs"
+            inputMode="numeric"
+            onChange={(event) => {
+              const value = Number(event.target.value.replace(/\D/g, ""));
+              set({ maxSystemsPerCharacter: value > 0 ? value : null });
+            }}
+            placeholder="∞"
+            value={settings.maxSystemsPerCharacter ?? ""}
+          />
+        </label>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {characters.map((character, index) => (

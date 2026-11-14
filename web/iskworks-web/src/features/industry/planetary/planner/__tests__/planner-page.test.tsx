@@ -187,6 +187,28 @@ describe("PlannerPage", () => {
     );
   });
 
+  test("a systems limit goes to the URL and the solve, and clears", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue(SOLUTION);
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
+    await screen.findByRole("table", { name: "Colonies" });
+
+    const limit = screen.getByLabelText("Max systems per character");
+    await user.type(limit, "1");
+    expect(location).toContain("sys=1");
+    await waitFor(() =>
+      expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ maxSystemsPerCharacter: 1 })),
+    );
+
+    await user.clear(limit);
+    expect(location).not.toContain("sys=");
+    await waitFor(() =>
+      expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ maxSystemsPerCharacter: null })),
+    );
+  });
+
   test("add character picks one connected character at a time", async () => {
     const user = userEvent.setup();
     api.getPlannerCharacters.mockResolvedValue([
