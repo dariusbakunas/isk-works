@@ -40,6 +40,7 @@ fn planets_summary(expires_in_hours: i64, launchpad_reactive: i64) -> Value {
             "upgrade_level": 5, "num_pins": 3, "last_update": now.to_rfc3339(),
             "pins": [
                 { "pin_id": 1, "type_id": 2_848,
+                  "install_time": (now + Duration::hours(expires_in_hours - 72)).to_rfc3339(),
                   "expiry_time": (now + Duration::hours(expires_in_hours)).to_rfc3339(),
                   "extractor": { "product_type_id": BASE, "qty_per_cycle": 6_000,
                                  "cycle_time_seconds": 1_800, "head_count": 8 } },
@@ -398,7 +399,8 @@ async fn overview_derives_named_priced_planets_per_character() {
     assert_eq!(planet["name"], "Q-3HS5 IV");
     assert_eq!(planet["security"], "-0.14");
     assert_eq!(planet["extractors"][0]["productName"], "Base Metals");
-    assert_eq!(planet["extractors"][0]["unitsPerHour"], "12000");
+    // A three-day program on a base value of 6,000 per 15 minutes.
+    assert_eq!(planet["extractors"][0]["unitsPerHour"], "11635.72");
     assert_eq!(planet["production"][0]["name"], "Reactive Metals");
     // One basic factory: 40 Reactive/h at best buy 400 = 11.52M/mo; surplus
     // Base Metals is exported unpriced.
