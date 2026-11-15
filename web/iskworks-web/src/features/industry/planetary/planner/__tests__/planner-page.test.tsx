@@ -216,6 +216,24 @@ describe("PlannerPage", () => {
     );
   });
 
+  test("one character per hotspot goes to the URL and the solve", async () => {
+    const user = userEvent.setup();
+    api.solvePlan.mockResolvedValue(SOLUTION);
+    renderPage();
+    await screen.findByText("Robotics");
+    await user.click(within(screen.getByRole("tablist", { name: "Planner sections" })).getByRole("tab", { name: "Plan" }));
+    await screen.findByRole("table", { name: "Colonies" });
+    await waitFor(() =>
+      expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ exclusiveHotspots: false })),
+    );
+
+    await user.click(screen.getByLabelText("One character per hotspot"));
+    expect(location).toContain("solo=1");
+    await waitFor(() =>
+      expect(api.solvePlan).toHaveBeenLastCalledWith(expect.objectContaining({ exclusiveHotspots: true })),
+    );
+  });
+
   test("saves the plan on screen with the scenario's character names", async () => {
     const user = userEvent.setup();
     api.solvePlan.mockResolvedValue(SOLUTION);

@@ -210,6 +210,9 @@ pub struct PlannerScenarioDto {
     /// Each character's colonies fall within this many solar systems.
     #[serde(default)]
     pub max_systems_per_character: Option<u32>,
+    /// At most one character extracts a given resource on a planet.
+    #[serde(default)]
+    pub exclusive_hotspots: bool,
     /// Plan unscanned resources at the security band's default density.
     #[serde(default)]
     pub estimate_unscanned: bool,
@@ -862,6 +865,7 @@ fn scenario(request: &PlannerScenarioDto) -> Result<RankScenario, PiPlannerError
         buy_intermediates: request.buy_intermediates,
         max_colonies: request.max_colonies,
         max_systems_per_character: request.max_systems_per_character,
+        exclusive_hotspots: request.exclusive_hotspots,
         estimate_unscanned: request.estimate_unscanned,
         target: request.target_type_id,
     })

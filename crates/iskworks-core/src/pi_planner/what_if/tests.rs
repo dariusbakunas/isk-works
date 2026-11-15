@@ -24,6 +24,7 @@ fn scenario(characters: Vec<PlannerCharacter>) -> RankScenario {
         buy_intermediates: false,
         max_colonies: None,
         max_systems_per_character: None,
+        exclusive_hotspots: false,
         estimate_unscanned: true,
         target: None,
     }

@@ -323,6 +323,18 @@ export function ScenarioBar({
           />
           Estimate unscanned planets
         </label>
+        <label
+          className="flex items-center gap-1.5"
+          title="Never plan two of your characters on the same resource of one planet. Off, they may share a hotspot and each is planned at the full yield, which overstates what shared heads really extract."
+        >
+          <input
+            checked={settings.exclusiveHotspots}
+            className="h-3.5 w-3.5"
+            onChange={(event) => set({ exclusiveHotspots: event.target.checked })}
+            type="checkbox"
+          />
+          One character per hotspot
+        </label>
         <label className="flex items-center gap-1.5">
           Max colonies
           <input

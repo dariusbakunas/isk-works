@@ -828,6 +828,24 @@ impl<'a> Model<'a> {
                 .fold(Expression::from(0.0), |sum, (_, var)| sum + *var);
             problem = problem.with(stations.leq(f64::from(limit) * characters));
         }
+        // One character per hotspot: a planet's resource is extracted by at
+        // most one colony, whichever group holds it.
+        if scenario.exclusive_hotspots {
+            let mut per_hotspot: BTreeMap<(usize, i64), Expression> = BTreeMap::new();
+            for (pattern, var) in patterns.iter().zip(&x) {
+                let resources = pattern
+                    .outputs
+                    .iter()
+                    .map(|output| output.resource)
+                    .collect::<BTreeSet<_>>();
+                for resource in resources {
+                    *per_hotspot.entry((pattern.planet, resource)).or_default() += *var;
+                }
+            }
+            for expression in per_hotspot.into_values() {
+                problem = problem.with(expression.leq(1.0));
+            }
+        }
         if let Some(cap) = scenario.max_colonies {
             let total = x
                 .iter()

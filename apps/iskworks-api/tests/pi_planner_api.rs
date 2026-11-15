@@ -682,6 +682,34 @@ async fn solve_returns_a_plan_with_what_ifs() {
 }
 
 #[tokio::test]
+async fn solve_with_exclusive_hotspots_shares_none() {
+    let harness = harness(true);
+    let mut two = scenario();
+    two["estimateUnscanned"] = json!(true);
+    two["characters"] = json!([
+        { "interplanetaryConsolidation": 4, "commandCenterUpgrades": 4 },
+        { "interplanetaryConsolidation": 4, "commandCenterUpgrades": 4 },
+    ]);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &two),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let shared = body["plan"]["sharedHotspots"].as_array().unwrap();
+    assert!(!shared.is_empty(), "the free plan shares: {body}");
+
+    two["exclusiveHotspots"] = json!(true);
+    let (status, body) = send(
+        &harness.app,
+        with_json("POST", "/api/planetary/planner/solve", &two),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["plan"]["sharedHotspots"], json!([]), "{body}");
+}
+
+#[tokio::test]
 async fn solve_with_a_systems_limit_prices_it() {
     let harness = harness(true);
     let mut limited = scenario();

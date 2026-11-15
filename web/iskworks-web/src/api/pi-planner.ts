@@ -93,6 +93,9 @@ export interface PlannerScenario {
   maxColonies: number | null;
   /** Each character's colonies fall within this many solar systems. */
   maxSystemsPerCharacter: number | null;
+  /** At most one character extracts a given resource on a planet; off,
+   * characters may share a hotspot, each planned at its undepleted yield. */
+  exclusiveHotspots: boolean;
   /** Plan unscanned resources at the security band's default density;
    * off, only entered readings are planned. */
   estimateUnscanned: boolean;
