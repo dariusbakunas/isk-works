@@ -56,6 +56,26 @@ const COLUMNS: OperationalColumn[] = [
 
 type Filter = "all" | "attention";
 
+const COLLAPSED_KEY = "iskworks.planetary.collapsed";
+
+/** Characters whose colony group was last collapsed in this browser. */
+function loadCollapsed(): Set<number> {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function storeCollapsed(collapsed: Set<number>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // Private windows and blocked storage: groups just open expanded.
+  }
+}
+
 interface Loaded {
   overview: PlanetaryOverview;
   preferences: PlanetaryPreferences;
@@ -99,7 +119,7 @@ export function PlanetaryPage() {
   const [state, setState] = useState<LoadState<Loaded>>({ status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<number>>(loadCollapsed);
   const [dragging, setDragging] = useState<number | null>(null);
   const now = useNow();
 
@@ -443,6 +463,7 @@ export function PlanetaryPage() {
                         const next = new Set(current);
                         if (expanded) next.delete(character.eveCharacterId);
                         else next.add(character.eveCharacterId);
+                        storeCollapsed(next);
                         return next;
                       })
                     }

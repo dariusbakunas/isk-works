@@ -153,6 +153,7 @@ function renderPage(entry = "/planetary", wrapper?: typeof WithToolWindows) {
 describe("PlanetaryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     api.getPlanetary.mockResolvedValue(overview([corvin, valka]));
     api.getPlanetaryPreferences.mockResolvedValue({ excludedExports: [], characterOrder: [] });
     api.savePlanetaryPreferences.mockImplementation(async (preferences) => preferences);
@@ -338,6 +339,18 @@ describe("PlanetaryPage", () => {
     renderPage();
 
     expect(await screen.findByText("Stale 2h ago")).toBeInTheDocument();
+  });
+
+  test("remembers collapsed character groups across visits", async () => {
+    const first = renderPage();
+    const table = await screen.findByRole("table", { name: "Planetary colonies" });
+    fireEvent.click(within(table).getByRole("button", { name: "Collapse Corvin Vale" }));
+    first.unmount();
+
+    renderPage();
+    const again = await screen.findByRole("table", { name: "Planetary colonies" });
+    expect(within(again).getByRole("button", { name: "Expand Corvin Vale" })).toBeInTheDocument();
+    expect(within(again).getByRole("button", { name: "Collapse Valka" })).toBeInTheDocument();
   });
 });
 
