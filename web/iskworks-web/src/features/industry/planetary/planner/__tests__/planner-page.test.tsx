@@ -216,6 +216,44 @@ describe("PlannerPage", () => {
     );
   });
 
+  test("the scenario is remembered when the planner is opened again without one", async () => {
+    const user = userEvent.setup();
+    const first = renderPage();
+    await screen.findByText("Robotics");
+    await user.click(screen.getByLabelText("One character per hotspot"));
+    await user.click(within(screen.getByRole("radiogroup", { name: "Haul every" })).getByRole("radio", { name: "7d" }));
+    first.unmount();
+
+    // Arriving from the navigation: no query at all.
+    renderPage("/planetary/planner");
+    await screen.findByText("Robotics");
+    expect(screen.getByLabelText("One character per hotspot")).toBeChecked();
+    await waitFor(() =>
+      expect(api.rankProducts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ homeSystemId: HOME, haulDays: 7, exclusiveHotspots: true }),
+      ),
+    );
+    // The next change keeps the remembered settings and puts them in the URL.
+    await user.click(screen.getByLabelText("Buy intermediates"));
+    expect(location).toContain(`system=${HOME}`);
+    expect(location).toContain("solo=1");
+    expect(location).toContain("buy=1");
+  });
+
+  test("a link's own scenario wins over the remembered one, and is remembered next", async () => {
+    window.localStorage.setItem("iskworks.piPlanner.settings", "system=30000142&solo=1");
+    const first = renderPage();
+    await screen.findByText("Robotics");
+    expect(screen.getByLabelText("One character per hotspot")).not.toBeChecked();
+    expect(api.getPlannerPlanets).toHaveBeenLastCalledWith(HOME, 1);
+    first.unmount();
+
+    renderPage("/planetary/planner");
+    await screen.findByText("Robotics");
+    expect(api.getPlannerPlanets).toHaveBeenLastCalledWith(HOME, 1);
+    expect(screen.getByLabelText("One character per hotspot")).not.toBeChecked();
+  });
+
   test("one character per hotspot goes to the URL and the solve", async () => {
     const user = userEvent.setup();
     api.solvePlan.mockResolvedValue(SOLUTION);

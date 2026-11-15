@@ -16,9 +16,10 @@ import { useLoad } from "../../../../hooks/use-load";
 import { PlanetsPanel, type PlanetFilter } from "./planets-panel";
 import {
   loadCharacters,
-  settingsFromQuery,
+  loadSettings,
   settingsToQuery,
   storeCharacters,
+  storeSettings,
   type ScenarioCharacter,
   type ScenarioSettings,
 } from "./planner-format";
@@ -87,7 +88,10 @@ function MissingSde() {
 
 export function PlannerPage() {
   const [params, setParams] = useSearchParams();
-  const settings = useMemo(() => settingsFromQuery(params), [params]);
+  // The URL's scenario, or the one last used here when it carries none.
+  const settings = useMemo(() => loadSettings(params), [params]);
+  // A scenario that arrived by URL is the one to come back to.
+  useEffect(() => storeSettings(settings), [settings]);
   // "Plan this": the product the Plan tab solves for, or the best mix.
   const target = Number(params.get("plan")) || null;
   const setTarget = useCallback(
@@ -104,7 +108,12 @@ export function PlannerPage() {
     [setParams],
   );
   const setSettings = useCallback(
-    (next: ScenarioSettings) => setParams((current) => settingsToQuery(next, current), { replace: true }),
+    (next: ScenarioSettings) => {
+      // Stored first: a change back to the defaults empties the URL, which
+      // then reads the stored scenario.
+      storeSettings(next);
+      setParams((current) => settingsToQuery(next, current), { replace: true });
+    },
     [setParams],
   );
   const [characters, setCharactersState] = useState<ScenarioCharacter[]>(loadCharacters);

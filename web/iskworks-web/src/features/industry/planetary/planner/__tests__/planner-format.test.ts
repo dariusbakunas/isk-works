@@ -5,6 +5,7 @@ import {
   DEFAULT_CHARACTERS,
   DEFAULT_SETTINGS,
   loadCharacters,
+  loadSettings,
   percentRate,
   planetTypeKey,
   ratePercent,
@@ -12,6 +13,7 @@ import {
   settingsFromQuery,
   settingsToQuery,
   storeCharacters,
+  storeSettings,
   type ScenarioSettings,
 } from "../planner-format";
 
@@ -58,6 +60,38 @@ describe("planner-format", () => {
     expect(settingsFromQuery(new URLSearchParams("system=abc&radius=9&reset=5&tax=200&max=0&sys=junk"))).toEqual(
       DEFAULT_SETTINGS,
     );
+  });
+
+  test("the last scenario is remembered and a URL's own settings win", () => {
+    expect(loadSettings(new URLSearchParams())).toEqual(DEFAULT_SETTINGS);
+    const settings: ScenarioSettings = {
+      ...DEFAULT_SETTINGS,
+      homeSystemId: 30_000_797,
+      radius: 2,
+      exclusiveHotspots: true,
+      maxSystemsPerCharacter: 1,
+    };
+    storeSettings(settings);
+    // A bare URL, or one carrying only other keys, falls back to what was stored.
+    expect(loadSettings(new URLSearchParams())).toEqual(settings);
+    expect(loadSettings(new URLSearchParams("plan=9848"))).toEqual(settings);
+    // A URL with any setting of its own is the whole scenario.
+    expect(loadSettings(new URLSearchParams("system=30000142"))).toEqual({
+      ...DEFAULT_SETTINGS,
+      homeSystemId: 30_000_142,
+    });
+    // Back to the defaults is remembered too.
+    storeSettings(DEFAULT_SETTINGS);
+    expect(loadSettings(new URLSearchParams())).toEqual(DEFAULT_SETTINGS);
+  });
+
+  test("unreadable stored settings fall back to defaults", () => {
+    window.localStorage.setItem("iskworks.piPlanner.settings", "system=abc&radius=99");
+    expect(loadSettings(new URLSearchParams())).toEqual(DEFAULT_SETTINGS);
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    expect(loadSettings(new URLSearchParams())).toEqual(DEFAULT_SETTINGS);
   });
 
   test("a zero systems limit reads as none", () => {
