@@ -26,6 +26,7 @@ fn scenario(characters: Vec<PlannerCharacter>) -> RankScenario {
         buy_intermediates: false,
         max_colonies: None,
         max_systems_per_character: None,
+        exclusive_hotspots: false,
         estimate_unscanned: true,
         target: None,
     }
@@ -274,6 +275,51 @@ fn two_characters_on_one_hotspot_are_warned() {
             characters: 2,
         }]
     );
+}
+
+#[test]
+fn exclusive_hotspots_keep_characters_off_each_others_resource() {
+    // The second planet's deposit is poorer, so sharing the first one pays
+    // more on paper. Told to keep hotspots exclusive, the second character
+    // takes the poorer planet instead.
+    let planets = vec![
+        planet(BARREN_IV, BARREN, &[(BASE_METALS, 80.0)]),
+        planet(BARREN_IV + 1, BARREN, &[(BASE_METALS, 40.0)]),
+    ];
+    let market = prices(&[(REACTIVE_METALS, 5_000.0)]);
+    let characters = vec![character(0), character(1)];
+    let sharing = plan(&scenario(characters.clone()), &planets, &market);
+    assert_eq!(sharing.shared_hotspots.len(), 1, "{sharing:#?}");
+
+    let exclusive = plan(
+        &RankScenario {
+            exclusive_hotspots: true,
+            ..scenario(characters)
+        },
+        &planets,
+        &market,
+    );
+    assert_eq!(exclusive.shared_hotspots, vec![], "{exclusive:#?}");
+    assert_eq!(exclusive.colonies_used(), 2, "{exclusive:#?}");
+    assert!(exclusive.isk_per_month > 0.0);
+    assert!(exclusive.isk_per_month < sharing.isk_per_month);
+}
+
+#[test]
+fn exclusive_hotspots_hold_within_a_group() {
+    // Two identical characters form one group; one planet, so only one of
+    // them can extract.
+    let planets = vec![planet(BARREN_IV, BARREN, &[(BASE_METALS, 80.0)])];
+    let result = plan(
+        &RankScenario {
+            exclusive_hotspots: true,
+            ..scenario(vec![character(0), character(0)])
+        },
+        &planets,
+        &prices(&[(REACTIVE_METALS, 5_000.0)]),
+    );
+    assert_eq!(result.colonies_used(), 1, "{result:#?}");
+    assert_eq!(result.shared_hotspots, vec![]);
 }
 
 #[test]

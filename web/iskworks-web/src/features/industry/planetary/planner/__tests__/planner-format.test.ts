@@ -46,6 +46,7 @@ describe("planner-format", () => {
       buyIntermediates: true,
       maxColonies: 6,
       maxSystemsPerCharacter: 2,
+      exclusiveHotspots: true,
       estimateUnscanned: true,
     };
     const query = settingsToQuery(settings, new URLSearchParams("tab=x"));

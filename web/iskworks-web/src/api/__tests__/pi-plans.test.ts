@@ -27,6 +27,7 @@ const SCENARIO = {
   buyIntermediates: false,
   maxColonies: null,
   maxSystemsPerCharacter: null,
+  exclusiveHotspots: false,
   estimateUnscanned: false,
 };
 

@@ -33,6 +33,7 @@ export const SAVED: SavedPlan = {
     buyIntermediates: false,
     maxColonies: null,
     maxSystemsPerCharacter: 1,
+    exclusiveHotspots: false,
     estimateUnscanned: true,
     targetTypeId: null,
   },

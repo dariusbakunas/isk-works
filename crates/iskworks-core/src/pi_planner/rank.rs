@@ -45,6 +45,9 @@ pub struct RankScenario {
     pub max_colonies: Option<u32>,
     /// Each character's colonies fall within this many solar systems.
     pub max_systems_per_character: Option<u32>,
+    /// At most one character extracts a given resource on a planet. Off,
+    /// characters may share a hotspot, each at its undepleted yield.
+    pub exclusive_hotspots: bool,
     /// Unscanned resources yield the security band's default density.
     /// Off, only what the player entered is extracted.
     pub estimate_unscanned: bool,
