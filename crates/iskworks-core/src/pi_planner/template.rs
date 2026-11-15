@@ -16,17 +16,13 @@ use std::collections::BTreeSet;
 use iskworks_sde::PlanetPinKind;
 use serde_json::{json, Value};
 
-use super::capacity::MAX_HEADS_PER_ECU;
+pub use super::capacity::TEMPLATE_PITCH_RAD;
+use super::capacity::{
+    angle_between, ring_slots, slot_position, DEFAULT_RADIUS_KM, HUB, MAX_HEADS_PER_ECU,
+};
 use super::catalogue::{command_center_output, decimal_f64, PiCatalogue};
 use super::rank::CandidatePlanet;
 use super::solve::PlannedColony;
-
-/// Angle between neighbouring structures, radians. Community templates use
-/// about this on both small and large planets.
-pub const TEMPLATE_PITCH_RAD: f64 = 0.012;
-
-/// Used when a planet's radius is unknown.
-const DEFAULT_RADIUS_KM: f64 = 5_000.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TemplatePin {
@@ -113,40 +109,6 @@ impl ColonyTemplate {
     }
 }
 
-/// Hexagonal rings around the origin, nearest first, in pitch units.
-fn ring_slots() -> impl Iterator<Item = (f64, f64)> {
-    const DIRECTIONS: [(i32, i32); 6] = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)];
-    (1..).flat_map(|ring: i32| {
-        // Start at the corner `ring` steps along direction 4, then walk the
-        // six sides.
-        let (mut q, mut r) = (DIRECTIONS[4].0 * ring, DIRECTIONS[4].1 * ring);
-        let mut slots = Vec::new();
-        for direction in DIRECTIONS {
-            for _ in 0..ring {
-                slots.push((
-                    f64::from(q) + f64::from(r) / 2.0,
-                    f64::from(r) * 3f64.sqrt() / 2.0,
-                ));
-                q += direction.0;
-                r += direction.1;
-            }
-        }
-        slots
-    })
-}
-
-/// Great-circle angle between two (colatitude, longitude) points, radians.
-fn angle_between(a: (f64, f64), b: (f64, f64)) -> f64 {
-    let (lat_a, lat_b) = (
-        std::f64::consts::FRAC_PI_2 - a.0,
-        std::f64::consts::FRAC_PI_2 - b.0,
-    );
-    let half_lat = (lat_b - lat_a) / 2.0;
-    let half_lon = (b.1 - a.1) / 2.0;
-    let h = half_lat.sin().powi(2) + lat_a.cos() * lat_b.cos() * half_lon.sin().powi(2);
-    2.0 * h.sqrt().min(1.0).asin()
-}
-
 /// `colony` as a template on `planet`: one launchpad hub every other structure
 /// links to, a factory per recipe, ECUs outermost. Routes run through the hub.
 /// `program_hours` sizes the ECU routes. `None` when the planet type has no
@@ -212,7 +174,7 @@ pub fn colony_template(
         ecu_rates.push(resource.map(|(_, rate)| rate / f64::from(on_resource.max(1))));
     }
 
-    let hub = (std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+    let hub = HUB;
     let mut pins = vec![TemplatePin {
         kind: PlanetPinKind::Launchpad,
         type_id: launchpad.type_id,
@@ -224,14 +186,14 @@ pub fn colony_template(
         y_km: 0.0,
     }];
     for ((kind, type_id, product, heads), (x, y)) in others.into_iter().zip(ring_slots()) {
-        let colatitude = hub.0 - y * TEMPLATE_PITCH_RAD;
+        let (colatitude, longitude) = slot_position((x, y));
         pins.push(TemplatePin {
             kind,
             type_id,
             product,
             heads,
             colatitude,
-            longitude: hub.1 + x * TEMPLATE_PITCH_RAD / colatitude.sin(),
+            longitude,
             x_km: x * TEMPLATE_PITCH_RAD * radius_km,
             y_km: y * TEMPLATE_PITCH_RAD * radius_km,
         });
