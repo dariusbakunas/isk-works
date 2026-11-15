@@ -153,6 +153,32 @@ export function settingsToQuery(settings: ScenarioSettings, params: URLSearchPar
   return next;
 }
 
+const SETTINGS_KEY = "iskworks.piPlanner.settings";
+/** The query keys `settingsToQuery` writes. */
+const SETTING_PARAMS = ["system", "radius", "tax", "reset", "haul", "uplift", "buy", "max", "sys", "solo", "estimate"];
+
+/**
+ * The scenario to show: the URL's when it carries any setting (a shared link
+ * or a loaded saved plan), else the one last used in this browser.
+ */
+export function loadSettings(params: URLSearchParams): ScenarioSettings {
+  if (SETTING_PARAMS.some((key) => params.has(key))) return settingsFromQuery(params);
+  try {
+    return settingsFromQuery(new URLSearchParams(window.localStorage.getItem(SETTINGS_KEY) ?? ""));
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+/** Remembers the scenario, in the URL's own form so both read the same way. */
+export function storeSettings(settings: ScenarioSettings): void {
+  try {
+    window.localStorage.setItem(SETTINGS_KEY, settingsToQuery(settings, new URLSearchParams()).toString());
+  } catch {
+    // Private windows and blocked storage: the scenario just isn't remembered.
+  }
+}
+
 const CHARACTERS_KEY = "iskworks.piPlanner.characters";
 
 export function loadCharacters(): ScenarioCharacter[] {
