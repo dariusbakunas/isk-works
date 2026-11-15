@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
+use super::super::effort::storage_needed;
 use super::super::effort::EffortSettings;
-use super::super::effort::{storage_needed, STORAGE_M3};
 use super::super::fixtures::*;
 use super::super::rank::{rank, PlannerCharacter};
 use super::super::yields::YieldSource;
@@ -175,7 +175,7 @@ fn a_factory_colony_adds_storage_for_what_its_launchpad_cannot_hold() {
         .expect("a factory colony");
     assert!(factory.layout.extra_storage > 0, "{factory:#?}");
     assert!(
-        factory.on_planet_m3 <= LAUNCHPAD_M3 + STORAGE_M3 * f64::from(factory.layout.extra_storage),
+        factory.on_planet_m3 <= LAUNCHPAD_M3 * f64::from(1 + factory.layout.extra_storage),
         "{factory:#?}"
     );
     // The storage is paid for: the colony still fits its command center.
@@ -347,7 +347,37 @@ fn assert_colonies_fit(result: &PiPlan, scenario: &RankScenario, planets: &[Cand
         assert!(colony.cpu_used <= 1.0 + 1e-9 && colony.power_used <= 1.0 + 1e-9);
         assert!(template.cpu <= colony.cpu_used * template.cpu_output + 1e-6);
         assert!(template.power <= colony.power_used * template.power_output + 1e-6);
+        assert_buffers_fit(colony, scenario);
     }
+}
+
+/// m³ per hour of `rates` by type id.
+fn volume(rates: &BTreeMap<i64, f64>) -> f64 {
+    rates
+        .iter()
+        .map(|(type_id, rate)| rate * catalogue().volume(*type_id))
+        .sum()
+}
+
+/// What a factory colony imports between visits fits its launchpad, where
+/// the customs office delivers it, and everything it holds has a launchpad
+/// load of room per structure, so each empties in one expedited transfer.
+fn assert_buffers_fit(colony: &PlannedColony, scenario: &RankScenario) {
+    if colony.role != ColonyRole::Factory {
+        return;
+    }
+    let days = scenario.effort.login_days(false);
+    let inputs = buffers(volume(&colony.imports), days, scenario.effort).on_planet_m3;
+    assert!(
+        inputs <= LAUNCHPAD_M3 + 1e-6,
+        "{inputs:.0} m³ of inputs on {colony:#?}"
+    );
+    let stores = f64::from(1 + colony.layout.extra_storage);
+    assert!(
+        colony.on_planet_m3 <= stores * LAUNCHPAD_M3 + 1e-6,
+        "{:.0} m³ in {stores} stores on {colony:#?}",
+        colony.on_planet_m3
+    );
 }
 
 #[test]
@@ -376,14 +406,38 @@ fn every_planned_colony_fits_its_command_center() {
     for characters in &crews {
         for haul_days in [1, 3, 14] {
             for market in &markets {
-                let mut scenario = scenario(characters.clone());
-                scenario.effort.haul_days = haul_days;
-                let planets = q3hs5();
-                let result = plan(&scenario, &planets, market);
-                assert_colonies_fit(&result, &scenario, &planets);
+                for uplift_at_login in [true, false] {
+                    let mut scenario = scenario(characters.clone());
+                    scenario.effort.haul_days = haul_days;
+                    scenario.effort.uplift_at_login = uplift_at_login;
+                    let planets = q3hs5();
+                    let result = plan(&scenario, &planets, market);
+                    assert_colonies_fit(&result, &scenario, &planets);
+                }
             }
         }
     }
+}
+
+#[test]
+fn factory_inputs_wait_on_the_launchpad_alone() {
+    // Hauling every three days straight from the planet: a full factory
+    // colony's inputs would overflow the launchpad, and storage facilities
+    // only fill by expedited transfers that each wait out a cooldown.
+    let mut scenario = scenario(vec![character(5), character(5), character(4)]);
+    scenario.effort.uplift_at_login = false;
+    let result = plan(&scenario, &q3hs5(), &prices(&[(ROBOTICS, 200_000.0)]));
+    let factories = result
+        .colonies
+        .iter()
+        .filter(|colony| colony.role == ColonyRole::Factory)
+        .collect::<Vec<_>>();
+    assert!(!factories.is_empty(), "{result:#?}");
+    for colony in factories {
+        assert!(volume(&colony.imports) > 0.0);
+        assert_buffers_fit(colony, &scenario);
+    }
+    assert!(sold(&result, ROBOTICS) > 0.0);
 }
 
 #[test]
@@ -660,4 +714,21 @@ fn a_branch_restarted_from_its_parent_matches_solving_it_from_scratch() {
         branched += 1;
     }
     assert!(branched >= 2, "only {branched} branches to compare");
+}
+
+#[test]
+fn buying_never_plans_for_less_than_buying_nothing() {
+    for haul_days in [1, 3, 7, 14] {
+        let mut scenario = scenario(vec![character(5), character(5), character(4)]);
+        scenario.effort.haul_days = haul_days;
+        let without = plan(&scenario, &q3hs5(), &market());
+        scenario.buy_intermediates = true;
+        let with = plan(&scenario, &q3hs5(), &market());
+        assert!(
+            with.isk_per_month >= without.isk_per_month * BUYING_SHORTFALL,
+            "{haul_days} days: {} buying, {} without",
+            with.isk_per_month,
+            without.isk_per_month
+        );
+    }
 }

@@ -187,9 +187,33 @@ fn a_factory_colony_cycles_each_recipe_through_the_hub() {
     assert!(kinds(&result, PlanetPinKind::ExtractorControlUnit).is_empty());
 }
 
-#[test]
-fn factories_take_turns_between_the_launchpad_and_storage() {
-    let factory = colony(
+/// A two-factory colony with one storage facility, and each factory's routes.
+fn stored(colony: PlannedColony) -> (usize, Vec<Vec<TemplateRoute>>) {
+    let result = template(&colony, 5);
+    let storage = result
+        .pins
+        .iter()
+        .position(|pin| pin.kind == PlanetPinKind::Storage)
+        .expect("a storage facility");
+    let routes = result
+        .pins
+        .iter()
+        .enumerate()
+        .filter(|(_, pin)| pin.kind == PlanetPinKind::Processor)
+        .map(|(factory, _)| {
+            result
+                .routes
+                .iter()
+                .filter(|route| route.path.contains(&factory))
+                .cloned()
+                .collect()
+        })
+        .collect();
+    (storage, routes)
+}
+
+fn with_storage() -> PlannedColony {
+    colony(
         ColonyRole::Factory,
         ColonyLayout {
             launchpads: 1,
@@ -197,39 +221,59 @@ fn factories_take_turns_between_the_launchpad_and_storage() {
             ..ColonyLayout::default()
         },
         &[(MECHANICAL_PARTS, 2.0)],
-    );
-    let result = template(&factory, 5);
-    let storage = result
-        .pins
-        .iter()
-        .position(|pin| pin.kind == PlanetPinKind::Storage)
-        .expect("a storage facility");
-    let factories = result
-        .pins
-        .iter()
-        .enumerate()
-        .filter(|(_, pin)| pin.kind == PlanetPinKind::Processor)
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    let recipe = catalogue().recipe(MECHANICAL_PARTS).cloned().unwrap();
-    let routes = |factory: usize| {
-        result
-            .routes
-            .iter()
-            .filter(|route| route.path.contains(&factory))
-            .collect::<Vec<_>>()
-    };
-    // The first works from the launchpad, the second from storage via the hub.
-    for route in routes(factories[0]) {
-        assert_eq!(route.path.len(), 2, "{route:?}");
+    )
+}
+
+#[test]
+fn inputs_come_from_the_launchpad_and_outputs_spread_over_the_stores() {
+    let (storage, routes) = stored(with_storage());
+    assert_eq!(routes.len(), 2);
+    // Imports only ever land on the launchpad; a storage facility would need
+    // an expedited transfer, and its cooldown, to get them.
+    for route in routes.iter().flatten() {
+        if route.type_id != MECHANICAL_PARTS {
+            assert_eq!(route.path.len(), 2, "{route:?}");
+            assert_eq!(route.path[0], 0, "{route:?}");
+        }
     }
-    let second = routes(factories[1]);
-    assert_eq!(second.len(), recipe.inputs.len() + 1);
-    for route in second {
+    let outputs = routes
+        .iter()
+        .flatten()
+        .filter(|route| route.type_id == MECHANICAL_PARTS)
+        .map(|route| *route.path.last().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(outputs, vec![0, storage]);
+}
+
+#[test]
+fn a_launchpad_full_of_inputs_takes_no_outputs() {
+    let recipe = catalogue().recipe(MECHANICAL_PARTS).cloned().unwrap();
+    let made = 2.0 * recipe.output_per_hour();
+    let imports = recipe
+        .inputs
+        .iter()
+        .map(|(input, quantity)| (*input, made * quantity / recipe.output_quantity))
+        .collect::<BTreeMap<_, _>>();
+    let exports = BTreeMap::from([(MECHANICAL_PARTS, made)]);
+    let m3 = |rates: &BTreeMap<i64, f64>| {
+        rates
+            .iter()
+            .map(|(type_id, rate)| rate * catalogue().volume(*type_id))
+            .sum::<f64>()
+    };
+    // Held long enough that the inputs alone fill the launchpad.
+    let hours = 10_000.0 / m3(&imports);
+    let (storage, routes) = stored(PlannedColony {
+        on_planet_m3: hours * (m3(&imports) + m3(&exports)),
+        imports,
+        exports,
+        ..with_storage()
+    });
+    for route in routes.iter().flatten() {
         if route.type_id == MECHANICAL_PARTS {
-            assert_eq!(route.path, vec![factories[1], 0, storage]);
+            assert_eq!(route.path.last(), Some(&storage), "{route:?}");
         } else {
-            assert_eq!(route.path, vec![storage, 0, factories[1]]);
+            assert_eq!(route.path[0], 0, "{route:?}");
         }
     }
 }

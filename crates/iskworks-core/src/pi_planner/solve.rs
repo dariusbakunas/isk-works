@@ -19,6 +19,10 @@
 //! each colony against its command center with the links a colony template
 //! draws, and prices every transfer at its own planet's tax. When the whole
 //! factories don't all fit, the plan is solved again with less room.
+//!
+//! A factory colony's imports wait on its launchpad alone, so what it brings
+//! in between visits is capped at a launchpad load; storage facilities hold
+//! output only (see [`super::effort`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -28,7 +32,7 @@ use good_lp::{default_solver, variable, Expression, ProblemVariables, SolverMode
 use super::capacity::{ColonyBudget, ColonyLayout};
 use super::catalogue::{decimal_f64, PiCatalogue, Recipe};
 use super::effort::{
-    buffers, effort, storage_needed, ColonyVisit, Effort, LAUNCHPAD_M3, SKYHOOK_M3, STORAGE_M3,
+    buffers, effort, storage_needed, ColonyVisit, Effort, LAUNCHPAD_M3, SKYHOOK_M3,
 };
 use super::rank::{
     customs_rate, size_extraction, CandidatePlanet, Prices, RankScenario, RankedInput,
@@ -955,7 +959,9 @@ impl<'a> Model<'a> {
             problem = problem.with((used - room).leq(0.0));
         }
         // Factory buffers: the launchpad and storage between logins, the skyhook
-        // between hauls.
+        // between hauls. Imports wait on the launchpads alone: the P1 the
+        // recipes use and whatever is bought, taking every intermediate made
+        // here as used where it is made. The placement checks each colony.
         let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort);
         let mut through = Expression::from(0.0);
         for recipe in upper.iter() {
@@ -965,9 +971,28 @@ impl<'a> Model<'a> {
         problem = problem.with(
             (held.on_planet_m3 * through.clone()
                 - LAUNCHPAD_M3 * factories.clone()
-                - STORAGE_M3 * storage)
+                - LAUNCHPAD_M3 * storage)
                 .leq(0.0),
         );
+        let mut inward = Expression::from(0.0);
+        for recipe in upper.iter() {
+            let p1_m3 = recipe
+                .inputs
+                .iter()
+                .filter(|(input, _)| catalogue.tier(*input) == Some(1))
+                .map(|(input, quantity)| {
+                    quantity / recipe.output_quantity * catalogue.volume(*input)
+                })
+                .sum::<f64>();
+            inward += p1_m3 * made[&recipe.output_type_id];
+        }
+        for (type_id, var) in &bought {
+            if catalogue.tier(*type_id) != Some(1) {
+                inward += catalogue.volume(*type_id) * *var;
+            }
+        }
+        problem = problem
+            .with((held.on_planet_m3 * inward - share * LAUNCHPAD_M3 * factories.clone()).leq(0.0));
         if held.skyhook_m3 > 0.0 {
             problem = problem.with((held.skyhook_m3 * through - SKYHOOK_M3 * factories).leq(0.0));
         }
@@ -1047,14 +1072,53 @@ fn fixed(counts: &[f64]) -> Vec<(f64, f64)> {
 /// looking for a plan whose whole factories fit, and the most steps taken.
 const SHRINK_STEP: f64 = 0.015;
 const SHRINK_STEPS: u32 = 16;
+/// How many times a plan capped to the factories that fit is dealt again
+/// before it gives up on factories.
+const CAP_STEPS: u32 = 8;
+
+/// A plan this far below what the relaxation promised is checked against
+/// the plan that buys nothing.
+const BUYING_SHORTFALL: f64 = 0.9;
 
 /// Solves the scenario. A plan with no colonies means nothing pays.
+///
+/// The relaxation pools the factory colonies, so it counts no customs tax on
+/// what one colony makes for another. Bought goods worked up on thin margins
+/// can then plan for more than they earn; when such a plan falls well short
+/// of its promise, the scenario is solved again buying nothing, and the
+/// better plan wins.
 pub fn solve(
     catalogue: &PiCatalogue,
     scenario: &RankScenario,
     planets: &[CandidatePlanet],
     prices: &Prices,
 ) -> Result<PiPlan, SolveError> {
+    let (plan, promised) = solve_once(catalogue, scenario, planets, prices)?;
+    if !scenario.buy_intermediates
+        || scenario.target.is_some()
+        || plan.isk_per_month >= promised * BUYING_SHORTFALL
+    {
+        return Ok(plan);
+    }
+    let frugal = RankScenario {
+        buy_intermediates: false,
+        ..scenario.clone()
+    };
+    let (unbought, _) = solve_once(catalogue, &frugal, planets, prices)?;
+    Ok(if unbought.isk_per_month > plan.isk_per_month {
+        unbought
+    } else {
+        plan
+    })
+}
+
+/// One solve, and the ISK/month its relaxation promised.
+fn solve_once(
+    catalogue: &PiCatalogue,
+    scenario: &RankScenario,
+    planets: &[CandidatePlanet],
+    prices: &Prices,
+) -> Result<(PiPlan, f64), SolveError> {
     let targeted;
     let prices = match scenario.target {
         Some(product) => {
@@ -1066,15 +1130,17 @@ pub fn solve(
     let model = Model::new(catalogue, scenario, planets, prices);
     let best = branch_and_bound(&model)?;
     if best.objective <= 0.0 {
-        return Ok(build_plan(
+        let plan = build_plan(
             catalogue,
             scenario,
             planets,
             prices,
             &model.groups,
             PlanValues::default(),
-        ));
+        );
+        return Ok((plan, 0.0));
     }
+    let promised = best.objective * HOURS_PER_MONTH;
     let count = |value: f64| value.round() as u32;
     let factories = |counts: &[f64]| {
         model
@@ -1096,34 +1162,66 @@ pub fn solve(
     let counts = best.counts.clone();
     let mut best = best;
     let mut step = 0;
-    let mut placed = loop {
+    let mut capping = false;
+    let placed = loop {
+        // Every colony running the same mix keeps what one recipe makes for
+        // another on the planet that uses it, as the relaxation counts on:
+        // nothing crosses a customs office twice or waits on two launchpads.
+        // Where the rounding that takes doesn't fit, whole factories are
+        // dealt one by one instead.
+        if let Some(even) = place_evenly(catalogue, scenario, planets, &colonies, &best.made) {
+            break even;
+        }
         let placed = place_factories(catalogue, scenario, planets, &colonies, &best.made);
-        let capacity = placed_capacity(catalogue, &placed);
+        let dealt = dealt(&placed);
+        let wanted = |type_id: &i64, rate: &f64| {
+            catalogue
+                .recipe(*type_id)
+                .map_or(0, |recipe| whole(rate / recipe.output_per_hour()))
+        };
         let short = best.made.iter().any(|(type_id, rate)| {
-            capacity.get(type_id).copied().unwrap_or(0.0) < rate * (1.0 - 1e-6)
+            dealt.get(type_id).copied().unwrap_or(0) < wanted(type_id, rate)
         });
         if !short {
             break placed;
         }
         step += 1;
-        let again = if step <= SHRINK_STEPS {
+        let again = if !capping && step <= SHRINK_STEPS {
             model.shrunk(&counts, 1.0 - SHRINK_STEP * f64::from(step))
         } else {
             None
         };
-        match again {
-            Some(again) => best = again,
+        best = match again {
+            Some(again) => again,
             None => {
-                best = model.capped(&counts, &capacity).ok_or_else(|| {
+                // No more than the factories that fit make at the rate they
+                // were dealt; the smaller plan is dealt afresh, and after a
+                // few rounds of that nothing is made at all.
+                if !capping {
+                    capping = true;
+                    step = 0;
+                }
+                let caps = best
+                    .made
+                    .iter()
+                    .map(|(type_id, rate)| {
+                        let fits = dealt.get(type_id).copied().unwrap_or(0);
+                        let share = match wanted(type_id, rate) {
+                            0 => 0.0,
+                            _ if step > CAP_STEPS => 0.0,
+                            wanted => f64::from(fits.min(wanted)) / f64::from(wanted),
+                        };
+                        (*type_id, rate * share)
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                model.capped(&counts, &caps).ok_or_else(|| {
                     SolveError::Solver("no plan fits the factory colonies".to_owned())
-                })?;
-                break placed;
+                })?
             }
-        }
+        };
     };
-    trim_idle(catalogue, &mut placed, &best.made);
     let pattern_counts = &best.counts[..model.patterns.len()];
-    Ok(build_plan(
+    let plan = build_plan(
         catalogue,
         scenario,
         planets,
@@ -1144,7 +1242,8 @@ pub fn solve(
             sold: best.sold.clone(),
             bought: best.bought.clone(),
         },
-    ))
+    );
+    Ok((plan, promised))
 }
 
 #[derive(Default)]
@@ -1163,6 +1262,36 @@ struct PlanValues<'a> {
 /// Whole factories per recipe, one entry per factory colony.
 type Placement = Vec<BTreeMap<i64, u32>>;
 
+/// m³ per hour a colony's whole factories bring in and send out when each
+/// makes `each` of its output per hour: what every recipe uses or makes
+/// beyond the colony's own.
+fn crossing(
+    catalogue: &PiCatalogue,
+    placed: &BTreeMap<i64, u32>,
+    each: &BTreeMap<i64, f64>,
+) -> (f64, f64) {
+    let mut net: BTreeMap<i64, f64> = BTreeMap::new();
+    for (type_id, factories) in placed {
+        let Some(recipe) = catalogue.recipe(*type_id) else {
+            continue;
+        };
+        let rate = f64::from(*factories) * each.get(type_id).copied().unwrap_or(0.0);
+        *net.entry(*type_id).or_default() += rate;
+        for (input, quantity) in &recipe.inputs {
+            *net.entry(*input).or_default() -= rate * quantity / recipe.output_quantity;
+        }
+    }
+    net.iter()
+        .fold((0.0, 0.0), |(inward, outward), (type_id, rate)| {
+            let m3 = rate * catalogue.volume(*type_id);
+            if m3 < 0.0 {
+                (inward - m3, outward)
+            } else {
+                (inward, outward + m3)
+            }
+        })
+}
+
 /// The whole factories a fractional count needs.
 fn whole(factories: f64) -> u32 {
     (factories - 1e-6).ceil().max(0.0) as u32
@@ -1170,7 +1299,8 @@ fn whole(factories: f64) -> u32 {
 
 /// Deals whole factories to the factory colonies, each recipe spread by the
 /// CPU the colonies have left (P4 only on high-tech sites), and only where
-/// the colony still fits with the storage its throughput needs. A factory no
+/// the colony still fits with the storage its throughput needs and its
+/// imports fit the launchpad. A factory no
 /// colony has room for is left out: the relaxation pools capacity and counts
 /// factories in fractions, so its totals can ask for more than fits.
 fn place_factories(
@@ -1182,19 +1312,30 @@ fn place_factories(
 ) -> Placement {
     let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort).on_planet_m3;
     let mut layouts = vec![factory_base(); sites.len()];
-    let mut through = vec![0.0; sites.len()];
     let mut placed: Placement = vec![BTreeMap::new(); sites.len()];
     let mut recipes = made
         .iter()
         .filter_map(|(type_id, rate)| {
             let recipe = catalogue.recipe(*type_id)?;
-            Some((recipe, whole(rate / recipe.output_per_hour())))
+            let count = whole(rate / recipe.output_per_hour());
+            Some((
+                recipe,
+                count.max(launchpad_loads(catalogue, recipe, *rate, held)),
+            ))
         })
         .filter(|(_, count)| *count > 0)
         .collect::<Vec<_>>();
     recipes.sort_by_key(|(recipe, _)| (std::cmp::Reverse(recipe.tier), recipe.output_type_id));
+    // Every factory of a recipe makes an equal share of it, as the plan
+    // splits it.
+    let each = recipes
+        .iter()
+        .map(|(recipe, count)| {
+            let rate = made.get(&recipe.output_type_id).copied().unwrap_or(0.0);
+            (recipe.output_type_id, rate / f64::from(*count))
+        })
+        .collect::<BTreeMap<_, _>>();
     for (recipe, count) in recipes {
-        let m3 = recipe_m3(catalogue, recipe) * recipe.output_per_hour();
         let eligible = |index: usize| recipe.tier < 4 || sites[index].high_tech;
         let free = (0..sites.len())
             .map(|index| {
@@ -1223,13 +1364,18 @@ fn place_factories(
             }
             let mut layout = layouts[index].clone();
             *layout.processors.entry(pin.type_id).or_default() += 1;
-            layout.extra_storage = storage_needed(held * (through[index] + m3));
+            let mut with = placed[index].clone();
+            *with.entry(recipe.output_type_id).or_default() += 1;
+            let (inward, outward) = crossing(catalogue, &with, &each);
+            if held * inward > LAUNCHPAD_M3 + 1e-6 {
+                return false;
+            }
+            layout.extra_storage = storage_needed(held * (inward + outward));
             if !site.budget.fits(catalogue, &layout) {
                 return false;
             }
             layouts[index] = layout;
-            through[index] += m3;
-            *placed[index].entry(recipe.output_type_id).or_default() += 1;
+            placed[index] = with;
             true
         };
         // Whole shares first, then the rest by largest remainder, then
@@ -1263,50 +1409,83 @@ fn place_factories(
     placed
 }
 
-/// Each recipe's output per hour when its placed factories run flat out.
-fn placed_capacity(catalogue: &PiCatalogue, placed: &Placement) -> BTreeMap<i64, f64> {
-    let mut capacity = BTreeMap::new();
-    for (type_id, factories) in placed.iter().flatten() {
-        if let Some(recipe) = catalogue.recipe(*type_id) {
-            *capacity.entry(*type_id).or_default() +=
-                f64::from(*factories) * recipe.output_per_hour();
-        }
-    }
-    capacity
+/// The factories a recipe is spread over so that none takes in more than a
+/// launchpad holds: a factory fed from one launchpad runs no faster than
+/// that, so making `rate` per hour may take more factories than flat out.
+fn launchpad_loads(catalogue: &PiCatalogue, recipe: &Recipe, rate: f64, held: f64) -> u32 {
+    let inputs_m3 = recipe
+        .inputs
+        .iter()
+        .map(|(input, quantity)| quantity / recipe.output_quantity * catalogue.volume(*input))
+        .sum::<f64>();
+    whole(held * rate * inputs_m3 / LAUNCHPAD_M3)
 }
 
-/// Takes away placed factories that `made` leaves idle, from the colony with
-/// the most of them first.
-fn trim_idle(catalogue: &PiCatalogue, placed: &mut Placement, made: &BTreeMap<i64, f64>) {
-    let types = placed
-        .iter()
-        .flat_map(BTreeMap::keys)
-        .copied()
-        .collect::<BTreeSet<_>>();
-    for type_id in types {
-        let needed = catalogue.recipe(type_id).map_or(0, |recipe| {
-            whole(made.get(&type_id).copied().unwrap_or(0.0) / recipe.output_per_hour())
-        });
-        let mut total = placed
-            .iter()
-            .filter_map(|colony| colony.get(&type_id))
-            .sum::<u32>();
-        while total > needed {
-            let Some(colony) = placed
-                .iter_mut()
-                .max_by_key(|colony| colony.get(&type_id).copied().unwrap_or(0))
-            else {
-                break;
-            };
-            match colony.get_mut(&type_id) {
-                Some(count) if *count > 1 => *count -= 1,
-                _ => {
-                    colony.remove(&type_id);
-                }
+/// Every colony making an equal share of every recipe it can build (P4 only
+/// on high-tech sites), each with the whole factories that takes; `None`
+/// when a colony doesn't fit.
+fn place_evenly(
+    catalogue: &PiCatalogue,
+    scenario: &RankScenario,
+    planets: &[CandidatePlanet],
+    sites: &[&FactorySite],
+    made: &BTreeMap<i64, f64>,
+) -> Option<Placement> {
+    let held = buffers(1.0, scenario.effort.login_days(false), scenario.effort).on_planet_m3;
+    let high_tech = sites.iter().filter(|site| site.high_tech).count();
+    let mut placed = Vec::new();
+    for site in sites {
+        let mut mix = BTreeMap::new();
+        let mut each = BTreeMap::new();
+        let mut layout = factory_base();
+        for (type_id, rate) in made {
+            let recipe = catalogue.recipe(*type_id)?;
+            if whole(rate / recipe.output_per_hour()) == 0 {
+                continue;
             }
-            total -= 1;
+            let hosts = if recipe.tier >= 4 {
+                if !site.high_tech {
+                    continue;
+                }
+                high_tech
+            } else {
+                sites.len()
+            };
+            let share = rate / hosts as f64;
+            let factories = whole(share / recipe.output_per_hour()).max(1);
+            let pin = catalogue.processor_for(recipe, planets[site.planet].type_id)?;
+            *layout.processors.entry(pin.type_id).or_default() += factories;
+            mix.insert(*type_id, factories);
+            each.insert(*type_id, share / f64::from(factories));
         }
+        let (inward, outward) = crossing(catalogue, &mix, &each);
+        if held * inward > LAUNCHPAD_M3 + 1e-6 {
+            return None;
+        }
+        layout.extra_storage = storage_needed(held * (inward + outward));
+        if !site.budget.fits(catalogue, &layout) {
+            return None;
+        }
+        placed.push(mix);
     }
+    // A P4 recipe with no high-tech site to run on is not placed at all.
+    let dealt = dealt(&placed);
+    made.iter()
+        .all(|(type_id, rate)| {
+            catalogue.recipe(*type_id).is_some_and(|recipe| {
+                whole(rate / recipe.output_per_hour()) == 0 || dealt.contains_key(type_id)
+            })
+        })
+        .then_some(placed)
+}
+
+/// The factories of each recipe a placement dealt, over all colonies.
+fn dealt(placed: &Placement) -> BTreeMap<i64, u32> {
+    let mut dealt = BTreeMap::new();
+    for (type_id, factories) in placed.iter().flatten() {
+        *dealt.entry(*type_id).or_default() += factories;
+    }
+    dealt
 }
 
 /// Deals each group's colonies to its characters one system at a time, so
@@ -1500,7 +1679,7 @@ fn build_plan(
                     .layout
                     .processors
                     .entry(pin.type_id)
-                    .or_default() += factories;
+                    .or_default() += whole(mine / recipe.output_per_hour()).clamp(1, factories);
             }
         }
     }
