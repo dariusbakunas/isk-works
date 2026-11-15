@@ -6,8 +6,8 @@
 //!
 //! Throughput is the colony's *configured* rate, not a simulation: expired
 //! extractors still count (the expiry is the alert), and an extractor's rate
-//! is its current program's average (`qty_per_cycle * 3600 / cycle_time`;
-//! real yield decays over a program). Factories whose locally-produced inputs
+//! is its current program's average over the whole program (see
+//! [`program_units_per_hour`]). Factories whose locally-produced inputs
 //! are undersupplied are scaled down proportionally, so a P0 planet with
 //! more basic factories than its extractors can feed exports what it can
 //! actually make rather than listing the shortfall as an "import".
@@ -94,6 +94,9 @@ pub struct PinLayout {
     pub schematic_id: Option<i64>,
     #[serde(default)]
     pub contents: Vec<PinContent>,
+    /// When an extractor's program started.
+    #[serde(default)]
+    pub install_time: Option<DateTime<Utc>>,
     #[serde(default)]
     pub expiry_time: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -109,6 +112,8 @@ pub struct PinContent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractorLayout {
     pub product_type_id: i64,
+    /// ESI's name for the program's base value: the yield of a 15-minute
+    /// slice before decay, not what a cycle delivers.
     pub qty_per_cycle: i64,
     pub cycle_time_seconds: i64,
     #[serde(default)]
@@ -283,6 +288,53 @@ fn per_hour(quantity: i64, cycle_time_seconds: i64) -> Decimal {
     Decimal::from(quantity) * Decimal::from(3_600) / Decimal::from(cycle_time_seconds)
 }
 
+/// Seconds of extraction one point of an ESI `qty_per_cycle` stands for.
+const PROGRAM_SLICE_SECONDS: f64 = 900.0;
+const PROGRAM_DECAY: f64 = 0.012;
+const PROGRAM_NOISE: f64 = 0.8;
+
+/// Units an extractor program delivers in total. The game's own curve, as
+/// community PI tools reproduce it: each cycle yields its length in
+/// 15-minute slices times a base value that decays over the program, plus a
+/// wave. Checked against an in-game program window (2026-11-15: base 11,850,
+/// 72 one-hour cycles, 1,651,254 units shown).
+#[must_use]
+pub fn program_units(qty_per_cycle: i64, cycle_time_seconds: i64, program_seconds: i64) -> i64 {
+    if qty_per_cycle <= 0 || cycle_time_seconds <= 0 {
+        return 0;
+    }
+    let base = qty_per_cycle as f64;
+    let slices = cycle_time_seconds as f64 / PROGRAM_SLICE_SECONDS;
+    let phase = base.powf(0.7);
+    (0..(program_seconds / cycle_time_seconds).max(1))
+        .map(|cycle| {
+            let t = (cycle as f64 + 0.5) * slices;
+            let wave =
+                ((phase + t / 12.0).cos() + (phase / 2.0 + t / 5.0).cos() + (t / 2.0).cos()) / 3.0;
+            let height = base / (1.0 + t * PROGRAM_DECAY) * (1.0 + PROGRAM_NOISE * wave.max(0.0));
+            (slices * height) as i64
+        })
+        .sum()
+}
+
+/// A program's average units per hour over its whole length, the figure the
+/// game's program window shows. A program of unknown length counts as one
+/// cycle.
+#[must_use]
+pub fn program_units_per_hour(
+    qty_per_cycle: i64,
+    cycle_time_seconds: i64,
+    program_seconds: Option<i64>,
+) -> Decimal {
+    if cycle_time_seconds <= 0 {
+        return Decimal::ZERO;
+    }
+    let cycles = (program_seconds.unwrap_or(0) / cycle_time_seconds).max(1);
+    let seconds = cycles * cycle_time_seconds;
+    Decimal::from(program_units(qty_per_cycle, cycle_time_seconds, seconds)) * Decimal::from(3_600)
+        / Decimal::from(seconds)
+}
+
 #[must_use]
 pub fn derive_planet(layout: &PlanetLayout, inputs: &PlanetaryInputs<'_>) -> PlanetView {
     let now = inputs.now;
@@ -296,7 +348,13 @@ pub fn derive_planet(layout: &PlanetLayout, inputs: &PlanetaryInputs<'_>) -> Pla
                 pin_id: pin.pin_id,
                 product_type_id: program.product_type_id,
                 expires_at: pin.expiry_time,
-                units_per_hour: per_hour(program.qty_per_cycle, program.cycle_time_seconds),
+                units_per_hour: program_units_per_hour(
+                    program.qty_per_cycle,
+                    program.cycle_time_seconds,
+                    pin.install_time
+                        .zip(pin.expiry_time)
+                        .map(|(installed, expires)| (expires - installed).num_seconds()),
+                ),
                 expired: pin.expiry_time.is_some_and(|expiry| expiry <= now),
             })
         })
@@ -640,6 +698,7 @@ mod tests {
             type_id,
             schematic_id: None,
             contents: vec![],
+            install_time: None,
             expiry_time: None,
             extractor: None,
         }
@@ -654,6 +713,7 @@ mod tests {
 
     fn extractor(pin_id: i64, product: i64, expires_in: Duration) -> PinLayout {
         PinLayout {
+            install_time: Some(now() + expires_in - Duration::days(3)),
             expiry_time: Some(now() + expires_in),
             extractor: Some(ExtractorLayout {
                 product_type_id: product,
@@ -663,6 +723,11 @@ mod tests {
             }),
             ..pin(pin_id, 2_848)
         }
+    }
+
+    /// What [`extractor`]'s three-day program averages per hour.
+    fn extracted() -> Decimal {
+        program_units_per_hour(6_000, 1_800, Some(3 * 86_400))
     }
 
     fn with_contents(mut pin: PinLayout, contents: &[(i64, i64)]) -> PinLayout {
@@ -709,9 +774,28 @@ mod tests {
     }
 
     #[test]
+    fn an_extractor_rate_is_its_programs_average() {
+        // Read in game: 72 one-hour cycles totalling 1,651,254 units.
+        let total = program_units(11_850, 3_600, 72 * 3_600);
+        assert!((total - 1_651_254).abs() < 1_000, "{total}");
+        let rate = program_units_per_hour(11_850, 3_600, Some(72 * 3_600));
+        assert_eq!(rate, Decimal::from(total) / Decimal::from(72));
+        // Not the base value read as a cycle's yield.
+        assert!(rate > Decimal::from(22_000));
+        // Longer programs average less.
+        assert!(program_units_per_hour(11_850, 7_200, Some(168 * 3_600)) < rate);
+        // Unknown length: the first cycle alone.
+        assert_eq!(
+            program_units_per_hour(11_850, 3_600, None),
+            Decimal::from(program_units(11_850, 3_600, 3_600))
+        );
+    }
+
+    #[test]
     fn extractor_planet_exports_what_its_extractors_can_feed() {
-        // 12 000 Base/h extracted; three basic factories would want 18 000/h,
-        // so they run at 2/3 speed: 3 x 40/h x 2/3 = 80 Reactive/h.
+        // The program averages under 12 000 Base/h; three basic factories
+        // would want 18 000/h, so they make what it feeds: 20 Reactive per
+        // 3 000 Base.
         let planet = derive(
             &layout(
                 vec![
@@ -727,7 +811,9 @@ mod tests {
             &[],
         );
 
-        assert_eq!(planet.extractors[0].units_per_hour, Decimal::from(12_000));
+        let reactive = extracted() / Decimal::from(150);
+        assert_eq!(planet.extractors[0].units_per_hour, extracted());
+        assert!(extracted() > Decimal::from(11_000) && extracted() < Decimal::from(12_000));
         assert!(
             planet.imports.is_empty(),
             "extracted input is not an import"
@@ -736,12 +822,12 @@ mod tests {
         assert_eq!(planet.exports[0].type_id, REACTIVE);
         assert_eq!(
             planet.exports[0].units_per_hour.round_dp(6),
-            Decimal::from(80)
+            reactive.round_dp(6)
         );
-        // 80/h x 720h x 400 ISK
+        // per hour x 720h x 400 ISK
         assert_eq!(
             planet.isk_per_month.round_dp(0),
-            Decimal::from(80 * 720 * 400)
+            (reactive * Decimal::from(720 * 400)).round_dp(0)
         );
         assert_eq!(planet.attention, None);
         assert_eq!(planet.production[0].factory_count, 3);
@@ -830,7 +916,7 @@ mod tests {
 
     #[test]
     fn excluded_exports_keep_their_value_but_leave_the_total() {
-        // One factory eats half the extracted Base, so surplus Base (unpriced)
+        // One factory eats 6 000 of the extracted Base, so surplus Base (unpriced)
         // is exported alongside Reactive.
         let planet = derive(
             &layout(
@@ -847,7 +933,7 @@ mod tests {
         assert!(reactive.excluded);
         assert!(reactive.isk_per_month.is_some());
         let base = planet.exports.iter().find(|e| e.type_id == BASE).unwrap();
-        assert_eq!(base.units_per_hour, Decimal::from(6_000));
+        assert_eq!(base.units_per_hour, extracted() - Decimal::from(6_000));
         assert_eq!(base.isk_per_month, None);
         assert_eq!(planet.isk_per_month, Decimal::ZERO);
     }
