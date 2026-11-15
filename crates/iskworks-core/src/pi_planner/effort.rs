@@ -4,10 +4,19 @@
 //! Many players move output up to the planet's customs office or skyhook at
 //! every login and only haul from it now and then. The launchpad then holds a
 //! login's worth of goods and the skyhook a haul's worth.
+//!
+//! Imports land on the launchpad and exports leave from it. Anything else
+//! reaches or leaves a storage facility by expedited transfer, whose cooldown
+//! grows with the volume moved (hours for a launchpad load over a basic
+//! link) and runs on the structure that sent it. So a factory colony's
+//! inputs are planned to wait on the launchpad alone, and a storage facility
+//! to hold one launchpad load of output: at a haul each facility empties
+//! into the launchpad in a single transfer, one after another.
 
 /// m³ a launchpad holds.
 pub const LAUNCHPAD_M3: f64 = 10_000.0;
-/// m³ an extra storage facility holds.
+/// m³ an extra storage facility holds. The planner fills it only to
+/// [`LAUNCHPAD_M3`]; see the module notes.
 pub const STORAGE_M3: f64 = 12_000.0;
 /// m³ a customs office or skyhook holds (observed in game, 2026-10-31).
 pub const SKYHOOK_M3: f64 = 35_000.0;
@@ -63,13 +72,14 @@ pub fn buffers(m3_per_hour: f64, login_days: u32, settings: EffortSettings) -> B
     }
 }
 
-/// Storage facilities needed beyond the colony's launchpad.
+/// Storage facilities needed beyond the colony's launchpad, each holding one
+/// launchpad load.
 #[must_use]
 pub fn storage_needed(on_planet_m3: f64) -> u32 {
     if on_planet_m3 <= LAUNCHPAD_M3 {
         0
     } else {
-        ((on_planet_m3 - LAUNCHPAD_M3) / STORAGE_M3).ceil() as u32
+        ((on_planet_m3 - LAUNCHPAD_M3) / LAUNCHPAD_M3).ceil() as u32
     }
 }
 
@@ -179,7 +189,10 @@ mod tests {
         let held = buffers(TWO_P1, weekly.login_days(true), weekly);
         assert!((held.on_planet_m3 - 10_214.4).abs() < 1e-6);
         assert_eq!(storage_needed(held.on_planet_m3), 1);
-        assert_eq!(storage_needed(LAUNCHPAD_M3 + 2.0 * STORAGE_M3 + 1.0), 3);
+        // A storage facility is planned for one launchpad load, not its full
+        // 12,000 m³: it empties through the launchpad.
+        assert_eq!(storage_needed(3.0 * LAUNCHPAD_M3), 2);
+        assert_eq!(storage_needed(3.0 * LAUNCHPAD_M3 + 1.0), 3);
     }
 
     #[test]

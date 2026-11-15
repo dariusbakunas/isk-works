@@ -38,7 +38,7 @@ describe("ColonyTemplateDialog", () => {
     expect(screen.getByRole("button", { name: "Copy template" })).toBeEnabled();
   });
 
-  test("a factory colony with storage says to split its imports", () => {
+  test("a colony with storage says how to empty it", () => {
     const pin = (kind: TemplatePin["kind"]): TemplatePin => ({ ...TEMPLATE.pins[0], kind });
     const { rerender } = render(
       <ColonyTemplateDialog
@@ -47,11 +47,11 @@ describe("ColonyTemplateDialog", () => {
         template={{ ...TEMPLATE, pins: [pin("launchpad"), pin("factory"), pin("storage")] }}
       />,
     );
-    expect(screen.getByText(/split your imports evenly/)).toBeInTheDocument();
+    expect(screen.getByText(/expedite each facility to the\s+launchpad/)).toBeInTheDocument();
     expect(screen.queryByText(/Drag the extractor heads/)).toBeNull();
 
     rerender(<ColonyTemplateDialog onClose={() => {}} planetName="Q-3HS5 IV" template={TEMPLATE} />);
-    expect(screen.queryByText(/split your imports evenly/)).toBeNull();
+    expect(screen.queryByText(/expedite each facility to the\s+launchpad/)).toBeNull();
     expect(screen.getByText(/Drag the extractor heads/)).toBeInTheDocument();
   });
 

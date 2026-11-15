@@ -345,7 +345,7 @@ fn customs_tax_lowers_isk_by_exactly_the_export_cost() {
 }
 
 #[test]
-fn a_fortnightly_haul_that_overflows_a_skyhook_is_shortened() {
+fn a_factorys_inputs_for_a_fortnight_fit_its_launchpad() {
     let rich = q3hs5()
         .into_iter()
         .map(|mut planet| {
@@ -364,10 +364,21 @@ fn a_fortnightly_haul_that_overflows_a_skyhook_is_shortened() {
         ..scenario(4, 0.1)
     };
     let ranking = rank(&catalogue(), &fortnightly, &rich, &prices());
-    // The factory's P1 inputs overflow 35 000 m³ over 14 days but not 7.
+    // A fortnight of the factory's P1 has to wait on its launchpad, so the
+    // factory runs slower rather than the hauls coming sooner.
     let robotics = ranked(&ranking, ROBOTICS);
-    assert_eq!(robotics.haul_constrained_days, Some(7));
-    assert_eq!(robotics.effort.haul_runs_per_week, 1.0);
+    assert_eq!(robotics.haul_constrained_days, None);
+    assert_eq!(robotics.effort.haul_runs_per_week, 0.5);
+    let weekly = RankScenario {
+        effort: EffortSettings {
+            haul_days: 7,
+            ..fortnightly.effort
+        },
+        ..fortnightly.clone()
+    };
+    let sooner = rank(&catalogue(), &weekly, &rich, &prices());
+    let ratio = ranked(&sooner, ROBOTICS).units_per_hour / robotics.units_per_hour;
+    assert!((ratio - 2.0).abs() < 1e-3, "{ratio}");
     // An extraction colony's P1 still fits a fortnight.
     assert_eq!(ranked(&ranking, WATER).haul_constrained_days, None);
 }

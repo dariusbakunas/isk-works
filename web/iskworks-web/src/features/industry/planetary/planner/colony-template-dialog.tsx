@@ -129,7 +129,7 @@ export function ColonyTemplateDialog({
     .map((kind) => [kind, template.pins.filter((pin) => pin.kind === kind).length] as const)
     .filter(([, count]) => count > 0);
   const extracts = template.pins.some((pin) => pin.kind === "extractor");
-  const sharesImports = !extracts && template.pins.some((pin) => pin.kind === "storage");
+  const hasStorage = template.pins.some((pin) => pin.kind === "storage");
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={onClose} role="presentation">
@@ -173,8 +173,11 @@ export function ColonyTemplateDialog({
             <li>Templates › Import &amp; Export › Save from Clipboard, then place the template.</li>
             <li>Check CPU, power and routes, then Submit.</li>
             {extracts ? <li>Drag the extractor heads onto the hotspot and start the programs.</li> : null}
-            {sharesImports ? (
-              <li>Factories take turns between the launchpad and storage, so split your imports evenly between them.</li>
+            {hasStorage ? (
+              <li>
+                Imports stay on the launchpad. Storage holds finished goods only: at a haul, expedite each facility to the
+                launchpad in turn and export it.
+              </li>
             ) : null}
           </ol>
           <div className="flex items-center gap-2">

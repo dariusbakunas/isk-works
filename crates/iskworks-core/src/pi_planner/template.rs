@@ -7,11 +7,13 @@
 //! longitude, radians). Links `L` join pins `S`–`D`; routes `R` move `Q` of
 //! `T` along a path of linked pins. The command center is not a pin.
 //!
-//! A storage facility only holds what a route sends it, so factories take
-//! turns between the launchpad and the storage facilities. Goods made and used
-//! on the colony stay on the hub, where every factory can reach them.
+//! Every factory draws its inputs from the hub launchpad, where imports
+//! land and where goods made and used on the colony stay. Finished goods are
+//! spread over the launchpad's room left after the imports and one launchpad
+//! load per storage facility, so each facility empties into the launchpad in
+//! a single expedited transfer (see [`super::effort`]).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use iskworks_sde::PlanetPinKind;
 use serde_json::{json, Value};
@@ -21,6 +23,7 @@ use super::capacity::{
     angle_between, ring_slots, slot_position, DEFAULT_RADIUS_KM, HUB, MAX_HEADS_PER_ECU,
 };
 use super::catalogue::{command_center_output, decimal_f64, PiCatalogue};
+use super::effort::LAUNCHPAD_M3;
 use super::rank::CandidatePlanet;
 use super::solve::PlannedColony;
 
@@ -207,12 +210,47 @@ pub fn colony_template(
         })
         .collect::<Vec<_>>();
 
-    let stores = pins
+    // Where finished goods wait: (pin, m³ of room, m³ per hour sent so far).
+    let crossing = |rates: &BTreeMap<i64, f64>| {
+        rates
+            .iter()
+            .map(|(type_id, rate)| rate * catalogue.volume(*type_id))
+            .sum::<f64>()
+    };
+    let (inward, outward) = (crossing(&colony.imports), crossing(&colony.exports));
+    let inputs_held = if inward + outward > 0.0 {
+        colony.on_planet_m3 * inward / (inward + outward)
+    } else {
+        0.0
+    };
+    let mut stores = pins
         .iter()
         .enumerate()
         .filter(|(index, pin)| *index == 0 || pin.kind == PlanetPinKind::Storage)
-        .map(|(index, _)| index)
+        .map(|(index, _)| {
+            let room = if index == 0 {
+                (LAUNCHPAD_M3 - inputs_held).max(0.0)
+            } else {
+                LAUNCHPAD_M3
+            };
+            (index, room, 0.0)
+        })
         .collect::<Vec<_>>();
+    // The store a factory sending `m3` per hour fills the least.
+    let mut store_for = |m3: f64| {
+        let filled = |(_, room, sent): &(usize, f64, f64)| {
+            if *room > 0.0 {
+                (sent + m3) / room
+            } else {
+                f64::INFINITY
+            }
+        };
+        let store = stores
+            .iter_mut()
+            .min_by(|a, b| filled(a).total_cmp(&filled(b)))?;
+        store.2 += m3;
+        Some(store.0)
+    };
     let inputs_used = colony
         .recipes
         .keys()
@@ -238,24 +276,27 @@ pub fn colony_template(
 
     let mut routes = Vec::new();
     let mut ecu_index = 0;
-    let mut factory_index = 0;
     for (index, pin) in pins.iter().enumerate().skip(1) {
         match (pin.kind, pin.product) {
             (PlanetPinKind::Processor, Some(output)) => {
                 let Some(recipe) = catalogue.recipe(output) else {
                     continue;
                 };
-                let store = stores[factory_index % stores.len()];
-                factory_index += 1;
+                let store = if on_hub(output) {
+                    0
+                } else {
+                    let m3 = recipe.output_per_hour() * catalogue.volume(output);
+                    store_for(m3).unwrap_or(0)
+                };
                 for (input, quantity) in &recipe.inputs {
                     routes.push(TemplateRoute {
-                        path: via_hub(if on_hub(*input) { 0 } else { store }, index),
+                        path: vec![0, index],
                         type_id: *input,
                         quantity: quantity.round() as i64,
                     });
                 }
                 routes.push(TemplateRoute {
-                    path: via_hub(index, if on_hub(output) { 0 } else { store }),
+                    path: via_hub(index, store),
                     type_id: output,
                     quantity: recipe.output_quantity.round() as i64,
                 });

@@ -12,6 +12,7 @@ use super::catalogue::PiCatalogue;
 use super::chain::{expand, ChainDemand};
 use super::effort::{
     buffers, effort, storage_needed, ColonyVisit, Effort, EffortSettings, INTERVAL_DAYS,
+    LAUNCHPAD_M3,
 };
 use super::yields::{resolve_yield, DensityEntry, SecurityBand, YieldSource};
 
@@ -711,13 +712,14 @@ fn place_factory<'a>(
             launchpads: 1,
             ..ColonyLayout::default()
         };
-        let mut m3_per_hour = rate * catalogue.volume(product);
+        let m3_per_hour = rate * catalogue.volume(product);
+        let mut inputs_m3_per_hour = 0.0;
         for (output, count) in chain.factory_counts() {
             let Some(recipe) = catalogue.recipe(output) else {
                 return false;
             };
             if recipe.tier < 2 {
-                m3_per_hour += chain.per_hour[&output] * catalogue.volume(output);
+                inputs_m3_per_hour += chain.per_hour[&output] * catalogue.volume(output);
                 continue;
             }
             let Some(pin) = catalogue.processor_for(recipe, planet.type_id) else {
@@ -725,13 +727,12 @@ fn place_factory<'a>(
             };
             *layout.processors.entry(pin.type_id).or_default() += count;
         }
-        let held = buffers(
-            m3_per_hour,
-            scenario.effort.login_days(false),
-            scenario.effort,
-        );
+        // The P1 it imports waits on the launchpad alone.
+        let days = scenario.effort.login_days(false);
+        let inputs = buffers(inputs_m3_per_hour, days, scenario.effort);
+        let held = buffers(m3_per_hour + inputs_m3_per_hour, days, scenario.effort);
         layout.extra_storage = storage_needed(held.on_planet_m3);
-        budget.fits(catalogue, &layout)
+        inputs.on_planet_m3 <= LAUNCHPAD_M3 && budget.fits(catalogue, &layout)
     };
     if fits(rate) {
         return Ok((planet, rate));
