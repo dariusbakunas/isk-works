@@ -322,6 +322,94 @@ fn exclusive_hotspots_hold_within_a_group() {
     assert_eq!(result.shared_hotspots, vec![]);
 }
 
+/// Every colony's template, measured with its real link lengths, stays
+/// within its character's command center.
+fn assert_colonies_fit(result: &PiPlan, scenario: &RankScenario, planets: &[CandidatePlanet]) {
+    use super::super::template::colony_template;
+    assert!(!result.colonies.is_empty());
+    for colony in &result.colonies {
+        let planet = planets
+            .iter()
+            .find(|planet| planet.planet_id == colony.planet_id)
+            .expect("a candidate planet");
+        let level = scenario.characters[colony.character].command_center_upgrades;
+        let template = colony_template(&catalogue(), planet, colony, level, 72.0, String::new())
+            .expect("a template");
+        assert!(
+            template.fits(),
+            "cpu {:.0}/{:.0} power {:.0}/{:.0} on {colony:#?}",
+            template.cpu,
+            template.cpu_output,
+            template.power,
+            template.power_output
+        );
+        // The plan's own figures are the template's, not an estimate below it.
+        assert!(colony.cpu_used <= 1.0 + 1e-9 && colony.power_used <= 1.0 + 1e-9);
+        assert!(template.cpu <= colony.cpu_used * template.cpu_output + 1e-6);
+        assert!(template.power <= colony.power_used * template.power_output + 1e-6);
+    }
+}
+
+#[test]
+fn every_planned_colony_fits_its_command_center() {
+    // Crews that used to overfill their factory colonies: the relaxation
+    // counts factories in fractions and pools the colonies' room, and each
+    // colony then rounded every recipe up.
+    let skilled = |levels: &[(u8, u8)]| {
+        levels
+            .iter()
+            .map(
+                |(interplanetary_consolidation, command_center_upgrades)| PlannerCharacter {
+                    interplanetary_consolidation: *interplanetary_consolidation,
+                    command_center_upgrades: *command_center_upgrades,
+                },
+            )
+            .collect::<Vec<_>>()
+    };
+    let crews = [
+        skilled(&[(5, 5)]),
+        skilled(&[(5, 5), (4, 4), (5, 5), (4, 4)]),
+        skilled(&[(5, 3), (4, 2), (5, 3), (4, 2)]),
+        skilled(&[(5, 4), (4, 3), (5, 4), (4, 3), (5, 4), (4, 3), (5, 4)]),
+    ];
+    let markets = [market(), prices(&[(ROBOTICS, 200_000.0)])];
+    for characters in &crews {
+        for haul_days in [1, 3, 14] {
+            for market in &markets {
+                let mut scenario = scenario(characters.clone());
+                scenario.effort.haul_days = haul_days;
+                let planets = q3hs5();
+                let result = plan(&scenario, &planets, market);
+                assert_colonies_fit(&result, &scenario, &planets);
+            }
+        }
+    }
+}
+
+#[test]
+fn factory_colonies_hold_whole_factories() {
+    let scenario = scenario(vec![character(5), character(5), character(4)]);
+    let result = plan(&scenario, &q3hs5(), &prices(&[(ROBOTICS, 200_000.0)]));
+    let factories = result
+        .colonies
+        .iter()
+        .filter(|colony| colony.role == ColonyRole::Factory)
+        .collect::<Vec<_>>();
+    assert!(!factories.is_empty(), "{result:#?}");
+    for colony in factories {
+        // What the colony runs needs every factory it builds, and no more.
+        let running = colony
+            .recipes
+            .values()
+            .map(|factories| (factories - 1e-6).ceil() as u32)
+            .sum::<u32>();
+        let built = colony.layout.processors.values().sum::<u32>();
+        assert_eq!(running, built, "{colony:#?}");
+        assert!(colony.recipes.values().all(|factories| *factories > 0.0));
+    }
+    assert!(sold(&result, ROBOTICS) > 0.0);
+}
+
 #[test]
 fn nothing_priced_means_an_empty_plan() {
     let result = plan(&scenario(vec![character(4)]), &q3hs5(), &Prices::default());

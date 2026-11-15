@@ -20,7 +20,7 @@ mod yields;
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
-pub use capacity::{ColonyBudget, ColonyLayout, LINK_K, MAX_HEADS_PER_ECU};
+pub use capacity::{ColonyBudget, ColonyLayout, MAX_HEADS_PER_ECU};
 pub use catalogue::{
     command_center_output, PiCatalogue, Recipe, COMMAND_CENTER_LEVELS, IMPORT_TAX_RATIO,
 };

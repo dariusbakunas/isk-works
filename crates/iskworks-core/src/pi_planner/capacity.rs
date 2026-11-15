@@ -7,12 +7,62 @@ use iskworks_sde::PlanetPinKind;
 
 use super::catalogue::{command_center_output, decimal_f64, PiCatalogue};
 
-/// Average link length as a share of the planet's radius. UNCALIBRATED: to be
-/// fitted against community colony templates (plan Task 5.0).
-pub const LINK_K: f64 = 0.02;
+/// Angle between neighbouring structures, radians. Community templates use
+/// about this on both small and large planets.
+pub const TEMPLATE_PITCH_RAD: f64 = 0.012;
 
 /// Used when a planet's radius is unknown.
-const DEFAULT_RADIUS_M: f64 = 5_000_000.0;
+pub(super) const DEFAULT_RADIUS_KM: f64 = 5_000.0;
+
+/// Where a colony's hub launchpad sits: (colatitude, longitude), radians.
+pub(super) const HUB: (f64, f64) = (std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+
+/// Link lengths a budget keeps ready; no colony links this many structures.
+const MAX_LINKS: usize = 128;
+
+/// Hexagonal rings around the hub, nearest first, in pitch units: where a
+/// colony's structures other than the hub go, in the order they are placed.
+pub(super) fn ring_slots() -> impl Iterator<Item = (f64, f64)> {
+    const DIRECTIONS: [(i32, i32); 6] = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)];
+    (1..).flat_map(|ring: i32| {
+        // Start at the corner `ring` steps along direction 4, then walk the
+        // six sides.
+        let (mut q, mut r) = (DIRECTIONS[4].0 * ring, DIRECTIONS[4].1 * ring);
+        let mut slots = Vec::new();
+        for direction in DIRECTIONS {
+            for _ in 0..ring {
+                slots.push((
+                    f64::from(q) + f64::from(r) / 2.0,
+                    f64::from(r) * 3f64.sqrt() / 2.0,
+                ));
+                q += direction.0;
+                r += direction.1;
+            }
+        }
+        slots
+    })
+}
+
+/// A ring slot's (colatitude, longitude), radians.
+pub(super) fn slot_position((x, y): (f64, f64)) -> (f64, f64) {
+    let colatitude = HUB.0 - y * TEMPLATE_PITCH_RAD;
+    (
+        colatitude,
+        HUB.1 + x * TEMPLATE_PITCH_RAD / colatitude.sin(),
+    )
+}
+
+/// Great-circle angle between two (colatitude, longitude) points, radians.
+pub(super) fn angle_between(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (lat_a, lat_b) = (
+        std::f64::consts::FRAC_PI_2 - a.0,
+        std::f64::consts::FRAC_PI_2 - b.0,
+    );
+    let half_lat = (lat_b - lat_a) / 2.0;
+    let half_lon = (b.1 - a.1) / 2.0;
+    let h = half_lat.sin().powi(2) + lat_a.cos() * lat_b.cos() * half_lon.sin().powi(2);
+    2.0 * h.sqrt().min(1.0).asin()
+}
 
 /// Most heads one extractor control unit can carry.
 pub const MAX_HEADS_PER_ECU: u32 = 10;
@@ -29,9 +79,10 @@ pub struct ColonyLayout {
 }
 
 impl ColonyLayout {
-    /// Structures that each need a link to the rest of the colony.
-    fn linked_structures(&self) -> u32 {
-        self.ecus + self.launchpads + self.extra_storage + self.processors.values().sum::<u32>()
+    /// Links to the hub: one per structure other than the hub itself.
+    fn links(&self) -> u32 {
+        (self.ecus + self.launchpads + self.extra_storage + self.processors.values().sum::<u32>())
+            .saturating_sub(1)
     }
 }
 
@@ -40,7 +91,12 @@ impl ColonyLayout {
 pub struct ColonyBudget {
     cpu: f64,
     power: f64,
+    /// A link's fixed `(cpu, power)` and what each km adds.
     link: (f64, f64),
+    link_per_km: (f64, f64),
+    /// `link_km[n]`: the total length of the links to the hub's `n` nearest
+    /// slots, as a colony template lays them out.
+    link_km: Vec<f64>,
     ecu: (f64, f64),
     head: (f64, f64),
     launchpad: (f64, f64),
@@ -68,15 +124,19 @@ impl ColonyBudget {
         let ecu = catalogue.pin_on(PlanetPinKind::ExtractorControlUnit, planet_type_id);
         let (cpu, power) = command_center_output(command_center_level);
         let (link_cpu, link_power, cpu_per_km, power_per_km) = catalogue.link_cost();
-        let length_km =
-            LINK_K * radius_m.map_or(DEFAULT_RADIUS_M, |radius| radius as f64) / 1_000.0;
+        let radius_km = radius_m.map_or(DEFAULT_RADIUS_KM, |radius| radius as f64 / 1_000.0);
+        let mut link_km = vec![0.0];
+        let mut total = 0.0;
+        for slot in ring_slots().take(MAX_LINKS) {
+            total += angle_between(slot_position(slot), HUB) * radius_km;
+            link_km.push(total);
+        }
         Some(Self {
             cpu,
             power,
-            link: (
-                link_cpu + cpu_per_km * length_km,
-                link_power + power_per_km * length_km,
-            ),
+            link: (link_cpu, link_power),
+            link_per_km: (cpu_per_km, power_per_km),
+            link_km,
             ecu: ecu.map_or((0.0, 0.0), |pin| {
                 (decimal_f64(pin.cpu_load), decimal_f64(pin.power_load))
             }),
@@ -98,7 +158,40 @@ impl ColonyBudget {
         (self.cpu, self.power)
     }
 
-    /// The layout's `(cpu, power)` load, links included.
+    /// The `(cpu, power)` of `links` links to the hub's nearest slots.
+    fn links_load(&self, links: u32) -> (f64, f64) {
+        let count = (links as usize).min(self.link_km.len() - 1);
+        let km = self.link_km[count];
+        let links = f64::from(links);
+        (
+            self.link.0 * links + self.link_per_km.0 * km,
+            self.link.1 * links + self.link_per_km.1 * km,
+        )
+    }
+
+    /// One link's `(cpu, power)` on a colony of `structures` linked
+    /// structures, averaged over them. It grows with the colony, since later
+    /// structures sit further from the hub.
+    #[must_use]
+    pub fn link_share(&self, structures: u32) -> (f64, f64) {
+        let structures = structures.max(1);
+        let (cpu, power) = self.links_load(structures);
+        (cpu / f64::from(structures), power / f64::from(structures))
+    }
+
+    /// The launchpad's and a storage facility's own `(cpu, power)`.
+    #[must_use]
+    pub fn launchpad_load(&self) -> (f64, f64) {
+        self.launchpad
+    }
+
+    #[must_use]
+    pub fn storage_load(&self) -> (f64, f64) {
+        self.storage
+    }
+
+    /// The layout's `(cpu, power)` load, with the links a colony template
+    /// draws for it.
     #[must_use]
     pub fn usage(&self, catalogue: &PiCatalogue, layout: &ColonyLayout) -> (f64, f64) {
         let scaled = |(cpu, power): (f64, f64), count: u32| {
@@ -109,7 +202,7 @@ impl ColonyBudget {
             scaled(self.head, layout.heads),
             scaled(self.launchpad, layout.launchpads),
             scaled(self.storage, layout.extra_storage),
-            scaled(self.link, layout.linked_structures()),
+            self.links_load(layout.links()),
         ];
         for (pin_type_id, count) in &layout.processors {
             let pin = catalogue.pin(*pin_type_id);
@@ -241,6 +334,26 @@ mod tests {
             ..layout.clone()
         };
         assert!(small.max_heads(&catalogue, &with_storage) <= small.max_heads(&catalogue, &layout));
+    }
+
+    #[test]
+    fn links_grow_with_the_colony_as_structures_sit_further_out() {
+        let catalogue = catalogue();
+        let budget = ColonyBudget::new(&catalogue, BARREN, RADIUS, 5).unwrap();
+        let factories = |count: u32| ColonyLayout {
+            launchpads: 1,
+            processors: BTreeMap::from([(2474, count)]),
+            ..ColonyLayout::default()
+        };
+        let load = |count: u32| budget.usage(&catalogue, &factories(count)).0;
+        // The hub has no link; the first ring's six links are about one
+        // length.
+        let first = load(1) - load(0);
+        assert!((load(6) - load(5) - first).abs() < 0.01 * first);
+        // The second ring is further out, so its links cost more.
+        assert!(load(7) - load(6) > first + 1e-6);
+        // Averaged over a colony, a link costs more the bigger the colony.
+        assert!(budget.link_share(30).0 > budget.link_share(6).0);
     }
 
     #[test]
