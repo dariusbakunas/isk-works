@@ -59,7 +59,7 @@ export function CalendarMonthView({
               key={day.key}
               role="gridcell"
             >
-              <button aria-label={`Show milestones for ${label}`} className="iw-calendar-day-number" data-calendar-trigger={`day-${day.key}`} onClick={() => onSelectDay(day.key, dayMilestones, "day")} type="button">{day.dayNumber}</button>
+              <button aria-label={`Show milestones for ${label}`} className="iw-calendar-day-header" data-calendar-trigger={`day-${day.key}`} onClick={() => onSelectDay(day.key, dayMilestones, "day")} type="button"><span className="iw-calendar-day-number">{day.dayNumber}</span></button>
               <div className="iw-calendar-day-events">
                 {dayMilestones.slice(0, 3).map((milestone) => {
                   const presentation = presentCalendarMilestone(milestone);

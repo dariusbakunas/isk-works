@@ -16,6 +16,12 @@ test("uses the selected timezone when deriving a missing date", () => {
   expect(parseCalendarUrlState(new URLSearchParams("tz=local"), instant).date).toBe("2026-09-30");
 });
 
+test("uses the fallback timezone only when the URL names no valid tz", () => {
+  expect(parseCalendarUrlState(new URLSearchParams(), NOW, "local").timezone).toBe("local");
+  expect(parseCalendarUrlState(new URLSearchParams("tz=bogus"), NOW, "local").timezone).toBe("local");
+  expect(parseCalendarUrlState(new URLSearchParams("tz=eve"), NOW, "local").timezone).toBe("eve");
+});
+
 test("falls back independently for invalid views dates filters and identifiers", () => {
   for (const date of ["bad", "2026-02-30", "2026-13-01"]) {
     const params = new URLSearchParams(`view=century&date=${date}&type=other&character=nope&tz=mars`);
