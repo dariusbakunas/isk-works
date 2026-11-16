@@ -400,7 +400,9 @@ body {
 .iw-calendar-day:nth-child(7n) { border-right: 0; }
 .iw-calendar-day[data-in-month="false"] { background: color-mix(in srgb, var(--color-background) 70%, var(--color-panel)); color: var(--iw-calendar-faint); }
 .iw-calendar-day[data-selected="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 70%, transparent); }
-.iw-calendar-day-number { display: grid; width: 18px; height: 18px; margin-bottom: 2px; place-items: center; border-radius: 50%; color: var(--color-muted); font-size: 0.625rem; }
+.iw-calendar-day-header { display: flex; width: 100%; margin-bottom: 2px; border-radius: 3px; cursor: pointer; }
+.iw-calendar-day-header:hover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+.iw-calendar-day-number { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 50%; color: var(--color-muted); font-size: 0.625rem; }
 .iw-calendar-day[data-today="true"] .iw-calendar-day-number { background: var(--color-accent); color: var(--color-background); font-weight: 800; }
 .iw-calendar-day-events { display: grid; min-width: 0; gap: 2px; }
 .iw-calendar-chip { min-width: 0; overflow: hidden; border-radius: 2px; padding: 2px 4px 2px 6px; font-size: 0.625rem; line-height: 1rem; text-align: left; }
@@ -487,7 +489,7 @@ body {
   .iw-calendar-month { width: 280px; max-width: 100%; margin-inline: auto; }
   .iw-calendar-weekdays > div { padding: 4px 0; text-align: center; }
   .iw-calendar-day { min-height: 40px; padding: 2px; }
-  .iw-calendar-day-number { margin: 0 auto; }
+  .iw-calendar-day-header { justify-content: center; }
   .iw-calendar-day-events { display: flex; justify-content: center; gap: 2px; }
   .iw-calendar-chip { width: 5px; height: 5px; padding: 0; border-radius: 50%; font-size: 0; }
   .iw-calendar-chip > * { display: none; }
