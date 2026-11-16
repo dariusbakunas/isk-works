@@ -38,7 +38,7 @@ pub use build_graph::{BuildGraphCoordinator, BuildGraphError};
 pub use build_materials::{BuildMaterialsCoordinator, BuildMaterialsError, BuildMaterialsSummary};
 pub use build_preview::{BuildPlanningDeps, BuildPreviewCoordinator, BuildPreviewError};
 pub use build_worksheet::{BuildWorksheetCoordinator, BuildWorksheetError};
-pub use calendar::{CalendarMilestone, CalendarRange, CalendarService};
+pub use calendar::{CalendarEntriesService, CalendarMilestone, CalendarRange, CalendarService};
 pub use character_roster::{
     CharacterDetail, CharacterRosterEntry, CharacterRosterService, IndustryJobDto,
 };

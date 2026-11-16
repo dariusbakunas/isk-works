@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use iskworks_core::calendar_entry::{CalendarEntry, CalendarEntryInput, CalendarEntryRepository};
 use iskworks_core::calendar_event::{
     CalendarEventRepository, CalendarEventResponse, WorkspaceCalendarEvent,
 };
 use iskworks_core::{ConnectedCharacterId, IndustryActivity, StoreError, WorkspaceId};
 use serde::Serialize;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::character_roster::{CharacterDetail, CharacterRosterService};
 use crate::planetary::{PlanetaryService, PlanetaryTimer, PlanetaryTimerEvent};
@@ -90,6 +92,7 @@ pub struct CalendarService {
     source: Arc<dyn CalendarCharacterSource>,
     planetary: Option<Arc<dyn CalendarPlanetarySource>>,
     events: Option<Arc<dyn CalendarEventRepository>>,
+    entries: Option<Arc<dyn CalendarEntryRepository>>,
 }
 
 impl CalendarService {
@@ -99,6 +102,7 @@ impl CalendarService {
             source,
             planetary: None,
             events: None,
+            entries: None,
         }
     }
 
@@ -106,6 +110,13 @@ impl CalendarService {
     #[must_use]
     pub fn with_events(mut self, events: Arc<dyn CalendarEventRepository>) -> Self {
         self.events = Some(events);
+        self
+    }
+
+    /// Adds the workspace's custom entries.
+    #[must_use]
+    pub fn with_entries(mut self, entries: Arc<dyn CalendarEntryRepository>) -> Self {
+        self.entries = Some(entries);
         self
     }
 
@@ -142,6 +153,15 @@ impl CalendarService {
                 }
                 Err(error) => tracing::warn!(%error, "calendar events unavailable"),
             }
+        }
+        if let Some(entries) = &self.entries {
+            // The workspace's own data, not an optional ESI layer: a failure
+            // fails the calendar rather than silently hiding entries.
+            let rows = entries
+                .calendar_entries(workspace_id, range.from, range.to)
+                .await?;
+            milestones.extend(rows.into_iter().map(CalendarMilestone::from));
+            sort_milestones(&mut milestones);
         }
         Ok(milestones)
     }
@@ -238,6 +258,43 @@ pub struct CalendarEventMilestone {
     pub characters: Vec<CalendarEventCharacter>,
 }
 
+/// An entry the player added. Unlike the other kinds its character is
+/// optional, so it carries its own fields instead of
+/// [`CalendarMilestoneCommon`]. `description` is plain text.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarCustomMilestone {
+    pub id: String,
+    pub entry_id: Uuid,
+    pub title: String,
+    pub occurs_at: DateTime<Utc>,
+    /// The IANA zone the entry was entered in.
+    pub time_zone: String,
+    pub description: String,
+    pub connection_id: Option<ConnectedCharacterId>,
+    pub eve_character_id: Option<i64>,
+    pub character_name: Option<String>,
+}
+
+impl From<CalendarEntry> for CalendarMilestone {
+    fn from(entry: CalendarEntry) -> Self {
+        let character = entry.character;
+        Self::Custom {
+            milestone: CalendarCustomMilestone {
+                id: format!("custom:{}", entry.id),
+                entry_id: entry.id,
+                title: entry.title,
+                occurs_at: entry.occurs_at,
+                time_zone: entry.time_zone,
+                description: entry.description,
+                connection_id: character.as_ref().map(|c| c.connection_id),
+                eve_character_id: character.as_ref().map(|c| c.eve_character_id),
+                character_name: character.map(|c| c.character_name),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CalendarMilestone {
@@ -257,6 +314,10 @@ pub enum CalendarMilestone {
         #[serde(flatten)]
         milestone: CalendarEventMilestone,
     },
+    Custom {
+        #[serde(flatten)]
+        milestone: CalendarCustomMilestone,
+    },
 }
 
 impl CalendarMilestone {
@@ -267,6 +328,7 @@ impl CalendarMilestone {
             Self::Skill { milestone } => &milestone.common.id,
             Self::Planetary { milestone } => &milestone.common.id,
             Self::Event { milestone } => &milestone.common.id,
+            Self::Custom { milestone } => &milestone.id,
         }
     }
 
@@ -276,6 +338,7 @@ impl CalendarMilestone {
             Self::Skill { milestone } => milestone.occurs_at,
             Self::Planetary { milestone } => milestone.occurs_at,
             Self::Event { milestone } => milestone.occurs_at,
+            Self::Custom { milestone } => milestone.occurs_at,
         }
     }
 }
@@ -503,6 +566,51 @@ pub fn project_event_milestones(
             })
         })
         .collect()
+}
+
+/// Creates, edits and deletes custom entries; each write returns the entry
+/// as the Calendar shows it.
+#[derive(Clone)]
+pub struct CalendarEntriesService {
+    repository: Arc<dyn CalendarEntryRepository>,
+}
+
+impl CalendarEntriesService {
+    #[must_use]
+    pub fn new(repository: Arc<dyn CalendarEntryRepository>) -> Self {
+        Self { repository }
+    }
+
+    pub async fn create(
+        &self,
+        workspace_id: WorkspaceId,
+        input: CalendarEntryInput,
+    ) -> Result<CalendarMilestone, StoreError> {
+        let entry = self
+            .repository
+            .create_calendar_entry(workspace_id, input.validated()?)
+            .await?;
+        Ok(entry.into())
+    }
+
+    pub async fn update(
+        &self,
+        workspace_id: WorkspaceId,
+        id: Uuid,
+        input: CalendarEntryInput,
+    ) -> Result<CalendarMilestone, StoreError> {
+        let entry = self
+            .repository
+            .update_calendar_entry(workspace_id, id, input.validated()?)
+            .await?;
+        Ok(entry.into())
+    }
+
+    pub async fn delete(&self, workspace_id: WorkspaceId, id: Uuid) -> Result<(), StoreError> {
+        self.repository
+            .delete_calendar_entry(workspace_id, id)
+            .await
+    }
 }
 
 fn roman_level(level: i64) -> String {

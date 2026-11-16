@@ -14,9 +14,13 @@ use crate::character_roster::{
     CharacterDetail, CharacterRosterEntry, IndustryJobDto, SkillQueueEntryDto,
 };
 
+use iskworks_core::calendar_entry::{
+    CalendarEntryCharacter, CalendarEntryInput, FakeCalendarEntries,
+};
+
 use super::{
-    project_calendar_milestones, CalendarCharacterSource, CalendarMilestone, CalendarRange,
-    CalendarService,
+    project_calendar_milestones, CalendarCharacterSource, CalendarEntriesService,
+    CalendarMilestone, CalendarRange, CalendarService,
 };
 
 fn instant(day: u32, hour: u32) -> chrono::DateTime<Utc> {
@@ -395,6 +399,128 @@ async fn a_planetary_failure_leaves_the_rest_of_the_calendar_intact() {
 
     assert_eq!(milestones.len(), 1);
     assert!(milestones[0].id().starts_with("industry:"));
+}
+
+fn entry_input(title: &str, occurs_at: chrono::DateTime<Utc>) -> CalendarEntryInput {
+    CalendarEntryInput {
+        occurs_at,
+        time_zone: "America/New_York".into(),
+        title: title.into(),
+        description: String::new(),
+        connection_id: None,
+    }
+}
+
+#[tokio::test]
+async fn custom_entries_join_the_calendar_in_time_order_within_the_range() {
+    let (workspace, service) = planetary_service(Ok(Vec::new()));
+    let valka = CalendarEntryCharacter {
+        connection_id: ConnectedCharacterId(Uuid::from_u128(10)),
+        eve_character_id: 10,
+        character_name: "Valka".into(),
+    };
+    let entries = Arc::new(FakeCalendarEntries::default().with_character(workspace, valka));
+    let writes = CalendarEntriesService::new(entries.clone());
+    let service = service.with_entries(entries);
+    writes
+        .create(workspace, entry_input("Early note", instant(2, 6)))
+        .await
+        .unwrap();
+    writes
+        .create(
+            workspace,
+            CalendarEntryInput {
+                description: "  Bring ammo  ".into(),
+                connection_id: Some(ConnectedCharacterId(Uuid::from_u128(10))),
+                ..entry_input("  Fleet op ", instant(9, 18))
+            },
+        )
+        .await
+        .unwrap();
+    writes
+        .create(
+            workspace,
+            entry_input(
+                "November",
+                Utc.with_ymd_and_hms(2026, 11, 2, 0, 0, 0).unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+
+    let milestones = service.range(workspace, october_range()).await.unwrap();
+
+    let kinds: Vec<_> = milestones
+        .iter()
+        .map(|milestone| serde_json::to_value(milestone).unwrap()["kind"].clone())
+        .collect();
+    assert_eq!(kinds, ["custom", "industry", "custom"]);
+    let note = serde_json::to_value(&milestones[0]).unwrap();
+    assert_eq!(note["title"], "Early note");
+    assert_eq!(note["timeZone"], "America/New_York");
+    assert_eq!(note["connectionId"], serde_json::Value::Null);
+    assert_eq!(note["characterName"], serde_json::Value::Null);
+    assert!(note["id"].as_str().unwrap().starts_with("custom:"));
+    let op = serde_json::to_value(&milestones[2]).unwrap();
+    assert_eq!(op["title"], "Fleet op");
+    assert_eq!(op["description"], "Bring ammo");
+    assert_eq!(op["characterName"], "Valka");
+    assert_eq!(op["eveCharacterId"], 10);
+}
+
+#[tokio::test]
+async fn entry_writes_validate_and_stay_in_their_workspace() {
+    let workspace = WorkspaceId(Uuid::from_u128(100));
+    let other = WorkspaceId(Uuid::from_u128(200));
+    let writes = CalendarEntriesService::new(Arc::new(FakeCalendarEntries::default()));
+
+    assert!(matches!(
+        writes
+            .create(workspace, entry_input("  ", instant(2, 6)))
+            .await,
+        Err(StoreError::Validation(_))
+    ));
+    assert!(matches!(
+        writes
+            .create(
+                workspace,
+                CalendarEntryInput {
+                    connection_id: Some(ConnectedCharacterId(Uuid::from_u128(99))),
+                    ..entry_input("Spy", instant(2, 6))
+                },
+            )
+            .await,
+        Err(StoreError::Validation(_))
+    ));
+
+    let CalendarMilestone::Custom { milestone } = writes
+        .create(workspace, entry_input("Note", instant(2, 6)))
+        .await
+        .unwrap()
+    else {
+        panic!("a custom entry");
+    };
+    let id = milestone.entry_id;
+    assert!(matches!(
+        writes
+            .update(other, id, entry_input("Hijack", instant(2, 6)))
+            .await,
+        Err(StoreError::NotFound)
+    ));
+    let CalendarMilestone::Custom { milestone } = writes
+        .update(workspace, id, entry_input("Moved", instant(3, 6)))
+        .await
+        .unwrap()
+    else {
+        panic!("a custom entry");
+    };
+    assert_eq!(milestone.title, "Moved");
+    assert_eq!(milestone.occurs_at, instant(3, 6));
+    assert!(matches!(
+        writes.delete(other, id).await,
+        Err(StoreError::NotFound)
+    ));
+    writes.delete(workspace, id).await.unwrap();
 }
 
 #[sqlx::test(migrations = "../../migrations")]
