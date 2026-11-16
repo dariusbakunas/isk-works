@@ -40,6 +40,7 @@ export function CalendarFilters({
           ["skill", "Skills", "Skill milestones"],
           ["planetary", "Planetary", "Planetary timers"],
           ["event", "Events", "In-game calendar events"],
+          ["custom", "Custom", "Custom entries"],
         ]}
         value={type}
       />

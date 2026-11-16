@@ -52,15 +52,27 @@ export function ownerTypeLabel(ownerType: string | null): string | null {
   return ownerTypeLabels[ownerType] ?? ownerType;
 }
 
-/** Every connection a milestone belongs to: all viewers of an event. */
+/** Every connection a milestone belongs to: all viewers of an event; none
+ * for a custom entry without a character. */
 export function milestoneConnectionIds(milestone: CalendarMilestone): string[] {
-  return milestone.kind === "event"
-    ? milestone.characters.map((character) => character.connectionId)
-    : [milestone.connectionId];
+  if (milestone.kind === "event") return milestone.characters.map((character) => character.connectionId);
+  if (milestone.kind === "custom") return milestone.connectionId ? [milestone.connectionId] : [];
+  return [milestone.connectionId];
 }
 
-/** "Aeva" or "Aeva +2" for an event several characters see. */
+/** Whether the character filter shows the milestone. A custom entry without
+ * a character is a workspace-wide note: no filter hides it. */
+export function matchesCharacterFilter(milestone: CalendarMilestone, selected: readonly string[]): boolean {
+  if (selected.length === 0) return true;
+  const ids = milestoneConnectionIds(milestone);
+  if (milestone.kind === "custom" && ids.length === 0) return true;
+  return ids.some((id) => selected.includes(id));
+}
+
+/** "Aeva" or "Aeva +2" for an event several characters see; "No character"
+ * for a workspace-wide custom entry. */
 export function milestoneCharacterSummary(milestone: CalendarMilestone): string {
+  if (milestone.kind === "custom") return milestone.characterName ?? "No character";
   if (milestone.kind !== "event" || milestone.characters.length <= 1) return milestone.characterName;
   return `${milestone.characterName} +${milestone.characters.length - 1}`;
 }

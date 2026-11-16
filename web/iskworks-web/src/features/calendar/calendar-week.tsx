@@ -1,9 +1,8 @@
 import type { CalendarMilestone } from "../../api/calendar";
-import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { CalendarEmptyState } from "./calendar-empty-state";
 import { dateKey, formatDateLabel, formatTime, isToday, weekDateKeys, type CalendarTimezone } from "./calendar-dates";
 import { eventEndsAt, milestoneCharacterSummary } from "./calendar-events";
-import { presentCalendarMilestone } from "./calendar-presentation";
+import { MilestonePortrait, presentCalendarMilestone } from "./calendar-presentation";
 
 export function CalendarWeekView({
   anchor,
@@ -67,7 +66,7 @@ export function CalendarWeekView({
                     >
                       <time>{time}</time>
                       <span className="iw-calendar-week-card-title"><Icon aria-hidden="true" /> <span>{milestone.title}</span></span>
-                      <span className="iw-calendar-week-card-character"><EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={16} /><span>{milestoneCharacterSummary(milestone)}</span></span>
+                      <span className="iw-calendar-week-card-character"><MilestonePortrait milestone={milestone} size={16} /><span>{milestoneCharacterSummary(milestone)}</span></span>
                     </button>
                   );
                 }) : <span aria-hidden="true" className="iw-calendar-week-empty-day">—</span>}

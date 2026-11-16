@@ -5,16 +5,17 @@ import { dateKey, formatMonthLabel, isToday, monthGrid, yearMonths, type Calenda
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 type KindTotals = Record<CalendarMilestone["kind"], number>;
-const KINDS = ["industry", "skill", "planetary", "event"] as const satisfies readonly CalendarMilestone["kind"][];
+const KINDS = ["industry", "skill", "planetary", "event", "custom"] as const satisfies readonly CalendarMilestone["kind"][];
 const MARKERS: Record<CalendarMilestone["kind"], { letter: string; label: string }> = {
   industry: { letter: "I", label: "Industry milestones" },
   skill: { letter: "S", label: "Skill milestones" },
   planetary: { letter: "P", label: "Planetary timers" },
   event: { letter: "E", label: "In-game events" },
+  custom: { letter: "C", label: "Custom entries" },
 };
 
 function emptyTotals(): KindTotals {
-  return { industry: 0, skill: 0, planetary: 0, event: 0 };
+  return { industry: 0, skill: 0, planetary: 0, event: 0, custom: 0 };
 }
 
 export function CalendarYearView({

@@ -8,14 +8,16 @@ import {
   GraduationCap,
   PackageX,
   RefreshCcw,
+  StickyNote,
   type LucideIcon,
 } from "lucide-react";
 import type { CalendarMilestone } from "../../api/calendar";
+import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 
 export interface CalendarMilestonePresentation {
-  kindLabel: "Industry" | "Skill" | "Planetary" | "Event";
+  kindLabel: "Industry" | "Skill" | "Planetary" | "Event" | "Custom";
   activityLabel: string;
-  tone: "industry" | "skill" | "planetary" | "event";
+  tone: "industry" | "skill" | "planetary" | "event" | "custom";
   icon: LucideIcon;
   accessibleLabel: string;
 }
@@ -32,6 +34,17 @@ const industryPresentation: Record<string, { label: string; icon: LucideIcon }> 
 };
 
 export function presentCalendarMilestone(milestone: CalendarMilestone): CalendarMilestonePresentation {
+  if (milestone.kind === "custom") {
+    return {
+      kindLabel: "Custom",
+      activityLabel: "Custom entry",
+      tone: "custom",
+      icon: StickyNote,
+      accessibleLabel: milestone.characterName
+        ? `${milestone.title}, custom entry for ${milestone.characterName}`
+        : `${milestone.title}, custom entry`,
+    };
+  }
   if (milestone.kind === "event") {
     const names = milestone.characters.map((character) => character.characterName);
     const audience = names.length > 0 ? names.join(", ") : milestone.characterName;
@@ -70,6 +83,19 @@ export function presentCalendarMilestone(milestone: CalendarMilestone): Calendar
     icon: activity.icon,
     accessibleLabel: `${milestone.title}, ${activity.label} for ${milestone.characterName}`,
   };
+}
+
+/** The milestone's character portrait, or a note icon for a custom entry
+ * that belongs to no character. */
+export function MilestonePortrait({ milestone, size }: { milestone: CalendarMilestone; size: 16 | 32 }) {
+  if (milestone.kind === "custom" && (milestone.eveCharacterId === null || milestone.characterName === null)) {
+    return (
+      <span aria-hidden="true" className="grid shrink-0 place-items-center rounded border border-border bg-panel-strong text-muted" style={{ width: size, height: size }}>
+        <StickyNote className="h-1/2 w-1/2" />
+      </span>
+    );
+  }
+  return <EveCharacterPortrait characterId={milestone.eveCharacterId!} characterName={milestone.characterName!} size={size} />;
 }
 
 export function CalendarMilestoneLabel({ milestone }: { milestone: CalendarMilestone }) {
