@@ -21,9 +21,11 @@ function parseDate(value: string | null): string | null {
   return dateKey(candidate, "eve") === value ? value : null;
 }
 
-export function parseCalendarUrlState(params: URLSearchParams, now = new Date()): CalendarUrlState {
+/** `fallbackTimezone` applies only when the URL names no valid `tz`. */
+export function parseCalendarUrlState(params: URLSearchParams, now = new Date(), fallbackTimezone: CalendarTimezone = "eve"): CalendarUrlState {
   const type = params.get("type");
-  const timezone: CalendarTimezone = params.get("tz") === "local" ? "local" : "eve";
+  const tz = params.get("tz");
+  const timezone: CalendarTimezone = tz === "local" || tz === "eve" ? tz : fallbackTimezone;
   const requestedView = params.get("view");
   const view: CalendarView = requestedView === "week" || requestedView === "year" ? requestedView : "month";
   const characters = [...new Set(params.getAll("character").filter((id) => UUID_PATTERN.test(id)))];

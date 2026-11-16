@@ -18,6 +18,7 @@ const getCalendar = vi.mocked(getCalendarMilestones);
 const getCharacters = vi.mocked(listCharacters);
 
 beforeEach(() => {
+  window.localStorage.clear();
   getCalendar.mockReset().mockResolvedValue(CALENDAR_MILESTONE_FIXTURES);
   getCharacters.mockReset().mockResolvedValue([
     { connectionId: "0aa719e8-f94f-4ef1-8f47-cf649d3b2d95", eveCharacterId: 90000001, characterName: "Alix Morgan" },
@@ -83,6 +84,22 @@ test("pushes month navigation and replaces type, character, and timezone state",
   const today = new Date();
   expect(screen.getByTestId("location")).toHaveTextContent(`date=${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`);
   await waitFor(() => expect(getCalendar.mock.calls.length).toBeGreaterThanOrEqual(3));
+});
+
+test("remembers the timezone in the browser when the URL names none", async () => {
+  const user = userEvent.setup();
+  const first = renderPage();
+  await screen.findByRole("button", { name: /Scimitar, Manufacturing/ });
+  await user.click(screen.getByRole("button", { name: "Local time" }));
+  first.unmount();
+
+  const second = renderPage("/calendar?view=month&date=2026-10-02");
+  expect(screen.getByRole("button", { name: "Local time" })).toHaveAttribute("aria-pressed", "true");
+  second.unmount();
+
+  // An explicit tz in a shared link still wins.
+  renderPage("/calendar?view=month&date=2026-10-02&tz=eve");
+  expect(screen.getByRole("button", { name: "EVE time" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("distinguishes loading and API failure", async () => {

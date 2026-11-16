@@ -12,6 +12,7 @@ import { CalendarMonthView, milestonesForDay } from "./calendar-month";
 import { milestoneCharacterSummary, milestoneConnectionIds } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
 import { CalendarScopeHint } from "./calendar-scope-hint";
+import { readCalendarTimezone, writeCalendarTimezone } from "./calendar-timezone-preference";
 import { parseCalendarUrlState, serializeCalendarUrlState, type CalendarUrlState } from "./calendar-url-state";
 import { CalendarWeekView } from "./calendar-week";
 import { CalendarYearView } from "./calendar-year";
@@ -19,7 +20,7 @@ import { apiMessage } from "../../api/api-error";
 
 export function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const state = useMemo(() => parseCalendarUrlState(searchParams), [searchParams]);
+  const state = useMemo(() => parseCalendarUrlState(searchParams, new Date(), readCalendarTimezone()), [searchParams]);
   const [milestones, setMilestones] = useState<CalendarMilestone[]>([]);
   const [characters, setCharacters] = useState<CalendarCharacterOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,7 +134,10 @@ export function CalendarPage() {
         <CalendarFilters
           characters={characters}
           onCharactersChange={(value) => setState({ ...state, characters: value }, true)}
-          onTimezoneChange={(value) => setState({ ...state, timezone: value }, true)}
+          onTimezoneChange={(value) => {
+            writeCalendarTimezone(value);
+            setState({ ...state, timezone: value }, true);
+          }}
           onTypeChange={(value) => setState({ ...state, type: value }, true)}
           selectedCharacterIds={state.characters}
           timezone={state.timezone}
