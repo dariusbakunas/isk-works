@@ -20,6 +20,7 @@ mod admin;
 mod assets;
 mod auth;
 mod blueprint_library;
+mod calendar_entries;
 mod cascade;
 mod erase;
 mod esi;
@@ -42,6 +43,7 @@ pub use auth::{
     PgSessionRepository, PgUserRepository,
 };
 pub use blueprint_library::PgBlueprintLibraryRepository;
+pub use calendar_entries::PgCalendarEntryRepository;
 pub use esi::{
     EsiObservationPruneOutcome, FacilityLabel, PendingAuthorization, PgEsiRepository,
     StoredRefreshToken,
