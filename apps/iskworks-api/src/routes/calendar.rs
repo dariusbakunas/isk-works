@@ -1,10 +1,13 @@
-use axum::extract::{Query, State};
-use axum::routing::get;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use iskworks_app::{CalendarMilestone, CalendarRange};
-use iskworks_core::StoreError;
+use iskworks_core::calendar_entry::CalendarEntryInput;
+use iskworks_core::{ConnectedCharacterId, StoreError};
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{workspace_context, ApiError, AppState};
 
@@ -14,8 +17,78 @@ struct CalendarQuery {
     to: String,
 }
 
+/// A custom entry as the web sends it; `occursAt` is the UTC instant the
+/// client computed from the wall-clock time in `timeZone`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CalendarEntryRequest {
+    occurs_at: DateTime<Utc>,
+    time_zone: String,
+    title: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    connection_id: Option<Uuid>,
+}
+
+impl From<CalendarEntryRequest> for CalendarEntryInput {
+    fn from(request: CalendarEntryRequest) -> Self {
+        Self {
+            occurs_at: request.occurs_at,
+            time_zone: request.time_zone,
+            title: request.title,
+            description: request.description.unwrap_or_default(),
+            connection_id: request.connection_id.map(ConnectedCharacterId),
+        }
+    }
+}
+
 pub(crate) fn router() -> Router<AppState> {
-    Router::new().route("/api/calendar", get(get_calendar))
+    Router::new()
+        .route("/api/calendar", get(get_calendar))
+        .route("/api/calendar/entries", post(create_entry))
+        .route(
+            "/api/calendar/entries/:id",
+            put(update_entry).delete(delete_entry),
+        )
+}
+
+async fn create_entry(
+    State(state): State<AppState>,
+    Json(request): Json<CalendarEntryRequest>,
+) -> Result<(StatusCode, Json<CalendarMilestone>), ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    let entry = state
+        .calendar_entries_service()?
+        .create(workspace_id, request.into())
+        .await?;
+    Ok((StatusCode::CREATED, Json(entry)))
+}
+
+async fn update_entry(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<CalendarEntryRequest>,
+) -> Result<Json<CalendarMilestone>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .calendar_entries_service()?
+            .update(workspace_id, id, request.into())
+            .await?,
+    ))
+}
+
+async fn delete_entry(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    state
+        .calendar_entries_service()?
+        .delete(workspace_id, id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn get_calendar(

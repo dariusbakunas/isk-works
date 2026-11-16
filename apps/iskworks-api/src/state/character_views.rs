@@ -28,6 +28,8 @@ pub(crate) struct CharacterViewDeps {
         Option<Arc<dyn iskworks_core::pi_planner::PiPlannerInputsRepository>>,
     pub(super) pi_saved_plans_repository:
         Option<Arc<dyn iskworks_core::pi_planner::PiSavedPlansRepository>>,
+    pub(super) calendar_entry_repository:
+        Option<Arc<dyn iskworks_core::calendar_entry::CalendarEntryRepository>>,
     pub(super) asset_browser_repository: Option<Arc<iskworks_storage::PgAssetBrowserRepository>>,
     pub(super) fit_asset_holdings: Option<Arc<dyn iskworks_core::fitting::AssetHoldingsRepository>>,
 }
@@ -61,6 +63,15 @@ impl AppState {
         repository: Arc<dyn iskworks_core::pi_planner::PiSavedPlansRepository>,
     ) -> Self {
         self.character_views.pi_saved_plans_repository = Some(repository);
+        self
+    }
+
+    #[must_use]
+    pub fn with_calendar_entry_repository(
+        mut self,
+        repository: Arc<dyn iskworks_core::calendar_entry::CalendarEntryRepository>,
+    ) -> Self {
+        self.character_views.calendar_entry_repository = Some(repository);
         self
     }
 
@@ -259,7 +270,7 @@ impl AppState {
 
     /// Calendar milestones, plus Planetary Interaction timers whenever the PI
     /// read model is available (it is optional: without it the calendar
-    /// still serves industry and skill milestones).
+    /// still serves industry and skill milestones), plus custom entries.
     pub(crate) fn calendar_service(&self) -> Result<Arc<CalendarService>, ApiError> {
         let service =
             self.character_views
@@ -268,10 +279,28 @@ impl AppState {
                 .ok_or(ApiError::ServiceUnavailable(
                     "Calendar persistence is unavailable.",
                 ))?;
-        Ok(match self.planetary_service() {
-            Ok(planetary) => Arc::new((*service).clone().with_planetary(Arc::new(planetary))),
-            Err(_) => service,
-        })
+        let mut service = (*service).clone();
+        if let Ok(planetary) = self.planetary_service() {
+            service = service.with_planetary(Arc::new(planetary));
+        }
+        if let Some(entries) = self.character_views.calendar_entry_repository.clone() {
+            service = service.with_entries(entries);
+        }
+        Ok(Arc::new(service))
+    }
+
+    /// Writes to custom Calendar entries.
+    pub(crate) fn calendar_entries_service(
+        &self,
+    ) -> Result<iskworks_app::CalendarEntriesService, ApiError> {
+        let repository = self
+            .character_views
+            .calendar_entry_repository
+            .clone()
+            .ok_or(ApiError::ServiceUnavailable(
+                "Calendar entries are unavailable.",
+            ))?;
+        Ok(iskworks_app::CalendarEntriesService::new(repository))
     }
 
     pub(crate) fn jobs_service(&self) -> Result<Arc<iskworks_app::JobsService>, ApiError> {

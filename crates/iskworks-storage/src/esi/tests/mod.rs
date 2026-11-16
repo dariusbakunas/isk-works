@@ -14,6 +14,7 @@ use crate::industry::PgIndustryRepository;
 
 mod asset_snapshots;
 mod blueprints;
+mod calendar_entries;
 mod calendar_events;
 mod character_read_ports;
 mod character_sources;
