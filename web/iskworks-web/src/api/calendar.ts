@@ -1,5 +1,5 @@
 import type { IndustryActivity } from "./characters";
-import { ApiError } from "./workspace";
+import { ApiError, requestJson } from "./workspace";
 
 interface CalendarMilestoneCommon {
   id: string;
@@ -88,11 +88,65 @@ export interface CalendarEventMilestone extends CalendarMilestoneCommon {
   characters: CalendarEventCharacter[];
 }
 
+/**
+ * An entry the player added. Its character is optional (null for a
+ * workspace-wide note), so it does not share the other kinds' fields.
+ * `timeZone` is the IANA zone it was entered in; `description` is plain
+ * text, empty when there is none.
+ */
+export interface CalendarCustomMilestone {
+  kind: "custom";
+  id: string;
+  entryId: string;
+  title: string;
+  occursAt: string;
+  timeZone: string;
+  description: string;
+  connectionId: string | null;
+  eveCharacterId: number | null;
+  characterName: string | null;
+}
+
 export type CalendarMilestone =
   | CalendarIndustryMilestone
   | CalendarSkillMilestone
   | CalendarPlanetaryMilestone
-  | CalendarEventMilestone;
+  | CalendarEventMilestone
+  | CalendarCustomMilestone;
+
+/** A milestone that always belongs to one character. */
+export type CalendarCharacterMilestone = Exclude<CalendarMilestone, CalendarCustomMilestone>;
+
+export interface CalendarEntryInput {
+  /** The UTC instant, computed from the wall-clock time in `timeZone`. */
+  occursAt: string;
+  timeZone: string;
+  title: string;
+  description: string;
+  connectionId: string | null;
+}
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+export function createCalendarEntry(input: CalendarEntryInput): Promise<CalendarCustomMilestone> {
+  return requestJson<CalendarCustomMilestone>("/api/calendar/entries", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCalendarEntry(entryId: string, input: CalendarEntryInput): Promise<CalendarCustomMilestone> {
+  return requestJson<CalendarCustomMilestone>(`/api/calendar/entries/${encodeURIComponent(entryId)}`, {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteCalendarEntry(entryId: string): Promise<void> {
+  return requestJson<void>(`/api/calendar/entries/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+}
 
 export async function getCalendarMilestones(from: Date, to: Date): Promise<CalendarMilestone[]> {
   const query = new URLSearchParams({

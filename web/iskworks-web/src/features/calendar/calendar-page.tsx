@@ -1,15 +1,17 @@
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { getCalendarMilestones, type CalendarMilestone } from "../../api/calendar";
+import { deleteCalendarEntry, getCalendarMilestones, type CalendarCustomMilestone, type CalendarMilestone } from "../../api/calendar";
 import { listCharacters } from "../../api/characters";
 import { beginAuthorization } from "../../api/esi";
-import { InlineAlert, LoadingState, PageHeader } from "../../components/primitives";
+import { ConfirmDialog, InlineAlert, LoadingState, PageHeader } from "../../components/primitives";
 import { CalendarFilters, type CalendarCharacterOption } from "./calendar-filters";
 import { dateKey, dateKeyForMonth, formatDateLabel, formatMonthLabel, formatWeekLabel, monthFromDateKey, monthRange, shiftCalendarDate, weekRange, yearRange } from "./calendar-dates";
+import { CalendarEntryDialog, type CalendarEntryDraft } from "./calendar-entry-dialog";
+import { browserTimeZone, EVE_TIME_ZONE, utcToWallClock } from "./calendar-entry-time";
 import { CalendarInspector, type CalendarInspectorSelection } from "./calendar-inspector";
 import { CalendarMonthView, milestonesForDay } from "./calendar-month";
-import { milestoneCharacterSummary, milestoneConnectionIds } from "./calendar-events";
+import { matchesCharacterFilter, milestoneCharacterSummary } from "./calendar-events";
 import { presentCalendarMilestone } from "./calendar-presentation";
 import { CalendarScopeHint } from "./calendar-scope-hint";
 import { readCalendarTimezone, writeCalendarTimezone } from "./calendar-timezone-preference";
@@ -27,6 +29,8 @@ export function CalendarPage() {
   const [error, setError] = useState("");
   const [selection, setSelection] = useState<CalendarInspectorSelection | null>(null);
   const [returnFocusSelector, setReturnFocusSelector] = useState<string>();
+  const [entryDialog, setEntryDialog] = useState<{ draft: CalendarEntryDraft; entry?: CalendarCustomMilestone } | null>(null);
+  const [deleting, setDeleting] = useState<CalendarCustomMilestone | null>(null);
   const requestSequence = useRef(0);
   const requestedRange = useRef("");
   const month = monthFromDateKey(state.date);
@@ -81,8 +85,9 @@ export function CalendarPage() {
 
   const filtered = milestones.filter((milestone) =>
     (state.type === "all" || milestone.kind === state.type)
-    // An in-game event belongs to every character that sees it.
-    && (state.characters.length === 0 || milestoneConnectionIds(milestone).some((id) => state.characters.includes(id))));
+    // An in-game event belongs to every character that sees it; a custom
+    // entry without a character to none, and no filter hides it.
+    && matchesCharacterFilter(milestone, state.characters));
   const withoutCalendar = characters.filter((character) =>
     character.calendarScopeMissing
     && (state.characters.length === 0 || state.characters.includes(character.connectionId)));
@@ -93,6 +98,33 @@ export function CalendarPage() {
     setSearchParams(serializeCalendarUrlState(next), { replace });
     setSelection(null);
     setReturnFocusSelector(undefined);
+  }
+
+  /** A new entry starts on the selected day, at the next full hour, in the
+   * zone the calendar is showing. */
+  function newEntryDraft(): CalendarEntryDraft {
+    const timeZone = state.timezone === "eve" ? EVE_TIME_ZONE : browserTimeZone();
+    const nextHour = new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000);
+    return { date: state.date, time: utcToWallClock(nextHour, timeZone).time, timeZone };
+  }
+
+  /** Puts a saved entry into the loaded range without refetching it. */
+  function entrySaved(entry: CalendarCustomMilestone) {
+    setMilestones((current) => [...current.filter((milestone) => milestone.id !== entry.id), entry]
+      .sort((left, right) => left.occursAt.localeCompare(right.occursAt) || left.id.localeCompare(right.id)));
+    setEntryDialog(null);
+    setSelection({ kind: "milestone", milestone: entry });
+  }
+
+  async function confirmDelete(entry: CalendarCustomMilestone) {
+    setDeleting(null);
+    try {
+      await deleteCalendarEntry(entry.entryId);
+      setMilestones((current) => current.filter((milestone) => milestone.id !== entry.id));
+      setSelection(null);
+    } catch (caught) {
+      setError(apiMessage(caught));
+    }
   }
 
   async function reconnectWithCalendar() {
@@ -125,6 +157,7 @@ export function CalendarPage() {
           }} type="button">Today</button>
           <button aria-label={`Next ${state.view}`} className="iw-icon-button" onClick={() => setState({ ...state, date: shiftCalendarDate(state.date, state.view, 1) }, false)} type="button"><ChevronRight aria-hidden="true" className="h-4 w-4" /></button>
           <h2 className="ml-2 whitespace-nowrap text-base font-semibold">{state.view === "week" ? formatWeekLabel(state.date) : state.view === "year" ? state.date.slice(0, 4) : formatMonthLabel(month)}</h2>
+          <button className="iw-button-secondary ml-2 inline-flex items-center gap-1" onClick={() => setEntryDialog({ draft: newEntryDraft() })} type="button"><Plus aria-hidden="true" className="h-3.5 w-3.5" /> New entry</button>
           <div className="iw-calendar-view-switch" role="group" aria-label="Calendar view">
             <button aria-label="Week view" aria-pressed={state.view === "week"} onClick={() => setState({ ...state, view: "week" }, false)} type="button">Week</button>
             <button aria-label="Month view" aria-pressed={state.view === "month"} onClick={() => setState({ ...state, view: "month" }, false)} type="button">Month</button>
@@ -199,7 +232,36 @@ export function CalendarPage() {
           }} type="button"><span>{milestone.title}</span><small>{presentation.activityLabel} · {milestoneCharacterSummary(milestone)}</small></button>;
         }) : !loading && !error ? <p>No milestones this day.</p> : null}
       </section> : null}
-      {selection ? <CalendarInspector onClose={() => setSelection(null)} returnFocusSelector={returnFocusSelector} selection={selection} timezone={state.timezone} /> : null}
+      {selection ? (
+        <CalendarInspector
+          entryActions={{
+            onDelete: (entry) => setDeleting(entry),
+            onEdit: (entry) => setEntryDialog({ draft: newEntryDraft(), entry }),
+          }}
+          onClose={() => setSelection(null)}
+          returnFocusSelector={returnFocusSelector}
+          selection={selection}
+          timezone={state.timezone}
+        />
+      ) : null}
+      {entryDialog ? (
+        <CalendarEntryDialog
+          characters={characters}
+          draft={entryDialog.draft}
+          entry={entryDialog.entry}
+          onClose={() => setEntryDialog(null)}
+          onSaved={entrySaved}
+        />
+      ) : null}
+      <ConfirmDialog
+        confirmLabel="Delete entry"
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => { if (deleting) void confirmDelete(deleting); }}
+        open={deleting !== null}
+        title="Delete calendar entry?"
+      >
+        {deleting ? `"${deleting.title}" will be removed from the calendar.` : ""}
+      </ConfirmDialog>
     </section>
   );
 }

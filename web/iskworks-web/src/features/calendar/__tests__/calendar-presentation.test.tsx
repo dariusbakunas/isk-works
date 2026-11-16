@@ -26,5 +26,5 @@ test("truncates long visible labels while retaining the full title", () => {
   const label = screen.getByText(milestone.title);
   expect(label).toHaveClass("truncate");
   expect(label).toHaveAttribute("title", milestone.title);
-  expect(label.parentElement).toHaveAttribute("aria-label", expect.stringContaining(milestone.characterName));
+  expect(label.parentElement).toHaveAttribute("aria-label", expect.stringContaining(milestone.characterName!));
 });

@@ -1,18 +1,27 @@
+import { Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { CalendarMilestone } from "../../api/calendar";
+import type { CalendarCharacterMilestone, CalendarCustomMilestone, CalendarMilestone } from "../../api/calendar";
 import { EveCharacterPortrait } from "../../components/eve-character-portrait";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { PlannerInspectorShell } from "../../components/planner-inspector-shell";
 import { formatDateLabel, formatTime, type CalendarTimezone } from "./calendar-dates";
+import { EVE_TIME_ZONE, utcToWallClock } from "./calendar-entry-time";
 import { eventEndsAt, eventPlainText, formatEventDuration, milestoneCharacterSummary, ownerTypeLabel, responseLabel } from "./calendar-events";
-import { presentCalendarMilestone } from "./calendar-presentation";
+import { MilestonePortrait, presentCalendarMilestone } from "./calendar-presentation";
 
 export type CalendarInspectorSelection =
   | { kind: "milestone"; milestone: CalendarMilestone }
   | { kind: "day"; dateKey: string; milestones: CalendarMilestone[] };
 
-export function CalendarInspector({ onClose, returnFocusSelector, selection, timezone }: {
+/** What the inspector can do to a custom entry. */
+export interface CustomEntryActions {
+  onEdit: (milestone: CalendarCustomMilestone) => void;
+  onDelete: (milestone: CalendarCustomMilestone) => void;
+}
+
+export function CalendarInspector({ entryActions, onClose, returnFocusSelector, selection, timezone }: {
+  entryActions?: CustomEntryActions;
   onClose: () => void;
   returnFocusSelector?: string;
   selection: CalendarInspectorSelection;
@@ -36,14 +45,14 @@ export function CalendarInspector({ onClose, returnFocusSelector, selection, tim
       returnFocusSelector={returnFocusSelector}
       title={milestone?.title ?? groupTitle ?? "Calendar"}
     >
-      {milestone ? <MilestoneBody milestone={milestone} timezone={timezone} /> : grouped ? (
+      {milestone ? <MilestoneBody entryActions={entryActions} milestone={milestone} timezone={timezone} /> : grouped ? (
         <GroupedDayBody dateKey={grouped.dateKey} milestones={grouped.milestones} onSelect={setDrilledMilestone} timezone={timezone} />
       ) : null}
     </PlannerInspectorShell>
   );
 }
 
-function CharacterHeader({ milestone, timezone }: { milestone: CalendarMilestone; timezone: CalendarTimezone }) {
+function CharacterHeader({ milestone, timezone }: { milestone: CalendarCharacterMilestone; timezone: CalendarTimezone }) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-3 pb-3">
       <EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={32} />
@@ -52,7 +61,14 @@ function CharacterHeader({ milestone, timezone }: { milestone: CalendarMilestone
   );
 }
 
-function MilestoneBody({ milestone, timezone }: { milestone: CalendarMilestone; timezone: CalendarTimezone }) {
+function MilestoneBody({ entryActions, milestone, timezone }: {
+  entryActions?: CustomEntryActions;
+  milestone: CalendarMilestone;
+  timezone: CalendarTimezone;
+}) {
+  if (milestone.kind === "custom") {
+    return <div className="space-y-3 pb-4"><CustomBody actions={entryActions} milestone={milestone} timezone={timezone} /></div>;
+  }
   return (
     <div className="space-y-3 pb-4">
       {milestone.kind === "event" ? null : <CharacterHeader milestone={milestone} timezone={timezone} />}
@@ -179,6 +195,40 @@ function EventBody({ milestone, timezone }: { milestone: Extract<CalendarMilesto
   );
 }
 
+function CustomBody({ actions, milestone, timezone }: {
+  actions?: CustomEntryActions;
+  milestone: CalendarCustomMilestone;
+  timezone: CalendarTimezone;
+}) {
+  // The entry's own zone, when it is not the one the calendar shows.
+  const calendarZone = timezone === "eve" ? EVE_TIME_ZONE : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const ownClock = milestone.timeZone === calendarZone ? null : utcToWallClock(milestone.occursAt, milestone.timeZone);
+  return (
+    <div className="space-y-3 px-3 text-xs">
+      <div className="flex items-center gap-2">
+        <MilestonePortrait milestone={milestone} size={32} />
+        <p className="min-w-0 flex-1 truncate font-semibold">{milestone.characterName ?? "No character"}</p>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <Fact label="When" value={formatTime(milestone.occursAt, timezone)} />
+        {ownClock ? <Fact label={milestone.timeZone} value={`${formatDateLabel(ownClock.date)}, ${ownClock.time}`} /> : null}
+      </dl>
+      {milestone.description ? (
+        <section aria-label="Entry description" className="space-y-1">
+          <h3 className="text-[0.625rem] font-semibold uppercase text-muted">Description</h3>
+          <p className="whitespace-pre-wrap break-words rounded border border-border bg-panel-strong p-2 text-foreground">{milestone.description}</p>
+        </section>
+      ) : null}
+      {actions ? (
+        <div className="flex gap-2">
+          <button className="iw-button-secondary inline-flex items-center gap-1" onClick={() => actions.onEdit(milestone)} type="button"><Pencil aria-hidden="true" className="h-3.5 w-3.5" /> Edit</button>
+          <button className="iw-button-secondary inline-flex items-center gap-1" onClick={() => actions.onDelete(milestone)} type="button"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" /> Delete</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Fact({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-[0.625rem] font-semibold uppercase text-muted">{label}</dt><dd className="mt-0.5 text-foreground">{value}</dd></div>;
 }
@@ -193,13 +243,14 @@ function GroupedDayBody({ dateKey, milestones, onSelect, timezone }: {
   const skill = milestones.filter((milestone) => milestone.kind === "skill").length;
   const planetary = milestones.filter((milestone) => milestone.kind === "planetary").length;
   const events = milestones.filter((milestone) => milestone.kind === "event").length;
+  const custom = milestones.filter((milestone) => milestone.kind === "custom").length;
   return (
     <div className="space-y-2 px-3 pb-4">
-      <p className="text-xs font-semibold text-muted">{industry} Industry · {skill} Skill · {planetary} Planetary · {events} Event</p>
+      <p className="text-xs font-semibold text-muted">{industry} Industry · {skill} Skill · {planetary} Planetary · {events} Event{custom ? ` · ${custom} Custom` : ""}</p>
       <div className="divide-y divide-border rounded border border-border">
         {milestones.map((milestone) => (
           <button aria-label={`Open ${milestone.title}`} className="flex w-full items-center gap-2 p-2 text-left hover:bg-panel-strong" key={milestone.id} onClick={() => onSelect(milestone)} type="button">
-            <EveCharacterPortrait characterId={milestone.eveCharacterId} characterName={milestone.characterName} size={32} />
+            <MilestonePortrait milestone={milestone} size={32} />
             <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{milestone.title}</span><span className="text-[0.625rem] text-muted">{formatTime(milestone.occursAt, timezone)} · {milestoneCharacterSummary(milestone)}</span></span>
           </button>
         ))}
