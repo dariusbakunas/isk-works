@@ -44,16 +44,16 @@ const TONE_CLASSES: Record<AttentionTone, string> = {
 /** The top strip: one chip per thing that needs the player, each a link to
  * the page that resolves it (spec §3.1). Chips are the links; there is no
  * View all. */
-export function AttentionPanel() {
+export function AttentionPanel({ className = "" }: { className?: string }) {
   const { sources } = useOverviewData();
   const nowMs = useNow();
   const attention = attentionChips(sources, nowMs);
   const { chips, unavailable, pending } = attention;
 
-  if (chips.length === 0 && pending) return <PanelFrame state={{ kind: "loading" }} title="Attention" />;
+  if (chips.length === 0 && pending) return <PanelFrame className={className} state={{ kind: "loading" }} title="Attention" />;
 
   return (
-    <PanelFrame state={{ kind: "ready" }} title="Attention">
+    <PanelFrame className={className} state={{ kind: "ready" }} title="Attention">
       <div className="flex min-h-12 flex-wrap items-center gap-1.5 p-2">
         {chips.map((chip) => {
           const Icon = CHIP_ICONS[chip.id];

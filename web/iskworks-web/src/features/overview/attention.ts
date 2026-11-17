@@ -181,7 +181,8 @@ const RULES: Rule[] = [
 
 /** What on the Overview needs the player now (spec §3.1, §9.9). */
 export function attentionChips(sources: AttentionSources, nowMs: number): Attention {
-  const states = Object.values(sources) as SourceState<unknown>[];
+  // Only the sources the rules read: a caller may pass more (the calendar).
+  const states: SourceState<unknown>[] = [sources.characters, sources.jobs, sources.market, sources.planetary, sources.runway];
   const chips = RULES.flatMap((rule): AttentionChip[] => {
     const count = rule.count(sources, nowMs);
     if (!count) return [];

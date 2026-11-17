@@ -1,6 +1,11 @@
-import { Users } from "lucide-react";
+import { RefreshCw, Users } from "lucide-react";
 
 import { ButtonLink, InlineAlert } from "../../components/primitives";
+import { ago } from "../jobs/jobs-format";
+import { useNow } from "../jobs/use-jobs";
+import { AgendaPanel } from "./agenda-panel";
+import { AttentionPanel } from "./attention-panel";
+import { IndustryPanel } from "./industry-panel";
 import { OverviewDataProvider, useOverviewData } from "./overview-data";
 
 // Overview: the home page. One read-only screen of what needs attention,
@@ -15,17 +20,39 @@ export function OverviewPage() {
 }
 
 function Overview() {
-  const { sources, hasCharacters } = useOverviewData();
+  const { sources, hasCharacters, reloadAll, updatedAt } = useOverviewData();
+  const nowMs = useNow();
   const characters = sources.characters;
+  const refreshing = Object.values(sources).some((source) => source.refreshing);
+
   return (
     <>
-      <header className="mb-3 flex items-baseline gap-2">
+      <header className="mb-3 flex items-center gap-2">
         <h1 className="iw-title">Overview</h1>
+        {updatedAt !== null ? <span className="text-xs text-muted">Updated {ago(new Date(updatedAt).toISOString(), nowMs)}</span> : null}
+        {hasCharacters ? (
+          <button
+            aria-label="Refresh overview"
+            className="iw-button-secondary ml-auto h-8 w-8 justify-center p-0"
+            disabled={refreshing}
+            onClick={reloadAll}
+            title="Refresh overview"
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+        ) : null}
       </header>
-      {characters.error ? (
+      {characters.error && !characters.data ? (
         <InlineAlert title="Couldn't load your characters">{characters.errorMessage}</InlineAlert>
       ) : hasCharacters === false ? (
         <EmptyWorkspace />
+      ) : hasCharacters ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-12">
+          <AttentionPanel className="lg:col-span-2 xl:col-span-12" />
+          <AgendaPanel className="xl:col-span-4" />
+          <IndustryPanel className="xl:col-span-8" />
+        </div>
       ) : null}
     </>
   );
