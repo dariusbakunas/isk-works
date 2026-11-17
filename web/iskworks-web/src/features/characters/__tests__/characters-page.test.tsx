@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { CharacterRosterEntry } from "../../../api/characters";
@@ -69,10 +69,16 @@ function entry(overrides: Partial<CharacterRosterEntry> = {}): CharacterRosterEn
   };
 }
 
-function renderPage() {
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>;
+}
+
+function renderPage(initialEntry = "/characters") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <CharactersPage />
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -189,6 +195,34 @@ describe("CharactersPage", () => {
     await user.click(screen.getByRole("button", { name: "Close character inspector" }));
 
     expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument();
+  });
+
+  test("?character= opens that character's inspector, and the URL follows open and close", async () => {
+    charactersApi.listCharacters.mockResolvedValue([entry({ characterName: "Aeva Stark" }), entry({ characterName: "Drake Orin" })]);
+    charactersApi.getCharacter.mockResolvedValue({ ...entry({ characterName: "Drake Orin" }), sources: [], industryJobs: [] });
+    const user = userEvent.setup();
+
+    renderPage("/characters?character=conn-Drake%20Orin");
+
+    expect(await screen.findByRole("tab", { name: "Overview" })).toBeInTheDocument();
+    expect(charactersApi.getCharacter).toHaveBeenCalledWith("conn-Drake Orin");
+
+    await user.click(screen.getByRole("button", { name: "Close character inspector" }));
+    expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/characters$/);
+
+    await user.click(screen.getByRole("button", { name: /Aeva Stark/ }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/characters?character=conn-Aeva+Stark");
+  });
+
+  test("an unknown ?character= just shows the roster", async () => {
+    charactersApi.listCharacters.mockResolvedValue([entry({ characterName: "Aeva Stark" })]);
+
+    renderPage("/characters?character=not-connected");
+
+    expect(await screen.findByText("Aeva Stark")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument();
+    expect(charactersApi.getCharacter).not.toHaveBeenCalled();
   });
 
   test("a training completion boundary reconciles just that character via a targeted refetch", async () => {

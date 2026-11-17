@@ -1,5 +1,6 @@
 import { Search, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { getCharacter, listCharacters, type CharacterRosterEntry } from "../../api/characters";
 import { beginAuthorization } from "../../api/esi";
@@ -34,7 +35,10 @@ export function CharactersPage() {
   const [sort, setSort] = useState<RosterSort>("name");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState("");
-  const [openConnectionId, setOpenConnectionId] = useState<string | null>(null);
+  // The open inspector lives in the URL (`?character=<connectionId>`), so
+  // other pages (the Overview's Characters strip) can link straight to it.
+  const [params, setParams] = useSearchParams();
+  const requestedConnectionId = params.get("character");
 
   function load() {
     listCharacters()
@@ -96,6 +100,24 @@ export function CharactersPage() {
   const needsAttentionCount = useMemo(
     () => entries.filter((entry) => entry.health !== "healthy").length,
     [entries],
+  );
+  // Only a character on the roster opens; an unknown id just shows the roster.
+  const openConnectionId =
+    requestedConnectionId !== null && entries.some((entry) => entry.connectionId === requestedConnectionId)
+      ? requestedConnectionId
+      : null;
+  const setOpenConnectionId = useCallback(
+    (connectionId: string | null) =>
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (connectionId === null) next.delete("character");
+          else next.set("character", connectionId);
+          return next;
+        },
+        { replace: connectionId === null },
+      ),
+    [setParams],
   );
   const visible = useMemo(
     () => sortEntries(entries.filter((entry) => matchesFilter(entry, filter) && matchesSearch(entry, search)), sort),
