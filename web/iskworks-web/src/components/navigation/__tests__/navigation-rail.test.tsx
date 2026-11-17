@@ -87,10 +87,10 @@ describe("NavigationRail", () => {
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 
-  test("the brand links to the Characters home", () => {
+  test("the brand links to the Overview home", () => {
     renderRail();
 
-    expect(screen.getByRole("link", { name: /ISK Works/ })).toHaveAttribute("href", "/characters");
+    expect(screen.getByRole("link", { name: /ISK Works/ })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Help" })).toHaveAttribute("href", "/help");
   });
 

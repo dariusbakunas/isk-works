@@ -5,7 +5,7 @@ import { adminNavItem, flatNavItems, isNavPathActive, navGroups, resolveNavEntry
 describe("navigation registry", () => {
   test("groups pages as Pilots, Industry, Stock, Trade", () => {
     expect(navGroups.map((group) => group.label)).toEqual(["Pilots", "Industry", "Stock", "Trade"]);
-    expect(navGroups[0].items.map((item) => item.label)).toEqual(["Characters", "Skills", "Fittings", "Calendar"]);
+    expect(navGroups[0].items.map((item) => item.label)).toEqual(["Overview", "Characters", "Skills", "Fittings", "Calendar"]);
   });
 
   test("every entry has an icon and a unique path", () => {
@@ -24,6 +24,13 @@ describe("navigation registry", () => {
     expect(isNavPathActive("/builds", "/builds")).toBe(true);
     expect(isNavPathActive("/builds/blueprints", "/builds")).toBe(true);
     expect(isNavPathActive("/market-orders", "/market")).toBe(false);
+  });
+
+  test("Overview (the home page) is active only on / itself", () => {
+    expect(isNavPathActive("/", "/")).toBe(true);
+    expect(isNavPathActive("/jobs", "/")).toBe(false);
+    expect(resolveNavEntry("/")?.label).toBe("Overview");
+    expect(resolveNavEntry("/jobs")?.label).toBe("Jobs");
   });
 
   test("resolves a location to the most specific entry", () => {
