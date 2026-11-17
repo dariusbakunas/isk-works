@@ -7,6 +7,7 @@ import type { MarketOrdersOverview } from "../../../api/market-orders";
 import type { PlanetaryOverview } from "../../../api/planetary";
 import type { InventoryRunway } from "../../../api/inventory-analytics";
 import type { FinanceAnalytics } from "../../../api/finance-analytics";
+import type { OrderSummary } from "../../../api/industry/orders";
 import { sampleAnalytics } from "../../finance/analytics/__tests__/fixtures";
 import { activeJobs } from "../../jobs/__tests__/fixtures";
 
@@ -144,6 +145,33 @@ export function customMilestone(overrides: Partial<Extract<CalendarMilestone, { 
   };
 }
 
+export function epic(overrides: Partial<OrderSummary> = {}): OrderSummary {
+  return {
+    id: "order-1",
+    workspaceId: "workspace-1",
+    ownerId: "owner-1",
+    sourceBuildId: "build-1",
+    sourceBuildRevision: 1,
+    displayName: "Rorqual ×1",
+    runs: 1,
+    recipeFingerprint: "fp",
+    priceSnapshotId: "snapshot-1",
+    estimatedMaterialCost: "1000.0000",
+    expectedRevenue: null,
+    estimatedMargin: null,
+    missingPriceCount: 0,
+    createdAt: hoursFromNow(-240),
+    updatedAt: hoursFromNow(-2),
+    startedAt: hoursFromNow(-200),
+    completedAt: null,
+    canceledAt: null,
+    archivedAt: null,
+    status: "inProgress",
+    rollup: { satisfied: 31, needsAction: 12, inProgress: 5, total: 48, readyToStart: 5 },
+    ...overrides,
+  };
+}
+
 export interface OverviewPayloads {
   characters: CharacterRosterEntry[];
   jobs: ActiveJobs;
@@ -152,10 +180,11 @@ export interface OverviewPayloads {
   runway: InventoryRunway;
   calendar: CalendarMilestone[];
   finance: FinanceAnalytics;
+  orders: OrderSummary[];
 }
 
 /** One URL fragment per Overview source, in the order the page asks. */
-export const sourceUrls = ["/api/characters", "/api/jobs", "/api/market-orders", "/api/planetary", "/api/inventory/runway", "/api/calendar", "/api/finance/analytics"];
+export const sourceUrls = ["/api/characters", "/api/jobs", "/api/market-orders", "/api/planetary", "/api/inventory/runway", "/api/calendar", "/api/finance/analytics", "/api/orders"];
 
 function respond(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
@@ -171,6 +200,7 @@ export function fetchByUrl(overrides: Partial<Record<keyof OverviewPayloads, unk
     runway: runway(),
     calendar: [skillMilestone()],
     finance: sampleAnalytics(),
+    orders: [epic()],
     ...overrides,
   };
   const keyFor = (url: string): keyof OverviewPayloads | null => {
@@ -181,6 +211,7 @@ export function fetchByUrl(overrides: Partial<Record<keyof OverviewPayloads, unk
     if (url.includes("/api/inventory/runway")) return "runway";
     if (url.includes("/api/calendar")) return "calendar";
     if (url.includes("/api/finance/analytics")) return "finance";
+    if (url.includes("/api/orders")) return "orders";
     return null;
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

@@ -4,6 +4,7 @@ import { getCalendarMilestones, type CalendarMilestone } from "../../api/calenda
 import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
 import { getFinanceAnalytics, type FinanceAnalytics } from "../../api/finance-analytics";
 import { getInventoryRunway, type InventoryRunway } from "../../api/inventory-analytics";
+import { listOrders, type OrderSummary } from "../../api/industry/orders";
 import { getActiveJobs, type ActiveJobs } from "../../api/jobs";
 import { getMarketOrders, type MarketOrdersOverview } from "../../api/market-orders";
 import { getPlanetary, type PlanetaryOverview } from "../../api/planetary";
@@ -23,6 +24,7 @@ export interface OverviewSources {
   runway: Loaded<InventoryRunway>;
   calendar: Loaded<CalendarMilestone[]>;
   finance: Loaded<FinanceAnalytics>;
+  orders: Loaded<OrderSummary[]>;
 }
 
 interface OverviewData {
@@ -75,10 +77,11 @@ export function OverviewDataProvider({ children }: { children: ReactNode }) {
     }),
     "finance",
   );
+  const orders = useLoad(gate(() => listOrders("active")), "orders");
 
   const sources = useMemo(
-    () => ({ characters, jobs, market, planetary, runway, calendar, finance }),
-    [characters, jobs, market, planetary, runway, calendar, finance],
+    () => ({ characters, jobs, market, planetary, runway, calendar, finance, orders }),
+    [characters, jobs, market, planetary, runway, calendar, finance, orders],
   );
   const all = Object.values(sources) as Loaded<unknown>[];
   const pending = all.some((source) => source.loading || source.refreshing) || hasCharacters === null;
@@ -89,8 +92,8 @@ export function OverviewDataProvider({ children }: { children: ReactNode }) {
   }, [pending]);
 
   const reloadAll = useCallback(() => {
-    for (const source of [characters, jobs, market, planetary, runway, calendar, finance]) source.reload();
-  }, [characters, jobs, market, planetary, runway, calendar, finance]);
+    for (const source of [characters, jobs, market, planetary, runway, calendar, finance, orders]) source.reload();
+  }, [characters, jobs, market, planetary, runway, calendar, finance, orders]);
 
   const value = useMemo(
     () => ({ sources, hasCharacters, reloadAll, updatedAt }),
