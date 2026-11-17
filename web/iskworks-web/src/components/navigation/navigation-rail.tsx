@@ -65,7 +65,7 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
 
   return (
     <>
-      <Link className={`flex h-[52px] shrink-0 items-center overflow-hidden ${rowFocus}`} to="/characters">
+      <Link className={`flex h-[52px] shrink-0 items-center overflow-hidden ${rowFocus}`} to="/">
         <span className="grid w-[51px] shrink-0 place-items-center">
           <img alt="" aria-hidden="true" className="h-7 w-7" src={mascotHead} />
         </span>

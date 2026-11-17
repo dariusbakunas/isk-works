@@ -10,6 +10,7 @@ import {
   Hammer,
   Kanban,
   Landmark,
+  LayoutDashboard,
   Rocket,
   Shield,
   Store,
@@ -49,15 +50,14 @@ export interface NavEntry {
   parent?: NavItem;
 }
 
-// The one list of app pages: the primary nav and (later) the command palette
-// read it. Characters is the alpha home surface (`/` redirects here), so it
-// leads. Overview (static placeholder) and Sales (unbuilt) are deliberately
-// absent for the alpha.
+// The one list of app pages: the primary nav and the command palette read it.
+// Overview is the home page (`/`), so it leads.
 export const navGroups: NavGroup[] = [
   {
     id: "pilots",
     label: "Pilots",
     items: [
+      { label: "Overview", path: "/", icon: LayoutDashboard, keywords: ["home", "dashboard"] },
       { label: "Characters", path: "/characters", icon: Users, keywords: ["alts"] },
       {
         label: "Skills",

@@ -203,7 +203,7 @@ describe("App workspace gate", () => {
     expect(screen.queryByRole("heading", { name: "Create your workspace" })).not.toBeInTheDocument();
   });
 
-  test("successful creation redirects to the Characters home", async () => {
+  test("successful creation lands on the Overview home", async () => {
     mockFetchSequence([{ configured: false, workspace: null, owner: null }, configuredWorkspace, []]);
     const user = userEvent.setup();
 
@@ -212,16 +212,16 @@ describe("App workspace gate", () => {
     await user.type(await screen.findByLabelText("Workspace name"), "Personal Industry");
     await user.click(screen.getByRole("button", { name: "Start workspace" }));
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByText("Personal Industry")).toBeInTheDocument();
   });
 
-  test("configured workspace redirects from setup to the Characters home", async () => {
+  test("configured workspace redirects from setup to the Overview home", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/setup");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Create your workspace" })).not.toBeInTheDocument();
   });
 
@@ -273,7 +273,7 @@ describe("App auth gate fails closed", () => {
 
     expect(await screen.findByText("We couldn't verify your session")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Characters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
     // No workspace/data request may fire while the session is unverified.
     expect(fetchMock.mock.calls.every(([input]) => String(input).endsWith("/api/auth/session"))).toBe(true);
@@ -285,7 +285,7 @@ describe("App auth gate fails closed", () => {
     renderApp("/");
 
     expect(await screen.findByText("We couldn't verify your session")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Characters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
   });
 
   test("a non-auth 503 fails closed and is not mistaken for auth-disabled", async () => {
@@ -294,7 +294,7 @@ describe("App auth gate fails closed", () => {
     renderApp("/");
 
     expect(await screen.findByText("We couldn't verify your session")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Characters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
   });
 
   test("Retry re-checks the session and loads the app once it recovers", async () => {
@@ -316,7 +316,7 @@ describe("App auth gate fails closed", () => {
     renderApp("/");
 
     await user.click(await screen.findByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 
   test("an explicit auth_not_configured (local/dev) still enters the legacy workspace path", async () => {
@@ -335,7 +335,7 @@ describe("App auth gate fails closed", () => {
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByText("We couldn't verify your session")).not.toBeInTheDocument();
   });
 });
@@ -425,7 +425,7 @@ describe("EVE SSO login gate", () => {
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue with EVE Online" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Characters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
   });
 
   test("an authenticated session passes through to the app with the character shown", async () => {
@@ -433,7 +433,7 @@ describe("EVE SSO login gate", () => {
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
     expect(screen.getByText(authenticatedSession.characterName)).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: /Account/ }));
@@ -460,7 +460,7 @@ describe("EVE SSO login gate", () => {
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Account/ })).not.toBeInTheDocument();
   });
@@ -472,34 +472,35 @@ describe("App routes", () => {
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByTitle("API v1.2.3 (a1b2c3d)")).toHaveTextContent("v1.2.3 (a1b2c3d)");
   });
 
-  test("/ lands on the Characters home", async () => {
+  test("/ is the Overview home, with a connect prompt for a workspace without characters", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/characters");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(await screen.findByRole("heading", { name: "Connect your first character" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect character" })).toHaveAttribute("href", "/characters");
   });
 
-  test("the primary nav is the alpha surface: Characters first, Board present, no Overview or Sales", async () => {
+  test("the primary nav leads with Overview, has Board, and no Sales", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     const primaryNav = screen.getByRole("navigation", { name: "Primary navigation" });
     const navLabels = within(primaryNav)
       .getAllByRole("link")
       .map((link) => link.textContent?.trim());
 
-    expect(navLabels[0]).toBe("Characters");
+    expect(navLabels.slice(0, 2)).toEqual(["Overview", "Characters"]);
     expect(navLabels).toContain("Board");
     expect(navLabels).toContain("Planetary");
-    expect(navLabels).not.toContain("Overview");
     expect(navLabels).not.toContain("Sales");
   });
 
@@ -507,7 +508,7 @@ describe("App routes", () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     const navLabels = within(screen.getByRole("navigation", { name: "Primary navigation" }))
       .getAllByRole("link")
@@ -532,23 +533,23 @@ describe("App routes", () => {
 
     withSession({ ...authenticatedSession, isAdmin: true });
     const admin = renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(adminLink()).toBeInTheDocument();
     admin.unmount();
 
     withSession(authenticatedSession);
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(adminLink()).not.toBeInTheDocument();
   });
 
   test("navigation routes still render", async () => {
-    mockFetchSequence([configuredWorkspace, [], [], [], [], [], [], []]);
+    mockFetchSequence([configuredWorkspace, [], [], [], [], [], [], [], []]);
     const user = userEvent.setup();
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: /Builds/ }));
     expect(await screen.findByRole("heading", { name: "Builds" })).toBeInTheDocument();
@@ -601,7 +602,7 @@ describe("App routes", () => {
     const user = userEvent.setup();
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     await user.click(within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("link", { name: /^Market Orders$/ }));
     expect(await screen.findByRole("heading", { name: "Market Orders" })).toBeInTheDocument();
@@ -631,7 +632,7 @@ describe("App routes", () => {
     const user = userEvent.setup();
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     const primaryNav = screen.getByRole("navigation", { name: "Primary navigation" });
     const labels = within(primaryNav).getAllByRole("link").map((link) => link.textContent);
@@ -641,15 +642,15 @@ describe("App routes", () => {
     expect(await screen.findByText("Paste a fit from the game or pyfa")).toBeInTheDocument();
   });
 
-  test("the rail logo links to the Characters home", async () => {
+  test("the rail logo links to the Overview home", async () => {
     mockFetchSequence([configuredWorkspace, []]);
 
     renderApp("/");
-    await screen.findByRole("heading", { name: "Characters" });
+    await screen.findByRole("heading", { name: "Overview" });
 
     const rail = screen.getByRole("complementary", { name: "App navigation" });
     const logoLink = within(rail).getByRole("link", { name: /ISK Works/ });
-    expect(logoLink).toHaveAttribute("href", "/characters");
+    expect(logoLink).toHaveAttribute("href", "/");
   });
 
   test.each(
@@ -679,7 +680,7 @@ describe("App routes", () => {
     const user = userEvent.setup();
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     await user.keyboard("{Meta>}k{/Meta}");
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
@@ -694,7 +695,7 @@ describe("App routes", () => {
     const user = userEvent.setup();
 
     renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Characters" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     await user.keyboard("{Control>}k{/Control}");
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();

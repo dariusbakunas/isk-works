@@ -68,6 +68,7 @@ import { SkillsPage } from "./features/skills/skills-page";
 import { EveCallbackPage } from "./features/esi/eve-callback-page";
 import { HelpPage } from "./features/help/help-page";
 import { LegalPage } from "./features/legal/legal-page";
+import { OverviewPage } from "./features/overview/overview-page";
 import { typeInfoKind } from "./features/type-info/type-info-kind";
 
 type LoadState =
@@ -260,7 +261,7 @@ function SetupPage({
   const navigate = useNavigate();
 
   if (workspaceState.configured) {
-    return <Navigate to="/characters" replace />;
+    return <Navigate to="/" replace />;
   }
 
   async function submit(event: React.FormEvent) {
@@ -272,7 +273,7 @@ function SetupPage({
       const created = await createWorkspace(name);
       trackEvent("Workspace Created");
       onConfigured(created);
-      navigate("/characters", { replace: true });
+      navigate("/", { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
         setFieldError(error.body.fields?.name ?? "");
@@ -333,8 +334,7 @@ function ProtectedShell({
       isAdmin={isAdmin}
     >
       <Routes>
-        {/* Characters is the alpha home; there is no Overview route. */}
-        <Route path="/" element={<Navigate replace to="/characters" />} />
+        <Route path="/" element={<OverviewPage />} />
         <Route path="/characters" element={<CharactersPage />} />
         <Route path="/skills/*" element={<SkillsPage />} />
         <Route path="/fittings/*" element={<FittingsPage />} />
