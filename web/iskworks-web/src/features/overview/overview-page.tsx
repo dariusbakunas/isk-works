@@ -1,15 +1,22 @@
 import { Users } from "lucide-react";
 
-import { listCharacters } from "../../api/characters";
 import { ButtonLink, InlineAlert } from "../../components/primitives";
-import { useLoad } from "../../hooks/use-load";
+import { OverviewDataProvider, useOverviewData } from "./overview-data";
 
 // Overview: the home page. One read-only screen of what needs attention,
 // what's coming up and how the account is doing; each panel links to the
 // page it summarizes (spec 2026-11-17-dashboard-design).
 export function OverviewPage() {
-  const characters = useLoad(() => listCharacters(), "characters");
+  return (
+    <OverviewDataProvider>
+      <Overview />
+    </OverviewDataProvider>
+  );
+}
 
+function Overview() {
+  const { sources, hasCharacters } = useOverviewData();
+  const characters = sources.characters;
   return (
     <>
       <header className="mb-3 flex items-baseline gap-2">
@@ -17,7 +24,7 @@ export function OverviewPage() {
       </header>
       {characters.error ? (
         <InlineAlert title="Couldn't load your characters">{characters.errorMessage}</InlineAlert>
-      ) : characters.data?.length === 0 ? (
+      ) : hasCharacters === false ? (
         <EmptyWorkspace />
       ) : null}
     </>
