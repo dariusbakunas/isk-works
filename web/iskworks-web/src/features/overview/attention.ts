@@ -115,7 +115,7 @@ const RULES: Rule[] = [
   {
     id: "outbid",
     tone: "warn",
-    to: "/market-orders",
+    to: "/market-orders?outbid=1",
     label: ["order outbid", "orders outbid"],
     count: from("market", (market) => market.summary.outbid),
   },

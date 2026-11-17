@@ -6,20 +6,12 @@ import { ActivityChip, TicketChip } from "../jobs/job-cells";
 import { ago, characterById } from "../jobs/jobs-format";
 import { useNow } from "../jobs/use-jobs";
 import { useOverviewData } from "./overview-data";
+import { Stat } from "./stat";
 import { panelState, PanelFrame } from "./panel-frame";
 
 const JOB_LIMIT = 5;
 /** Above this many slots a meter draws a bar instead of one cell per slot. */
 const MAX_CELLS = 50;
-
-export function Stat({ label, children, accent = false }: { label: string; children: React.ReactNode; accent?: boolean }) {
-  return (
-    <div className="min-w-[6rem] flex-1 border-r border-border px-3 py-2 last:border-r-0">
-      <div className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted">{label}</div>
-      <div className={`font-mono text-lg font-bold tabular-nums ${accent ? "text-primary" : "text-foreground"}`}>{children}</div>
-    </div>
-  );
-}
 
 function SlotMeter({ label, usage }: { label: string; usage: SlotUsage }) {
   if (usage.max === null) {

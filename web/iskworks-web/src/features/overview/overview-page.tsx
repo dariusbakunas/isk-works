@@ -5,8 +5,13 @@ import { ago } from "../jobs/jobs-format";
 import { useNow } from "../jobs/use-jobs";
 import { AgendaPanel } from "./agenda-panel";
 import { AttentionPanel } from "./attention-panel";
+import { CharactersStrip } from "./characters-strip";
+import { EpicsPanel } from "./epics-panel";
 import { IndustryPanel } from "./industry-panel";
+import { MarketPanel } from "./market-panel";
+import { MoneyPanel } from "./money-panel";
 import { OverviewDataProvider, useOverviewData } from "./overview-data";
+import { PlanetaryPanel } from "./planetary-panel";
 
 // Overview: the home page. One read-only screen of what needs attention,
 // what's coming up and how the account is doing; each panel links to the
@@ -52,8 +57,13 @@ function Overview() {
         // its loading state rather than a blank page.
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-12">
           <AttentionPanel className="lg:col-span-2 xl:col-span-12" />
-          <AgendaPanel className="xl:col-span-4" />
+          <AgendaPanel className="xl:col-span-4 xl:row-span-2" />
           <IndustryPanel className="xl:col-span-8" />
+          <MarketPanel className="xl:col-span-4" />
+          <MoneyPanel className="xl:col-span-4" />
+          <EpicsPanel className="xl:col-span-6" />
+          <PlanetaryPanel className="xl:col-span-6" />
+          <CharactersStrip className="lg:col-span-2 xl:col-span-12" />
         </div>
       )}
     </>
