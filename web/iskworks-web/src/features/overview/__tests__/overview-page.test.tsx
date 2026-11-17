@@ -24,7 +24,7 @@ describe("OverviewPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    for (const name of ["Attention", "Next 48 h", "Industry"]) {
+    for (const name of ["Attention", "Next 48 h", "Industry", "Market", "Money", "Epics", "Planetary", "Characters"]) {
       expect(await screen.findByRole("region", { name })).toBeInTheDocument();
     }
     expect(await screen.findByText(/^Updated /)).toBeInTheDocument();
@@ -46,11 +46,11 @@ describe("OverviewPage", () => {
 
   test("with every source but the roster failing, each panel says so and the strip counts them", async () => {
     const down = new Error("unavailable");
-    fetchByUrl({ jobs: down, market: down, planetary: down, runway: down, calendar: down });
+    fetchByUrl({ jobs: down, market: down, planetary: down, runway: down, calendar: down, finance: down, orders: down });
     renderPage();
 
     expect(await screen.findByText("4 sources unavailable")).toBeInTheDocument();
-    for (const name of ["Next 48 h", "Industry"]) {
+    for (const name of ["Next 48 h", "Industry", "Market", "Money", "Epics", "Planetary"]) {
       const region = screen.getByRole("region", { name });
       expect(await within(region).findByRole("button", { name: "Retry" })).toBeInTheDocument();
     }

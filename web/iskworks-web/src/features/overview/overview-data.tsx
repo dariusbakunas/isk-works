@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { getCalendarMilestones, type CalendarMilestone } from "../../api/calendar";
 import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
@@ -13,6 +13,9 @@ import { useLoad, type Loaded } from "../../hooks/use-load";
 const AGENDA_WINDOW_MS = 48 * 3_600_000;
 /** The Money panel's window: the last 30 days, today included. */
 const FINANCE_DAYS = 30;
+
+/** Back on the tab after longer than this, everything reloads. */
+const STALE_AFTER_HIDDEN_MS = 5 * 60_000;
 
 const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
@@ -94,6 +97,27 @@ export function OverviewDataProvider({ children }: { children: ReactNode }) {
   const reloadAll = useCallback(() => {
     for (const source of [characters, jobs, market, planetary, runway, calendar, finance, orders]) source.reload();
   }, [characters, jobs, market, planetary, runway, calendar, finance, orders]);
+
+  // Reload on coming back to the tab after a while away; the Overview
+  // doesn't poll otherwise (spec §5).
+  const latestReloadAll = useRef(reloadAll);
+  useEffect(() => {
+    latestReloadAll.current = reloadAll;
+  });
+  useEffect(() => {
+    let hiddenAt: number | null = null;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (hiddenAt !== null) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = null;
+        if (away > STALE_AFTER_HIDDEN_MS) latestReloadAll.current();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   const value = useMemo(
     () => ({ sources, hasCharacters, reloadAll, updatedAt }),
