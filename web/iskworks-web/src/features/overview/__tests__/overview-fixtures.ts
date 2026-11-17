@@ -6,6 +6,8 @@ import type { ActiveJobs } from "../../../api/jobs";
 import type { MarketOrdersOverview } from "../../../api/market-orders";
 import type { PlanetaryOverview } from "../../../api/planetary";
 import type { InventoryRunway } from "../../../api/inventory-analytics";
+import type { FinanceAnalytics } from "../../../api/finance-analytics";
+import { sampleAnalytics } from "../../finance/analytics/__tests__/fixtures";
 import { activeJobs } from "../../jobs/__tests__/fixtures";
 
 export const NOW = new Date("2026-11-17T12:00:00Z");
@@ -149,10 +151,11 @@ export interface OverviewPayloads {
   planetary: PlanetaryOverview;
   runway: InventoryRunway;
   calendar: CalendarMilestone[];
+  finance: FinanceAnalytics;
 }
 
 /** One URL fragment per Overview source, in the order the page asks. */
-export const sourceUrls = ["/api/characters", "/api/jobs", "/api/market-orders", "/api/planetary", "/api/inventory/runway", "/api/calendar"];
+export const sourceUrls = ["/api/characters", "/api/jobs", "/api/market-orders", "/api/planetary", "/api/inventory/runway", "/api/calendar", "/api/finance/analytics"];
 
 function respond(body: unknown) {
   return { ok: true, status: 200, json: async () => body };
@@ -167,6 +170,7 @@ export function fetchByUrl(overrides: Partial<Record<keyof OverviewPayloads, unk
     planetary: planetaryOverview(),
     runway: runway(),
     calendar: [skillMilestone()],
+    finance: sampleAnalytics(),
     ...overrides,
   };
   const keyFor = (url: string): keyof OverviewPayloads | null => {
@@ -176,6 +180,7 @@ export function fetchByUrl(overrides: Partial<Record<keyof OverviewPayloads, unk
     if (url.includes("/api/planetary")) return "planetary";
     if (url.includes("/api/inventory/runway")) return "runway";
     if (url.includes("/api/calendar")) return "calendar";
+    if (url.includes("/api/finance/analytics")) return "finance";
     return null;
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
