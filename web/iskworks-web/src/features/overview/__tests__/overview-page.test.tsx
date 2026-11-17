@@ -57,6 +57,14 @@ describe("OverviewPage", () => {
     expect(screen.queryByText(/All clear/)).not.toBeInTheDocument();
   });
 
+  test("while the roster loads, the panels show their loading state", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    renderPage();
+
+    expect(screen.getByRole("status", { name: "Loading Attention" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading Industry" })).toBeInTheDocument();
+  });
+
   test("a roster failure is shown once, not as a wall of panels", async () => {
     fetchByUrl({ characters: new Error("roster down") });
     renderPage();

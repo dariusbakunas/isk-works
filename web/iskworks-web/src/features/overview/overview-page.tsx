@@ -47,13 +47,15 @@ function Overview() {
         <InlineAlert title="Couldn't load your characters">{characters.errorMessage}</InlineAlert>
       ) : hasCharacters === false ? (
         <EmptyWorkspace />
-      ) : hasCharacters ? (
+      ) : (
+        // While the roster loads (hasCharacters null), every panel shows
+        // its loading state rather than a blank page.
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-12">
           <AttentionPanel className="lg:col-span-2 xl:col-span-12" />
           <AgendaPanel className="xl:col-span-4" />
           <IndustryPanel className="xl:col-span-8" />
         </div>
-      ) : null}
+      )}
     </>
   );
 }
