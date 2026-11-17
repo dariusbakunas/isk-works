@@ -61,10 +61,10 @@ function SlotMeter({ label, usage }: { label: string; usage: SlotUsage }) {
   );
 }
 
-function JobRow({ job, characterName, nowMs }: { job: JobView; characterName: string | null; nowMs: number }) {
+function JobRow({ job, characterName, nowMs, mobileHidden }: { job: JobView; characterName: string | null; nowMs: number; mobileHidden: boolean }) {
   const progress = industryJobProgress(job, nowMs);
   return (
-    <li className="grid min-h-9 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-border/60 px-3 py-1 sm:grid-cols-[2.75rem_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_4.5rem]">
+    <li className={`${mobileHidden ? "hidden sm:grid" : "grid"} min-h-9 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-t border-border/60 px-3 py-1 sm:grid-cols-[2.75rem_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_4.5rem]`}>
       <ActivityChip activity={job.activity} compact />
       <span className="flex min-w-0 items-center gap-1.5">
         <span className="truncate text-xs text-foreground">{industryJobName(job)}</span>
@@ -121,8 +121,9 @@ export function IndustryPanel({ className = "" }: { className?: string }) {
             <p className="px-3 py-4 text-center text-xs text-muted">No jobs running.</p>
           ) : (
             <ul>
-              {data.jobs.slice(0, JOB_LIMIT).map((job) => (
+              {data.jobs.slice(0, JOB_LIMIT).map((job, index) => (
                 <JobRow
+                  mobileHidden={index >= 3}
                   key={`${job.connectionId}:${job.jobId}`}
                   characterName={characters.get(job.connectionId)?.characterName ?? null}
                   job={job}

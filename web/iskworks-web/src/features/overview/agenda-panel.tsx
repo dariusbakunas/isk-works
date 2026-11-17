@@ -11,6 +11,8 @@ import { useOverviewData } from "./overview-data";
 import { panelState, PanelFrame } from "./panel-frame";
 
 const ROW_LIMIT = 8;
+/** Below `sm` only the first few rows show (spec §9.11). */
+const MOBILE_ROWS = 3;
 const CALENDAR_WEEK = "/calendar?view=week";
 
 const TONE_COLORS: Record<CalendarMilestonePresentation["tone"], string> = {
@@ -85,19 +87,21 @@ export function AgendaPanel({ className = "" }: { className?: string }) {
   return (
     <PanelFrame className={className} link={{ to: CALENDAR_WEEK }} state={state} title="Next 48 h">
       <div>
-        {groups.map((group) => (
-          <div key={group.key}>
+        {groups.map((group, groupIndex) => {
+          const firstIndex = groups.slice(0, groupIndex).reduce((count, previous) => count + previous.rows.length, 0);
+          return (
+          <div key={group.key} className={firstIndex >= MOBILE_ROWS ? "hidden sm:block" : undefined}>
             <div className="flex h-6 items-center bg-panel-strong/60 px-3 text-[0.6875rem] font-semibold tracking-wider text-muted">
               {group.label}
             </div>
-            {group.rows.map((milestone) => {
+            {group.rows.map((milestone, rowIndex) => {
               const presentation = presentCalendarMilestone(milestone);
               const Icon = presentation.icon;
               return (
                 <Link
                   key={milestone.id}
                   aria-label={presentation.accessibleLabel}
-                  className="grid min-h-10 grid-cols-[4.5rem_1.25rem_minmax(0,1fr)] items-center gap-1 border-t border-border/60 px-3 py-1 hover:bg-panel-strong/50"
+                  className={`${firstIndex + rowIndex >= MOBILE_ROWS ? "hidden sm:grid" : "grid"} min-h-10 grid-cols-[4.5rem_1.25rem_minmax(0,1fr)] items-center gap-1 border-t border-border/60 px-3 py-1 hover:bg-panel-strong/50`}
                   to={`/calendar?view=week&date=${group.key}&tz=${timezone}`}
                 >
                   <span className="font-mono text-[0.6875rem] text-muted" title={`${eveDateTime(milestone.occursAt)} EVE`}>
@@ -114,7 +118,8 @@ export function AgendaPanel({ className = "" }: { className?: string }) {
               );
             })}
           </div>
-        ))}
+          );
+        })}
         {hidden > 0 ? (
           <Link className="block h-8 border-t border-border text-center text-xs leading-8 text-primary hover:underline" to={CALENDAR_WEEK}>
             +{hidden} more
