@@ -107,7 +107,7 @@ describe("attentionChips", () => {
     sources.market = ready(marketOverview({ summary: { ...marketOverview().summary, outbid: 7, likelyFilled: 1 } }));
     const { chips } = attentionChips(sources, now);
 
-    expect(chips.find((chip) => chip.id === "outbid")).toMatchObject({ tone: "warn", count: 7, label: "orders outbid", to: "/market-orders" });
+    expect(chips.find((chip) => chip.id === "outbid")).toMatchObject({ tone: "warn", count: 7, label: "orders outbid", to: "/market-orders?outbid=1" });
     expect(chips.find((chip) => chip.id === "likelyFilled")).toMatchObject({ tone: "info", count: 1, label: "order likely filled" });
   });
 

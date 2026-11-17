@@ -6,8 +6,14 @@ import { OverviewDataProvider, useOverviewData } from "../overview-data";
 import { fetchByUrl, sourceUrls } from "./overview-fixtures";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
 
 function Consumer({ name }: { name: string }) {
   const { sources } = useOverviewData();
@@ -66,5 +72,30 @@ describe("OverviewDataProvider", () => {
         expect(fetchMock.mock.calls.filter(([input]) => String(input).includes(url))).toHaveLength(2);
       }
     });
+  });
+
+  test("coming back to the tab after more than five minutes reloads; a quick switch doesn't", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = new Date("2026-11-17T12:00:00Z").getTime();
+    vi.setSystemTime(start);
+    const fetchMock = fetchByUrl();
+    render(
+      <OverviewDataProvider>
+        <Consumer name="strip" />
+      </OverviewDataProvider>,
+    );
+    await screen.findByText("strip: 3 running");
+    const jobsCalls = () => fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/jobs")).length;
+
+    setVisibility("hidden");
+    vi.setSystemTime(start + 2 * 60_000);
+    setVisibility("visible");
+    expect(jobsCalls()).toBe(1);
+
+    setVisibility("hidden");
+    vi.setSystemTime(start + 10 * 60_000);
+    setVisibility("visible");
+    await waitFor(() => expect(jobsCalls()).toBe(2));
+    setVisibility("visible");
   });
 });

@@ -1,14 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { getCalendarMilestones, type CalendarMilestone } from "../../api/calendar";
 import { listCharacters, type CharacterRosterEntry } from "../../api/characters";
+import { getFinanceAnalytics, type FinanceAnalytics } from "../../api/finance-analytics";
 import { getInventoryRunway, type InventoryRunway } from "../../api/inventory-analytics";
+import { listOrders, type OrderSummary } from "../../api/industry/orders";
 import { getActiveJobs, type ActiveJobs } from "../../api/jobs";
 import { getMarketOrders, type MarketOrdersOverview } from "../../api/market-orders";
 import { getPlanetary, type PlanetaryOverview } from "../../api/planetary";
 import { useLoad, type Loaded } from "../../hooks/use-load";
 
 const AGENDA_WINDOW_MS = 48 * 3_600_000;
+/** The Money panel's window: the last 30 days, today included. */
+const FINANCE_DAYS = 30;
+
+/** Back on the tab after longer than this, everything reloads. */
+const STALE_AFTER_HIDDEN_MS = 5 * 60_000;
+
+const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 export interface OverviewSources {
   characters: Loaded<CharacterRosterEntry[]>;
@@ -17,6 +26,8 @@ export interface OverviewSources {
   planetary: Loaded<PlanetaryOverview>;
   runway: Loaded<InventoryRunway>;
   calendar: Loaded<CalendarMilestone[]>;
+  finance: Loaded<FinanceAnalytics>;
+  orders: Loaded<OrderSummary[]>;
 }
 
 interface OverviewData {
@@ -50,10 +61,30 @@ export function OverviewDataProvider({ children }: { children: ReactNode }) {
     }),
     "calendar",
   );
+  // Inventory buys are build inputs, not spending (as on Finance › Analytics).
+  const finance = useLoad(
+    gate((signal) => {
+      const today = Date.now();
+      return getFinanceAnalytics(
+        {
+          connectionIds: [],
+          dateFrom: isoDate(today - (FINANCE_DAYS - 1) * 86_400_000),
+          dateTo: isoDate(today),
+          granularity: "day",
+          comparePrevious: true,
+          category: null,
+          excludeInventoryBuys: true,
+        },
+        signal,
+      );
+    }),
+    "finance",
+  );
+  const orders = useLoad(gate(() => listOrders("active")), "orders");
 
   const sources = useMemo(
-    () => ({ characters, jobs, market, planetary, runway, calendar }),
-    [characters, jobs, market, planetary, runway, calendar],
+    () => ({ characters, jobs, market, planetary, runway, calendar, finance, orders }),
+    [characters, jobs, market, planetary, runway, calendar, finance, orders],
   );
   const all = Object.values(sources) as Loaded<unknown>[];
   const pending = all.some((source) => source.loading || source.refreshing) || hasCharacters === null;
@@ -64,8 +95,29 @@ export function OverviewDataProvider({ children }: { children: ReactNode }) {
   }, [pending]);
 
   const reloadAll = useCallback(() => {
-    for (const source of [characters, jobs, market, planetary, runway, calendar]) source.reload();
-  }, [characters, jobs, market, planetary, runway, calendar]);
+    for (const source of [characters, jobs, market, planetary, runway, calendar, finance, orders]) source.reload();
+  }, [characters, jobs, market, planetary, runway, calendar, finance, orders]);
+
+  // Reload on coming back to the tab after a while away; the Overview
+  // doesn't poll otherwise (spec §5).
+  const latestReloadAll = useRef(reloadAll);
+  useEffect(() => {
+    latestReloadAll.current = reloadAll;
+  });
+  useEffect(() => {
+    let hiddenAt: number | null = null;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (hiddenAt !== null) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = null;
+        if (away > STALE_AFTER_HIDDEN_MS) latestReloadAll.current();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   const value = useMemo(
     () => ({ sources, hasCharacters, reloadAll, updatedAt }),

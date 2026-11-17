@@ -47,7 +47,7 @@ describe("AttentionPanel", () => {
       "7orders outbid",
       "4jobs ready to deliver",
     ]);
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/characters", "/market-orders", "/jobs"]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/characters", "/market-orders?outbid=1", "/jobs"]);
   });
 
   test("nothing pending reads as all clear", async () => {
