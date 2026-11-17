@@ -48,7 +48,7 @@ describe("CharactersStrip", () => {
     renderStrip();
 
     const kira = await card("Kira Vantor");
-    expect(kira).toHaveAttribute("href", "/characters");
+    expect(kira).toHaveAttribute("href", "/characters?character=11111111-1111-1111-1111-111111111111");
     expect(within(kira).getByText("Jita")).toBeInTheDocument();
     expect(within(kira).getByText("4.8B")).toBeInTheDocument();
     expect(within(kira).getByText("Caldari Industrial V")).toBeInTheDocument();

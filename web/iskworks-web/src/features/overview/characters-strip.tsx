@@ -49,7 +49,7 @@ function CharacterCard({ character, nowMs }: { character: CharacterRosterEntry; 
   return (
     <Link
       className="w-[13.5rem] shrink-0 rounded-[2px] border border-border bg-background/40 p-2.5 transition hover:border-primary/50"
-      to="/characters"
+      to={`/characters?${new URLSearchParams({ character: character.connectionId })}`}
     >
       <div className="flex items-center gap-2">
         <EveCharacterPortrait characterId={character.eveCharacterId} characterName={character.characterName} size={32} />
