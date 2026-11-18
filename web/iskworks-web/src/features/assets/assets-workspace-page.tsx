@@ -9,7 +9,9 @@ import { CharacterName } from "../../observability/private";
 import { FinanceCheckbox, FinanceFilterSection } from "../../components/finance-filter-controls";
 import { ExportColumnsDialog } from "../../components/export-columns-dialog";
 import { formatAssetDecimal } from "./asset-format";
+import { AssetContentsDialog } from "./asset-contents-dialog";
 import { AssetInspector } from "./asset-inspector";
+import { ContentsButton } from "./contents-button";
 import { useAssetsQuery } from "./use-assets-query";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
 import { apiMessage } from "../../api/api-error";
@@ -42,6 +44,7 @@ export function AssetsWorkspacePage() {
   const [order, setOrder] = useState<AssetSortDirection>("asc");
   const [visible, setVisible] = useState(new Set<AssetColumn>(columns.map(({ key }) => key)));
   const [selected, setSelected] = useState<FlatAssetRow | null>(null);
+  const [contentsOf, setContentsOf] = useState<FlatAssetRow | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,12 +72,13 @@ export function AssetsWorkspacePage() {
           <AssetFilters blueprints={blueprints} connectionIds={connectionIds} groupIds={groupIds} kinds={kinds} locationIds={locationIds} noCharacters={noCharacters} noGroups={noGroups} noKinds={noKinds} noLocations={noLocations} page={page} reconciliation={reconciliation} setBlueprints={setBlueprints} setConnectionIds={setConnectionIds} setGroupIds={setGroupIds} setKinds={setKinds} setLocationIds={setLocationIds} setNoCharacters={setNoCharacters} setNoGroups={setNoGroups} setNoKinds={setNoKinds} setNoLocations={setNoLocations} setReconciliation={setReconciliation} />
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-2"><div className="relative min-w-48 max-w-md flex-1"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input aria-label="Search assets" className="iw-input min-h-7 py-1 pl-7 text-xs" onChange={(event) => setSearchText(event.target.value)} placeholder="Search item, character, location, or container" value={searchText} /></div><span className="ml-auto whitespace-nowrap text-muted">{assets.rows.length} of {page?.total ?? 0} rows</span><ColumnChooser onChange={setVisible} visible={visible} /><Action disabled={!page || page.total === 0} icon={<Download className="h-3.5 w-3.5" />} label="Export" onClick={() => setExportOpen(true)} /><Action disabled={syncing} icon={<RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />} label={syncing ? "Syncing" : "Sync"} onClick={() => void handleSync()} /></div>
+          <div className="flex min-h-10 items-center gap-2 border-b border-border bg-panel px-2"><div className="relative min-w-48 max-w-md flex-1"><Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" /><input aria-label="Search assets" className="iw-input min-h-7 py-1 pl-7 text-xs" onChange={(event) => setSearchText(event.target.value)} placeholder="Search item, character, location, or group" value={searchText} /></div><span className="ml-auto whitespace-nowrap text-muted">{assets.rows.length} of {page?.total ?? 0} rows</span><ColumnChooser onChange={setVisible} visible={visible} /><Action disabled={!page || page.total === 0} icon={<Download className="h-3.5 w-3.5" />} label="Export" onClick={() => setExportOpen(true)} /><Action disabled={syncing} icon={<RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />} label={syncing ? "Syncing" : "Sync"} onClick={() => void handleSync()} /></div>
           {message ? <div className="border-b border-border bg-primary/10 px-3 py-1.5" role="status">{message}</div> : null}
-          <AssetTable assets={assets} onSelect={setSelected} onSort={changeSort} order={order} resetKey={queryKey} selected={selected} sort={sort} visible={visible} />
+          <AssetTable assets={assets} onOpenContents={setContentsOf} onSelect={setSelected} onSort={changeSort} order={order} resetKey={queryKey} selected={selected} sort={sort} visible={visible} />
         </main>
       </div>
-      {selected ? <AssetInspector asset={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <AssetInspector asset={selected} onClose={() => setSelected(null)} onOpenContents={setContentsOf} /> : null}
+      {contentsOf ? <AssetContentsDialog container={contentsOf} key={`${contentsOf.connectionId}:${contentsOf.eveItemId}`} onClose={() => setContentsOf(null)} /> : null}
       <ExportColumnsDialog
         columns={columns}
         description={`A CSV of the ${(page?.total ?? 0).toLocaleString()} asset stack${page?.total === 1 ? "" : "s"} matching the current filters, in the current sort order.`}
@@ -115,7 +119,7 @@ function FilterChecks<T extends string>({ all, selected, setSelected }: { all: T
   return <div className="space-y-1.5">{all.map((value) => <FinanceCheckbox checked={selected.length === 0 || selected.includes(value)} key={value} onChange={() => setSelected(toggleValue(selected, value, all))}><span className="capitalize">{labelStatus(value)}</span></FinanceCheckbox>)}</div>;
 }
 
-function AssetTable({ assets, onSelect, onSort, order, resetKey, selected, sort, visible }: { assets: ReturnType<typeof useAssetsQuery>; onSelect: (row: FlatAssetRow) => void; onSort: (column: AssetSortColumn) => void; order: AssetSortDirection; resetKey: string; selected: FlatAssetRow | null; sort: AssetSortColumn; visible: Set<AssetColumn> }) {
+function AssetTable({ assets, onOpenContents, onSelect, onSort, order, resetKey, selected, sort, visible }: { assets: ReturnType<typeof useAssetsQuery>; onOpenContents: (row: FlatAssetRow) => void; onSelect: (row: FlatAssetRow) => void; onSort: (column: AssetSortColumn) => void; order: AssetSortDirection; resetKey: string; selected: FlatAssetRow | null; sort: AssetSortColumn; visible: Set<AssetColumn> }) {
   const tableColumns: OperationalColumn[] = columns.filter(({ key }) => visible.has(key)).map((column) => ({
     key: column.key,
     label: column.label,
@@ -163,15 +167,15 @@ function AssetTable({ assets, onSelect, onSort, order, resetKey, selected, sort,
       scrollClassName="min-h-0 flex-1 overflow-y-auto"
       selectedRowKey={selected ? assetRowKey(selected) : null}
     >
-      <tbody>{assets.rows.map((row) => <AssetRow key={assetRowKey(row)} row={row} />)}</tbody>
+      <tbody>{assets.rows.map((row) => <AssetRow key={assetRowKey(row)} onOpenContents={onOpenContents} row={row} />)}</tbody>
     </OperationalTable>
   );
 }
 
 function assetRowKey(row: FlatAssetRow) { return `${row.connectionId}:${row.eveItemId}`; }
 
-function AssetRow({ row }: { row: FlatAssetRow }) {
-  const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() };
+function AssetRow({ onOpenContents, row }: { onOpenContents: (row: FlatAssetRow) => void; row: FlatAssetRow }) {
+  const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}{row.contentCount > 0 ? <ContentsButton count={row.contentCount} name={row.typeName ?? "Unknown item"} onOpen={() => onOpenContents(row)} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() };
   const cells = Object.fromEntries(
     Object.entries(values).map(([key, value]) => [
       key,

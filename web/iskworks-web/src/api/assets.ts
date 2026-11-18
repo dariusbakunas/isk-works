@@ -59,6 +59,8 @@ export interface FlatAssetRow {
   blueprint: AssetBrowserItem["blueprint"];
   reconciliation: AssetBrowserItem["reconciliation"];
   isContainer: boolean;
+  /** The stacks directly inside this one; 0 when it holds nothing. */
+  contentCount: number;
 }
 
 /** Summary and facets are workspace-wide, so only the first page (no cursor) carries them. */
@@ -78,6 +80,8 @@ export interface FlatAssetQuery {
   groupIds?: number[];
   blueprintKinds?: AssetBlueprintKindFilter[];
   reconciliationStates?: AssetReconciliationFilter[];
+  /** Only the stacks directly inside this item. */
+  containerItemId?: number;
   sort?: AssetSortColumn;
   order?: AssetSortDirection;
   cursor?: string;
