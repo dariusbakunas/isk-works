@@ -135,6 +135,9 @@ pub struct FlatAssetRow {
     pub blueprint: Option<AssetBlueprintSummary>,
     pub reconciliation: AssetReconciliationSummary,
     pub is_container: bool,
+    /// The stacks directly inside this one (a ship's fitting, cargo and
+    /// drones; a container's contents), 0 for anything that holds nothing.
+    pub content_count: i64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
@@ -191,6 +194,8 @@ pub struct FlatAssetQuery {
     pub blueprint_kinds: Vec<AssetBlueprintKindFilter>,
     #[serde(default)]
     pub reconciliation_states: Vec<AssetReconciliationFilter>,
+    /// Only the stacks directly inside this item (a container's contents).
+    pub container_item_id: Option<i64>,
     #[serde(default)]
     pub sort: AssetSortColumn,
     #[serde(default)]
@@ -208,6 +213,7 @@ pub struct ValidatedFlatAssetQuery {
     pub group_ids: Vec<i64>,
     pub blueprint_kinds: Vec<AssetBlueprintKindFilter>,
     pub reconciliation_states: Vec<AssetReconciliationFilter>,
+    pub container_item_id: Option<i64>,
     pub sort: AssetSortColumn,
     pub order: AssetSortDirection,
     pub cursor: Option<FlatAssetCursor>,
@@ -243,6 +249,7 @@ impl FlatAssetQuery {
             group_ids: self.group_ids,
             blueprint_kinds: self.blueprint_kinds,
             reconciliation_states: self.reconciliation_states,
+            container_item_id: self.container_item_id,
             sort: self.sort,
             order: self.order,
             cursor,
