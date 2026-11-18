@@ -24,6 +24,7 @@ function page(names: string[], nextCursor: string | null): FlatAssetPage {
       observedAt: "2026-08-06T12:00:00Z", blueprint: null,
       reconciliation: { state: "accounted", observedOwnerTypeQuantity: 1, accountedOwnerTypeQuantity: 1, scope: "ownerType" },
       isContainer: false,
+      contentCount: 0,
     })),
     total: nextCursor ? 4 : names.length,
     nextCursor,

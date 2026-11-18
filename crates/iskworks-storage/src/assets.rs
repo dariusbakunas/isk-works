@@ -597,6 +597,7 @@ impl PgAssetBrowserRepository {
             .bind(&reconciliation_states)
             .bind(limit)
             .bind(offset)
+            .bind(query.container_item_id)
             .fetch_all(&self.pool)
             .await
             .map_err(map_error)
@@ -611,9 +612,11 @@ impl PgAssetBrowserRepository {
 struct FlatItemLookups {
     /// `location_name`.
     location: bool,
-    /// `container_name`.
+    /// `container_name`. Search doesn't read it: matching a container's name
+    /// would return everything inside it, which the contents view shows.
     container: bool,
-    /// `is_container`, the blueprint columns and so `asset_kind`.
+    /// `content_count`, `is_container`, the blueprint columns and so
+    /// `asset_kind`.
     kind: bool,
     /// The owner/type quantities and so `reconciliation_state`.
     reconciliation: bool,
@@ -631,7 +634,7 @@ impl FlatItemLookups {
         let searching = !query.search.is_empty();
         Self {
             location: searching || query.sort == AssetSortColumn::Location,
-            container: searching || query.sort == AssetSortColumn::Container,
+            container: query.sort == AssetSortColumn::Container,
             kind: !query.asset_kinds.is_empty() || !query.blueprint_kinds.is_empty(),
             reconciliation: !query.reconciliation_states.is_empty()
                 || query.sort == AssetSortColumn::Status,
@@ -728,10 +731,11 @@ fn flat_item_rows_sql(source: &str, lookups: FlatItemLookups) -> String {
         joins.push_str(
             r#"
                  LEFT JOIN LATERAL (
-                   SELECT 1 AS present FROM esi_asset_observations possible_child
+                   SELECT COUNT(*)::bigint AS content_count
+                   FROM esi_asset_observations possible_child
                    WHERE possible_child.snapshot_id=asset.snapshot_id
                      AND possible_child.location_type='item'
-                     AND possible_child.location_id=asset.source_item_id LIMIT 1
+                     AND possible_child.location_id=asset.source_item_id
                  ) child ON true
                  LEFT JOIN blueprint_observations blueprint
                    ON blueprint.workspace_id=asset.workspace_id
@@ -783,7 +787,8 @@ fn flat_item_rows_sql(source: &str, lookups: FlatItemLookups) -> String {
                         asset.location_flag,asset.parent_item_id AS container_item_id,
                         {container_name} AS container_name,type.group_id,
                         type.group_name_en AS group_name,asset.observed_at,
-                        {is_container} AS is_container,
+                        {content_count} AS content_count,
+                        {content_count} > 0 AS is_container,
                         {blueprint_kind} AS blueprint_kind,
                         {material_efficiency} AS material_efficiency,
                         {time_efficiency} AS time_efficiency,
@@ -802,7 +807,7 @@ fn flat_item_rows_sql(source: &str, lookups: FlatItemLookups) -> String {
             "NULL::text",
         ),
         container_name = pick(container, "parent_type.name_en", "NULL::text"),
-        is_container = pick(kind, "child.present IS NOT NULL", "false"),
+        content_count = pick(kind, "child.content_count", "0::bigint"),
         blueprint_kind = pick(kind, "blueprint.blueprint_kind", "NULL::text"),
         material_efficiency = pick(
             kind,
@@ -833,7 +838,8 @@ const FLAT_ITEM_SOURCES: &str = r#"WITH current_assets AS MATERIALIZED (
 
 const FLAT_ITEM_FILTER: &str = r#"($2='' OR COALESCE(type_name,'') ILIKE $3
                    OR character_name ILIKE $3 OR COALESCE(location_name,'') ILIKE $3
-                   OR COALESCE(container_name,'') ILIKE $3 OR COALESCE(group_name,'') ILIKE $3)
+                   OR COALESCE(group_name,'') ILIKE $3)
+                   AND ($12::bigint IS NULL OR container_item_id=$12)
                    AND (cardinality($4::uuid[])=0 OR connection_id=ANY($4))
                    AND (cardinality($5::bigint[])=0 OR location_id=ANY($5))
                    AND (cardinality($6::text[])=0 OR asset_kind=ANY($6))
@@ -901,6 +907,7 @@ struct FlatItemRow {
     group_id: Option<i64>,
     group_name: Option<String>,
     observed_at: DateTime<Utc>,
+    content_count: i64,
     is_container: bool,
     blueprint_kind: Option<String>,
     material_efficiency: Option<i32>,
@@ -952,6 +959,7 @@ impl FlatItemRow {
                 scope: "ownerType",
             },
             is_container: self.is_container,
+            content_count: self.content_count,
         }
     }
 }
@@ -1295,7 +1303,7 @@ mod tests {
     async fn flat_assets_projects_location_container_and_exact_volume(pool: PgPool) {
         let (workspace_id, connection_id) = seed_flat_assets(&pool).await;
         let query: FlatAssetQuery = serde_json::from_value(serde_json::json!({
-            "search": "Station Container"
+            "search": "Caldari Navy"
         }))
         .expect("query");
         let page = PgAssetBrowserRepository::new(pool)
@@ -1330,6 +1338,42 @@ mod tests {
             page.summary.expect("summary").total_packaged_volume,
             "280.7500"
         );
+    }
+
+    /// Searching a container's name finds the container, not everything in
+    /// it; its contents are one `containerItemId` query away.
+    #[sqlx::test(migrations = "../../migrations")]
+    #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+    async fn flat_assets_search_skips_contents_which_the_container_filter_lists(pool: PgPool) {
+        let (workspace_id, _) = seed_flat_assets(&pool).await;
+        let repository = PgAssetBrowserRepository::new(pool);
+        let query: FlatAssetQuery =
+            serde_json::from_value(serde_json::json!({ "search": "Station Container" }))
+                .expect("query");
+        let page = repository
+            .flat_assets(workspace_id, &query.validate().expect("valid query"))
+            .await
+            .expect("search page");
+        assert_eq!(page.total, 1);
+        let container = &page.rows[0];
+        assert_eq!(container.eve_item_id, 5001);
+        assert!(container.is_container);
+        assert_eq!(container.content_count, 2);
+
+        let query: FlatAssetQuery =
+            serde_json::from_value(serde_json::json!({ "containerItemId": 5001 })).expect("query");
+        let page = repository
+            .flat_assets(workspace_id, &query.validate().expect("valid query"))
+            .await
+            .expect("contents page");
+        assert_eq!(page.total, 2);
+        let mut contents = page
+            .rows
+            .iter()
+            .map(|row| (row.eve_item_id, row.content_count))
+            .collect::<Vec<_>>();
+        contents.sort_unstable();
+        assert_eq!(contents, vec![(5002, 0), (5003, 0)]);
     }
 
     /// Without a search, filter or sort that reads them, the location,

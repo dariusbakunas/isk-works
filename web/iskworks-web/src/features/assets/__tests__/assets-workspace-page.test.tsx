@@ -48,6 +48,7 @@ const page: LoadedAssetPage = {
       scope: "ownerType",
     },
     isContainer: false,
+    contentCount: 0,
   }],
   total: 1,
   nextCursor: null,
@@ -290,4 +291,48 @@ test("a failed asset export keeps the dialog open with the error", async () => {
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Export CSV" }));
 
   expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("Export broke");
+});
+
+test("a container's contents open in a dialog grouped by slot, and nested containers drill in", async () => {
+  const base = page.rows[0];
+  const ship = { ...base, eveItemId: 7001, typeId: 12005, typeName: "Ishtar", quantity: 1, containerItemId: null, containerName: null, groupName: "Heavy Assault Cruiser", assetKind: "container", isContainer: true, contentCount: 3 };
+  const drone = { ...base, eveItemId: 7002, typeId: 2476, typeName: "Berserker II", quantity: 5, containerItemId: 7001, locationFlag: "DroneBay", groupName: "Combat Drone" };
+  const module = { ...base, eveItemId: 7003, typeId: 3841, typeName: "Assault Damage Control II", quantity: 1, containerItemId: 7001, locationFlag: "LoSlot0", groupName: "Damage Control" };
+  const can = { ...base, eveItemId: 7004, typeId: 3297, typeName: "Small Secure Container", quantity: 1, containerItemId: 7001, locationFlag: "Cargo", groupName: "Secure Cargo Container", isContainer: true, contentCount: 1 };
+  const loot = { ...base, eveItemId: 7005, typeId: 34, typeName: "Tritanium", quantity: 10, containerItemId: 7004, locationFlag: "Unlocked" };
+  vi.mocked(queryAssets).mockImplementation(async (query) => {
+    if (query.containerItemId === 7001) return { ...page, rows: [drone, module, can], total: 3 };
+    if (query.containerItemId === 7004) return { ...page, rows: [loot], total: 1 };
+    return { ...page, rows: [ship], total: 1 };
+  });
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
+  await screen.findByText("Ishtar");
+
+  fireEvent.click(screen.getByRole("button", { name: "Show contents of Ishtar (3 items)" }));
+  // The button keeps its click: the inspector stays shut.
+  expect(screen.queryByRole("complementary", { name: "Selected asset" })).not.toBeInTheDocument();
+  const dialog = screen.getByRole("dialog", { name: "Ishtar contents" });
+  expect(queryAssets).toHaveBeenCalledWith(expect.objectContaining({ connectionIds: ["connection"], containerItemId: 7001 }));
+  await within(dialog).findByText("Berserker II");
+  const groups = within(dialog).getAllByText(/^(Low slots|Drone bay|Cargo hold)$/).map((node) => node.textContent);
+  expect(groups).toEqual(["Low slots", "Drone bay", "Cargo hold"]);
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Show contents of Small Secure Container (1 item)" }));
+  const nested = await screen.findByRole("dialog", { name: "Small Secure Container contents" });
+  expect(await within(nested).findByText("Tritanium")).toBeInTheDocument();
+  fireEvent.click(within(within(nested).getByRole("navigation", { name: "Container path" })).getByRole("button", { name: "Ishtar" }));
+  expect(await screen.findByRole("dialog", { name: "Ishtar contents" })).toBeInTheDocument();
+
+  // Focus stays on the button that opened it; Escape from there still closes.
+  fireEvent.keyDown(screen.getByRole("button", { name: "Show contents of Ishtar (3 items)" }), { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("the inspector offers a container's contents", async () => {
+  vi.mocked(queryAssets).mockResolvedValue({ ...page, rows: [{ ...page.rows[0], typeName: "Ishtar", isContainer: true, contentCount: 2 }] });
+  render(<MemoryRouter><AssetsWorkspacePage /></MemoryRouter>);
+  fireEvent.click(await screen.findByText("Ishtar"));
+
+  fireEvent.click(screen.getByRole("button", { name: "Show contents (2)" }));
+  expect(screen.getByRole("dialog", { name: "Ishtar contents" })).toBeInTheDocument();
 });

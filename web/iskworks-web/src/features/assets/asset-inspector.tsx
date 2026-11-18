@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { PackageOpen, X } from "lucide-react";
 import { Link } from "react-router";
 
 import type { FlatAssetRow } from "../../api/assets";
@@ -6,7 +6,7 @@ import { EveTypeImage } from "../../components/eve-type-image";
 import { formatAssetDecimal } from "./asset-format";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
 
-export function AssetInspector({ asset, onClose }: { asset: FlatAssetRow; onClose: () => void }) {
+export function AssetInspector({ asset, onClose, onOpenContents }: { asset: FlatAssetRow; onClose: () => void; onOpenContents: (asset: FlatAssetRow) => void }) {
   return (
     <aside aria-label="Selected asset" className="absolute inset-y-0 right-0 z-40 w-72 overflow-y-auto border-l border-border bg-panel shadow-2xl">
       <header className="flex items-start gap-2 px-3 py-3">
@@ -19,6 +19,14 @@ export function AssetInspector({ asset, onClose }: { asset: FlatAssetRow; onClos
         <Value label="Unit volume" value={asset.packagedVolume ? `${formatAssetDecimal(asset.packagedVolume)} m³` : "—"} />
         <Value label="Stack volume" value={asset.totalPackagedVolume ? `${formatAssetDecimal(asset.totalPackagedVolume)} m³` : "—"} />
       </InspectorSection>
+      {asset.contentCount > 0 ? (
+        <div className="border-t border-border px-3 py-3">
+          <button className="iw-button-secondary inline-flex min-h-7 w-full items-center justify-center gap-1.5 text-xs" onClick={() => onOpenContents(asset)} type="button">
+            <PackageOpen aria-hidden="true" className="h-3.5 w-3.5" />
+            Show contents ({asset.contentCount.toLocaleString()})
+          </button>
+        </div>
+      ) : null}
       <InspectorSection title="Location">
         <Value label="Character" value={asset.characterName} private />
         <Value label="Location" value={asset.locationName ?? "—"} />

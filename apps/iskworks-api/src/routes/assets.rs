@@ -48,6 +48,7 @@ struct AssetHttpQuery {
     group_ids: Option<String>,
     blueprint_kinds: Option<String>,
     reconciliation_states: Option<String>,
+    container_item_id: Option<i64>,
     #[serde(default)]
     sort: AssetSortColumn,
     #[serde(default)]
@@ -68,6 +69,7 @@ impl AssetHttpQuery {
             reconciliation_states: parse_reconciliation_states(
                 self.reconciliation_states.as_deref(),
             )?,
+            container_item_id: self.container_item_id,
             sort: self.sort,
             order: self.order,
             cursor: self.cursor,
