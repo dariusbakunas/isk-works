@@ -2,7 +2,7 @@ import type { OperationalColumn } from "../../../../components/operational-table
 
 export const WORKSHEET_COLUMNS: OperationalColumn[] = [
   { key: "item", label: "Item", width: "minmax(220px,1fr)", sticky: true },
-  { key: "sourcing", label: "Sourcing", width: "110px" },
+  { key: "sourcing", label: "Sourcing", width: "170px" },
   { key: "required", label: "Required", width: "96px", align: "right", numeric: true },
   { key: "covered", label: "Covered", width: "96px", align: "right", numeric: true },
   { key: "shortage", label: "Shortage", width: "96px", align: "right", numeric: true },
