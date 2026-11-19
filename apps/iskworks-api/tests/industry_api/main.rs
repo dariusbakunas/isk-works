@@ -672,6 +672,23 @@ impl IndustryRepository for FixtureIndustryRepository {
             .cloned()
             .collect())
     }
+
+    async fn list_blueprint_observations_for_types(
+        &self,
+        _workspace_id: iskworks_core::WorkspaceId,
+        owner_id: OwnerId,
+        blueprint_type_ids: &[i64],
+    ) -> Result<Vec<iskworks_core::BlueprintObservation>, IndustryError> {
+        Ok(self
+            .blueprint_observations
+            .values()
+            .filter(|observation| {
+                observation.owner_id == owner_id
+                    && blueprint_type_ids.contains(&observation.blueprint_type_id)
+            })
+            .cloned()
+            .collect())
+    }
 }
 
 /// Root blueprint 6_830 needs Tritanium (buy) and Rifter Hull Section
