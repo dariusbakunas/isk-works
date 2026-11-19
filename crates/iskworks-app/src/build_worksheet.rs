@@ -98,6 +98,7 @@ impl BuildWorksheetCoordinator {
             focused_producer_id,
             include_downstream,
             metadata: &metadata,
+            blueprints: &BTreeMap::new(),
             generated_at: materials.generated_at,
         })?)
     }
