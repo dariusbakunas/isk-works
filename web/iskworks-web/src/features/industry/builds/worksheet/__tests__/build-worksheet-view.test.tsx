@@ -38,11 +38,12 @@ const plan = { occurrences: [{ id: "build:rcf", nodeId: "node-rcf", buildId: "rc
 const worksheet: BuildWorksheetProjection = {
   scope: { rootBuildId: "root", focusedProducerId: null, includeDownstream: false, label: "Root" },
   groups: [{ key: "components", label: "Construction Components", rowCount: 2, complete: false, rows: [
-    { id: "rcf", typeId: 1, typeName: "Reinforced Carbon Fiber", categoryId: null, categoryName: null, groupId: null, groupName: null, sourcing: "manufacturing", requiredQuantity: 161, coveredQuantity: 0, shortageQuantity: 161, coveragePercentage: "0.00", evidenceState: "complete", pricing: { state: "complete", classification: "production", policy: null, sourceNote: "market-depth-v1; requested 107; observed timestamp" }, unitCost: "40000", totalValue: "5000000", producerBuildId: "rcf-build", retainedSurplusQuantity: 9, retainedSurplusBasis: "360000", warnings: [] },
-    { id: "buy", typeId: 2, typeName: "Morphite", categoryId: null, categoryName: null, groupId: null, groupName: null, sourcing: "buy", requiredQuantity: 10, coveredQuantity: 10, shortageQuantity: 0, coveragePercentage: "100.00", evidenceState: "unpriced", pricing: { state: "unpriced", classification: "marketPolicy", policy: "highestBuy", sourceNote: "market-depth-v1; 3 orders" }, unitCost: null, totalValue: null, producerBuildId: null, retainedSurplusQuantity: null, retainedSurplusBasis: null, warnings: [] },
+    { id: "rcf", typeId: 1, typeName: "Reinforced Carbon Fiber", categoryId: null, categoryName: null, groupId: null, groupName: null, sourcing: "manufacturing", requiredQuantity: 161, coveredQuantity: 0, shortageQuantity: 161, coveragePercentage: "0.00", evidenceState: "complete", pricing: { state: "complete", classification: "production", policy: null, sourceNote: "market-depth-v1; requested 107; observed timestamp" }, unitCost: "40000", totalValue: "5000000", producerBuildId: "rcf-build", retainedSurplusQuantity: 9, retainedSurplusBasis: "360000", warnings: [], blueprint: null },
+    { id: "buy", typeId: 2, typeName: "Morphite", categoryId: null, categoryName: null, groupId: null, groupName: null, sourcing: "buy", requiredQuantity: 10, coveredQuantity: 10, shortageQuantity: 0, coveragePercentage: "100.00", evidenceState: "unpriced", pricing: { state: "unpriced", classification: "marketPolicy", policy: "highestBuy", sourceNote: "market-depth-v1; 3 orders" }, unitCost: null, totalValue: null, producerBuildId: null, retainedSurplusQuantity: null, retainedSurplusBasis: null, warnings: [], blueprint: null },
   ] }],
   output: { typeId: 3, typeName: "Muninn", quantity: 1, unitValue: "100000000", totalValue: "100000000", evidenceState: "complete" },
-  warnings: [], economicsAreAdditive: false, generatedAt: "2026-09-26T00:00:00Z",
+  warnings: [], blueprints: { owned: 0, missing: 0, ownedButBought: 0, producerUsesManual: 0 },
+  economicsAreAdditive: false, generatedAt: "2026-09-26T00:00:00Z",
 };
 
 test("renders the final read-only columns, produced and buy values, and no additive grand total", () => {

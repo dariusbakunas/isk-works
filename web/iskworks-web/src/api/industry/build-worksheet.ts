@@ -1,4 +1,4 @@
-import type { PreviewBuildPlanCommand } from "./builds";
+import type { BlueprintKind, PreviewBuildPlanCommand } from "./builds";
 import type { CostWarning } from "./execution-plan";
 import type { MarketPricingPolicy } from "./market";
 import { json, request } from "./request";
@@ -7,6 +7,52 @@ import type { Money } from "./shared";
 export type WorksheetSourcing = "buy" | "manufacturing" | "reaction" | "unresolved";
 export type WorksheetEvidenceState = "complete" | "unpriced" | "incomplete" | "notApplicable";
 export type WorksheetPricingClassification = "production" | "default" | "manual" | "marketPolicy" | "mixed" | "unresolved";
+
+export type BlueprintCoverageState = "owned" | "insufficientRuns" | "unknownKind" | "notOwned";
+export type ProducerBlueprintSource = "manual" | "observedAsset";
+
+export interface OwnedBlueprintRef {
+  observationId: string;
+  kind: BlueprintKind;
+  materialEfficiency: number;
+  timeEfficiency: number;
+  licensedRuns: number | null;
+  locationName: string | null;
+}
+
+export interface BlueprintHoldingSummary {
+  originals: number;
+  copies: number;
+  unknown: number;
+  copyRuns: number;
+  best: OwnedBlueprintRef | null;
+  observedAt: string | null;
+}
+
+export interface ProducerBlueprintUse {
+  requiredRuns: number;
+  source: ProducerBlueprintSource;
+  observationId: string | null;
+  materialEfficiency: number | null;
+  timeEfficiency: number | null;
+}
+
+/** Present on Buy/Manufacturing rows whose type has a manufacturing blueprint. */
+export interface WorksheetBlueprintCoverage {
+  blueprintTypeId: number;
+  blueprintName: string;
+  holdings: BlueprintHoldingSummary;
+  producer: ProducerBlueprintUse | null;
+  state: BlueprintCoverageState;
+}
+
+/** Counted once per blueprint type over the rows in scope. */
+export interface WorksheetBlueprintSummary {
+  owned: number;
+  missing: number;
+  ownedButBought: number;
+  producerUsesManual: number;
+}
 
 export interface WorksheetPricingEvidence {
   state: WorksheetEvidenceState;
@@ -36,6 +82,7 @@ export interface BuildWorksheetRow {
   retainedSurplusQuantity: number | null;
   retainedSurplusBasis: Money | null;
   warnings: CostWarning[];
+  blueprint: WorksheetBlueprintCoverage | null;
 }
 
 export interface BuildWorksheetGroup {
@@ -60,6 +107,7 @@ export interface BuildWorksheetProjection {
   groups: BuildWorksheetGroup[];
   output: BuildWorksheetOutput;
   warnings: CostWarning[];
+  blueprints: WorksheetBlueprintSummary;
   economicsAreAdditive: false;
   generatedAt: string;
 }

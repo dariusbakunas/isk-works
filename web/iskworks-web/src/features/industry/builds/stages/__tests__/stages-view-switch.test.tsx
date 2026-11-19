@@ -396,7 +396,7 @@ beforeEach(() => {
       return mockResponse(executionPlan(body.runs));
     }
     if (url.includes("/worksheet") && init?.method === "POST") {
-      return mockResponse({ scope: { rootBuildId: "build-ready", focusedProducerId: null, label: "Root" }, groups: [], output: { typeId: 5876, typeName: "Rifter", quantity: 1, unitValue: null, totalValue: null, evidenceState: "incomplete" }, warnings: [], economicsAreAdditive: false, generatedAt: "2026-09-26T00:00:00Z" });
+      return mockResponse({ scope: { rootBuildId: "build-ready", focusedProducerId: null, label: "Root" }, groups: [], output: { typeId: 5876, typeName: "Rifter", quantity: 1, unitValue: null, totalValue: null, evidenceState: "incomplete" }, warnings: [], blueprints: { owned: 0, missing: 0, ownedButBought: 0, producerUsesManual: 0 }, economicsAreAdditive: false, generatedAt: "2026-09-26T00:00:00Z" });
     }
     return mockResponse([], 200);
   });
