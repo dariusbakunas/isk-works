@@ -277,6 +277,17 @@ pub trait IndustryRepository: Send + Sync {
     ) -> Result<Vec<crate::BlueprintObservation>, IndustryError> {
         Ok(Vec::new())
     }
+
+    /// [`Self::list_blueprint_observations`] for several blueprint types in
+    /// one call, same order within each type.
+    async fn list_blueprint_observations_for_types(
+        &self,
+        _workspace_id: WorkspaceId,
+        _owner_id: OwnerId,
+        _blueprint_type_ids: &[i64],
+    ) -> Result<Vec<crate::BlueprintObservation>, IndustryError> {
+        Ok(Vec::new())
+    }
 }
 
 #[derive(Debug, Error)]
