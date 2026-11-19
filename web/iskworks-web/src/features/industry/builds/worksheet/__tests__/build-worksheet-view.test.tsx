@@ -259,3 +259,38 @@ test("inspector sections stay as the user left them from one row to the next", a
   await userEvent.click(screen.getByRole("row", { name: /Reinforced Carbon Fiber/ }));
   expect(configuration()).toHaveAttribute("aria-expanded", "true");
 });
+
+const noBlueprint = { blueprintTypeId: 9, blueprintName: "Reinforced Carbon Fiber Blueprint", holdings: { originals: 0, copies: 0, unknown: 0, copyRuns: 0, best: null, observedAt: null }, producer: { requiredRuns: 4, source: "manual" as const, observationId: null, materialEfficiency: 0, timeEfficiency: 0 }, state: "notOwned" as const };
+const withBlueprints = (blueprints: BuildWorksheetProjection["blueprints"]): BuildWorksheetProjection => ({
+  ...worksheet,
+  blueprints,
+  groups: worksheet.groups.map((group) => ({ ...group, rows: group.rows.map((row) => row.id === "rcf" ? { ...row, blueprint: noBlueprint } : row) })),
+});
+const renderView = () => render(
+  <MemoryRouter initialEntries={["/builds/root?view=worksheet"]}>
+    <Routes><Route path="*" element={<BuildWorksheetView active editor={editor} />} /></Routes>
+  </MemoryRouter>,
+);
+
+test("the Sourcing cell shows the row's blueprint badge", () => {
+  render(<BuildWorksheetTable worksheet={withBlueprints({ owned: 0, missing: 1, ownedButBought: 0, producerUsesManual: 0 })} />);
+  const badge = screen.getByRole("group", { name: /Reinforced Carbon Fiber Blueprint: No BP/ });
+  expect(badge).toHaveAttribute("data-blueprint-tone", "blocker");
+});
+
+test("the header chip counts owned, missing and manual blueprints", () => {
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet: withBlueprints({ owned: 11, missing: 4, ownedButBought: 3, producerUsesManual: 2 }), loading: false, refreshError: "", hardError: "" });
+  renderView();
+  expect(screen.getByTestId("blueprint-coverage-chip")).toHaveTextContent("Blueprints · 11 owned· 4 missing· 2 manual");
+});
+
+test("the header chip is quiet when nothing is missing, and absent with no blueprint rows", () => {
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet: withBlueprints({ owned: 5, missing: 0, ownedButBought: 0, producerUsesManual: 0 }), loading: false, refreshError: "", hardError: "" });
+  const { unmount } = renderView();
+  expect(screen.getByTestId("blueprint-coverage-chip")).toHaveTextContent(/^Blueprints · 5 owned$/);
+  unmount();
+
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet, loading: false, refreshError: "", hardError: "" });
+  renderView();
+  expect(screen.queryByTestId("blueprint-coverage-chip")).not.toBeInTheDocument();
+});

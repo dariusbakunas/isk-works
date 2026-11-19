@@ -10,6 +10,7 @@ import { StagesInspector } from "../stages/stages-inspector";
 import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";
 import { usePlanInspector } from "../stages/use-plan-inspector";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
+import { BlueprintCoverageChip } from "./blueprint-coverage-chip";
 import { BuildWorksheetTable } from "./build-worksheet-table";
 import { useBuildWorksheet } from "./use-build-worksheet";
 import { rowKeyForTarget, scopeAcquisitionToConsumer, selectionForTarget, targetForRow, type WorksheetTarget } from "./worksheet-selection";
@@ -85,6 +86,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
         {includeDownstream ? <span className="truncate text-xs text-muted">Nested values are not additive.</span> : null}
       </div>
       <div className="flex shrink-0 items-center gap-3">
+        {worksheet && rows.some((row) => row.blueprint) ? <BlueprintCoverageChip summary={worksheet.blueprints} /> : null}
         {worksheet ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
           {materialsMissing
             ? <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 text-warning" />
