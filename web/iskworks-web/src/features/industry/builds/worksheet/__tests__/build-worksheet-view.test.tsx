@@ -294,3 +294,23 @@ test("the header chip is quiet when nothing is missing, and absent with no bluep
   renderView();
   expect(screen.queryByTestId("blueprint-coverage-chip")).not.toBeInTheDocument();
 });
+
+test("the chip toggles the blueprint panel, and selecting a row replaces it", async () => {
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet: withBlueprints({ owned: 0, missing: 1, ownedButBought: 0, producerUsesManual: 0 }), loading: false, refreshError: "", hardError: "" });
+  planHook.useBuildExecutionPlan.mockReturnValue({ plan, loading: false, refreshError: null, hardError: null, refetch: vi.fn() });
+  renderView();
+  const chip = screen.getByTestId("blueprint-coverage-chip");
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+
+  await userEvent.click(chip);
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("region", { name: "Missing for planned builds" })).toHaveTextContent("Reinforced Carbon Fiber Blueprint");
+
+  await userEvent.click(chip);
+  expect(screen.queryByRole("region", { name: "Missing for planned builds" })).not.toBeInTheDocument();
+
+  await userEvent.click(chip);
+  await userEvent.click(screen.getByRole("button", { name: "Producer" }));
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+  expect(screen.queryByRole("region", { name: "Missing for planned builds" })).not.toBeInTheDocument();
+});

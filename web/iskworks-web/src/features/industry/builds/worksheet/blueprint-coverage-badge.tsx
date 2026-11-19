@@ -135,7 +135,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
 }
 
 // Sync freshness, finer than the library's day-level formatRelativeAge.
-function syncedAgo(iso: string): string {
+export function syncedAgo(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
   if (Number.isNaN(minutes)) return "unknown";
   if (minutes < 1) return "just now";

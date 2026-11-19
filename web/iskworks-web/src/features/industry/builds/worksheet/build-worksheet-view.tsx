@@ -11,6 +11,7 @@ import { useBuildExecutionPlan } from "../stages/use-build-execution-plan";
 import { usePlanInspector } from "../stages/use-plan-inspector";
 import type { BuildWorksheetEditorModel } from "../use-build-worksheet-editor";
 import { BlueprintCoverageChip } from "./blueprint-coverage-chip";
+import { BlueprintCoveragePanel } from "./blueprint-coverage-panel";
 import { BuildWorksheetTable } from "./build-worksheet-table";
 import { useBuildWorksheet } from "./use-build-worksheet";
 import { rowKeyForTarget, scopeAcquisitionToConsumer, selectionForTarget, targetForRow, type WorksheetTarget } from "./worksheet-selection";
@@ -23,6 +24,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
   // bought type), not the row id, which changes whenever sourcing changes.
   const [target, setTarget] = useState<WorksheetTarget | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const [blueprintsOpen, setBlueprintsOpen] = useState(false);
   const toggleDownstream = () => {
     // Merged and direct rows mean different things, so drop the selection.
     setTarget(null);
@@ -56,10 +58,22 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
     if (!next) return;
     setInspecting(true);
     setTarget(next);
+    setBlueprintsOpen(false);
     closeSettings?.();
   };
+  const toggleBlueprints = () => {
+    if (!blueprintsOpen) {
+      setTarget(null);
+      closeSettings?.();
+    }
+    setBlueprintsOpen(!blueprintsOpen);
+  };
   const settingsOpen = editor.inspectorMode?.kind === "buildSettings";
-  useEffect(() => { if (settingsOpen) setTarget(null); }, [settingsOpen]);
+  useEffect(() => {
+    if (!settingsOpen) return;
+    setTarget(null);
+    setBlueprintsOpen(false);
+  }, [settingsOpen]);
   // Declared before usePlanInspector on purpose: when a sourcing change swaps
   // the selected row for its new producer, that select must win over this clear.
   useEffect(() => { if (plan && target && !selection) setTarget(null); }, [plan, target, selection]);
@@ -86,7 +100,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
         {includeDownstream ? <span className="truncate text-xs text-muted">Nested values are not additive.</span> : null}
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        {worksheet && rows.some((row) => row.blueprint) ? <BlueprintCoverageChip summary={worksheet.blueprints} /> : null}
+        {worksheet && rows.some((row) => row.blueprint) ? <BlueprintCoverageChip onToggle={toggleBlueprints} open={blueprintsOpen} summary={worksheet.blueprints} /> : null}
         {worksheet ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
           {materialsMissing
             ? <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 text-warning" />
@@ -128,6 +142,6 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
           rootEditing={rootEditing}
           selection={selection}
           sourcing={sourcing}
-        /> : null}</>}
+        /> : null}{active ? <BlueprintCoveragePanel onClose={() => setBlueprintsOpen(false)} onOpenProducer={selectRow} open={blueprintsOpen} rows={rows} /> : null}</>}
   </section></InspectorCollapseProvider>;
 }
