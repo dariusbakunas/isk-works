@@ -111,3 +111,77 @@ async fn post_build_worksheet_uses_path_root_over_body_root() {
     assert_eq!(status, StatusCode::OK, "{json}");
     assert_eq!(json["scope"]["rootBuildId"], parent_id.0.to_string());
 }
+
+#[tokio::test]
+async fn post_build_worksheet_reports_owned_blueprints_per_row() {
+    let (parent, workspace_id, owner_id) = rifter_root(1);
+    let parent_id = parent.id;
+    let now = chrono::Utc::now();
+    let copy = iskworks_core::BlueprintObservation {
+        id: uuid::Uuid::new_v4(),
+        workspace_id,
+        owner_id,
+        owner_name: "Pilot".to_string(),
+        eve_item_id: 7,
+        blueprint_type_id: 90_002,
+        blueprint_name: "Rifter Hull Section Blueprint".to_string(),
+        kind: iskworks_core::BlueprintKind::Copy,
+        material_efficiency: 10,
+        time_efficiency: 20,
+        licensed_runs: Some(5),
+        location_id: 60_003_760,
+        location_flag: "Hangar".to_string(),
+        location_name: None,
+        observed_at: now,
+        imported_at: now,
+    };
+    let app = build_router(
+        AppState::new(Arc::new(configured_workspace_owned_by(
+            "Industry", owner_id,
+        )))
+        .with_industry_repository(Arc::new(FixtureIndustryRepository {
+            build: Some(parent),
+            blueprint_observations: std::collections::HashMap::from([(copy.id, copy)]),
+            ..Default::default()
+        }))
+        .with_sde_repository(Arc::new(FixtureSdeRepository))
+        .with_inventory_repository(Arc::new(
+            support::inventory::SeededInventoryRepository::new(vec![]),
+        ))
+        .with_production_repository(Arc::new(NeverCalledProductionRepository)),
+    );
+
+    let (status, json) =
+        post_worksheet(app, parent_id, overlay(1, serde_json::json!([])), None).await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    let rows: Vec<&serde_json::Value> = json["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|group| group["rows"].as_array().unwrap())
+        .collect();
+    let hull = rows
+        .iter()
+        .find(|row| row["typeId"] == 90_001)
+        .expect("hull section row");
+    assert_eq!(hull["blueprint"]["blueprintTypeId"], 90_002, "{hull}");
+    assert_eq!(
+        hull["blueprint"]["blueprintName"],
+        "Rifter Hull Section Blueprint"
+    );
+    assert_eq!(hull["blueprint"]["state"], "owned");
+    assert_eq!(hull["blueprint"]["holdings"]["copies"], 1);
+    assert_eq!(hull["blueprint"]["holdings"]["copyRuns"], 5);
+    // Bought here, so no producer job to judge runs against.
+    assert_eq!(hull["sourcing"], "buy");
+    assert!(hull["blueprint"]["producer"].is_null(), "{hull}");
+    let tritanium = rows
+        .iter()
+        .find(|row| row["typeId"] == 34)
+        .expect("tritanium row");
+    assert!(tritanium["blueprint"].is_null(), "{tritanium}");
+    assert_eq!(json["blueprints"]["owned"], 1);
+    assert_eq!(json["blueprints"]["missing"], 0);
+    assert_eq!(json["blueprints"]["ownedButBought"], 1);
+}

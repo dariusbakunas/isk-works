@@ -7,7 +7,7 @@ const row = (over: Partial<BuildWorksheetRow>): BuildWorksheetRow => ({
   id: "r", typeId: 1, typeName: "T", categoryId: null, categoryName: null, groupId: null, groupName: null,
   sourcing: "buy", requiredQuantity: 10, coveredQuantity: 0, shortageQuantity: 10, coveragePercentage: "0.00",
   evidenceState: "complete", pricing: { state: "complete", classification: "default", policy: null, sourceNote: null },
-  unitCost: null, totalValue: null, producerBuildId: null, retainedSurplusQuantity: null, retainedSurplusBasis: null, warnings: [],
+  unitCost: null, totalValue: null, producerBuildId: null, retainedSurplusQuantity: null, retainedSurplusBasis: null, warnings: [], blueprint: null,
   ...over,
 });
 

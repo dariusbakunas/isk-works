@@ -588,9 +588,27 @@ impl IndustryRepository for PgIndustryRepository {
         owner_id: OwnerId,
         blueprint_type_id: i64,
     ) -> Result<Vec<BlueprintObservation>, IndustryError> {
+        self.list_blueprint_observations_for_types(workspace_id, owner_id, &[blueprint_type_id])
+            .await
+    }
+
+    async fn list_blueprint_observations_for_types(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        blueprint_type_ids: &[i64],
+    ) -> Result<Vec<BlueprintObservation>, IndustryError> {
+        if blueprint_type_ids.is_empty() {
+            return Ok(Vec::new());
+        }
         sqlx::query_as::<_, BlueprintObservationRow>(
             r#"SELECT bo.id,bo.workspace_id,bo.owner_id,bo.eve_item_id,bo.blueprint_type_id,
-                      COALESCE(t.name_en,bo.captured_blueprint_name) AS captured_blueprint_name,
+                      -- A per-row primary-key lookup: as a join, the planner
+                      -- scans every SDE type to name a few dozen blueprints.
+                      COALESCE((SELECT t.name_en FROM sde_types t
+                                JOIN sde_imports si ON si.id=t.import_id AND si.active
+                                WHERE t.type_id=bo.blueprint_type_id),
+                               bo.captured_blueprint_name) AS captured_blueprint_name,
                       bo.blueprint_kind,bo.material_efficiency,
                       bo.time_efficiency,bo.licensed_runs,bo.location_id,bo.location_flag,
                       COALESCE(bo.captured_location_name,mln.location_name) AS captured_location_name,
@@ -600,16 +618,15 @@ impl IndustryRepository for PgIndustryRepository {
                JOIN owners o ON o.id = bo.owner_id
                LEFT JOIN market_location_names mln
                  ON mln.workspace_id=bo.workspace_id AND mln.location_id=bo.location_id
-               LEFT JOIN sde_imports si ON si.active
-               LEFT JOIN sde_types t ON t.import_id=si.id AND t.type_id=bo.blueprint_type_id
-               WHERE bo.workspace_id=$1 AND bo.owner_id=$2 AND bo.blueprint_type_id=$3
-               ORDER BY (bo.blueprint_kind='original' OR bo.licensed_runs IS NOT NULL) DESC,
+               WHERE bo.workspace_id=$1 AND bo.owner_id=$2 AND bo.blueprint_type_id = ANY($3)
+               ORDER BY bo.blueprint_type_id,
+                        (bo.blueprint_kind='original' OR bo.licensed_runs IS NOT NULL) DESC,
                         bo.material_efficiency DESC, bo.time_efficiency DESC,
                         bo.observed_at DESC, bo.eve_item_id"#,
         )
         .bind(workspace_id.0)
         .bind(owner_id.0)
-        .bind(blueprint_type_id)
+        .bind(blueprint_type_ids)
         .fetch_all(&self.pool)
         .await
         .map_err(map_error)?

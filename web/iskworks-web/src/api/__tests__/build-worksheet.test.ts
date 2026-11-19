@@ -48,6 +48,7 @@ const response: BuildWorksheetProjection = {
           retainedSurplusQuantity: null,
           retainedSurplusBasis: null,
           warnings: [],
+          blueprint: null,
         },
       ],
     },
@@ -61,6 +62,7 @@ const response: BuildWorksheetProjection = {
     evidenceState: "incomplete",
   },
   warnings: [],
+  blueprints: { owned: 0, missing: 0, ownedButBought: 0, producerUsesManual: 0 },
   economicsAreAdditive: false,
   generatedAt: "2026-09-26T00:00:00Z",
 };

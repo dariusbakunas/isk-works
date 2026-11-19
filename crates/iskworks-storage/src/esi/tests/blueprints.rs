@@ -191,3 +191,47 @@ async fn an_empty_sync_clears_only_that_connections_blueprints(pool: PgPool) {
         "Bravo's blueprints are untouched"
     );
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn bulk_lookup_returns_only_the_requested_types_of_this_workspace(pool: PgPool) {
+    let (workspace_id, owner_id) = fixture_workspace(&pool).await;
+    let (other_workspace, other_owner) = fixture_workspace(&pool).await;
+    let esi = PgEsiRepository::new(pool.clone());
+    let industry = PgIndustryRepository::new(pool.clone());
+    let conn = fixture_connection(&pool, workspace_id, owner_id, "Builder").await;
+    let other = fixture_connection(&pool, other_workspace, other_owner, "Stranger").await;
+
+    esi.complete_blueprints(
+        &conn,
+        &[
+            blueprint_observation_item(1, 17_323, 2),
+            blueprint_observation_item(2, 17_323, 10),
+            blueprint_observation_item(3, 40_672, 0),
+            blueprint_observation_item(4, 11_111, 0),
+        ],
+        &[],
+    )
+    .await
+    .unwrap();
+    esi.complete_blueprints(&other, &[blueprint_observation_item(5, 17_323, 0)], &[])
+        .await
+        .unwrap();
+
+    let found = industry
+        .list_blueprint_observations_for_types(workspace_id, owner_id, &[40_672, 17_323])
+        .await
+        .unwrap();
+    let ids: Vec<(i64, i64)> = found
+        .iter()
+        .map(|observation| (observation.blueprint_type_id, observation.eve_item_id))
+        .collect();
+    // Grouped by type; within a type, the single-type order (best ME first).
+    assert_eq!(ids, vec![(17_323, 2), (17_323, 1), (40_672, 3)]);
+
+    assert!(industry
+        .list_blueprint_observations_for_types(workspace_id, owner_id, &[])
+        .await
+        .unwrap()
+        .is_empty());
+}

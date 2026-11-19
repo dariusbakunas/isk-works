@@ -18,6 +18,13 @@ use crate::{
     BuildCostProjection, BuildId, CostWarning, MarketPricingPolicy, Money, PricingSelectionKind,
 };
 
+pub mod blueprint_coverage;
+
+use blueprint_coverage::{
+    coverage_state, summarize_rows, ProducerBlueprintSource, ProducerBlueprintUse,
+    WorksheetBlueprintCoverage, WorksheetBlueprintHoldings, WorksheetBlueprintSummary,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildWorksheetProjection {
@@ -25,6 +32,8 @@ pub struct BuildWorksheetProjection {
     pub groups: Vec<BuildWorksheetGroup>,
     pub output: BuildWorksheetOutput,
     pub warnings: Vec<CostWarning>,
+    /// Blueprint coverage counts over the rows in scope.
+    pub blueprints: WorksheetBlueprintSummary,
     pub economics_are_additive: bool,
     pub generated_at: DateTime<Utc>,
 }
@@ -73,6 +82,9 @@ pub struct BuildWorksheetRow {
     pub retained_surplus_quantity: Option<u64>,
     pub retained_surplus_basis: Option<Money>,
     pub warnings: Vec<CostWarning>,
+    /// Owned-blueprint evidence; `None` unless the row is Buy or
+    /// Manufacturing and its type has a manufacturing blueprint.
+    pub blueprint: Option<WorksheetBlueprintCoverage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -153,6 +165,9 @@ pub struct BuildWorksheetProjectionInput<'a> {
     pub focused_producer_id: Option<BuildId>,
     pub include_downstream: bool,
     pub metadata: &'a BTreeMap<i64, WorksheetTypeMetadata>,
+    /// Keyed by product type id: its manufacturing blueprint and the
+    /// workspace's holdings of it. A type absent here gets no coverage.
+    pub blueprints: &'a BTreeMap<i64, WorksheetBlueprintHoldings>,
     pub generated_at: DateTime<Utc>,
 }
 
@@ -438,10 +453,17 @@ pub fn project_build_worksheet(
                     && values.surplus_basis_complete)
                     .then_some(values.retained_surplus_basis),
                 warnings: values.warnings,
+                blueprint: blueprint_coverage_for(
+                    input.blueprints,
+                    input.operations,
+                    key.type_id,
+                    key.sourcing,
+                    key.producer_build_id.map(BuildId),
+                ),
             });
     }
 
-    let groups = grouped
+    let groups: Vec<BuildWorksheetGroup> = grouped
         .into_iter()
         .map(|((label, key), mut rows)| {
             rows.sort_by(|left, right| {
@@ -461,6 +483,7 @@ pub fn project_build_worksheet(
         })
         .collect();
 
+    let blueprints = summarize_rows(groups.iter().flat_map(|group| &group.rows));
     let output_cost = input
         .cost
         .operations
@@ -489,8 +512,52 @@ pub fn project_build_worksheet(
             }),
         },
         warnings: input.cost.warnings.clone(),
+        blueprints,
         economics_are_additive: false,
         generated_at: input.generated_at,
+    })
+}
+
+fn blueprint_coverage_for(
+    blueprints: &BTreeMap<i64, WorksheetBlueprintHoldings>,
+    operations: &[VerificationOperationInput],
+    type_id: i64,
+    sourcing: WorksheetSourcing,
+    producer_build_id: Option<BuildId>,
+) -> Option<WorksheetBlueprintCoverage> {
+    if !matches!(
+        sourcing,
+        WorksheetSourcing::Buy | WorksheetSourcing::Manufacturing
+    ) {
+        return None;
+    }
+    let holdings = blueprints.get(&type_id)?;
+    // A canonical producer is one operation serving every consumer, so its
+    // `node_runs` is the whole job this row is built by.
+    let producer = (sourcing == WorksheetSourcing::Manufacturing)
+        .then(|| {
+            operations
+                .iter()
+                .find(|operation| Some(operation.build_id) == producer_build_id)
+        })
+        .flatten()
+        .map(|operation| {
+            let (source, observation_id) =
+                ProducerBlueprintSource::from_selection(operation.blueprint_selection.as_ref());
+            ProducerBlueprintUse {
+                required_runs: operation.node_runs,
+                source,
+                observation_id,
+                material_efficiency: operation.me,
+                time_efficiency: operation.te,
+            }
+        });
+    Some(WorksheetBlueprintCoverage {
+        blueprint_type_id: holdings.blueprint_type_id,
+        blueprint_name: holdings.blueprint_name.clone(),
+        state: coverage_state(sourcing, &holdings.holdings, producer.as_ref()),
+        holdings: holdings.holdings.clone(),
+        producer,
     })
 }
 

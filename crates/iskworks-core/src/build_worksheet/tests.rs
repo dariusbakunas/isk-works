@@ -283,6 +283,7 @@ fn project_scoped(
         focused_producer_id,
         include_downstream,
         metadata: &metadata(),
+        blueprints: &BTreeMap::new(),
         generated_at: Utc::now(),
     })
 }
@@ -1102,4 +1103,190 @@ fn direct_only_focus_shows_only_the_focused_operations_inputs() {
 
     let focused_rcf = project_scoped(&operations, &allocations, Some(rcf), &cost, false).unwrap();
     assert_eq!(type_ids(&focused_rcf), vec![ISOGEN_TYPE]);
+}
+
+fn project_with_blueprints(
+    operations: &[VerificationOperationInput],
+    allocations: &[NodeMaterialAllocation],
+    blueprints: &BTreeMap<i64, blueprint_coverage::WorksheetBlueprintHoldings>,
+) -> BuildWorksheetProjection {
+    project_build_worksheet(BuildWorksheetProjectionInput {
+        operations,
+        boundaries: &[],
+        allocations,
+        aggregate_rows: &[] as &[AggregateMaterialLine],
+        cost: &empty_cost(),
+        focused_producer_id: None,
+        include_downstream: true,
+        metadata: &metadata(),
+        blueprints,
+        generated_at: Utc::now(),
+    })
+    .unwrap()
+}
+
+fn holdings(
+    blueprint_type_id: i64,
+    originals: u32,
+    copies: u32,
+    copy_runs: u64,
+) -> blueprint_coverage::WorksheetBlueprintHoldings {
+    blueprint_coverage::WorksheetBlueprintHoldings {
+        blueprint_type_id,
+        blueprint_name: format!("Blueprint {blueprint_type_id}"),
+        holdings: blueprint_coverage::BlueprintHoldingSummary {
+            originals,
+            copies,
+            copy_runs,
+            ..Default::default()
+        },
+    }
+}
+
+fn row(worksheet: &BuildWorksheetProjection, type_id: i64) -> &BuildWorksheetRow {
+    worksheet
+        .groups
+        .iter()
+        .flat_map(|group| &group.rows)
+        .find(|row| row.type_id == type_id)
+        .unwrap()
+}
+
+#[test]
+fn blueprint_coverage_reports_buy_rows_and_skips_types_without_a_blueprint() {
+    use blueprint_coverage::BlueprintCoverageState;
+
+    let root = build_id(1);
+    let operations = [operation(0, root, ROOT_TYPE, "Revelation")];
+    let node = operations[0].graph_node_id.clone();
+    let allocations = [
+        allocation(
+            root,
+            &node,
+            RCF_TYPE,
+            "Capital Armor Plates",
+            4,
+            0,
+            MaterialBoundaryResolution::Buy,
+            "dep:plates",
+            None,
+        ),
+        allocation(
+            root,
+            &node,
+            ISOGEN_TYPE,
+            "Isogen",
+            100,
+            0,
+            MaterialBoundaryResolution::Buy,
+            "dep:isogen",
+            None,
+        ),
+    ];
+    let blueprints = BTreeMap::from([(RCF_TYPE, holdings(9_200, 0, 1, 3))]);
+
+    let worksheet = project_with_blueprints(&operations, &allocations, &blueprints);
+
+    let plates = row(&worksheet, RCF_TYPE).blueprint.as_ref().unwrap();
+    assert_eq!(plates.blueprint_type_id, 9_200);
+    assert_eq!(plates.state, BlueprintCoverageState::Owned);
+    assert_eq!(plates.producer, None);
+    assert_eq!(row(&worksheet, ISOGEN_TYPE).blueprint, None);
+    assert_eq!(worksheet.blueprints.owned, 1);
+    assert_eq!(worksheet.blueprints.owned_but_bought, 1);
+    assert_eq!(worksheet.blueprints.missing, 0);
+}
+
+#[test]
+fn blueprint_coverage_judges_manufacturing_rows_against_the_producer_runs() {
+    use blueprint_coverage::{BlueprintCoverageState, ProducerBlueprintSource};
+
+    let root = build_id(1);
+    let producer = build_id(2);
+    let mut producer_operation = operation(1, producer, RCF_TYPE, "Capital Armor Plates");
+    producer_operation.node_runs = 4;
+    let operations = [
+        operation(0, root, ROOT_TYPE, "Revelation"),
+        producer_operation,
+    ];
+    let allocations = [allocation(
+        root,
+        &operations[0].graph_node_id,
+        RCF_TYPE,
+        "Capital Armor Plates",
+        4,
+        0,
+        MaterialBoundaryResolution::Build,
+        "pd:plates",
+        Some(producer),
+    )];
+    let blueprints = BTreeMap::from([(RCF_TYPE, holdings(9_200, 0, 1, 2))]);
+
+    let worksheet = project_with_blueprints(&operations, &allocations, &blueprints);
+
+    let coverage = row(&worksheet, RCF_TYPE).blueprint.as_ref().unwrap();
+    assert_eq!(coverage.state, BlueprintCoverageState::InsufficientRuns);
+    let use_ = coverage.producer.as_ref().unwrap();
+    assert_eq!(use_.required_runs, 4);
+    assert_eq!(use_.source, ProducerBlueprintSource::Manual);
+    assert_eq!(worksheet.blueprints.missing, 1);
+    assert_eq!(worksheet.blueprints.owned, 0);
+}
+
+#[test]
+fn blueprint_coverage_counts_manual_producers_with_an_owned_blueprint() {
+    let root = build_id(1);
+    let producer = build_id(2);
+    let operations = [
+        operation(0, root, ROOT_TYPE, "Revelation"),
+        operation(1, producer, RCF_TYPE, "Capital Armor Plates"),
+    ];
+    let allocations = [allocation(
+        root,
+        &operations[0].graph_node_id,
+        RCF_TYPE,
+        "Capital Armor Plates",
+        1,
+        0,
+        MaterialBoundaryResolution::Build,
+        "pd:plates",
+        Some(producer),
+    )];
+    let blueprints = BTreeMap::from([(RCF_TYPE, holdings(9_200, 1, 0, 0))]);
+
+    let worksheet = project_with_blueprints(&operations, &allocations, &blueprints);
+
+    assert_eq!(worksheet.blueprints.owned, 1);
+    assert_eq!(worksheet.blueprints.producer_uses_manual, 1);
+    assert_eq!(worksheet.blueprints.missing, 0);
+}
+
+#[test]
+fn blueprint_coverage_skips_reaction_rows() {
+    let root = build_id(1);
+    let reaction = build_id(2);
+    let operations = [
+        operation(0, root, ROOT_TYPE, "Revelation"),
+        operation(1, reaction, RCF_TYPE, "Reinforced Carbon Fiber"),
+    ];
+    let allocations = [allocation(
+        root,
+        &operations[0].graph_node_id,
+        RCF_TYPE,
+        "Reinforced Carbon Fiber",
+        10,
+        0,
+        MaterialBoundaryResolution::Reaction,
+        "pd:rcf",
+        Some(reaction),
+    )];
+    let blueprints = BTreeMap::from([(RCF_TYPE, holdings(9_200, 1, 0, 0))]);
+
+    let worksheet = project_with_blueprints(&operations, &allocations, &blueprints);
+
+    assert_eq!(row(&worksheet, RCF_TYPE).blueprint, None);
+    assert_eq!(
+        worksheet.blueprints,
+        blueprint_coverage::WorksheetBlueprintSummary::default()
+    );
 }
