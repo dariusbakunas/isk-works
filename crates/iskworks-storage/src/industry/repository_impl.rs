@@ -603,7 +603,12 @@ impl IndustryRepository for PgIndustryRepository {
         }
         sqlx::query_as::<_, BlueprintObservationRow>(
             r#"SELECT bo.id,bo.workspace_id,bo.owner_id,bo.eve_item_id,bo.blueprint_type_id,
-                      COALESCE(t.name_en,bo.captured_blueprint_name) AS captured_blueprint_name,
+                      -- A per-row primary-key lookup: as a join, the planner
+                      -- scans every SDE type to name a few dozen blueprints.
+                      COALESCE((SELECT t.name_en FROM sde_types t
+                                JOIN sde_imports si ON si.id=t.import_id AND si.active
+                                WHERE t.type_id=bo.blueprint_type_id),
+                               bo.captured_blueprint_name) AS captured_blueprint_name,
                       bo.blueprint_kind,bo.material_efficiency,
                       bo.time_efficiency,bo.licensed_runs,bo.location_id,bo.location_flag,
                       COALESCE(bo.captured_location_name,mln.location_name) AS captured_location_name,
@@ -613,8 +618,6 @@ impl IndustryRepository for PgIndustryRepository {
                JOIN owners o ON o.id = bo.owner_id
                LEFT JOIN market_location_names mln
                  ON mln.workspace_id=bo.workspace_id AND mln.location_id=bo.location_id
-               LEFT JOIN sde_imports si ON si.active
-               LEFT JOIN sde_types t ON t.import_id=si.id AND t.type_id=bo.blueprint_type_id
                WHERE bo.workspace_id=$1 AND bo.owner_id=$2 AND bo.blueprint_type_id = ANY($3)
                ORDER BY bo.blueprint_type_id,
                         (bo.blueprint_kind='original' OR bo.licensed_runs IS NOT NULL) DESC,
