@@ -3,6 +3,7 @@ import { EveTypeImage } from "../../../../components/eve-type-image";
 import { TypeInfoButton } from "../../../../components/type-info/type-info-button";
 import { formatIskCompact, formatIskSummary } from "../../../../components/money";
 import { OperationalTable, OperationalTableGroup, OperationalTableRow } from "../../../../components/operational-table";
+import { BlueprintCoverageBadge } from "./blueprint-coverage-badge";
 import { WORKSHEET_COLUMNS } from "./worksheet-columns";
 import { targetForRow } from "./worksheet-selection";
 
@@ -34,7 +35,7 @@ function WorksheetRow({ onSelectRow, row }: { onSelectRow?: (row: BuildWorksheet
   const status = rowStatus(row);
   const cells = {
     item: <ItemCell status={status} typeId={row.typeId} typeName={row.typeName} />,
-    sourcing: <span className={`whitespace-nowrap text-xs font-medium ${coveredFromInventory(row) ? "text-positive" : row.sourcing === "buy" ? "text-muted" : "text-primary"}`}>{sourcingLabel(row)}</span>,
+    sourcing: <Sourcing row={row} />,
     required: <Quantity value={row.requiredQuantity} />,
     covered: <Quantity className={(row.coveredQuantity ?? 0) > 0 ? "text-positive" : ""} value={row.coveredQuantity} />,
     shortage: row.shortageQuantity == null
@@ -125,6 +126,17 @@ function coveredFromInventory(row: BuildWorksheetRow): boolean {
     (row.shortageQuantity ?? 0) === 0 &&
     (row.coveredQuantity ?? 0) >= (row.requiredQuantity ?? 0)
   );
+}
+
+function Sourcing({ row }: { row: BuildWorksheetRow }) {
+  const inventory = coveredFromInventory(row);
+  return <span className="flex min-w-0 items-center gap-1.5">
+    <span className={`whitespace-nowrap text-xs font-medium ${inventory ? "text-positive" : row.sourcing === "buy" ? "text-muted" : "text-primary"}`}>{sourcingLabel(row)}</span>
+    {row.blueprint ? <>
+      <span aria-hidden="true" className="text-xs text-muted">·</span>
+      <BlueprintCoverageBadge coverage={row.blueprint} inventory={inventory} sourcing={row.sourcing} />
+    </> : null}
+  </span>;
 }
 
 function sourcingLabel(row: BuildWorksheetRow): string {
