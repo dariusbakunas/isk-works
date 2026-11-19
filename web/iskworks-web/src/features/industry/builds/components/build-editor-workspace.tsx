@@ -209,6 +209,8 @@ export function BuildEditorWorkspace({
   const [epicCommand, setEpicCommand] = useState<PreviewBuildPlanCommand | null>(null);
   const [orderError, setOrderError] = useState("");
   const [exportingWorkbook, setExportingWorkbook] = useState(false);
+  // Where the worksheet portals its Blueprints chip: the view tab bar.
+  const [blueprintChipSlot, setBlueprintChipSlot] = useState<HTMLElement | null>(null);
   const [exportError, setExportError] = useState("");
 
   // Engineering / audit `.xlsx` of the CURRENT editor state -- sends the same
@@ -439,7 +441,10 @@ export function BuildEditorWorkspace({
               </button>
             ))}
           </div>
-          {!focusedProducer ? <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The worksheet's Blueprints chip, shown on every view. */}
+            <span className="contents" ref={setBlueprintChipSlot} />
+            {!focusedProducer ? <>
             <button
               className="iw-button-secondary"
               disabled={exportingWorkbook || !editor.previewKey}
@@ -464,7 +469,8 @@ export function BuildEditorWorkspace({
                 Create Epic
               </button>
             )}
-          </div> : null}
+            </> : null}
+          </div>
         </div>
       ) : null}
       {orderError ? <InlineAlert title="Epic not created">{orderError}</InlineAlert> : null}
@@ -525,7 +531,9 @@ export function BuildEditorWorkspace({
         <div hidden={view !== "worksheet"}>
           <BuildWorksheetView
             active={view === "worksheet"}
+            blueprintChipSlot={blueprintChipSlot}
             editor={editor}
+            onShowWorksheet={() => setView("worksheet")}
             focusedProducerId={focusedProducer?.id}
             readOnly={selectedEpicId !== null}
           />

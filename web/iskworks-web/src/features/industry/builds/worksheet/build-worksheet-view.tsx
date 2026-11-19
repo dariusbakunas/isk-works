@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router";
 
 import type { BuildWorksheetRow } from "../../../../api/industry";
@@ -16,7 +17,18 @@ import { BuildWorksheetTable } from "./build-worksheet-table";
 import { useBuildWorksheet } from "./use-build-worksheet";
 import { rowKeyForTarget, scopeAcquisitionToConsumer, selectionForTarget, targetForRow, type WorksheetTarget } from "./worksheet-selection";
 
-export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly = false }: { active: boolean; editor: BuildWorksheetEditorModel; focusedProducerId?: string; /** An Epic is selected: the inspector shows values and changes nothing. */ readOnly?: boolean }) {
+export function BuildWorksheetView({ active, blueprintChipSlot = null, editor, focusedProducerId, onShowWorksheet, readOnly = false }: {
+  active: boolean;
+  /** Where the Blueprints chip goes, so it shows on every Build view; without
+   * one it sits in the worksheet header. */
+  blueprintChipSlot?: HTMLElement | null;
+  editor: BuildWorksheetEditorModel;
+  focusedProducerId?: string;
+  /** Switches to this view: the chip, clicked on another view, opens the panel here. */
+  onShowWorksheet?: () => void;
+  /** An Epic is selected: the inspector shows values and changes nothing. */
+  readOnly?: boolean;
+}) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const includeDownstream = searchParams.get("downstream") === "1";
@@ -36,7 +48,8 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
   };
   const { worksheet, loading, refreshError, hardError } = useBuildWorksheet({
     rootBuildId: editor.initialBuild?.id ?? "", focusedProducerId: focusedProducerId ?? null, includeDownstream,
-    previewKey: editor.previewKey, active, linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
+    // The chip in the tab bar needs the worksheet on every view.
+    previewKey: editor.previewKey, active: active || blueprintChipSlot !== null, linkedBuildsByTypeId: editor.linkedBuildsByTypeId, linkedBuildsSettling: editor.linkedBuildsSettling,
   });
   const rows = worksheet?.groups.flatMap((group) => group.rows) ?? [];
 
@@ -61,13 +74,20 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
     setBlueprintsOpen(false);
     closeSettings?.();
   };
+  const panelOpen = active && blueprintsOpen;
   const toggleBlueprints = () => {
-    if (!blueprintsOpen) {
+    if (!panelOpen) {
       setTarget(null);
       closeSettings?.();
+      if (!active) onShowWorksheet?.();
     }
-    setBlueprintsOpen(!blueprintsOpen);
+    setBlueprintsOpen(!panelOpen);
   };
+  // Leaving the worksheet closes the panel; the chip reopens it here.
+  useEffect(() => { if (!active) setBlueprintsOpen(false); }, [active]);
+  const blueprintChip = worksheet && rows.some((row) => row.blueprint)
+    ? <BlueprintCoverageChip onToggle={toggleBlueprints} open={panelOpen} summary={worksheet.blueprints} />
+    : null;
   const settingsOpen = editor.inspectorMode?.kind === "buildSettings";
   useEffect(() => {
     if (!settingsOpen) return;
@@ -100,7 +120,7 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
         {includeDownstream ? <span className="truncate text-xs text-muted">Nested values are not additive.</span> : null}
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        {worksheet && rows.some((row) => row.blueprint) ? <BlueprintCoverageChip onToggle={toggleBlueprints} open={blueprintsOpen} summary={worksheet.blueprints} /> : null}
+        {blueprintChipSlot ? createPortal(blueprintChip, blueprintChipSlot) : blueprintChip}
         {worksheet ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-muted">
           {materialsMissing
             ? <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 text-warning" />
@@ -142,6 +162,6 @@ export function BuildWorksheetView({ active, editor, focusedProducerId, readOnly
           rootEditing={rootEditing}
           selection={selection}
           sourcing={sourcing}
-        /> : null}{active ? <BlueprintCoveragePanel onClose={() => setBlueprintsOpen(false)} onOpenProducer={selectRow} open={blueprintsOpen} rows={rows} /> : null}</>}
+        /> : null}{active ? <BlueprintCoveragePanel onClose={() => setBlueprintsOpen(false)} onOpenProducer={selectRow} open={panelOpen} rows={rows} /> : null}</>}
   </section></InspectorCollapseProvider>;
 }

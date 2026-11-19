@@ -304,13 +304,39 @@ test("the chip toggles the blueprint panel, and selecting a row replaces it", as
 
   await userEvent.click(chip);
   expect(chip).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("region", { name: "Missing for planned builds" })).toHaveTextContent("Reinforced Carbon Fiber Blueprint");
+  expect(screen.getByRole("region", { name: "Missing" })).toHaveTextContent("Reinforced Carbon Fiber Blueprint");
 
   await userEvent.click(chip);
-  expect(screen.queryByRole("region", { name: "Missing for planned builds" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Missing" })).not.toBeInTheDocument();
 
   await userEvent.click(chip);
   await userEvent.click(screen.getByRole("button", { name: "Producer" }));
   expect(chip).toHaveAttribute("aria-pressed", "false");
-  expect(screen.queryByRole("region", { name: "Missing for planned builds" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Missing" })).not.toBeInTheDocument();
+});
+
+test("from another view the chip shows in the given slot, keeps the worksheet loading, and switches here to open the panel", async () => {
+  worksheetHook.useBuildWorksheet.mockReturnValue({ worksheet: withBlueprints({ owned: 0, missing: 1, ownedButBought: 0, producerUsesManual: 0 }), loading: false, refreshError: "", hardError: "" });
+  const slot = document.createElement("div");
+  document.body.appendChild(slot);
+  const onShowWorksheet = vi.fn();
+  const view = (active: boolean) => (
+    <MemoryRouter initialEntries={["/builds/root?view=plan"]}>
+      <Routes><Route path="*" element={<BuildWorksheetView active={active} blueprintChipSlot={slot} editor={editor} onShowWorksheet={onShowWorksheet} />} /></Routes>
+    </MemoryRouter>
+  );
+  const { rerender } = render(view(false));
+
+  expect(worksheetHook.useBuildWorksheet).toHaveBeenLastCalledWith(expect.objectContaining({ active: true }));
+  const chip = within(slot).getByTestId("blueprint-coverage-chip");
+  await userEvent.click(chip);
+  expect(onShowWorksheet).toHaveBeenCalled();
+
+  rerender(view(true));
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("region", { name: "Missing" })).toBeInTheDocument();
+
+  rerender(view(false));
+  expect(chip).toHaveAttribute("aria-pressed", "false");
+  slot.remove();
 });

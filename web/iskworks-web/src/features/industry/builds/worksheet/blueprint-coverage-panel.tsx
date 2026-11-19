@@ -1,5 +1,5 @@
-import { CheckCircle2, ChevronDown, ChevronRight, FileStack } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { FileStack } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { BuildWorksheetRow, WorksheetBlueprintCoverage } from "../../../../api/industry";
@@ -12,19 +12,17 @@ type CoveredRow = BuildWorksheetRow & { blueprint: WorksheetBlueprintCoverage };
 export interface BlueprintPanelSections {
   /** Build rows with no blueprint, or too few runs for the job. */
   missing: CoveredRow[];
-  /** Buy rows whose blueprint is owned. */
-  ownedButBought: CoveredRow[];
-  /** Build rows with an owned (or unknown-kind) blueprint. */
-  covered: CoveredRow[];
+  /** Every blueprint owned (or of unknown kind), whether its row is built or bought. */
+  owned: CoveredRow[];
   /** Newest observation across all holdings: the sync these are as of. */
   observedAt: string | null;
 }
 
-/** Splits the worksheet's rows into the panel's lists, one entry per
- * blueprint type, in the same terms as the header chip's counts. */
+/** Splits the worksheet's rows into blueprints missing for planned builds and
+ * blueprints owned, one entry per blueprint type. */
 export function blueprintPanelSections(rows: BuildWorksheetRow[]): BlueprintPanelSections {
-  const sections: BlueprintPanelSections = { missing: [], ownedButBought: [], covered: [], observedAt: null };
-  const seen = { missing: new Set<number>(), ownedButBought: new Set<number>(), covered: new Set<number>() };
+  const sections: BlueprintPanelSections = { missing: [], owned: [], observedAt: null };
+  const seen = { missing: new Set<number>(), owned: new Set<number>() };
   const add = (key: keyof typeof seen, row: CoveredRow) => {
     if (seen[key].has(row.blueprint.blueprintTypeId)) return;
     seen[key].add(row.blueprint.blueprintTypeId);
@@ -36,14 +34,14 @@ export function blueprintPanelSections(rows: BuildWorksheetRow[]): BlueprintPane
     const observedAt = coverage.holdings.observedAt;
     if (observedAt && (!sections.observedAt || observedAt > sections.observedAt)) sections.observedAt = observedAt;
     const entry = { ...row, blueprint: coverage };
-    if (row.sourcing === "manufacturing") {
-      add(coverage.state === "notOwned" || coverage.state === "insufficientRuns" ? "missing" : "covered", entry);
-    } else if (row.sourcing === "buy" && coverage.state === "owned") {
-      add("ownedButBought", entry);
+    if (row.sourcing === "manufacturing" && (coverage.state === "notOwned" || coverage.state === "insufficientRuns")) {
+      add("missing", entry);
+    } else if (coverage.state === "owned" || coverage.state === "unknownKind") {
+      add("owned", entry);
     }
   }
-  // An entry missing on one row and covered on another reads as missing.
-  sections.covered = sections.covered.filter((row) => !seen.missing.has(row.blueprint.blueprintTypeId));
+  // A blueprint missing on one row and owned on another reads as missing.
+  sections.owned = sections.owned.filter((row) => !seen.missing.has(row.blueprint.blueprintTypeId));
   return sections;
 }
 
@@ -54,28 +52,24 @@ export function BlueprintCoveragePanel({ onClose, onOpenProducer, open, rows }: 
   open: boolean;
   rows: BuildWorksheetRow[];
 }) {
-  const [coveredOpen, setCoveredOpen] = useState(false);
   const sections = blueprintPanelSections(rows);
   const anyBlueprint = rows.some((row) => row.blueprint);
   return (
     <PlannerInspectorShell closeLabel="Close blueprints" dismissLabel="Dismiss blueprints" eyebrow="Blueprints" onClose={onClose} open={open} returnFocusSelector="[data-blueprint-chip]" title="Blueprint coverage">
       {sections.observedAt ? <p className="px-3 pb-2 text-xs text-muted">As of {syncedAgo(sections.observedAt)}</p> : null}
       {!anyBlueprint ? <PanelMessage icon={<FileStack aria-hidden="true" className="h-4 w-4 text-muted" />}>No components here can be built from a blueprint.</PanelMessage> : <>
-        <Section
-          action={sections.missing.length ? <CopyValueButton label="Copy missing blueprint names" value={sections.missing.map((row) => row.blueprint.blueprintName).join("\n")}><span className="text-xs">Copy names</span></CopyValueButton> : null}
+        {sections.missing.length ? <Section
+          action={<CopyValueButton label="Copy missing blueprint names" value={sections.missing.map((row) => row.blueprint.blueprintName).join("\n")}><span className="text-xs">Copy names</span></CopyValueButton>}
           count={sections.missing.length}
-          title="Missing for planned builds"
+          title="Missing"
         >
-          {sections.missing.length
-            ? sections.missing.map((row) => <Entry detail={missingDetail(row.blueprint)} key={row.blueprint.blueprintTypeId} onOpenProducer={() => onOpenProducer(row)} row={row} tone={row.blueprint.state === "notOwned" ? "destructive" : "warning"} />)
-            : <PanelMessage icon={<CheckCircle2 aria-hidden="true" className="h-4 w-4 text-positive" />}>Every planned build has a blueprint.</PanelMessage>}
+          {sections.missing.map((row) => <Entry detail={missingDetail(row.blueprint)} key={row.blueprint.blueprintTypeId} onOpenProducer={() => onOpenProducer(row)} row={row} tone={row.blueprint.state === "notOwned" ? "destructive" : "warning"} />)}
+        </Section> : null}
+        <Section count={sections.owned.length} title="Owned">
+          {sections.owned.length
+            ? sections.owned.map((row) => <Entry detail={ownedDetail(row)} key={row.blueprint.blueprintTypeId} onOpenProducer={() => onOpenProducer(row)} row={row} />)
+            : <PanelMessage icon={<FileStack aria-hidden="true" className="h-4 w-4 text-muted" />}>You own none of these blueprints.</PanelMessage>}
         </Section>
-        {sections.ownedButBought.length ? <Section count={sections.ownedButBought.length} title="Owned but bought">
-          {sections.ownedButBought.map((row) => <Entry detail={`${blueprintBadgeLabel(row.blueprint)} · could build`} key={row.blueprint.blueprintTypeId} row={row} />)}
-        </Section> : null}
-        {sections.covered.length ? <Section collapsed={!coveredOpen} count={sections.covered.length} onToggle={() => setCoveredOpen((value) => !value)} title="Covered">
-          {sections.covered.map((row) => <Entry detail={coveredDetail(row)} key={row.blueprint.blueprintTypeId} onOpenProducer={() => onOpenProducer(row)} row={row} />)}
-        </Section> : null}
       </>}
     </PlannerInspectorShell>
   );
@@ -88,23 +82,19 @@ function missingDetail(coverage: WorksheetBlueprintCoverage): string {
   return [needs, owned].filter(Boolean).join(" · ");
 }
 
-function coveredDetail(row: CoveredRow): string {
+function ownedDetail(row: CoveredRow): string {
   const label = blueprintBadgeLabel(row.blueprint);
   return usesManualDespiteOwned(row.blueprint, row.sourcing) ? `${label} · producer uses manual ME/TE` : label;
 }
 
-function Section({ action, children, collapsed, count, onToggle, title }: { action?: ReactNode; children: ReactNode; collapsed?: boolean; count: number; onToggle?: () => void; title: string }) {
-  const heading = <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{title} ({count})</span>;
+function Section({ action, children, count, title }: { action?: ReactNode; children: ReactNode; count: number; title: string }) {
   return (
     <section aria-label={title} className="border-t border-border">
       <header className="flex h-8 items-center gap-1 bg-panel-strong px-3">
-        {onToggle ? <button aria-expanded={!collapsed} className="inline-flex items-center gap-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={onToggle} type="button">
-          {collapsed ? <ChevronRight aria-hidden="true" className="h-3 w-3 text-muted" /> : <ChevronDown aria-hidden="true" className="h-3 w-3 text-muted" />}
-          {heading}
-        </button> : heading}
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{title} ({count})</span>
         <span className="ml-auto">{action}</span>
       </header>
-      {collapsed ? null : children}
+      {children}
     </section>
   );
 }

@@ -33,11 +33,10 @@ const rows = [
   row("Tritanium", "buy", null),
 ];
 
-test("sections follow the chip's terms, one entry per blueprint type", () => {
+test("splits blueprints into missing for planned builds and owned, one entry per blueprint type", () => {
   const sections = blueprintPanelSections([...rows, row("Drone Bay", "manufacturing", { producer: producer(2) })]);
   expect(sections.missing.map((entry) => entry.typeName)).toEqual(["Drone Bay", "Construction Parts"]);
-  expect(sections.ownedButBought.map((entry) => entry.typeName)).toEqual(["Capacitor Battery"]);
-  expect(sections.covered.map((entry) => entry.typeName)).toEqual(["Armor Plates"]);
+  expect(sections.owned.map((entry) => entry.typeName)).toEqual(["Capacitor Battery", "Armor Plates"]);
   expect(sections.observedAt).toBe(rows[4].blueprint?.holdings.observedAt);
 });
 
@@ -50,21 +49,20 @@ function renderPanel(panelRows = rows, onOpenProducer = vi.fn()) {
   return onOpenProducer;
 }
 
-test("lists what's missing, what's bought, and keeps Covered collapsed", async () => {
+test("lists the blueprints missing and the blueprints owned", () => {
   renderPanel();
 
-  const missing = screen.getByRole("region", { name: "Missing for planned builds" });
-  expect(missing).toHaveTextContent("Missing for planned builds (2)");
+  const missing = screen.getByRole("region", { name: "Missing" });
+  expect(missing).toHaveTextContent("Missing (2)");
   expect(within(missing).getByText("needs 2 runs · none")).toHaveClass("text-destructive");
   expect(within(missing).getByText("needs 4 runs · owned: BPC · 2 runs")).toHaveClass("text-warning");
-  expect(within(screen.getByRole("region", { name: "Owned but bought" })).getByText("BPO 10/20 · could build")).toBeInTheDocument();
-  expect(screen.getByText("As of 5 m ago")).toBeInTheDocument();
 
-  const covered = screen.getByRole("button", { name: /Covered \(1\)/ });
-  expect(covered).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByText("Armor Plates Blueprint")).not.toBeInTheDocument();
-  await userEvent.click(covered);
-  expect(screen.getByText("Armor Plates Blueprint")).toBeInTheDocument();
+  const owned = screen.getByRole("region", { name: "Owned" });
+  expect(owned).toHaveTextContent("Owned (2)");
+  expect(within(owned).getByText("Capacitor Battery Blueprint")).toBeInTheDocument();
+  expect(within(owned).getByText("Armor Plates Blueprint")).toBeInTheDocument();
+  expect(screen.queryByText("Shield Emitter Blueprint")).not.toBeInTheDocument();
+  expect(screen.getByText("As of 5 m ago")).toBeInTheDocument();
 });
 
 test("Copy names copies the missing blueprint names, one per line", async () => {
@@ -76,16 +74,23 @@ test("Copy names copies the missing blueprint names, one per line", async () => 
 
 test("each entry links to the Blueprint Library and, for a Build row, its producer", async () => {
   const onOpenProducer = renderPanel();
-  const missing = screen.getByRole("region", { name: "Missing for planned builds" });
+  const missing = screen.getByRole("region", { name: "Missing" });
   expect(within(missing).getAllByRole("link", { name: "Library" })[0]).toHaveAttribute("href", "/builds/blueprints?search=Drone%20Bay%20Blueprint");
   await userEvent.click(within(missing).getAllByRole("button", { name: "Producer" })[0]);
   expect(onOpenProducer).toHaveBeenCalledWith(expect.objectContaining({ id: "Drone Bay" }));
-  expect(within(screen.getByRole("region", { name: "Owned but bought" })).queryByRole("button", { name: "Producer" })).not.toBeInTheDocument();
+  const bought = within(screen.getByRole("region", { name: "Owned" })).getByText("Capacitor Battery Blueprint").parentElement!;
+  expect(within(bought).queryByRole("button", { name: "Producer" })).not.toBeInTheDocument();
 });
 
-test("says so when every planned build has a blueprint", () => {
+test("leaves out Missing when every planned build has a blueprint", () => {
   renderPanel(rows.filter((entry) => entry.blueprint?.state === "owned"));
-  expect(screen.getByText("Every planned build has a blueprint.")).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Missing" })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Owned" })).toHaveTextContent("Owned (2)");
+});
+
+test("says so when none of the blueprints is owned", () => {
+  renderPanel([row("Shield Emitter", "buy", {})]);
+  expect(screen.getByText("You own none of these blueprints.")).toBeInTheDocument();
 });
 
 test("says so when no component can be built from a blueprint", () => {
