@@ -4,7 +4,7 @@ use crate::GraphMarketEvidence;
 
 mod blueprint_backfill;
 mod facility_context;
-mod facility_defaults;
+pub(in crate::industry) mod facility_defaults;
 mod preview;
 mod projection;
 mod recipe_capture;
