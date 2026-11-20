@@ -351,6 +351,12 @@ pub struct BoundaryVerification {
     /// read verbatim from the owning node's [`BuildPlanRevision`]. See the
     /// matching fields on [`VerificationBoundaryInput`].
     pub fresh_unit_price: Option<Money>,
+    /// The market unit price this row would have as Buy, on a `Build` /
+    /// `Reaction` boundary (the consumer's own price snapshot line; the
+    /// `fresh_price_*` provenance fields describe that same line). Evidence
+    /// only -- the boundary is still costed from its child. `None` on a Buy
+    /// boundary (see `fresh_unit_price`) or when unpriced.
+    pub market_unit_price: Option<Money>,
     pub fresh_price_selection: PricingSelectionKind,
     pub fresh_pricing_policy: Option<crate::MarketPricingPolicy>,
     pub fresh_price_note: String,
@@ -599,6 +605,14 @@ impl MaterialsAccumulator {
                 api_produced: production.produced_quantity,
                 api_surplus: production.surplus_quantity,
                 fresh_unit_price: v.fresh_unit_price,
+                // Only a produced boundary has a "buy instead" price; a Buy
+                // leaf's price is `fresh_unit_price`.
+                market_unit_price: match resolution {
+                    MaterialBoundaryResolution::Build | MaterialBoundaryResolution::Reaction => {
+                        v.market_unit_price
+                    }
+                    _ => None,
+                },
                 fresh_price_selection: v.fresh_price_selection,
                 fresh_pricing_policy: v.fresh_pricing_policy,
                 fresh_price_note: v.fresh_price_note.clone(),

@@ -106,6 +106,7 @@ fn boundary(
         api_surplus: 0,
         fresh_unit_price: (resolution == MaterialBoundaryResolution::Buy && api_shortage > 0)
             .then(|| money("5")),
+        market_unit_price: None,
         fresh_price_selection: PricingSelectionKind::Default,
         fresh_pricing_policy: None,
         fresh_price_note: String::new(),

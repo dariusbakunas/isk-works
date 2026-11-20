@@ -142,6 +142,7 @@ fn boundary(
         api_produced: 0,
         api_surplus: 0,
         fresh_unit_price: None,
+        market_unit_price: None,
         fresh_price_selection: crate::PricingSelectionKind::Default,
         fresh_pricing_policy: None,
         fresh_price_note: String::new(),
@@ -2006,4 +2007,64 @@ fn cost_warnings_serialize_camel_case_fields() {
     assert_eq!(json["typeId"], 34);
     assert_eq!(json["opIndex"], 3);
     assert_eq!(json["traversalIndex"], 7);
+}
+
+// ---------------------------------------------------------------------------
+// Market price alongside production cost (sourcing optimizer input)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn produced_boundary_carries_market_price_alongside_production_cost() {
+    let operations = vec![
+        with_facility(op(0, None, 1, 1), Some("0"), "0", "0", "0", "0", "0"),
+        with_facility(op(1, Some(0), 5, 100), Some("0"), "0", "0", "0", "0", "0"),
+    ];
+    let mut produced = boundary(
+        0,
+        0,
+        None,
+        90_001,
+        MaterialBoundaryResolution::Build,
+        FulfillmentScope::Missing,
+        500,
+        500,
+        0,
+        500,
+    );
+    produced.market_unit_price = Some(money("2.5"));
+    let boundaries = vec![
+        produced,
+        with_price(
+            boundary(
+                1,
+                1,
+                Some(0),
+                34,
+                MaterialBoundaryResolution::Buy,
+                FulfillmentScope::Missing,
+                500,
+                500,
+                0,
+                500,
+            ),
+            "3",
+        ),
+    ];
+    let projection = run(
+        &operations,
+        &boundaries,
+        &[basis(34, None), basis(90_001, None)],
+        &[(34, "3"), (90_001, "0")],
+    );
+
+    let produced = b_cost(&projection, 0);
+    assert_eq!(produced.child_unit_production_cost, Some(money("3")));
+    assert_eq!(produced.market_unit_price, Some(money("2.5")));
+    // The market price is evidence only: the requirement is still costed
+    // from the child.
+    assert_eq!(produced.requirement_cost, Some(money("1500")));
+
+    let bought = b_cost(&projection, 1);
+    assert_eq!(bought.fresh_unit_price, Some(money("3")));
+    assert_eq!(bought.market_unit_price, None);
 }

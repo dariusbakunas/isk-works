@@ -298,6 +298,7 @@ pub(super) fn boundary_verification(
         parent_traversal_index,
         op_index,
         fresh_unit_price: unit_price,
+        market_unit_price: snapshot_line.and_then(|line| line.price),
         fresh_price_selection: snapshot_line
             .map_or(PricingSelectionKind::Default, |line| line.selection_kind),
         fresh_pricing_policy: snapshot_line.and_then(|line| line.pricing_policy),

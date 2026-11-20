@@ -312,6 +312,12 @@ pub struct VerificationBoundaryInput {
     /// boundary -- which is costed from its child instead -- or a genuinely
     /// unpriced `Buy`). Never a re-fetch: copied verbatim from the revision.
     pub fresh_unit_price: Option<Money>,
+    /// The market unit price this row would have as Buy, on a `Build` /
+    /// `Reaction` boundary (the consumer's own price snapshot line; the
+    /// `fresh_price_*` provenance fields describe that same line). Evidence
+    /// only -- the boundary is still costed from its child. `None` on a Buy
+    /// boundary (see `fresh_unit_price`) or when unpriced.
+    pub market_unit_price: Option<Money>,
     /// How the fresh price was selected (`Default` market, an explicit market
     /// policy, or a manual override). `Default` when no snapshot line matched.
     pub fresh_price_selection: PricingSelectionKind,
