@@ -132,6 +132,26 @@ describe("OptimizeSourcingDialog", () => {
     );
   });
 
+  it("lists an unticked row once while the re-preview is in flight", async () => {
+    let resolveNext: (value: SourcingProposal) => void = () => {};
+    industryApi.previewSourcingOptimization
+      .mockResolvedValueOnce(proposal())
+      .mockReturnValueOnce(new Promise<SourcingProposal>((resolve) => (resolveNext = resolve)));
+    renderDialog();
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Apply Wreathe" }));
+    await waitFor(() => expect(industryApi.previewSourcingOptimization).toHaveBeenCalledTimes(2));
+
+    const pending = screen.getAllByRole("checkbox", { name: "Apply Wreathe" });
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Apply selected (2)" })).toBeDisabled();
+
+    resolveNext(proposal({ changes: [X, Y] }));
+    expect(await screen.findByRole("button", { name: "Apply selected (2)" })).toBeEnabled();
+    expect(screen.getAllByRole("checkbox", { name: "Apply Wreathe" })).toHaveLength(1);
+  });
+
   it("applies the proposal and closes as changed", async () => {
     industryApi.previewSourcingOptimization.mockResolvedValue(proposal());
     industryApi.applySourcingOptimization.mockResolvedValue({ applied: [700, 800, 900], failed: [], rootRevision: 4 });
