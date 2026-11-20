@@ -25,6 +25,9 @@ use support::workspace::{configured_workspace_owned_by, ConfiguredWorkspaceRepos
 #[derive(Default)]
 struct FixtureIndustryRepository {
     build: Option<Build>,
+    /// The root as canonical writes left it (`build` is the seeded root);
+    /// read through `root_build`.
+    written_root: std::sync::Mutex<Option<Build>>,
     /// Additional builds beyond `build` -- pre-seeded, and also the target
     /// of `create_build`/`update_draft`, which the linked-build flow
     /// genuinely exercises (unlike most fixture methods, which only ever
@@ -200,10 +203,17 @@ struct CanonicalFixture {
 }
 
 impl FixtureIndustryRepository {
+    fn root_build(&self) -> Option<Build> {
+        self.written_root
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| self.build.clone())
+    }
+
     fn all_builds(&self) -> Vec<Build> {
-        self.build
-            .iter()
-            .cloned()
+        self.root_build()
+            .into_iter()
             .chain(self.linked_builds.lock().unwrap().iter().cloned())
             .collect()
     }
@@ -212,7 +222,7 @@ impl FixtureIndustryRepository {
     /// a load and the write that references them). `None` for a fixture
     /// without a root.
     fn canonical_fixture(&self) -> Option<CanonicalFixture> {
-        let root = self.build.as_ref()?;
+        let root = self.root_build()?;
         if let Some(explicit) = self.canonical.lock().unwrap().clone() {
             return Some(explicit);
         }
@@ -221,7 +231,7 @@ impl FixtureIndustryRepository {
         // a test adds mid-way are picked up.
         let builds = self.linked_builds.lock().unwrap().clone();
         Some(CanonicalFixture {
-            edges: derived_canonical_edges(root, &builds, &[]),
+            edges: derived_canonical_edges(&root, &builds, &[]),
             retired: Vec::new(),
         })
     }
@@ -229,7 +239,7 @@ impl FixtureIndustryRepository {
     fn canonical_records(&self) -> Option<iskworks_core::production_dependency::RootPlanRecords> {
         let canonical = self.canonical_fixture()?;
         Some(iskworks_core::production_dependency::RootPlanRecords {
-            root: self.build.clone()?,
+            root: self.root_build()?,
             producers: self.linked_builds.lock().unwrap().clone(),
             dependencies: canonical.edges,
             retired_producers: canonical.retired,
@@ -277,9 +287,8 @@ impl IndustryRepository for FixtureIndustryRepository {
         _workspace_id: iskworks_core::WorkspaceId,
         build_id: BuildId,
     ) -> Result<Build, IndustryError> {
-        self.build
-            .iter()
-            .cloned()
+        self.root_build()
+            .into_iter()
             .chain(self.linked_builds.lock().unwrap().iter().cloned())
             .find(|build| build.id == build_id)
             .ok_or(IndustryError::BuildNotFound)
@@ -299,7 +308,7 @@ impl IndustryRepository for FixtureIndustryRepository {
         if self.canonical_fixture().is_none() {
             return Ok(None);
         }
-        let root = self.build.as_ref().map(|build| build.id);
+        let root = self.root_build().map(|build| build.id);
         Ok(self
             .all_builds()
             .iter()
@@ -343,7 +352,7 @@ impl IndustryRepository for FixtureIndustryRepository {
         // The first write materializes derived edges; from then on they're
         // stored state.
         let canonical = canonical.get_or_insert(derived);
-        let mut root = self.build.clone().expect("canonical fixture has a root");
+        let mut root = self.root_build().expect("canonical fixture has a root");
         let consumer = if root.id == write.consumer {
             &mut root
         } else {
@@ -365,8 +374,7 @@ impl IndustryRepository for FixtureIndustryRepository {
         consumer.revision += 1;
         let updated = consumer.clone();
         if root.id == write.consumer {
-            // `self.build` is immutable in this fixture; root writes are
-            // reflected through the returned Build only.
+            *self.written_root.lock().unwrap() = Some(root.clone());
         }
         let mut created: Vec<(
             iskworks_core::production_dependency::CanonicalProducerKey,
@@ -1525,6 +1533,7 @@ mod stages_descendant_production_configuration;
 mod canonical_producers;
 mod default_blueprint;
 mod facility_defaults;
+mod optimize_sourcing;
 
 // ---------------------------------------------------------------------------
 // Linked-build fixtures

@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -755,7 +755,7 @@ pub fn chosen_records(
 // Proposal
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum ProposedSourcing {
     Buy,
@@ -794,6 +794,9 @@ pub struct SourcingProposal {
     pub delta: Option<Money>,
     pub changes: Vec<SourcingChange>,
     pub warnings: Vec<SourcingWarning>,
+    /// Why nothing could be proposed (e.g. the candidate plan could not be
+    /// fully projected), when that is not simply "already optimal".
+    pub notice: Option<String>,
 }
 
 /// Assemble the proposal from the exact current and chosen plan costs. A
@@ -847,9 +850,9 @@ pub fn build_proposal(
                     quantity: evaluation.quantity,
                     from: evaluation.current,
                     to,
-                    buy_unit: evaluation.buy_unit,
-                    produce_unit: evaluation.produce_unit,
-                    saving,
+                    buy_unit: evaluation.buy_unit.map(|unit| round_money(unit, 4)),
+                    produce_unit: evaluation.produce_unit.map(|unit| round_money(unit, 4)),
+                    saving: saving.map(|saving| round_money(saving, 2)),
                     depth: evaluation.depth,
                 })
             })
@@ -883,7 +886,13 @@ pub fn build_proposal(
         },
         changes,
         warnings,
+        notice: None,
     }
+}
+
+/// Display rounding for derived per-unit figures (plan totals stay exact).
+fn round_money(value: Money, decimal_places: u32) -> Money {
+    Money(value.0.round_dp(decimal_places))
 }
 
 /// A stable digest of the root's and every producer's `(id, revision)`.
@@ -914,6 +923,65 @@ pub fn producer_key(type_id: i64, recipe: RecipeSelection) -> CanonicalProducerK
         output_type_id: type_id,
         method: recipe.into(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Apply
+// ---------------------------------------------------------------------------
+
+/// One component's chosen sourcing, as Apply receives it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcingApplyChange {
+    pub type_id: i64,
+    pub sourcing: ProposedSourcing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcingApplyFailure {
+    pub type_id: i64,
+    pub build_id: BuildId,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcingApplyOutcome {
+    pub applied: Vec<i64>,
+    pub failed: Vec<SourcingApplyFailure>,
+    pub root_revision: u64,
+}
+
+/// The edits one Build needs: its distinct recipe materials whose current
+/// draft sourcing differs from `wanted`.
+fn consumer_edits(
+    build: &Build,
+    wanted: &BTreeMap<i64, Option<RecipeSelection>>,
+) -> Vec<(i64, Option<RecipeSelection>)> {
+    let current: BTreeMap<i64, RecipeSelection> = build
+        .draft_planning
+        .as_ref()
+        .map(|draft| {
+            draft
+                .input
+                .component_resolutions
+                .iter()
+                .map(|resolution| (resolution.type_id, resolution.recipe))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut seen = BTreeSet::new();
+    build
+        .recipe
+        .materials()
+        .iter()
+        .filter(|line| seen.insert(line.type_id))
+        .filter_map(|line| {
+            let target = wanted.get(&line.type_id)?;
+            (current.get(&line.type_id) != target.as_ref()).then_some((line.type_id, *target))
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1023,7 +1091,107 @@ impl IndustryService {
                     "The plan's root Build has no planning input.".to_string(),
                 )
             })?;
-        self.project_canonical_records(workspace_id, owner_id, &command, inventory, true, records)
-            .await
+        let start = self.counters().snapshot();
+        let mut projection = self
+            .project_canonical_records(workspace_id, owner_id, &command, inventory, true, records)
+            .await?;
+        projection.metrics = self.counters().snapshot().since(start);
+        Ok(projection)
+    }
+
+    /// Apply chosen sourcing to root plan `root`, top-down: the root's
+    /// edges first, then each producer reachable after that write,
+    /// breadth-first -- so a producer created by a Buy -> Produce switch
+    /// gets its own inputs' sourcing in the same Apply. Each Build is one
+    /// atomic canonical write; a failed write is reported, not rolled back
+    /// (every committed step is a valid plan). Refuses with
+    /// `RevisionConflict` when the plan changed since `fingerprint`.
+    pub async fn apply_sourcing_changes(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        root: BuildId,
+        fingerprint: &str,
+        changes: &[SourcingApplyChange],
+    ) -> Result<SourcingApplyOutcome, IndustryError> {
+        let repository = self.build_repository();
+        if let Some(plan_root) = repository.plan_root_of(workspace_id, root).await? {
+            if plan_root != root {
+                return Err(IndustryError::Validation(
+                    "Sourcing can only be optimized from the plan's root Build.".to_string(),
+                ));
+            }
+        }
+        let records = repository.load_root_plan(workspace_id, root).await?;
+        if records.root.owner_id != owner_id {
+            return Err(IndustryError::BuildNotFound);
+        }
+        if plan_fingerprint(&records) != fingerprint {
+            return Err(IndustryError::RevisionConflict);
+        }
+        let wanted: BTreeMap<i64, Option<RecipeSelection>> = changes
+            .iter()
+            .map(|change| {
+                let recipe = match change.sourcing {
+                    ProposedSourcing::Buy => None,
+                    ProposedSourcing::Produce { recipe } => Some(recipe),
+                };
+                (change.type_id, recipe)
+            })
+            .collect();
+
+        let mut applied: BTreeSet<i64> = BTreeSet::new();
+        let mut failed: Vec<SourcingApplyFailure> = Vec::new();
+        let mut visited: HashSet<BuildId> = HashSet::new();
+        let mut queue = std::collections::VecDeque::from([root]);
+        let mut records = records;
+        while let Some(build_id) = queue.pop_front() {
+            if !visited.insert(build_id) {
+                continue;
+            }
+            let Some(build) = std::iter::once(&records.root)
+                .chain(&records.producers)
+                .find(|build| build.id == build_id)
+                .cloned()
+            else {
+                continue;
+            };
+            let edits = consumer_edits(&build, &wanted);
+            if !edits.is_empty() {
+                match self
+                    .set_component_sourcing(workspace_id, build_id, build.revision, &edits)
+                    .await
+                {
+                    Ok(_) => applied.extend(edits.iter().map(|(type_id, _)| *type_id)),
+                    Err(error) => {
+                        failed.extend(edits.iter().map(|(type_id, _)| SourcingApplyFailure {
+                            type_id: *type_id,
+                            build_id,
+                            error: error.to_string(),
+                        }))
+                    }
+                }
+                records = repository.load_root_plan(workspace_id, root).await?;
+            }
+            let mut producers: Vec<BuildId> = records
+                .dependencies
+                .iter()
+                .filter(|edge| {
+                    edge.consumer_build_id == build_id
+                        && matches!(edge.sourcing, DependencySourcing::Produce { .. })
+                })
+                .filter_map(|edge| edge.producer_build_id)
+                .collect();
+            producers.sort_by_key(|id| id.0);
+            queue.extend(producers);
+        }
+        for failure in &failed {
+            applied.remove(&failure.type_id);
+        }
+        Ok(SourcingApplyOutcome {
+            applied: applied.into_iter().collect(),
+            failed,
+            root_revision: records.root.revision,
+        })
     }
 }

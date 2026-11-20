@@ -215,7 +215,7 @@ pub(super) struct PlannerCounters {
 }
 
 impl PlannerCounters {
-    fn snapshot(&self) -> PlannerMetrics {
+    pub(super) fn snapshot(&self) -> PlannerMetrics {
         use std::sync::atomic::Ordering::Relaxed;
         let previews = self.previews.load(Relaxed);
         let structural = self.structural_previews.load(Relaxed);
@@ -242,7 +242,7 @@ pub struct PlannerMetrics {
 }
 
 impl PlannerMetrics {
-    fn since(self, start: Self) -> Self {
+    pub(super) fn since(self, start: Self) -> Self {
         Self {
             exact_previews: self.exact_previews - start.exact_previews,
             structural_discovery_previews: self.structural_discovery_previews
