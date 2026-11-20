@@ -19,7 +19,7 @@ use crate::FulfillmentScope;
 // builders
 // ---------------------------------------------------------------------------
 
-fn money(value: &str) -> Money {
+pub(crate) fn money(value: &str) -> Money {
     Money::parse(value).unwrap()
 }
 fn dec(value: &str) -> Decimal {
@@ -28,7 +28,7 @@ fn dec(value: &str) -> Decimal {
 
 /// An operation with **no facility** -- installation is always incomplete, so
 /// the operation is incomplete, but every material-side figure is exercised.
-fn op(
+pub(crate) fn op(
     op_index: u32,
     parent: Option<u32>,
     node_runs: u64,
@@ -82,7 +82,7 @@ fn op(
 /// Attach a facility with the given cost primitives (percentages as plain
 /// numbers, e.g. `"1.5"` == 1.5 %). `system_cost_index` is a fraction
 /// (`"0.05"` == 5 %).
-fn with_facility(
+pub(crate) fn with_facility(
     mut operation: VerificationOperationInput,
     system_cost_index: Option<&str>,
     job_cost_reduction_percent: &str,
@@ -105,7 +105,7 @@ fn with_facility(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn boundary(
+pub(crate) fn boundary(
     traversal_index: u32,
     op_index: u32,
     parent_traversal_index: Option<u32>,
@@ -142,6 +142,7 @@ fn boundary(
         api_produced: 0,
         api_surplus: 0,
         fresh_unit_price: None,
+        market_unit_price: None,
         fresh_price_selection: crate::PricingSelectionKind::Default,
         fresh_pricing_policy: None,
         fresh_price_note: String::new(),
@@ -154,7 +155,7 @@ fn boundary(
     }
 }
 
-fn with_price(
+pub(crate) fn with_price(
     mut boundary: VerificationBoundaryInput,
     unit_price: &str,
 ) -> VerificationBoundaryInput {
@@ -162,7 +163,7 @@ fn with_price(
     boundary
 }
 
-fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
+pub(crate) fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
     InventoryBasisEntry {
         type_id,
         quantity: 0,
@@ -172,7 +173,7 @@ fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
     }
 }
 
-fn run(
+pub(crate) fn run(
     operations: &[VerificationOperationInput],
     boundaries: &[VerificationBoundaryInput],
     inventory_basis: &[InventoryBasisEntry],
@@ -2006,4 +2007,64 @@ fn cost_warnings_serialize_camel_case_fields() {
     assert_eq!(json["typeId"], 34);
     assert_eq!(json["opIndex"], 3);
     assert_eq!(json["traversalIndex"], 7);
+}
+
+// ---------------------------------------------------------------------------
+// Market price alongside production cost (sourcing optimizer input)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn produced_boundary_carries_market_price_alongside_production_cost() {
+    let operations = vec![
+        with_facility(op(0, None, 1, 1), Some("0"), "0", "0", "0", "0", "0"),
+        with_facility(op(1, Some(0), 5, 100), Some("0"), "0", "0", "0", "0", "0"),
+    ];
+    let mut produced = boundary(
+        0,
+        0,
+        None,
+        90_001,
+        MaterialBoundaryResolution::Build,
+        FulfillmentScope::Missing,
+        500,
+        500,
+        0,
+        500,
+    );
+    produced.market_unit_price = Some(money("2.5"));
+    let boundaries = vec![
+        produced,
+        with_price(
+            boundary(
+                1,
+                1,
+                Some(0),
+                34,
+                MaterialBoundaryResolution::Buy,
+                FulfillmentScope::Missing,
+                500,
+                500,
+                0,
+                500,
+            ),
+            "3",
+        ),
+    ];
+    let projection = run(
+        &operations,
+        &boundaries,
+        &[basis(34, None), basis(90_001, None)],
+        &[(34, "3"), (90_001, "0")],
+    );
+
+    let produced = b_cost(&projection, 0);
+    assert_eq!(produced.child_unit_production_cost, Some(money("3")));
+    assert_eq!(produced.market_unit_price, Some(money("2.5")));
+    // The market price is evidence only: the requirement is still costed
+    // from the child.
+    assert_eq!(produced.requirement_cost, Some(money("1500")));
+
+    let bought = b_cost(&projection, 1);
+    assert_eq!(bought.fresh_unit_price, Some(money("3")));
+    assert_eq!(bought.market_unit_price, None);
 }

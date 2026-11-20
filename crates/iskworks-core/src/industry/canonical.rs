@@ -223,89 +223,107 @@ impl IndustryService {
             if producers.iter().any(|producer| producer.key == key) {
                 continue;
             }
-            let selection = match key.method {
-                crate::production_dependency::ProductionMethod::Manufacturing {
-                    blueprint_type_id,
-                } => RecipeSelection::Manufacturing { blueprint_type_id },
-                crate::production_dependency::ProductionMethod::Reaction {
-                    reaction_formula_type_id,
-                } => RecipeSelection::Reaction {
-                    reaction_formula_type_id,
-                },
-            };
-            let recipe = self.capture_recipe(&selection).await?;
-            let mut resolution = draft
-                .and_then(|input| {
-                    input
-                        .component_resolutions
-                        .iter()
-                        .find(|resolution| resolution.type_id == key.output_type_id)
-                        .cloned()
-                })
-                .unwrap_or(crate::ComponentResolution {
-                    type_id: key.output_type_id,
-                    recipe: selection,
-                    facility_override: None,
-                    blueprint_selection: None,
-                });
-            // Unless the row already chose one, start from the owner's best
-            // synced blueprint -- never ME 0 by omission.
-            if let (None, Some(blueprint_type_id)) =
-                (&resolution.blueprint_selection, recipe.blueprint_type_id())
-            {
-                resolution.blueprint_selection = self
-                    .default_observed_blueprint(
-                        consumer.workspace_id,
-                        consumer.owner_id,
-                        blueprint_type_id,
-                    )
-                    .await?;
-            }
-            // The workspace default only matters when the consumer's row
-            // carries no explicit facility of its own.
-            let default_facility = match (&resolution.facility_override, &defaults) {
-                (None, Some(defaults)) => {
-                    self.default_facility(
-                        consumer.workspace_id,
-                        defaults,
-                        selection,
-                        recipe.primary_product().type_id,
-                    )
-                    .await?
-                }
-                _ => None,
-            };
-            let now = Utc::now();
-            let name = format!("{} build", recipe.primary_product().type_name);
             producers.push(NewCanonicalProducer {
                 key,
-                build: Build {
-                    id: BuildId::new(),
-                    workspace_id: consumer.workspace_id,
-                    owner_id: consumer.owner_id,
-                    name,
-                    draft_planning: super::service::prepopulated_draft_planning(
-                        &resolution,
-                        selection,
-                        draft,
-                        default_facility,
-                    ),
-                    recipe,
-                    runs: 1,
-                    notes: String::new(),
-                    revision: 1,
-                    created_at: now,
-                    updated_at: now,
-                    recipe_currency: RecipeCurrency::Current,
-                    active_sde_version: None,
-                    product_category_name: None,
-                    product_group_name: None,
-                    selected_blueprint_origin: None,
-                    has_owned_blueprint: false,
-                },
+                build: self
+                    .new_producer_template(consumer, draft, key, defaults.as_ref())
+                    .await?,
             });
         }
         Ok(producers)
+    }
+
+    /// A new producer Build for `key`, as the canonical write creates it:
+    /// the captured active recipe, informational `runs = 1`, and its initial
+    /// configuration prepopulated from the consumer's resolution for that
+    /// component (else the owner's best synced blueprint and the workspace
+    /// default facility). Not persisted -- the write path saves it; the
+    /// sourcing optimizer costs it as a virtual producer, so both agree.
+    pub(in crate::industry) async fn new_producer_template(
+        &self,
+        consumer: &Build,
+        draft: Option<&DraftPlanningInput>,
+        key: crate::production_dependency::CanonicalProducerKey,
+        defaults: Option<&super::service::facility_defaults::FacilityDefaultsContext>,
+    ) -> Result<Build, IndustryError> {
+        let selection = match key.method {
+            crate::production_dependency::ProductionMethod::Manufacturing { blueprint_type_id } => {
+                RecipeSelection::Manufacturing { blueprint_type_id }
+            }
+            crate::production_dependency::ProductionMethod::Reaction {
+                reaction_formula_type_id,
+            } => RecipeSelection::Reaction {
+                reaction_formula_type_id,
+            },
+        };
+        let recipe = self.capture_recipe(&selection).await?;
+        let mut resolution = draft
+            .and_then(|input| {
+                input
+                    .component_resolutions
+                    .iter()
+                    .find(|resolution| resolution.type_id == key.output_type_id)
+                    .cloned()
+            })
+            .unwrap_or(crate::ComponentResolution {
+                type_id: key.output_type_id,
+                recipe: selection,
+                facility_override: None,
+                blueprint_selection: None,
+            });
+        // Unless the row already chose one, start from the owner's best
+        // synced blueprint -- never ME 0 by omission.
+        if let (None, Some(blueprint_type_id)) =
+            (&resolution.blueprint_selection, recipe.blueprint_type_id())
+        {
+            resolution.blueprint_selection = self
+                .default_observed_blueprint(
+                    consumer.workspace_id,
+                    consumer.owner_id,
+                    blueprint_type_id,
+                )
+                .await?;
+        }
+        // The workspace default only matters when the consumer's row
+        // carries no explicit facility of its own.
+        let default_facility = match (&resolution.facility_override, &defaults) {
+            (None, Some(defaults)) => {
+                self.default_facility(
+                    consumer.workspace_id,
+                    defaults,
+                    selection,
+                    recipe.primary_product().type_id,
+                )
+                .await?
+            }
+            _ => None,
+        };
+        let now = Utc::now();
+        let name = format!("{} build", recipe.primary_product().type_name);
+        Ok(Build {
+            id: BuildId::new(),
+            workspace_id: consumer.workspace_id,
+            owner_id: consumer.owner_id,
+            name,
+            draft_planning: super::service::prepopulated_draft_planning(
+                &resolution,
+                selection,
+                draft,
+                default_facility,
+            ),
+            recipe,
+            runs: 1,
+            notes: String::new(),
+            revision: 1,
+            created_at: now,
+            updated_at: now,
+            recipe_currency: RecipeCurrency::Current,
+            active_sde_version: None,
+            product_category_name: None,
+            product_group_name: None,
+            selected_blueprint_origin: None,
+            has_owned_blueprint: false,
+        })
     }
 
     /// The owner's best synced blueprint of `blueprint_type_id`, captured:

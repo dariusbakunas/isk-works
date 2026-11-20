@@ -175,6 +175,12 @@ pub struct BoundaryCostProjection {
     // --- fresh Buy portion --------------------------------------------------
     pub fresh_quantity: u64,
     pub fresh_unit_price: Option<Money>,
+    /// The market unit price this row would have as Buy, on a `Build` /
+    /// `Reaction` boundary (the consumer's own price snapshot line; the
+    /// `fresh_price_*` provenance fields describe that same line). Evidence
+    /// only -- the boundary is still costed from its child. `None` on a Buy
+    /// boundary (see `fresh_unit_price`) or when unpriced.
+    pub market_unit_price: Option<Money>,
     pub fresh_price_selection: PricingSelectionKind,
     pub fresh_pricing_policy: Option<crate::MarketPricingPolicy>,
     pub fresh_price_note: String,
@@ -919,6 +925,7 @@ pub fn project_build_cost(
                 inventory_cost,
                 fresh_quantity,
                 fresh_unit_price: boundary.fresh_unit_price,
+                market_unit_price: boundary.market_unit_price,
                 fresh_price_selection: boundary.fresh_price_selection,
                 fresh_pricing_policy: boundary.fresh_pricing_policy,
                 fresh_price_note: boundary.fresh_price_note.clone(),
@@ -1232,4 +1239,4 @@ fn warning_key(warning: &CostWarning) -> (u8, u32, u32, i64) {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

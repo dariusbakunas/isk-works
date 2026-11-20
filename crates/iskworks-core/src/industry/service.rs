@@ -4,7 +4,7 @@ use crate::GraphMarketEvidence;
 
 mod blueprint_backfill;
 mod facility_context;
-mod facility_defaults;
+pub(in crate::industry) mod facility_defaults;
 mod preview;
 mod projection;
 mod recipe_capture;
@@ -199,7 +199,7 @@ pub struct BuildMaterialsProjection {
 #[derive(Clone)]
 pub struct IndustryService {
     repository: Arc<dyn IndustryRepository>,
-    sde_repository: Arc<dyn SdeReadRepository>,
+    pub(super) sde_repository: Arc<dyn SdeReadRepository>,
     counters: Arc<PlannerCounters>,
 }
 
@@ -298,6 +298,7 @@ pub(super) fn boundary_verification(
         parent_traversal_index,
         op_index,
         fresh_unit_price: unit_price,
+        market_unit_price: snapshot_line.and_then(|line| line.price),
         fresh_price_selection: snapshot_line
             .map_or(PricingSelectionKind::Default, |line| line.selection_kind),
         fresh_pricing_policy: snapshot_line.and_then(|line| line.pricing_policy),

@@ -255,6 +255,7 @@ mod cost {
             api_produced: 0,
             api_surplus: 0,
             fresh_unit_price: None,
+            market_unit_price: None,
             fresh_price_selection: PricingSelectionKind::Default,
             fresh_pricing_policy: None,
             fresh_price_note: String::new(),

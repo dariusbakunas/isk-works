@@ -228,6 +228,7 @@ fn boundary_cost(
         inventory_cost: (inventory > 0).then(Money::zero),
         fresh_quantity: required - inventory,
         fresh_unit_price: fresh_unit.map(|value| Money::parse(value).unwrap()),
+        market_unit_price: None,
         fresh_price_selection: PricingSelectionKind::Default,
         fresh_pricing_policy: None,
         fresh_price_note: String::new(),
