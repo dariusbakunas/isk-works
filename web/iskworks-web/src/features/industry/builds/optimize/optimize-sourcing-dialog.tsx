@@ -145,12 +145,17 @@ export function OptimizeSourcingDialog({
   const outcome = apply.status === "done" ? apply.outcome : null;
   const anyApplied = (outcome?.applied.length ?? 0) > 0;
   const changes = proposal?.changes ?? [];
+  const proposed = new Set(changes.map((change) => change.typeId));
+  // Until the re-preview lands, the proposal on screen may still carry a row
+  // just unticked (or lack one just ticked again): one row per type, ticked
+  // by the user's choice, never both the stale and the remembered copy.
   const rows = [
-    ...changes.map((change) => ({ change, checked: true })),
+    ...changes.map((change) => ({ change, checked: !excluded.has(change.typeId) })),
     ...[...excludedRows.values()]
-      .filter((change) => excluded.has(change.typeId))
-      .map((change) => ({ change, checked: false })),
+      .filter((change) => !proposed.has(change.typeId) && (excluded.has(change.typeId) || loading))
+      .map((change) => ({ change, checked: !excluded.has(change.typeId) })),
   ];
+  const selectedCount = rows.filter((row) => row.checked).length;
   const depths = [...new Set(rows.map((row) => row.change.depth))].sort((a, b) => a - b);
 
   function toggle(change: SourcingChange, checked: boolean) {
@@ -367,7 +372,7 @@ export function OptimizeSourcingDialog({
                 onClick={() => void applyChanges()}
                 type="button"
               >
-                {applying ? "Applying…" : `Apply selected (${changes.length})`}
+                {applying ? "Applying…" : `Apply selected (${selectedCount})`}
               </button>
             </>
           )}
