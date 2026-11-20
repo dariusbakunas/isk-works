@@ -228,7 +228,7 @@ impl IndustryService {
         plan_root: BuildId,
     ) -> Result<BuildMaterialsProjection, IndustryError> {
         validate_runs(command.runs)?;
-        let start = command.build_id.ok_or_else(|| {
+        command.build_id.ok_or_else(|| {
             IndustryError::Validation("A graph requires a saved build.".to_string())
         })?;
         // One bounded load of the whole plan (a fixed number of queries,
@@ -246,7 +246,36 @@ impl IndustryService {
                 Relaxed,
             );
         }
-        let graph = RootPlanDependencyGraph::from_persisted(&records)
+        self.project_canonical_records(
+            workspace_id,
+            owner_id,
+            command,
+            inventory,
+            capture_verification,
+            &records,
+        )
+        .await
+    }
+
+    /// The canonical planner over a plan's records as given -- persisted
+    /// (`project_canonical_build_materials`) or a candidate plan held only in
+    /// memory (the sourcing optimizer). Reads nothing per producer from the
+    /// repository: each producer's preview is reconstructed from its `Build`
+    /// value in `records`.
+    pub(crate) async fn project_canonical_records(
+        &self,
+        workspace_id: WorkspaceId,
+        owner_id: OwnerId,
+        command: &PreviewBuildPlanCommand,
+        inventory: &mut PlanningInventory,
+        capture_verification: bool,
+        records: &crate::production_dependency::RootPlanRecords,
+    ) -> Result<BuildMaterialsProjection, IndustryError> {
+        validate_runs(command.runs)?;
+        let start = command.build_id.ok_or_else(|| {
+            IndustryError::Validation("A graph requires a saved build.".to_string())
+        })?;
+        let graph = RootPlanDependencyGraph::from_persisted(records)
             .map_err(|error| IndustryError::Persistence(error.to_string()))?;
         let builds: HashMap<uuid::Uuid, &Build> = std::iter::once(&records.root)
             .chain(&records.producers)
