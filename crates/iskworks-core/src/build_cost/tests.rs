@@ -19,7 +19,7 @@ use crate::FulfillmentScope;
 // builders
 // ---------------------------------------------------------------------------
 
-fn money(value: &str) -> Money {
+pub(crate) fn money(value: &str) -> Money {
     Money::parse(value).unwrap()
 }
 fn dec(value: &str) -> Decimal {
@@ -28,7 +28,7 @@ fn dec(value: &str) -> Decimal {
 
 /// An operation with **no facility** -- installation is always incomplete, so
 /// the operation is incomplete, but every material-side figure is exercised.
-fn op(
+pub(crate) fn op(
     op_index: u32,
     parent: Option<u32>,
     node_runs: u64,
@@ -82,7 +82,7 @@ fn op(
 /// Attach a facility with the given cost primitives (percentages as plain
 /// numbers, e.g. `"1.5"` == 1.5 %). `system_cost_index` is a fraction
 /// (`"0.05"` == 5 %).
-fn with_facility(
+pub(crate) fn with_facility(
     mut operation: VerificationOperationInput,
     system_cost_index: Option<&str>,
     job_cost_reduction_percent: &str,
@@ -105,7 +105,7 @@ fn with_facility(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn boundary(
+pub(crate) fn boundary(
     traversal_index: u32,
     op_index: u32,
     parent_traversal_index: Option<u32>,
@@ -155,7 +155,7 @@ fn boundary(
     }
 }
 
-fn with_price(
+pub(crate) fn with_price(
     mut boundary: VerificationBoundaryInput,
     unit_price: &str,
 ) -> VerificationBoundaryInput {
@@ -163,7 +163,7 @@ fn with_price(
     boundary
 }
 
-fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
+pub(crate) fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
     InventoryBasisEntry {
         type_id,
         quantity: 0,
@@ -173,7 +173,7 @@ fn basis(type_id: i64, unit_basis: Option<&str>) -> InventoryBasisEntry {
     }
 }
 
-fn run(
+pub(crate) fn run(
     operations: &[VerificationOperationInput],
     boundaries: &[VerificationBoundaryInput],
     inventory_basis: &[InventoryBasisEntry],

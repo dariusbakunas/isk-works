@@ -1239,4 +1239,4 @@ fn warning_key(warning: &CostWarning) -> (u8, u32, u32, i64) {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

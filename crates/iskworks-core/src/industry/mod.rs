@@ -28,6 +28,7 @@ mod pricing;
 mod recipe;
 mod repository;
 mod service;
+pub mod sourcing_optimizer;
 mod transient_calculation;
 
 #[cfg(test)]

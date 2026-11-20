@@ -199,7 +199,7 @@ pub struct BuildMaterialsProjection {
 #[derive(Clone)]
 pub struct IndustryService {
     repository: Arc<dyn IndustryRepository>,
-    sde_repository: Arc<dyn SdeReadRepository>,
+    pub(super) sde_repository: Arc<dyn SdeReadRepository>,
     counters: Arc<PlannerCounters>,
 }
 
