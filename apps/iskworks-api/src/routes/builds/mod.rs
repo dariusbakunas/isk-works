@@ -15,6 +15,7 @@ mod export;
 mod graph;
 mod materials;
 mod preview;
+mod sourcing;
 mod worksheet;
 
 pub(crate) fn router() -> Router<AppState> {
@@ -26,4 +27,5 @@ pub(crate) fn router() -> Router<AppState> {
         .merge(export::router())
         .merge(cost::router())
         .merge(worksheet::router())
+        .merge(sourcing::router())
 }
