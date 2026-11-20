@@ -45,6 +45,8 @@ use iskworks_sde::SdeReadRepository;
 use crate::build_preview::BuildPlanningDeps;
 use crate::{BuildPreviewCoordinator, BuildPreviewError};
 
+mod sourcing;
+
 /// Every error the Build Materials application operation can produce.
 #[derive(Debug, thiserror::Error)]
 pub enum BuildMaterialsError {
