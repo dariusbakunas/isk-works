@@ -617,3 +617,84 @@ export function deleteBuild(id: string, expectedRevision: number): Promise<void>
   return request(`/api/builds/${id}${query}`, { method: "DELETE" });
 }
 
+
+// ---- Optimize sourcing (routes/builds/sourcing.rs) ------------------------
+
+export type CurrentSourcing = "buy" | "produce" | "mixed";
+
+export type ProposedSourcing = { kind: "buy" } | { kind: "produce"; recipe: RecipeSelection };
+
+export type SourcingWarningKind =
+  | "no_blueprint"
+  | "no_buy_price"
+  | "produce_cost_incomplete"
+  | "recipe_unavailable";
+
+export interface SourcingChange {
+  typeId: number;
+  typeName: string;
+  quantity: number;
+  /** `null`: only reached through a producer this proposal creates. */
+  from: CurrentSourcing | null;
+  to: ProposedSourcing;
+  buyUnit: Money | null;
+  produceUnit: Money | null;
+  /** What the proposed side saves against the other at `quantity`. */
+  saving: Money | null;
+  /** Producer depth below the root (the root's own components are 1). */
+  depth: number;
+}
+
+export interface SourcingWarning {
+  typeId: number;
+  typeName: string;
+  kind: SourcingWarningKind;
+}
+
+export interface SourcingProposal {
+  fingerprint: string;
+  expectedRevenue: Money | null;
+  currentCost: Money | null;
+  proposedCost: Money | null;
+  currentMargin: Money | null;
+  proposedMargin: Money | null;
+  delta: Money | null;
+  changes: SourcingChange[];
+  warnings: SourcingWarning[];
+  notice: string | null;
+}
+
+export interface SourcingOptimizationOptions {
+  /** Percent as a decimal string, e.g. "2". */
+  minSavingPercent: string;
+  includeWithoutBlueprint: boolean;
+  exclude: number[];
+}
+
+export interface SourcingApplyOutcome {
+  applied: number[];
+  failed: { typeId: number; buildId: string; error: string }[];
+  rootRevision: number;
+}
+
+/** Proposed Buy / Build switches for root plan `buildId` (read-only). */
+export function previewSourcingOptimization(
+  buildId: string,
+  options: SourcingOptimizationOptions,
+): Promise<SourcingProposal> {
+  return request(`/api/builds/${buildId}/optimize-sourcing/preview`, json("POST", options));
+}
+
+/** Apply `proposal`'s changes; 409 when the plan changed since it. */
+export function applySourcingOptimization(
+  buildId: string,
+  proposal: Pick<SourcingProposal, "fingerprint" | "changes">,
+): Promise<SourcingApplyOutcome> {
+  return request(
+    `/api/builds/${buildId}/optimize-sourcing/apply`,
+    json("POST", {
+      fingerprint: proposal.fingerprint,
+      changes: proposal.changes.map((change) => ({ typeId: change.typeId, sourcing: change.to })),
+    }),
+  );
+}
