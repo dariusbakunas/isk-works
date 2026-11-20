@@ -83,6 +83,37 @@ impl IndustryService {
         .await
     }
 
+    /// Set several components' sourcing on one Build in a single canonical
+    /// write: `Some(recipe)` produces (creating or reusing the plan's
+    /// producer), `None` buys. Used by the sourcing optimizer's Apply.
+    pub async fn set_component_sourcing(
+        &self,
+        workspace_id: WorkspaceId,
+        build_id: BuildId,
+        expected_revision: u64,
+        changes: &[(i64, Option<RecipeSelection>)],
+    ) -> Result<Build, IndustryError> {
+        self.mutate_component_resolutions(
+            workspace_id,
+            build_id,
+            expected_revision,
+            |resolutions| {
+                for (component_type_id, recipe) in changes {
+                    resolutions.retain(|resolution| resolution.type_id != *component_type_id);
+                    if let Some(recipe) = recipe {
+                        resolutions.push(crate::ComponentResolution {
+                            type_id: *component_type_id,
+                            recipe: *recipe,
+                            facility_override: None,
+                            blueprint_selection: None,
+                        });
+                    }
+                }
+            },
+        )
+        .await
+    }
+
     async fn mutate_component_resolutions(
         &self,
         workspace_id: WorkspaceId,
