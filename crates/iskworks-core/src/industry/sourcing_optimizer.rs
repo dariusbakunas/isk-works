@@ -850,9 +850,9 @@ pub fn build_proposal(
                     quantity: evaluation.quantity,
                     from: evaluation.current,
                     to,
-                    buy_unit: evaluation.buy_unit,
-                    produce_unit: evaluation.produce_unit,
-                    saving,
+                    buy_unit: evaluation.buy_unit.map(|unit| round_money(unit, 4)),
+                    produce_unit: evaluation.produce_unit.map(|unit| round_money(unit, 4)),
+                    saving: saving.map(|saving| round_money(saving, 2)),
                     depth: evaluation.depth,
                 })
             })
@@ -888,6 +888,11 @@ pub fn build_proposal(
         warnings,
         notice: None,
     }
+}
+
+/// Display rounding for derived per-unit figures (plan totals stay exact).
+fn round_money(value: Money, decimal_places: u32) -> Money {
+    Money(value.0.round_dp(decimal_places))
 }
 
 /// A stable digest of the root's and every producer's `(id, revision)`.
@@ -1086,8 +1091,12 @@ impl IndustryService {
                     "The plan's root Build has no planning input.".to_string(),
                 )
             })?;
-        self.project_canonical_records(workspace_id, owner_id, &command, inventory, true, records)
-            .await
+        let start = self.counters().snapshot();
+        let mut projection = self
+            .project_canonical_records(workspace_id, owner_id, &command, inventory, true, records)
+            .await?;
+        projection.metrics = self.counters().snapshot().since(start);
+        Ok(projection)
     }
 
     /// Apply chosen sourcing to root plan `root`, top-down: the root's
