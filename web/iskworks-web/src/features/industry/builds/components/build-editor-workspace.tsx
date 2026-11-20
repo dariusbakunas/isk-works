@@ -21,6 +21,7 @@ import {
 } from "./planner-panels";
 import { BuildEditorHeader } from "./build-editor-header";
 import { CreateEpicDialog } from "./create-epic-dialog";
+import { OptimizeSourcingDialog } from "../optimize/optimize-sourcing-dialog";
 import { AddTicketToEpicButton } from "../epic-mode/add-ticket-to-epic";
 import { EpicSelector } from "../epic-mode/epic-selector";
 import { useBuildEpicSelection } from "../epic-mode/use-build-epic-selection";
@@ -104,9 +105,12 @@ function parseBuildView(param: string | null): BuildView {
 export function BuildEditorWorkspace({
   editor,
   focusedProducer,
+  onReload,
 }: {
   editor: BuildWorksheetEditorModel;
   focusedProducer?: Build;
+  /** Reload the saved Build (after Optimize sourcing rewrote the plan). */
+  onReload?: () => void;
 }) {
   const {
     blueprintDialogOpen,
@@ -208,6 +212,7 @@ export function BuildEditorWorkspace({
   // Non-null while the Create Epic dialog is open: the overlay it freezes.
   const [epicCommand, setEpicCommand] = useState<PreviewBuildPlanCommand | null>(null);
   const [orderError, setOrderError] = useState("");
+  const [optimizeOpen, setOptimizeOpen] = useState(false);
   const [exportingWorkbook, setExportingWorkbook] = useState(false);
   // Where the worksheet portals its Blueprints chip: the view tab bar.
   const [blueprintChipSlot, setBlueprintChipSlot] = useState<HTMLElement | null>(null);
@@ -453,6 +458,18 @@ export function BuildEditorWorkspace({
             >
               {exportingWorkbook ? "Exporting..." : "Export verification workbook"}
             </button>
+            {selectedEpicId === null && onReload ? (
+              <button
+                className="iw-button-secondary"
+                // Optimizes the saved plan: wait for pending edits to land.
+                disabled={optimizeOpen || saveStatus === "saving"}
+                onClick={() => setOptimizeOpen(true)}
+                title="Buy or build each component, whichever gives the higher margin"
+                type="button"
+              >
+                Optimize sourcing
+              </button>
+            ) : null}
             {selectedEpicId ? (
               // An Epic is shown: add work to it rather than freeze another.
               <AddTicketToEpicButton
@@ -481,6 +498,16 @@ export function BuildEditorWorkspace({
           onCancel={() => setEpicCommand(null)}
           onCreated={handleEpicCreated}
           open={epicCommand !== null}
+        />
+      ) : null}
+      {initialBuild && !focusedProducer ? (
+        <OptimizeSourcingDialog
+          buildId={initialBuild.id}
+          onClose={(applied) => {
+            setOptimizeOpen(false);
+            if (applied) onReload?.();
+          }}
+          open={optimizeOpen}
         />
       ) : null}
       {exportError ? (

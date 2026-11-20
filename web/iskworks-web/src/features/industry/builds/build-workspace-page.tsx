@@ -16,6 +16,9 @@ export function BuildWorkspacePage({ canonicalize = false }: { canonicalize?: bo
   const { buildId = "", rootBuildId = "", producerBuildId = "" } = useParams();
   const navigate = useNavigate();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  // Bumped after a server-side plan rewrite (Optimize sourcing): reloads
+  // the Build and remounts the editor from it.
+  const [reloadCount, setReloadCount] = useState(0);
 
   useEffect(() => {
     const requestedBuildId = rootBuildId || buildId;
@@ -50,7 +53,7 @@ export function BuildWorkspacePage({ canonicalize = false }: { canonicalize?: bo
         if (canonicalize) navigate(`/builds/${build.id}?view=plan&settings=open`, { replace: true });
       })
       .catch((error) => setState({ status: "error", message: apiMessage(error) }));
-  }, [buildId, rootBuildId, producerBuildId, canonicalize, navigate]);
+  }, [buildId, rootBuildId, producerBuildId, canonicalize, navigate, reloadCount]);
 
   if (state.status === "loading") return <Panel>Loading Build...</Panel>;
   if (state.status === "error") {
@@ -78,7 +81,8 @@ export function BuildWorkspacePage({ canonicalize = false }: { canonicalize?: bo
       <BuildWorksheetEditor
         focusedProducer={state.focusedProducer}
         initialBuild={state.data}
-        key={`${state.data.id}:${state.focusedProducer?.id ?? "root"}`}
+        key={`${state.data.id}:${state.focusedProducer?.id ?? "root"}:${state.data.revision}`}
+        onReload={() => setReloadCount((count) => count + 1)}
       />
     </>
   );

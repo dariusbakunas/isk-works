@@ -7,9 +7,12 @@ import { useBuildWorksheetEditor } from "./use-build-worksheet-editor";
 export function BuildWorksheetEditor({
   initialBuild = null,
   focusedProducer,
+  onReload,
 }: {
   initialBuild?: Build | null;
   focusedProducer?: Build;
+  /** Reload the saved Build from the server (after a server-side rewrite). */
+  onReload?: () => void;
 }) {
   const editor = useBuildWorksheetEditor(initialBuild);
 
@@ -30,7 +33,7 @@ export function BuildWorksheetEditor({
     );
   }
 
-  return <BuildEditorWorkspace editor={editor} focusedProducer={focusedProducer} />;
+  return <BuildEditorWorkspace editor={editor} focusedProducer={focusedProducer} onReload={onReload} />;
 }
 
 export function CreateBuildPage() {

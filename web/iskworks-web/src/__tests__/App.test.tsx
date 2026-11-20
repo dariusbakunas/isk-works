@@ -1391,6 +1391,8 @@ describe("Create Build planning", () => {
     expect(JSON.stringify(createBuildRequestBody)).not.toContain("blueprintTypeId");
 
     const createEpicButton = await screen.findByRole("button", { name: "Create Epic" }, { timeout: 3000 });
+    // A saved root Build can optimize its plan's sourcing.
+    expect(screen.getByRole("button", { name: "Optimize sourcing" })).toBeInTheDocument();
     await user.click(createEpicButton);
 
     // The dialog previews the inventory the Epic reserves.
