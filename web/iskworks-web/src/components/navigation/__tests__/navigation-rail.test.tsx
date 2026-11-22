@@ -40,11 +40,11 @@ describe("NavigationRail", () => {
   });
 
   test("a sub-page marks its parent as the current page", () => {
-    renderRail("/inventory/runway");
+    renderRail("/facilities/defaults");
 
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("link", { name: "Inventory" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).getByRole("link", { name: "Assets" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Facilities" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Board" })).not.toHaveAttribute("aria-current");
   });
 
   test("expanded or not, it lists the same rows: sub-pages and actions stay out", () => {
@@ -57,17 +57,60 @@ describe("NavigationRail", () => {
     renderRail("/inventory", { pinned: true });
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(nav).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(collapsedRows);
-    for (const name of ["Blueprints", "Runway", "New build", "New price source"]) {
+    for (const name of ["New build", "History", "New price source"]) {
       expect(within(nav).queryByRole("link", { name })).not.toBeInTheDocument();
     }
   });
 
-  test("on a sub-page, the parent row is the current page", () => {
+  test("a row nested under another row's path lights only itself", () => {
     renderRail("/builds/blueprints", { pinned: true });
 
-    const builds = within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("link", { name: "Builds" });
-    expect(builds).toHaveAttribute("aria-current", "page");
-    expect(builds).toHaveClass("text-primary");
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    const blueprints = within(nav).getByRole("link", { name: "Blueprints" });
+    expect(blueprints).toHaveAttribute("aria-current", "page");
+    expect(blueprints).toHaveClass("text-primary");
+    expect(within(nav).getByRole("link", { name: "Builds" })).not.toHaveAttribute("aria-current");
+  });
+
+  describe("collapsible groups", () => {
+    afterEach(() => window.localStorage.clear());
+
+    test("a group heading collapses its rows, keeping the current page, and is remembered", () => {
+      const { unmount } = renderRail("/inventory", { pinned: true });
+      const nav = () => screen.getByRole("navigation", { name: "Primary navigation" });
+      const stock = within(nav()).getByRole("button", { name: "Stock" });
+      expect(stock).toHaveAttribute("aria-expanded", "true");
+
+      fireEvent.click(stock);
+      expect(stock).toHaveAttribute("aria-expanded", "false");
+      expect(within(nav()).getByRole("link", { name: "Inventory" })).toBeInTheDocument();
+      expect(within(nav()).queryByRole("link", { name: "Runway" })).not.toBeInTheDocument();
+      expect(within(nav()).queryByRole("link", { name: "Assets" })).not.toBeInTheDocument();
+      unmount();
+
+      renderRail("/board", { pinned: true });
+      expect(within(nav()).getByRole("button", { name: "Stock" })).toHaveAttribute("aria-expanded", "false");
+      expect(within(nav()).queryByRole("link", { name: "Inventory" })).not.toBeInTheDocument();
+
+      fireEvent.click(within(nav()).getByRole("button", { name: "Stock" }));
+      expect(within(nav()).getByRole("link", { name: "Assets" })).toBeInTheDocument();
+    });
+
+    test("collapsed, the icon rail hides the same rows", () => {
+      window.localStorage.setItem("iskworks:nav-collapsed-groups", JSON.stringify(["trade"]));
+      renderRail("/board");
+
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(within(nav).queryByRole("link", { name: "Market" })).not.toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name: "Board" })).toBeInTheDocument();
+    });
+
+    test("unreadable storage leaves every group open", () => {
+      window.localStorage.setItem("iskworks:nav-collapsed-groups", "not json");
+      renderRail("/board", { pinned: true });
+
+      expect(screen.getByRole("button", { name: "Trade" })).toHaveAttribute("aria-expanded", "true");
+    });
   });
 
   test("on an action page, the parent row is the current page", () => {

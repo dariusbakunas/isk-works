@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { adminNavItem, flatNavItems, isNavPathActive, navGroups, resolveNavEntry } from "../registry";
+import { activeNavItemPath, adminNavItem, flatNavItems, isNavPathActive, navGroups, resolveNavEntry } from "../registry";
 
 describe("navigation registry", () => {
   test("groups pages as Pilots, Industry, Stock, Trade", () => {
@@ -35,13 +35,27 @@ describe("navigation registry", () => {
 
   test("resolves a location to the most specific entry", () => {
     expect(resolveNavEntry("/builds/123")).toMatchObject({ label: "Builds", path: "/builds" });
-    expect(resolveNavEntry("/inventory/runway")).toMatchObject({
-      label: "Runway",
-      path: "/inventory/runway",
-      parent: { label: "Inventory" },
+    expect(resolveNavEntry("/jobs/history")).toMatchObject({
+      label: "History",
+      path: "/jobs/history",
+      parent: { label: "Jobs" },
     });
+    expect(resolveNavEntry("/builds/blueprints")).toMatchObject({ label: "Blueprints", path: "/builds/blueprints" });
+    expect(resolveNavEntry("/builds/blueprints")?.parent).toBeUndefined();
     expect(resolveNavEntry("/inventory")?.label).toBe("Inventory");
     expect(resolveNavEntry("/inventory")?.parent).toBeUndefined();
     expect(resolveNavEntry("/nope")).toBeNull();
+  });
+
+  test("Blueprints, Runway, Consumption and Analytics are rail rows of their own", () => {
+    const rows = flatNavItems(false).map((item) => item.label);
+    expect(rows).toEqual(expect.arrayContaining(["Blueprints", "Runway", "Consumption", "Analytics"]));
+    const items = flatNavItems(false);
+    expect(activeNavItemPath("/builds/blueprints", items)).toBe("/builds/blueprints");
+    expect(activeNavItemPath("/builds/123", items)).toBe("/builds");
+    expect(activeNavItemPath("/inventory/consumption", items)).toBe("/inventory/consumption");
+    expect(activeNavItemPath("/finance/analytics", items)).toBe("/finance/analytics");
+    expect(activeNavItemPath("/finance/transactions", items)).toBe("/finance");
+    expect(activeNavItemPath("/nope", items)).toBeNull();
   });
 });

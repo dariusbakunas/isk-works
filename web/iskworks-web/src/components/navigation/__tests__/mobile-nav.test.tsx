@@ -9,7 +9,7 @@ function LocationProbe() {
   return <output data-testid="location">{useLocation().pathname}</output>;
 }
 
-function renderMobileNav(path = "/inventory/runway") {
+function renderMobileNav(path = "/jobs/history") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <MobileNav isAdmin={false} renderAccount={() => <button type="button">Account</button>} workspaceName="Aura Industries" />
@@ -29,7 +29,7 @@ describe("MobileNav", () => {
 
   test("the top bar names the current page's section", () => {
     renderMobileNav();
-    expect(screen.getByTestId("mobile-nav-title")).toHaveTextContent("Inventory");
+    expect(screen.getByTestId("mobile-nav-title")).toHaveTextContent("Jobs");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

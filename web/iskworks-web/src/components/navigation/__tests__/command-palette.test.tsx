@@ -38,7 +38,7 @@ describe("CommandPalette", () => {
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toHaveFocus();
     expect(options()[0]).toHaveTextContent("Board");
-    expect(options()[1]).toHaveTextContent("Builds › Blueprints");
+    expect(options()[1]).toHaveTextContent("Blueprints");
     expect(screen.getByText("Recent")).toBeInTheDocument();
     expect(screen.getByText("Actions", { selector: "[role=presentation]" })).toBeInTheDocument();
     expect(screen.getByText("All pages")).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("CommandPalette", () => {
     renderPalette();
 
     await user.type(screen.getByRole("combobox"), "bp");
-    expect(options()[0]).toHaveTextContent("Builds › Blueprints");
+    expect(options()[0]).toHaveTextContent("Blueprints");
     expect(within(options()[0]).getByText("matches: bp")).toBeInTheDocument();
   });
 
