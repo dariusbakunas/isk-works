@@ -71,6 +71,7 @@ export function AverageCostChange({ current, resulting }: { current: string | nu
 function postingTitle(kind: InventoryPreview["posting"]["kind"]) {
   if (kind === "openingBalance") return "Opening Balance";
   if (kind === "purchase") return "Purchase";
+  if (kind === "sale") return "Sale";
   return "Adjustment";
 }
 
@@ -96,7 +97,10 @@ export function InventoryPreviewPanel({
       <dl className="mt-4 grid grid-cols-2 gap-3">
         <PreviewMetric label={quantityLabel} value={formatQuantity(preview.posting.quantityDelta)} />
         <PreviewMetric label="Unit cost" value={preview.posting.unitCost ? formatMoney(preview.posting.unitCost) : "Unknown"} />
-        <PreviewMetric label="Historical cost added" value={formatMoney(preview.posting.totalCostDelta)} />
+        <PreviewMetric
+          label={preview.posting.totalCostDelta.startsWith("-") ? "Historical cost removed" : "Historical cost added"}
+          value={formatMoney(preview.posting.totalCostDelta)}
+        />
         <PreviewMetric label="Current revision" value={String(preview.current.revision)} />
       </dl>
       <div className="my-4 border-t border-border" />

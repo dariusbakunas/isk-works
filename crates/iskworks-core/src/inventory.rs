@@ -40,6 +40,12 @@ pub enum InventoryEventKind {
     /// e.g. a manual "I counted this in my hangar" correction. Covers both
     /// directions: see `adjustment_posting`.
     Adjustment,
+    /// Stock sold on the market, recorded from a Finance Market Sell. Removes
+    /// quantity at the balance's weighted average cost, like a negative
+    /// adjustment, but is its own kind so it is never read as Build
+    /// consumption (material runway) or a manual correction. See
+    /// `sale_posting`.
+    Sale,
 }
 
 /// How sure we are of a posting's cost. There is deliberately no `Unknown`
@@ -677,6 +683,48 @@ pub fn consumption_posting(
         note,
         effective_at: recorded_at,
         recorded_at,
+        expected_revision: current.revision,
+        reverses_event_id: None,
+    })
+}
+
+/// Builds a `Sale` posting: `quantity` sold units leave `current` at its
+/// weighted average cost (`priced_reduction`, exact total when the whole
+/// balance is sold). Selling more than is in inventory is rejected rather
+/// than clamped, so the ledger never claims a sale it can only partly back.
+pub fn sale_posting(
+    current: &InventoryBalance,
+    quantity: u64,
+    source_reference: String,
+    note: String,
+    effective_at: DateTime<Utc>,
+) -> Result<InventoryPosting, InventoryError> {
+    if quantity == 0 {
+        return Err(InventoryError::Validation(
+            "A sale must have a positive quantity.".to_string(),
+        ));
+    }
+    if quantity > current.quantity {
+        return Err(InventoryError::Validation(format!(
+            "Only {} {} in inventory, but this sale is for {}. Add the missing stock to inventory first.",
+            current.quantity, current.type_name, quantity
+        )));
+    }
+    let quantity_delta = i64::try_from(quantity).map_err(|_| InventoryError::ArithmeticOverflow)?;
+    let (total_cost_delta, average) = priced_reduction(current, quantity)?;
+    Ok(InventoryPosting {
+        id: InventoryEventId::new(),
+        key: current.key.clone(),
+        type_name: current.type_name.clone(),
+        kind: InventoryEventKind::Sale,
+        quantity_delta: -quantity_delta,
+        total_cost_delta,
+        unit_cost: Some(average),
+        cost_quality: CostInputQuality::Known,
+        source_reference,
+        note,
+        effective_at,
+        recorded_at: Utc::now(),
         expected_revision: current.revision,
         reverses_event_id: None,
     })

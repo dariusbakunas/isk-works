@@ -1,13 +1,15 @@
 use iskworks_core::{
-    apply_inventory_event, exact_total, purchase_posting, CostInputQuality,
-    FinanceInventoryRecording, InventoryBalance, InventoryError, InventoryItemKey,
-    InventoryPreview, PostInventoryCommand, WorkspaceId,
+    apply_inventory_event, exact_total, purchase_posting, sale_posting, CostInputQuality,
+    FinanceInventoryRecording, InventoryBalance, InventoryError, InventoryEventKind,
+    InventoryItemKey, InventoryPreview, PostInventoryCommand, WorkspaceId,
 };
 
 use super::*;
-use crate::wallet_recording::{lock_recorded_transaction, recording_state, settle_source_reversal};
+use crate::wallet_recording::{
+    accounting_effect_kind, lock_recorded_transaction, recording_state, settle_source_reversal,
+};
 
-/// Identity of the exact wallet transaction a purchase event records.
+/// Identity of the exact wallet transaction a recorded ledger event records.
 pub(super) struct PurchaseSource {
     pub workspace_id: Uuid,
     pub owner_id: Uuid,
@@ -18,15 +20,20 @@ pub(super) struct PurchaseSource {
     pub transacted_at: DateTime<Utc>,
 }
 
-/// The one place a wallet purchase becomes ledger state: post the purchase
-/// event and write its provenance row, in the caller's transaction, with the
-/// wallet transaction row already locked.
+/// The one place a wallet transaction becomes ledger state: post its event (a
+/// purchase for a buy, a sale for a sell) and write its provenance row, in the
+/// caller's transaction, with the wallet transaction row already locked.
 async fn record_purchase_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     source: &PurchaseSource,
     posting: &InventoryPosting,
     at_locked_revision: bool,
 ) -> Result<(), InventoryError> {
+    let effect = if posting.kind == InventoryEventKind::Sale {
+        "sale"
+    } else {
+        "purchase"
+    };
     if at_locked_revision {
         PgInventoryRepository::post_at_locked_revision_in_transaction(tx, posting).await?;
     } else {
@@ -38,7 +45,7 @@ async fn record_purchase_in_transaction(
           inventory_event_id, workspace_id, owner_id, source_system,
           source_record_kind, source_record_id, accounting_effect_kind,
           connection_id, observation_id, sync_run_id, source_transaction_at, accepted_at
-        ) VALUES ($1,$2,$3,'esi','wallet_transaction',$4,'purchase',$5,$6,$7,$8,now())
+        ) VALUES ($1,$2,$3,'esi','wallet_transaction',$4,$9,$5,$6,$7,$8,now())
         "#,
     )
     .bind(posting.id.0)
@@ -49,6 +56,7 @@ async fn record_purchase_in_transaction(
     .bind(source.observation_id)
     .bind(source.sync_run_id)
     .bind(source.transacted_at)
+    .bind(effect)
     .execute(&mut **tx)
     .await
     .map_err(map_sqlx)?;
@@ -71,13 +79,15 @@ struct RecordingTargetRow {
 }
 
 impl PgEsiRepository {
-    /// Records one Market Buy into accounting Inventory using only persisted
-    /// evidence: type, quantity and `unit_price` come from the stored wallet
-    /// transaction, the owner from its authorized connection. Idempotent: if
-    /// the transaction is already actively recorded (double click, second
-    /// tab) nothing is posted and the existing recording is returned with
+    /// Records one Market transaction into accounting Inventory using only
+    /// persisted evidence: a buy as a purchase (type, quantity and
+    /// `unit_price` from the stored wallet transaction), a sell as a sale
+    /// that removes the sold quantity at the balance's weighted average cost.
+    /// The owner comes from the authorized connection. Idempotent: if the
+    /// transaction is already actively recorded (double click, second tab)
+    /// nothing is posted and the existing recording is returned with
     /// `created == false`.
-    pub async fn record_wallet_purchase(
+    pub async fn record_wallet_transaction(
         &self,
         workspace_id: WorkspaceId,
         observation_id: Uuid,
@@ -93,7 +103,18 @@ impl PgEsiRepository {
                 false,
             ));
         }
-        let posting = wallet_purchase_posting(&mut tx, workspace_id, &target.row).await?;
+        let posting = if target.row.is_buy {
+            wallet_purchase_posting(&mut tx, workspace_id, &target.row).await?
+        } else {
+            // A sale is priced from the balance, so it is built under the
+            // balance lock and posted at exactly that revision.
+            let key = owner_item_key(workspace_id, &target.row);
+            let type_name = active_type_name(&mut tx, target.row.type_id).await?;
+            let current = PgInventoryRepository::lock_balance_in_transaction(&mut tx, &key)
+                .await?
+                .unwrap_or_else(|| InventoryBalance::empty(key, type_name));
+            wallet_sale_posting(&current, &target.row)?
+        };
         record_purchase_in_transaction(
             &mut tx,
             &PurchaseSource {
@@ -106,7 +127,7 @@ impl PgEsiRepository {
                 transacted_at: target.row.transacted_at,
             },
             &posting,
-            true,
+            target.row.is_buy,
         )
         .await?;
         tx.commit().await.map_err(map_sqlx)?;
@@ -116,11 +137,11 @@ impl PgEsiRepository {
         ))
     }
 
-    /// What `record_wallet_purchase` would post right now, against the
+    /// What `record_wallet_transaction` would post right now, against the
     /// owner's current balance -- built from the same persisted evidence and
     /// the same posting primitive, but nothing is locked or written. A
     /// transaction that is already recorded has nothing to preview.
-    pub async fn preview_wallet_purchase(
+    pub async fn preview_wallet_transaction(
         &self,
         workspace_id: WorkspaceId,
         observation_id: Uuid,
@@ -128,16 +149,22 @@ impl PgEsiRepository {
         let mut tx = self.pool.begin().await.map_err(map_sqlx)?;
         let target = load_recording_target(&mut tx, workspace_id, observation_id, false).await?;
         if ensure_recordable(&target)? {
-            return Err(InventoryError::Validation(
-                "This purchase is already recorded in inventory.".to_string(),
-            ));
+            return Err(InventoryError::Validation(if target.row.is_buy {
+                "This purchase is already recorded in inventory.".to_string()
+            } else {
+                "This sale is already recorded in inventory.".to_string()
+            }));
         }
-        let mut posting = wallet_purchase_posting(&mut tx, workspace_id, &target.row).await?;
-        let current = PgInventoryRepository::balance_with(&mut *tx, &posting.key)
+        let key = owner_item_key(workspace_id, &target.row);
+        let type_name = active_type_name(&mut tx, target.row.type_id).await?;
+        let current = PgInventoryRepository::balance_with(&mut *tx, &key)
             .await?
-            .unwrap_or_else(|| {
-                InventoryBalance::empty(posting.key.clone(), posting.type_name.clone())
-            });
+            .unwrap_or_else(|| InventoryBalance::empty(key, type_name));
+        let mut posting = if target.row.is_buy {
+            wallet_purchase_posting(&mut tx, workspace_id, &target.row).await?
+        } else {
+            wallet_sale_posting(&current, &target.row)?
+        };
         tx.rollback().await.map_err(map_sqlx)?;
         // Recording posts at whatever revision it locks; preview against the
         // revision it sees now.
@@ -151,12 +178,12 @@ impl PgEsiRepository {
         })
     }
 
-    /// Reverts one recording of a wallet purchase: an exact compensating
+    /// Reverts one recording of a wallet transaction: an exact compensating
     /// ledger event and the recording marked reverted (never deleted), so the
-    /// transaction can be recorded again. Rejected
-    /// as a whole if the ledger cannot absorb the reversal, e.g. because the
-    /// stock has since been consumed.
-    pub async fn revert_wallet_purchase_recording(
+    /// transaction can be recorded again. Rejected as a whole if the ledger
+    /// cannot absorb the reversal, e.g. because purchased stock has since
+    /// been consumed.
+    pub async fn revert_wallet_transaction_recording(
         &self,
         workspace_id: WorkspaceId,
         observation_id: Uuid,
@@ -233,9 +260,7 @@ InventoryError::Validation(
         workspace_id: WorkspaceId,
         observation_id: Uuid,
     ) -> Result<FinanceInventoryRecording, InventoryError> {
-        recording_state(&self.pool, workspace_id, observation_id)
-            .await?
-            .ok_or(InventoryError::InvalidProjection)
+        recording_state(&self.pool, workspace_id, observation_id).await
     }
 }
 
@@ -282,12 +307,13 @@ async fn load_recording_target(
         SELECT EXISTS (
           SELECT 1 FROM inventory_event_sources
           WHERE observation_id = $1
-            AND accounting_effect_kind = 'purchase'
+            AND accounting_effect_kind = $2
             AND reverted_at IS NULL
         )
         "#,
     )
     .bind(observation_id)
+    .bind(accounting_effect_kind(target.is_buy))
     .fetch_one(&mut **tx)
     .await
     .map_err(map_sqlx)?;
@@ -305,14 +331,9 @@ struct RecordingTarget {
 /// Rejects transactions that can never be recorded; otherwise returns whether
 /// the transaction is already actively recorded.
 fn ensure_recordable(target: &RecordingTarget) -> Result<bool, InventoryError> {
-    if !target.row.is_buy {
-        return Err(InventoryError::Validation(
-            "Only Market Buy transactions can be added to inventory.".to_string(),
-        ));
-    }
     if !target.row.is_personal {
         return Err(InventoryError::Validation(
-            "Only personal wallet purchases can be added to inventory.".to_string(),
+            "Only personal wallet transactions can be recorded in inventory.".to_string(),
         ));
     }
     Ok(target.recorded)
@@ -335,21 +356,7 @@ async fn wallet_purchase_posting(
             "The recorded transaction total does not match quantity × unit price.".to_string(),
         ));
     }
-    let type_name = sqlx::query_scalar::<_, String>(
-        r#"
-        SELECT t.name_en
-        FROM sde_types t
-        JOIN sde_imports i ON i.id = t.import_id AND i.active
-        WHERE t.type_id = $1
-        "#,
-    )
-    .bind(target.type_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(map_sqlx)?
-    .ok_or_else(|| {
-        InventoryError::Validation("The EVE type is not in the active SDE.".to_string())
-    })?;
+    let type_name = active_type_name(tx, target.type_id).await?;
 
     purchase_posting(
         workspace_id,
@@ -367,4 +374,49 @@ async fn wallet_purchase_posting(
             acknowledge_zero_cost: false,
         },
     )
+}
+
+/// The sale posting for one Market Sell: the stored quantity leaves the
+/// owner's balance at its weighted average cost. The sale's ISK proceeds stay
+/// on the wallet transaction; the ledger tracks cost basis only.
+fn wallet_sale_posting(
+    current: &InventoryBalance,
+    target: &RecordingTargetRow,
+) -> Result<InventoryPosting, InventoryError> {
+    let quantity = u64::try_from(target.quantity).map_err(|_| InventoryError::InvalidProjection)?;
+    sale_posting(
+        current,
+        quantity,
+        format!("EVE wallet transaction {}", target.source_transaction_id),
+        "Recorded from a Finance market sell.".to_string(),
+        target.transacted_at,
+    )
+}
+
+fn owner_item_key(workspace_id: WorkspaceId, target: &RecordingTargetRow) -> InventoryItemKey {
+    InventoryItemKey {
+        workspace_id,
+        owner_id: OwnerId(target.owner_id),
+        type_id: target.type_id,
+    }
+}
+
+/// The item's name in the active SDE; a type missing from it can't be recorded.
+async fn active_type_name(
+    tx: &mut Transaction<'_, Postgres>,
+    type_id: i64,
+) -> Result<String, InventoryError> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT t.name_en
+        FROM sde_types t
+        JOIN sde_imports i ON i.id = t.import_id AND i.active
+        WHERE t.type_id = $1
+        "#,
+    )
+    .bind(type_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map_sqlx)?
+    .ok_or_else(|| InventoryError::Validation("The EVE type is not in the active SDE.".to_string()))
 }

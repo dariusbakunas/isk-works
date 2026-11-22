@@ -125,9 +125,11 @@ async fn export_transactions(
         .expect("static Finance response headers are valid"))
 }
 
-/// Adds one Market Buy to accounting Inventory. The body is empty on purpose:
-/// type, quantity, basis and owner are all derived server-side from the stored
-/// transaction. `201` when a purchase was posted, `200` when the transaction
+/// Records one Market transaction in accounting Inventory: a buy adds a
+/// purchase, a sell removes the sold units at weighted average cost. The body
+/// is empty on purpose: type, quantity, basis and owner are all derived
+/// server-side from the stored transaction. `201` when an event was posted,
+/// `200` when the transaction
 /// was already recorded (a retry, second tab, or the import review got there
 /// first) and the existing recording is returned.
 async fn record_inventory(
@@ -137,7 +139,7 @@ async fn record_inventory(
     let (workspace_id, _) = workspace_context(&state).await?;
     let (recording, created) = state
         .esi_repository()?
-        .record_wallet_purchase(workspace_id, observation_id)
+        .record_wallet_transaction(workspace_id, observation_id)
         .await?;
     let status = if created {
         StatusCode::CREATED
@@ -147,7 +149,7 @@ async fn record_inventory(
     Ok((status, Json(recording)))
 }
 
-/// What recording this Market Buy would do to Inventory right now, derived
+/// What recording this Market transaction would do to Inventory right now, derived
 /// exactly as `record_inventory` derives it. Writes nothing.
 async fn preview_inventory_recording(
     State(state): State<AppState>,
@@ -157,7 +159,7 @@ async fn preview_inventory_recording(
     Ok(Json(
         state
             .esi_repository()?
-            .preview_wallet_purchase(workspace_id, observation_id)
+            .preview_wallet_transaction(workspace_id, observation_id)
             .await?,
     ))
 }
@@ -170,7 +172,7 @@ async fn revert_inventory_recording(
     Ok(Json(
         state
             .esi_repository()?
-            .revert_wallet_purchase_recording(workspace_id, observation_id, recording_id)
+            .revert_wallet_transaction_recording(workspace_id, observation_id, recording_id)
             .await?,
     ))
 }
