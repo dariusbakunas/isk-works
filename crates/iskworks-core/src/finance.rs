@@ -171,12 +171,14 @@ pub struct FinanceTransaction {
     pub counterparty_name: Option<String>,
     pub location_name: Option<String>,
     pub region_name: Option<String>,
-    /// Inventory recording state for Market Buy rows; `None` for rows that can
-    /// never be recorded (Market Sell).
+    /// Inventory recording state: a Market Buy records a purchase into
+    /// Inventory, a Market Sell records a sale out of it. Always present for
+    /// rows the server lists; optional on the wire for older clients.
     pub inventory_recording: Option<FinanceInventoryRecording>,
 }
 
-/// Where a Market Buy stands relative to the accounting Inventory ledger.
+/// Where a Market transaction stands relative to the accounting Inventory
+/// ledger (a buy as a purchase into it, a sell as a sale out of it).
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FinanceInventoryState {
@@ -186,12 +188,14 @@ pub enum FinanceInventoryState {
     Recorded,
     /// Recorded before, then explicitly reverted; may be recorded again.
     Reverted,
-    /// Cannot safely become a purchase (not personal, unknown item type, ...).
+    /// Cannot safely be recorded (not personal, unknown item type, ...).
     Unavailable,
 }
 
-/// The read model Finance shows for one Market Buy. `recording_id`, quantity
-/// and basis describe the active recording, or the latest reverted one.
+/// The read model Finance shows for one Market transaction. `recording_id`,
+/// quantity and basis describe the active recording, or the latest reverted
+/// one: units bought or sold, and the cost basis added (purchase) or removed
+/// at weighted average (sale), both as magnitudes.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinanceInventoryRecording {
@@ -218,7 +222,6 @@ pub struct FinanceInventoryLatestRecording {
 /// disagree about eligibility.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FinanceInventoryEvidence {
-    pub is_buy: bool,
     pub is_personal: bool,
     pub type_resolved: bool,
     pub latest_recording: Option<FinanceInventoryLatestRecording>,
@@ -226,10 +229,7 @@ pub struct FinanceInventoryEvidence {
 
 impl FinanceInventoryRecording {
     #[must_use]
-    pub fn derive(evidence: FinanceInventoryEvidence) -> Option<Self> {
-        if !evidence.is_buy {
-            return None;
-        }
+    pub fn derive(evidence: FinanceInventoryEvidence) -> Self {
         let bare = |state| Self {
             state,
             recording_id: None,
@@ -251,15 +251,15 @@ impl FinanceInventoryRecording {
             .clone()
             .filter(|recording| recording.reverted_at.is_none())
         {
-            return Some(with(FinanceInventoryState::Recorded, recording));
+            return with(FinanceInventoryState::Recorded, recording);
         }
-        Some(match evidence.latest_recording {
+        match evidence.latest_recording {
             Some(recording) => with(FinanceInventoryState::Reverted, recording),
             None if evidence.is_personal && evidence.type_resolved => {
                 bare(FinanceInventoryState::Unrecorded)
             }
             None => bare(FinanceInventoryState::Unavailable),
-        })
+        }
     }
 }
 

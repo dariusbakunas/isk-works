@@ -417,10 +417,11 @@ impl FinanceTransactionRow {
             counterparty_name: self.counterparty_name,
             location_name: self.location_name,
             region_name: self.region_name,
-            inventory_recording: self
-                .recording
-                .recording(self.is_buy)
-                .map_err(|error| FinanceError::Persistence(error.to_string()))?,
+            inventory_recording: Some(
+                self.recording
+                    .recording()
+                    .map_err(|error| FinanceError::Persistence(error.to_string()))?,
+            ),
         })
     }
 }

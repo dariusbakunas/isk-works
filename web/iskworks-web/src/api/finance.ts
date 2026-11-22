@@ -22,7 +22,12 @@ export type FinanceDisplayColumn = FinanceColumn | "inventory";
 
 export type FinanceInventoryState = "unrecorded" | "recorded" | "reverted" | "unavailable";
 
-/** Inventory recording state of one Market Buy, exactly as the server derives it. */
+/**
+ * Inventory recording state of one Market transaction, exactly as the server
+ * derives it: a buy records a purchase into Inventory, a sell a sale out of it.
+ * `quantity` and `totalBasis` are magnitudes (units, and cost basis added or
+ * removed).
+ */
 export interface FinanceInventoryRecording {
   state: FinanceInventoryState;
   recordingId: string | null;
@@ -71,7 +76,7 @@ export interface FinanceTransaction {
   counterpartyName: string | null;
   locationName: string | null;
   regionName: string | null;
-  /** `null` for rows that can never be recorded (Market Sell). */
+  /** Always set by current servers; `null` from older ones. */
   inventoryRecording: FinanceInventoryRecording | null;
 }
 
@@ -145,8 +150,10 @@ export function previewFinanceInventory(observationId: string): Promise<Inventor
 }
 
 /**
- * Adds one Market Buy to accounting Inventory. No body: the server derives
- * type, quantity, cost and owner from the stored transaction. Idempotent -- an
+ * Records one Market transaction in accounting Inventory: a buy adds a
+ * purchase, a sell removes the sold units at weighted average cost. No body:
+ * the server derives type, quantity, cost and owner from the stored
+ * transaction. Idempotent -- an
  * already-recorded transaction resolves to its existing recording.
  */
 export function recordFinanceInventory(observationId: string): Promise<FinanceInventoryRecording> {

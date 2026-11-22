@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 
 import type { InventoryPreview } from "../../api/inventory";
 import {
@@ -9,7 +9,8 @@ import {
   type FinanceInventoryRecording,
   type FinanceTransaction,
 } from "../../api/finance";
-import { MoneyAmount, formatIskForSentence } from "../../components/money";
+import { MoneyAmount, formatIskForSentence, formatIskSummary } from "../../components/money";
+import { sumDecimalStrings } from "../../lib/decimal";
 import { ConfirmDialog, KV } from "../../components/primitives";
 import { CharacterName } from "../../observability/private";
 import { InventoryPreviewPanel } from "../../components/inventory-preview-panel";
@@ -25,10 +26,11 @@ const compactButton =
 
 /**
  * The Finance table's Inventory cell: "+ Inventory" on an eligible Market Buy
- * opens the server's posting preview (what the quantity, total cost and
- * average unit cost become), and only its confirm button records. Recorded
- * rows show a quiet "✓ Inventory" that opens the recording's details and the
- * explicit Revert. Every state comes from the server; nothing is optimistic.
+ * (or "− Inventory" on a Market Sell) opens the server's posting preview (what
+ * the quantity, total cost and average unit cost become), and only its confirm
+ * button records. Recorded rows show a quiet "✓ Inventory" that opens the
+ * recording's details and the explicit Revert. Every state comes from the
+ * server; nothing is optimistic.
  */
 export function InventoryRecordingCell({ row, onChange }: Props) {
   const recording = row.inventoryRecording;
@@ -40,7 +42,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
 
   if (!recording) return null;
 
-  const addLabel = `Add ${row.quantity.toLocaleString()} ${row.typeName} to inventory`;
+  const copy = recordingCopy(row);
 
   async function openPreview(again: boolean) {
     setBusy("previewing");
@@ -62,7 +64,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
       setPreview(null);
     } catch (cause) {
       // The preview dialog stays open and shows why.
-      setError(errorMessage(cause, again ? "Could not add to inventory again." : "Could not add to inventory."));
+      setError(errorMessage(cause, again ? `${copy.failure} again.` : `${copy.failure}.`));
     } finally {
       setBusy(null);
     }
@@ -108,13 +110,13 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
       return (
         <>
           <button
-            aria-label={addLabel}
+            aria-label={copy.action}
             className={`${compactButton} border-primary/40 text-primary hover:bg-primary/10`}
             onClick={() => void openPreview(false)}
-            title={error ?? "Preview adding this purchase to inventory"}
+            title={error ?? copy.previewHint}
             type="button"
           >
-            + Inventory
+            {copy.button}
           </button>
           {failure}
           {previewDialog}
@@ -127,7 +129,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
             aria-label={`Inventory recording for ${row.quantity.toLocaleString()} ${row.typeName}`}
             className={`${compactButton} border-transparent text-positive/80 hover:border-positive/30 hover:text-positive`}
             onClick={() => { setError(null); setDetailsOpen(true); }}
-            title="Recorded in inventory. Click for details."
+            title={`${copy.recorded}. Click for details.`}
             type="button"
           >
             ✓ Inventory
@@ -148,9 +150,18 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
             open={confirmOpen}
             title="Revert this inventory recording?"
           >
-            This will remove {(recording.quantity ?? row.quantity).toLocaleString()} {row.typeName} and reverse{" "}
-            {formatIskForSentence(recording.totalBasis ?? row.totalPrice)} of recorded acquisition cost. The
-            original Finance transaction will remain unchanged.
+            {copy.sale ? (
+              <>
+                This will return {(recording.quantity ?? row.quantity).toLocaleString()} {row.typeName} to inventory and
+                restore {formatIskForSentence(recording.totalBasis ?? "0")} of cost basis.
+              </>
+            ) : (
+              <>
+                This will remove {(recording.quantity ?? row.quantity).toLocaleString()} {row.typeName} and reverse{" "}
+                {formatIskForSentence(recording.totalBasis ?? row.totalPrice)} of recorded acquisition cost.
+              </>
+            )}{" "}
+            The original Finance transaction will remain unchanged.
           </ConfirmDialog>
         </>
       );
@@ -159,21 +170,57 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
         <span className="inline-flex items-center gap-1">
           <span className="text-[0.625rem] text-warning" title="This inventory recording was reverted.">Reverted</span>
           <button
-            aria-label={`${addLabel} again`}
+            aria-label={`${copy.action} again`}
             className={`${compactButton} border-border text-muted hover:border-primary/70 hover:text-foreground`}
             onClick={() => void openPreview(true)}
-            title={error ?? "Preview adding to inventory again"}
+            title={error ?? `${copy.previewHint} again`}
             type="button"
           >
-            +
+            {copy.sale ? "−" : "+"}
           </button>
           {failure}
           {previewDialog}
         </span>
       );
     case "unavailable":
-      return <span className="text-muted" title="Can't be added: the item type is unknown or this isn't a personal purchase.">—</span>;
+      return <span className="text-muted" title={copy.unavailable}>—</span>;
   }
+}
+
+/** Wording for a buy (added to inventory) or a sell (removed from it). */
+function recordingCopy(row: FinanceTransaction) {
+  const units = `${row.quantity.toLocaleString()} ${row.typeName}`;
+  return row.transactionType === "marketSell"
+    ? {
+      sale: true,
+      action: `Remove ${units} sold from inventory`,
+      button: "− Inventory",
+      previewHint: "Preview removing these sold items from inventory",
+      dialogTitle: "Remove sold items from inventory",
+      confirm: "Remove from Inventory",
+      confirming: "Removing…",
+      failure: "Could not remove from inventory",
+      recorded: "Removed from inventory",
+      quantityLabel: "Quantity removed",
+      basisLabel: "Cost basis removed",
+      revertLabel: "Revert inventory removal",
+      unavailable: "Can't be recorded: the item type is unknown or this isn't a personal sale.",
+    }
+    : {
+      sale: false,
+      action: `Add ${units} to inventory`,
+      button: "+ Inventory",
+      previewHint: "Preview adding this purchase to inventory",
+      dialogTitle: "Add to inventory",
+      confirm: "Add to Inventory",
+      confirming: "Adding…",
+      failure: "Could not add to inventory",
+      recorded: "Recorded in inventory",
+      quantityLabel: "Quantity recorded",
+      basisLabel: "Acquisition cost",
+      revertLabel: "Revert inventory recording",
+      unavailable: "Can't be added: the item type is unknown or this isn't a personal purchase.",
+    };
 }
 
 function RecordingPreview({ busy, error, onClose, onConfirm, preview, row }: {
@@ -192,12 +239,13 @@ function RecordingPreview({ busy, error, onClose, onConfirm, preview, row }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, onClose]);
   const titleId = `inventory-recording-preview-${row.observationId}`;
+  const copy = recordingCopy(row);
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4" role="presentation">
       <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog iw-dialog-frame w-full max-w-sm p-4 text-left" role="dialog">
         <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold" id={titleId}>Add to inventory</h2>
+            <h2 className="text-base font-semibold" id={titleId}>{copy.dialogTitle}</h2>
             <p className="truncate text-xs text-muted" data-private="">
               {row.typeName} · <CharacterName name={row.characterName} />
             </p>
@@ -206,12 +254,15 @@ function RecordingPreview({ busy, error, onClose, onConfirm, preview, row }: {
         </div>
         <div className="iw-dialog-body">
           <InventoryPreviewPanel busy={busy} preview={preview} />
+          {copy.sale ? <SaleMargin preview={preview} row={row} /> : null}
           {error ? <p className="mt-3 text-xs text-destructive" role="alert">{error}</p> : null}
         </div>
         <div className="iw-dialog-footer">
           <button className="iw-button-primary w-full" disabled={busy} onClick={onConfirm} type="button">
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            {busy ? "Adding…" : "Add to Inventory"}
+            {copy.sale
+              ? <Minus className="mr-2 h-4 w-4" aria-hidden="true" />
+              : <Plus className="mr-2 h-4 w-4" aria-hidden="true" />}
+            {busy ? copy.confirming : copy.confirm}
           </button>
         </div>
       </section>
@@ -238,16 +289,17 @@ function RecordingDetails({ busy, error, onClose, onRevert, open, recording, row
   }, [onClose, open]);
   if (!open) return null;
   const titleId = `inventory-recording-${row.observationId}`;
+  const copy = recordingCopy(row);
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4" role="presentation">
       <section aria-labelledby={titleId} aria-modal="true" className="iw-dialog iw-dialog-frame w-full max-w-sm p-4" role="dialog">
-        <h2 className="text-base font-semibold" id={titleId}>Recorded in inventory</h2>
+        <h2 className="text-base font-semibold" id={titleId}>{copy.recorded}</h2>
         <div className="iw-dialog-body">
           <div className="mt-2 divide-y divide-border" data-private="">
             <KV label="Item" value={row.typeName} />
-            <KV label="Quantity recorded" value={(recording.quantity ?? row.quantity).toLocaleString()} />
-            <KV label="Acquisition cost" value={<MoneyAmount value={recording.totalBasis ?? row.totalPrice} />} />
-            <KV label="Unit cost" value={<MoneyAmount value={row.unitPrice} />} />
+            <KV label={copy.quantityLabel} value={(recording.quantity ?? row.quantity).toLocaleString()} />
+            <KV label={copy.basisLabel} value={<MoneyAmount value={recording.totalBasis ?? row.totalPrice} />} />
+            <KV label={copy.sale ? "Sale proceeds" : "Unit cost"} value={<MoneyAmount value={copy.sale ? row.totalPrice : row.unitPrice} />} />
             <KV
               label="Recorded"
               value={recording.recordedAt
@@ -262,11 +314,34 @@ function RecordingDetails({ busy, error, onClose, onRevert, open, recording, row
         <div className="iw-dialog-footer">
           <button className="iw-button-secondary" onClick={onClose} ref={closeRef} type="button">Close</button>
           <button className="iw-button-danger" disabled={busy} onClick={onRevert} type="button">
-            {busy ? "Reverting…" : "Revert inventory recording"}
+            {busy ? "Reverting…" : copy.revertLabel}
           </button>
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * What a sale earned over the cost basis it removes: gross wallet proceeds
+ * minus weighted-average cost. Taxes and broker fees are separate journal
+ * entries, so this is before fees.
+ */
+function SaleMargin({ preview, row }: { preview: InventoryPreview; row: FinanceTransaction }) {
+  // A sale's cost delta is negative, so proceeds + delta = proceeds - cost.
+  const margin = sumDecimalStrings([row.totalPrice, preview.posting.totalCostDelta]).value ?? "0";
+  const negative = margin.startsWith("-");
+  return (
+    <dl className="mt-3 grid grid-cols-2 gap-3 rounded-md border border-border p-3 text-sm" data-testid="sale-margin">
+      <div><dt className="text-xs text-muted">Sale proceeds</dt><dd className="mt-0.5 font-mono">{formatIskSummary(row.totalPrice)}</dd></div>
+      <div>
+        <dt className="text-xs text-muted">Margin over cost</dt>
+        <dd className={`mt-0.5 font-mono ${negative ? "text-destructive" : "text-positive"}`}>
+          {formatIskSummary(margin, { signDisplay: "always" })}
+        </dd>
+      </div>
+      <p className="col-span-2 text-xs text-muted">Before sales tax and broker fees.</p>
+    </dl>
   );
 }
 

@@ -154,6 +154,18 @@ impl PgInventoryRepository {
         Self::post_in_transaction_with_type_validation(tx, posting, false, false).await
     }
 
+    /// Locks one item's balance row and returns it, or `None` if nothing was
+    /// ever posted for it. For postings priced from the balance (a sale).
+    pub(crate) async fn lock_balance_in_transaction(
+        tx: &mut Transaction<'_, Postgres>,
+        key: &InventoryItemKey,
+    ) -> Result<Option<InventoryBalance>, InventoryError> {
+        Self::lock_balance_row(tx, key)
+            .await?
+            .map(BalanceRow::into_balance)
+            .transpose()
+    }
+
     async fn lock_balance_row(
         tx: &mut Transaction<'_, Postgres>,
         key: &InventoryItemKey,
@@ -748,6 +760,7 @@ fn kind_to_str(kind: InventoryEventKind) -> &'static str {
         InventoryEventKind::ProductionOutput => "production_output",
         InventoryEventKind::Reversal => "reversal",
         InventoryEventKind::Adjustment => "adjustment",
+        InventoryEventKind::Sale => "sale",
     }
 }
 
@@ -759,6 +772,7 @@ fn kind_from_str(value: &str) -> Result<InventoryEventKind, InventoryError> {
         "production_output" => Ok(InventoryEventKind::ProductionOutput),
         "reversal" => Ok(InventoryEventKind::Reversal),
         "adjustment" => Ok(InventoryEventKind::Adjustment),
+        "sale" => Ok(InventoryEventKind::Sale),
         _ => Err(InventoryError::InvalidProjection),
     }
 }

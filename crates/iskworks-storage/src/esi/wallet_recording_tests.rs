@@ -5,7 +5,8 @@
 
 use iskworks_core::{
     adjustment_posting, purchase_posting, CostInputQuality, FinanceInventoryState,
-    FinanceTransactionFilter, FinanceTransactionSort, InventoryRepository, PostInventoryCommand,
+    FinanceTransactionFilter, FinanceTransactionSort, InventoryEventKind, InventoryRepository,
+    PostInventoryCommand,
 };
 use iskworks_core::{
     EsiSyncRunRepository, EsiWalletRepository, InventoryBalance, InventoryError, InventoryItemKey,
@@ -208,7 +209,7 @@ async fn records_exact_type_quantity_basis_and_owner(pool: PgPool) {
 
     let (recording, created) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created);
@@ -275,7 +276,7 @@ async fn a_synced_buy_is_recordable_without_any_review_state(pool: PgPool) {
 
     let (recording, created) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created);
@@ -283,7 +284,7 @@ async fn a_synced_buy_is_recordable_without_any_review_state(pool: PgPool) {
     assert_eq!(fx.balance(TRITANIUM).await.unwrap().quantity, 25);
 
     fx.esi
-        .revert_wallet_purchase_recording(
+        .revert_wallet_transaction_recording(
             fx.workspace_id,
             observation,
             recording.recording_id.unwrap(),
@@ -292,7 +293,7 @@ async fn a_synced_buy_is_recordable_without_any_review_state(pool: PgPool) {
         .unwrap();
     let (again, created_again) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created_again);
@@ -306,12 +307,12 @@ async fn sequential_double_record_posts_once(pool: PgPool) {
     let observation = fx.import(9002, TRITANIUM, 10, price("5.0000"), true).await;
     let (first, created_first) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     let (second, created_second) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created_first && !created_second);
@@ -328,7 +329,10 @@ async fn concurrent_double_record_creates_exactly_one_purchase(pool: PgPool) {
     let attempts = (0..8).map(|_| {
         let esi = fx.esi.clone();
         let workspace_id = fx.workspace_id;
-        tokio::spawn(async move { esi.record_wallet_purchase(workspace_id, observation).await })
+        tokio::spawn(async move {
+            esi.record_wallet_transaction(workspace_id, observation)
+                .await
+        })
     });
     let results = join_all(attempts).await;
     assert_eq!(results.iter().filter(|(_, created)| *created).count(), 1);
@@ -367,11 +371,11 @@ async fn distinct_identical_transactions_both_record(pool: PgPool) {
         .import(9005, TRITANIUM, 1_000, price("4.0000"), true)
         .await;
     fx.esi
-        .record_wallet_purchase(fx.workspace_id, a)
+        .record_wallet_transaction(fx.workspace_id, a)
         .await
         .unwrap();
     fx.esi
-        .record_wallet_purchase(fx.workspace_id, b)
+        .record_wallet_transaction(fx.workspace_id, b)
         .await
         .unwrap();
     assert_eq!(fx.event_count(TRITANIUM).await, 2);
@@ -389,7 +393,10 @@ async fn concurrent_first_posts_of_a_new_type_both_succeed(pool: PgPool) {
     let handles = [a, b].into_iter().map(|observation| {
         let esi = fx.esi.clone();
         let workspace_id = fx.workspace_id;
-        tokio::spawn(async move { esi.record_wallet_purchase(workspace_id, observation).await })
+        tokio::spawn(async move {
+            esi.record_wallet_transaction(workspace_id, observation)
+                .await
+        })
     });
     join_all(handles).await;
     assert_eq!(fx.event_count(PYERITE).await, 2);
@@ -404,12 +411,21 @@ async fn ineligible_and_inaccessible_transactions_are_rejected(pool: PgPool) {
     let sell = fx.import(9008, TRITANIUM, 5, price("3.0000"), false).await;
     assert!(
         matches!(
-            fx.esi.record_wallet_purchase(fx.workspace_id, sell).await,
+            fx.esi
+                .record_wallet_transaction(fx.workspace_id, sell)
+                .await,
             Err(InventoryError::Validation(_))
         ),
-        "a sell can never be recorded"
+        "a sell of stock that isn't in inventory is refused"
     );
-    assert!(fx.finance_row(sell).await.inventory_recording.is_none());
+    assert_eq!(
+        fx.finance_row(sell)
+            .await
+            .inventory_recording
+            .unwrap()
+            .state,
+        FinanceInventoryState::Unrecorded
+    );
 
     let unknown_type = fx.import(9009, 999_999, 5, price("3.0000"), true).await;
     assert_eq!(
@@ -422,7 +438,7 @@ async fn ineligible_and_inaccessible_transactions_are_rejected(pool: PgPool) {
     );
     assert!(matches!(
         fx.esi
-            .record_wallet_purchase(fx.workspace_id, unknown_type)
+            .record_wallet_transaction(fx.workspace_id, unknown_type)
             .await,
         Err(InventoryError::Validation(_))
     ));
@@ -430,12 +446,12 @@ async fn ineligible_and_inaccessible_transactions_are_rejected(pool: PgPool) {
     let buy = fx.import(9010, TRITANIUM, 5, price("3.0000"), true).await;
     let (other_workspace, _) = fixture_workspace(&pool).await;
     assert!(matches!(
-        fx.esi.record_wallet_purchase(other_workspace, buy).await,
+        fx.esi.record_wallet_transaction(other_workspace, buy).await,
         Err(InventoryError::ItemNotFound)
     ));
     assert!(matches!(
         fx.esi
-            .record_wallet_purchase(fx.workspace_id, Uuid::new_v4())
+            .record_wallet_transaction(fx.workspace_id, Uuid::new_v4())
             .await,
         Err(InventoryError::ItemNotFound)
     ));
@@ -445,7 +461,7 @@ async fn ineligible_and_inaccessible_transactions_are_rejected(pool: PgPool) {
         .await
         .unwrap();
     assert!(matches!(
-        fx.esi.record_wallet_purchase(fx.workspace_id, buy).await,
+        fx.esi.record_wallet_transaction(fx.workspace_id, buy).await,
         Err(InventoryError::ItemNotFound)
     ));
     assert_eq!(fx.event_count(TRITANIUM).await, 0);
@@ -458,14 +474,14 @@ async fn reverting_compensates_marks_history_and_allows_a_fresh_recording(pool: 
     let observation = fx.import(9015, TRITANIUM, 50, price("10.0000"), true).await;
     let (first, _) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     let first_id = first.recording_id.unwrap();
 
     let reverted = fx
         .esi
-        .revert_wallet_purchase_recording(fx.workspace_id, observation, first_id)
+        .revert_wallet_transaction_recording(fx.workspace_id, observation, first_id)
         .await
         .unwrap();
     assert_eq!(reverted.state, FinanceInventoryState::Reverted);
@@ -502,7 +518,7 @@ async fn reverting_compensates_marks_history_and_allows_a_fresh_recording(pool: 
     // Double reversal is rejected cleanly.
     assert!(matches!(
         fx.esi
-            .revert_wallet_purchase_recording(fx.workspace_id, observation, first_id)
+            .revert_wallet_transaction_recording(fx.workspace_id, observation, first_id)
             .await,
         Err(InventoryError::AlreadyReversed)
     ));
@@ -510,7 +526,7 @@ async fn reverting_compensates_marks_history_and_allows_a_fresh_recording(pool: 
     // Explicit re-record creates a NEW recording; the reverted one stays as history.
     let (second, created) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created);
@@ -537,7 +553,7 @@ async fn the_database_refuses_a_second_active_recording(pool: PgPool) {
     let observation = fx.import(9016, TRITANIUM, 5, price("1.0000"), true).await;
     let (recording, _) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
 
@@ -580,7 +596,7 @@ async fn reverting_after_stock_was_consumed_is_rejected_atomically(pool: PgPool)
         .await;
     let (recording, _) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     let current = fx.balance(TRITANIUM).await.unwrap();
@@ -604,7 +620,7 @@ async fn reverting_after_stock_was_consumed_is_rejected_atomically(pool: PgPool)
 
     let error = fx
         .esi
-        .revert_wallet_purchase_recording(
+        .revert_wallet_transaction_recording(
             fx.workspace_id,
             observation,
             recording.recording_id.unwrap(),
@@ -640,7 +656,7 @@ async fn generic_ledger_reversal_of_a_sourced_purchase_settles_its_provenance(po
     let observation = fx.import(9018, TRITANIUM, 30, price("2.0000"), true).await;
     let (recording, _) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     let key = InventoryItemKey {
@@ -678,7 +694,7 @@ async fn generic_ledger_reversal_of_a_sourced_purchase_settles_its_provenance(po
     // ... and the explicit "record again" now works.
     let (again, created) = fx
         .esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     assert!(created);
@@ -698,7 +714,7 @@ async fn recording_moves_the_shared_balance_that_esi_reconciliation_reads(pool: 
     let esi_observed = 50_000_i64;
     let before = esi_observed - fx.balance(TRITANIUM).await.map_or(0, |b| b.quantity as i64);
     fx.esi
-        .record_wallet_purchase(fx.workspace_id, observation)
+        .record_wallet_transaction(fx.workspace_id, observation)
         .await
         .unwrap();
     let after = esi_observed - fx.balance(TRITANIUM).await.unwrap().quantity as i64;
@@ -798,7 +814,7 @@ async fn analytics_and_transactions_can_leave_out_buys_recorded_into_inventory(p
     fx.import(9103, TRITANIUM, 1, price("500.0000"), false)
         .await;
     fx.esi
-        .record_wallet_purchase(fx.workspace_id, recorded)
+        .record_wallet_transaction(fx.workspace_id, recorded)
         .await
         .unwrap();
 
@@ -863,7 +879,7 @@ async fn analytics_and_transactions_can_leave_out_buys_recorded_into_inventory(p
     // Reverting the recording puts the buy back.
     let recording = fx.finance_row(recorded).await.inventory_recording.unwrap();
     fx.esi
-        .revert_wallet_purchase_recording(
+        .revert_wallet_transaction_recording(
             fx.workspace_id,
             recorded,
             recording.recording_id.unwrap(),
@@ -876,4 +892,153 @@ async fn analytics_and_transactions_can_leave_out_buys_recorded_into_inventory(p
         .await
         .unwrap();
     assert_eq!(reverted.kpis.expenses.value.0.to_string(), "1200.0000");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn recording_a_sell_removes_stock_at_average_cost_and_reverts_exactly(pool: PgPool) {
+    let fx = fx(pool).await;
+    // 10 @ 10 + 10 @ 20 => 20 units, 300 ISK, average 15.
+    for (id, unit) in [(9101, "10.0000"), (9102, "20.0000")] {
+        let buy = fx.import(id, TRITANIUM, 10, price(unit), true).await;
+        fx.esi
+            .record_wallet_transaction(fx.workspace_id, buy)
+            .await
+            .unwrap();
+    }
+    let sell = fx.import(9103, TRITANIUM, 4, price("99.0000"), false).await;
+    assert_eq!(
+        fx.finance_row(sell)
+            .await
+            .inventory_recording
+            .unwrap()
+            .state,
+        FinanceInventoryState::Unrecorded
+    );
+
+    let preview = fx
+        .esi
+        .preview_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .unwrap();
+    assert_eq!(preview.posting.kind, InventoryEventKind::Sale);
+    assert_eq!(preview.posting.quantity_delta, -4);
+    assert_eq!(preview.posting.total_cost_delta.0.to_string(), "-60.0000");
+    assert_eq!(preview.resulting.quantity, 16);
+    assert_eq!(fx.event_count(TRITANIUM).await, 2, "preview writes nothing");
+
+    let (recorded, created) = fx
+        .esi
+        .record_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .unwrap();
+    assert!(created);
+    assert_eq!(recorded.state, FinanceInventoryState::Recorded);
+    assert_eq!(recorded.quantity, Some(4));
+    // The sale's basis is the cost it removed, not the proceeds.
+    assert_eq!(recorded.total_basis.unwrap().0.to_string(), "60.0000");
+    let balance = fx.balance(TRITANIUM).await.unwrap();
+    assert_eq!(balance.quantity, 16);
+    assert_eq!(balance.total_historical_cost.0.to_string(), "240.0000");
+    let kind: String = sqlx::query_scalar(
+        "SELECT accounting_effect_kind FROM inventory_event_sources WHERE observation_id = $1",
+    )
+    .bind(sell)
+    .fetch_one(&fx.pool)
+    .await
+    .unwrap();
+    assert_eq!(kind, "sale");
+
+    // Idempotent, like a purchase.
+    let (_, again) = fx
+        .esi
+        .record_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .unwrap();
+    assert!(!again);
+    assert_eq!(fx.balance(TRITANIUM).await.unwrap().quantity, 16);
+
+    let reverted = fx
+        .esi
+        .revert_wallet_transaction_recording(fx.workspace_id, sell, recorded.recording_id.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(reverted.state, FinanceInventoryState::Reverted);
+    let balance = fx.balance(TRITANIUM).await.unwrap();
+    assert_eq!(balance.quantity, 20);
+    assert_eq!(balance.total_historical_cost.0.to_string(), "300.0000");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn a_sell_larger_than_the_balance_is_refused_without_posting(pool: PgPool) {
+    let fx = fx(pool).await;
+    let buy = fx.import(9111, TRITANIUM, 3, price("10.0000"), true).await;
+    fx.esi
+        .record_wallet_transaction(fx.workspace_id, buy)
+        .await
+        .unwrap();
+    let sell = fx.import(9112, TRITANIUM, 5, price("12.0000"), false).await;
+    let preview = fx
+        .esi
+        .preview_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .map(|_| ());
+    let record = fx
+        .esi
+        .record_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .map(|_| ());
+    for result in [preview, record] {
+        match result {
+            Err(InventoryError::Validation(message)) => {
+                assert!(message.contains("Only 3"), "{message}");
+            }
+            other => panic!("expected a validation error, got {other:?}"),
+        }
+    }
+    assert_eq!(fx.event_count(TRITANIUM).await, 1);
+    assert_eq!(
+        fx.finance_row(sell)
+            .await
+            .inventory_recording
+            .unwrap()
+            .state,
+        FinanceInventoryState::Unrecorded
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn a_recorded_sale_is_not_an_inventory_buy(pool: PgPool) {
+    let fx = fx(pool).await;
+    let buy = fx.import(9121, TRITANIUM, 3, price("10.0000"), true).await;
+    fx.esi
+        .record_wallet_transaction(fx.workspace_id, buy)
+        .await
+        .unwrap();
+    let sell = fx.import(9122, TRITANIUM, 3, price("12.0000"), false).await;
+    fx.esi
+        .record_wallet_transaction(fx.workspace_id, sell)
+        .await
+        .unwrap();
+    let ids: Vec<Uuid> = fx
+        .finance
+        .transactions(
+            fx.workspace_id,
+            FinanceTransactionFilter {
+                exclude_inventory_buys: true,
+                ..FinanceTransactionFilter::default()
+            },
+            FinanceTransactionSort::default(),
+        )
+        .await
+        .unwrap()
+        .rows
+        .iter()
+        .map(|row| row.observation_id)
+        .collect();
+    assert!(!ids.contains(&buy));
+    assert!(ids.contains(&sell));
+    assert_eq!(fx.balance(TRITANIUM).await.unwrap().quantity, 0);
 }

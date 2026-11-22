@@ -152,7 +152,7 @@ pub use integration::{
     MASS_REACTIONS_SKILL_ID,
 };
 pub use inventory::{
-    adjustment_posting, apply_inventory_event, purchase_posting, reversal_posting,
+    adjustment_posting, apply_inventory_event, purchase_posting, reversal_posting, sale_posting,
     CostInputQuality, InventoryBalance, InventoryError, InventoryEvent, InventoryEventId,
     InventoryEventKind, InventoryHistory, InventoryItemKey, InventoryPosting, InventoryPreview,
     InventoryRepository, InventoryService, MoneyDelta, PostAdjustmentCommand, PostInventoryCommand,

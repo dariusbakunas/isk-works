@@ -279,6 +279,69 @@ describe("Finance inventory recording column", () => {
     expect(screen.queryByText("Reverted")).not.toBeInTheDocument();
   });
 
+  test("a Market Sell previews removing the sold units with its margin, and records on confirm", async () => {
+    const sell = row({
+      observationId: "obs-sell",
+      transactionType: "marketSell",
+      typeName: "Saber",
+      quantity: 14,
+      unitPrice: "60000000.0000",
+      totalPrice: "840000000.0000",
+    });
+    const salePreview: InventoryPreview = {
+      current: { ...preview.current, typeName: "Saber", quantity: 14, totalHistoricalCost: "700000000.0000", averageUnitCost: "50000000.0000" },
+      posting: { kind: "sale", quantityDelta: -14, totalCostDelta: "-700000000.0000", unitCost: "50000000.0000", costQuality: "known" },
+      resulting: { ...preview.resulting, typeName: "Saber", quantity: 0, totalHistoricalCost: "0.0000", averageUnitCost: null },
+      warnings: [],
+    };
+    const removed: FinanceInventoryRecording = { ...recorded, quantity: 14, totalBasis: "700000000.0000" };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("saved-filters")) return json([]);
+      if (url.endsWith("/obs-sell/inventory-recording/preview")) return json(salePreview);
+      if (url.endsWith("/obs-sell/inventory-recording")) return json(removed, 201);
+      return json(pageOf([sell]));
+    });
+    renderPage();
+
+    const remove = await screen.findByRole("button", { name: "Remove 14 Saber sold from inventory" });
+    expect(remove).toHaveTextContent("− Inventory");
+    fireEvent.click(remove);
+    const dialog = await screen.findByRole("dialog", { name: "Remove sold items from inventory" });
+    expect(within(dialog).getByText("Sale")).toBeInTheDocument();
+    expect(within(dialog).getByText("Historical cost removed")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("sale-margin")).toHaveTextContent("+140,000,000 ISK");
+    expect(recordCalls(fetchMock)).toHaveLength(0);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from Inventory" }));
+    expect(await screen.findByText("✓ Inventory")).toBeInTheDocument();
+    expect(recordCalls(fetchMock)).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Inventory recording for 14 Saber" }));
+    const details = await screen.findByRole("dialog", { name: "Removed from inventory" });
+    expect(within(details).getByText("Cost basis removed")).toBeInTheDocument();
+    expect(within(details).getByText("Sale proceeds")).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Revert inventory removal" }));
+    const confirm = await screen.findByRole("dialog", { name: "Revert this inventory recording?" });
+    expect(confirm).toHaveTextContent("return 14 Saber to inventory");
+    expect(confirm).toHaveTextContent("restore 700,000,000 ISK of cost basis");
+  });
+
+  test("a sell with too little stock in inventory flags why", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("saved-filters")) return json([]);
+      if (url.endsWith("/preview")) {
+        return json({ error: { code: "validation_failed", message: "Only 0 Saber in inventory, but this sale is for 14." } }, 400);
+      }
+      return json(pageOf([row({ transactionType: "marketSell", typeName: "Saber", quantity: 14 })]));
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /sold from inventory/ }));
+    expect(await screen.findByRole("alert")).toHaveAttribute("title", "Only 0 Saber in inventory, but this sale is for 14.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   test("Inventory is a column-chooser option, and hiding it removes the cells", async () => {
     mockApi([row()]);
     const { container } = renderPage();
