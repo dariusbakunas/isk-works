@@ -43,6 +43,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
   if (!recording) return null;
 
   const copy = recordingCopy(row);
+  const shortage = saleShortage(row, recording);
 
   async function openPreview(again: boolean) {
     setBusy("previewing");
@@ -107,6 +108,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
 
   switch (recording.state) {
     case "unrecorded":
+      if (shortage) return <ShortStockButton label={copy.button} reason={shortage} row={row} />;
       return (
         <>
           <button
@@ -169,6 +171,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-[0.625rem] text-warning" title="This inventory recording was reverted.">Reverted</span>
+          {shortage ? <ShortStockButton label="−" reason={shortage} row={row} again /> : (
           <button
             aria-label={`${copy.action} again`}
             className={`${compactButton} border-border text-muted hover:border-primary/70 hover:text-foreground`}
@@ -178,6 +181,7 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
           >
             {copy.sale ? "−" : "+"}
           </button>
+          )}
           {failure}
           {previewDialog}
         </span>
@@ -185,6 +189,44 @@ export function InventoryRecordingCell({ row, onChange }: Props) {
     case "unavailable":
       return <span className="text-muted" title={copy.unavailable}>—</span>;
   }
+}
+
+/**
+ * Why a sell can't be removed from inventory yet: the character holds fewer
+ * units than were sold. `null` when it can (or for a buy, or when the server
+ * didn't say how much is on hand -- then the preview reports it).
+ */
+function saleShortage(row: FinanceTransaction, recording: FinanceInventoryRecording): string | null {
+  const onHand = recording.inventoryQuantity;
+  if (row.transactionType !== "marketSell" || onHand == null || onHand >= row.quantity) return null;
+  const held = onHand === 0 ? `No ${row.typeName} in inventory` : `Only ${onHand.toLocaleString()} ${row.typeName} in inventory`;
+  return `${held}, but this sale is for ${row.quantity.toLocaleString()}. Add the missing stock to inventory first.`;
+}
+
+/**
+ * A disabled "− Inventory" whose reason shows on hover. The title sits on a
+ * wrapper because disabled buttons don't receive pointer events in every
+ * browser.
+ */
+function ShortStockButton({ again = false, label, reason, row }: {
+  again?: boolean;
+  label: string;
+  reason: string;
+  row: FinanceTransaction;
+}) {
+  return (
+    <span className="inline-flex" title={reason}>
+      <button
+        aria-label={`${recordingCopy(row).action}${again ? " again" : ""}`}
+        aria-description={reason}
+        className={`${compactButton} border-border text-muted`}
+        disabled
+        type="button"
+      >
+        {label}
+      </button>
+    </span>
+  );
 }
 
 /** Wording for a buy (added to inventory) or a sell (removed from it). */

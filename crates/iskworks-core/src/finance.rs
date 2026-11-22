@@ -205,6 +205,10 @@ pub struct FinanceInventoryRecording {
     pub reverted_at: Option<DateTime<Utc>>,
     pub quantity: Option<u64>,
     pub total_basis: Option<Money>,
+    /// Market Sells only: units of this item the owner holds in Inventory
+    /// right now (0 when nothing was ever recorded), so a client can tell
+    /// before previewing whether the sale is coverable. `None` for buys.
+    pub inventory_quantity: Option<u64>,
 }
 
 /// The most recent recording of one wallet transaction, active first.
@@ -225,6 +229,7 @@ pub struct FinanceInventoryEvidence {
     pub is_personal: bool,
     pub type_resolved: bool,
     pub latest_recording: Option<FinanceInventoryLatestRecording>,
+    pub inventory_quantity: Option<u64>,
 }
 
 impl FinanceInventoryRecording {
@@ -237,6 +242,7 @@ impl FinanceInventoryRecording {
             reverted_at: None,
             quantity: None,
             total_basis: None,
+            inventory_quantity: evidence.inventory_quantity,
         };
         let with = |state, recording: FinanceInventoryLatestRecording| Self {
             state,
@@ -245,6 +251,7 @@ impl FinanceInventoryRecording {
             reverted_at: recording.reverted_at,
             quantity: Some(recording.quantity),
             total_basis: Some(recording.total_basis),
+            inventory_quantity: evidence.inventory_quantity,
         };
         if let Some(recording) = evidence
             .latest_recording

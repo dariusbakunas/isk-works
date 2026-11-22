@@ -35,6 +35,11 @@ export interface FinanceInventoryRecording {
   revertedAt: string | null;
   quantity: number | null;
   totalBasis: string | null;
+  /**
+   * Market Sells only: units of the item the character holds in Inventory
+   * now (0 if none). `null` for buys, and from servers that predate it.
+   */
+  inventoryQuantity?: number | null;
 }
 
 export interface FinanceFilter {

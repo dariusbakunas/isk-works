@@ -418,13 +418,12 @@ async fn ineligible_and_inaccessible_transactions_are_rejected(pool: PgPool) {
         ),
         "a sell of stock that isn't in inventory is refused"
     );
+    let sell_recording = fx.finance_row(sell).await.inventory_recording.unwrap();
+    assert_eq!(sell_recording.state, FinanceInventoryState::Unrecorded);
     assert_eq!(
-        fx.finance_row(sell)
-            .await
-            .inventory_recording
-            .unwrap()
-            .state,
-        FinanceInventoryState::Unrecorded
+        sell_recording.inventory_quantity,
+        Some(0),
+        "a sell reports what's on hand, even when nothing is"
     );
 
     let unknown_type = fx.import(9009, 999_999, 5, price("3.0000"), true).await;
@@ -907,14 +906,9 @@ async fn recording_a_sell_removes_stock_at_average_cost_and_reverts_exactly(pool
             .unwrap();
     }
     let sell = fx.import(9103, TRITANIUM, 4, price("99.0000"), false).await;
-    assert_eq!(
-        fx.finance_row(sell)
-            .await
-            .inventory_recording
-            .unwrap()
-            .state,
-        FinanceInventoryState::Unrecorded
-    );
+    let before = fx.finance_row(sell).await.inventory_recording.unwrap();
+    assert_eq!(before.state, FinanceInventoryState::Unrecorded);
+    assert_eq!(before.inventory_quantity, Some(20));
 
     let preview = fx
         .esi
@@ -935,6 +929,7 @@ async fn recording_a_sell_removes_stock_at_average_cost_and_reverts_exactly(pool
     assert!(created);
     assert_eq!(recorded.state, FinanceInventoryState::Recorded);
     assert_eq!(recorded.quantity, Some(4));
+    assert_eq!(recorded.inventory_quantity, Some(16));
     // The sale's basis is the cost it removed, not the proceeds.
     assert_eq!(recorded.total_basis.unwrap().0.to_string(), "60.0000");
     let balance = fx.balance(TRITANIUM).await.unwrap();
@@ -998,13 +993,17 @@ async fn a_sell_larger_than_the_balance_is_refused_without_posting(pool: PgPool)
         }
     }
     assert_eq!(fx.event_count(TRITANIUM).await, 1);
+    let recording = fx.finance_row(sell).await.inventory_recording.unwrap();
+    assert_eq!(recording.state, FinanceInventoryState::Unrecorded);
+    assert_eq!(recording.inventory_quantity, Some(3));
     assert_eq!(
-        fx.finance_row(sell)
+        fx.finance_row(buy)
             .await
             .inventory_recording
             .unwrap()
-            .state,
-        FinanceInventoryState::Unrecorded
+            .inventory_quantity,
+        None,
+        "buys never report on-hand stock"
     );
 }
 
