@@ -381,3 +381,49 @@ Cynosural Field Generator I
         .max_velocity;
     assert!(speed > 1000.0, "speed {speed}");
 }
+
+/// A ship newer than the first engine data pin (2026-10-26), which named no
+/// type "Naga Navy Issue": the fit failed with "no matching type" on line 1.
+const NAGA_NAVY_ISSUE: &str = "[Naga Navy Issue, GSF - NagaNI - DPS V26.1 ]
+
+Ballistic Control System II
+Damage Control II
+Ballistic Control System II
+
+50MN Y-T8 Compact Microwarpdrive
+Large Shield Extender II
+Large Shield Extender II
+Small Capacitor Booster II
+Multispectrum Shield Hardener II
+Multispectrum Shield Hardener II
+EM Shield Hardener II
+
+Cruise Missile Launcher II
+Cruise Missile Launcher II
+Cruise Missile Launcher II
+Cruise Missile Launcher II
+Cruise Missile Launcher II
+Cruise Missile Launcher II
+Small Energy Neutralizer II
+
+Medium Ionic Field Projector II
+Medium Core Defense Field Extender I
+Medium Core Defense Field Extender I
+
+
+Scourge Fury Cruise Missile x2300
+Navy Cap Booster 400 x26
+";
+
+#[test]
+#[ignore = "requires data/fitting/sde.dat (make fitting-data)"]
+fn the_naga_navy_issue_imports() {
+    let parsed = engine().parse_eft(NAGA_NAVY_ISSUE).unwrap();
+    assert_eq!(parsed.name.as_deref(), Some("GSF - NagaNI - DPS V26.1"));
+    let fit = parsed.fit;
+    assert_eq!(fit.ship_type_id, type_id("Naga Navy Issue"));
+    assert_eq!(rack(&fit, SlotKind::Low).len(), 3);
+    assert_eq!(rack(&fit, SlotKind::Med).len(), 7);
+    assert_eq!(rack(&fit, SlotKind::High).len(), 7);
+    assert_eq!(rack(&fit, SlotKind::Rig).len(), 3);
+}
