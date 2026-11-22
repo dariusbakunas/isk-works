@@ -76,21 +76,41 @@ describe("Fittings › list", () => {
     expect(within(tree).getAllByRole("link")).toHaveLength(1);
   });
 
-  test("the tree switches to tags, remembers it, and a fit shows under each of its tags", async () => {
+  test("the sidebar switches to tag filters, remembers it, and ticked tags filter the table", async () => {
     window.localStorage.clear();
     stubFetch();
     const { unmount } = renderPage();
+    const rowKeys = () => screen.getAllByRole("row").filter((row) => row.dataset.rowKey).map((row) => row.dataset.rowKey);
 
     await screen.findByRole("table", { name: "Fits" });
     expect(screen.getByRole("button", { name: "Hulls" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Tags" }));
     expect(screen.getByRole("button", { name: "Tags" })).toHaveAttribute("aria-pressed", "true");
-    const tree = screen.getByRole("navigation", { name: "Hulls and fits" });
+    const filter = screen.getByRole("group", { name: "Filter fits by tag" });
+    expect(within(filter).getAllByRole("checkbox").map((box) => box.closest("label")?.textContent)).toEqual([
+      "Hauling2",
+      "Lowsec1",
+      "Untagged1",
+    ]);
+    expect(rowKeys()).toHaveLength(3);
 
-    expect(within(tree).getAllByRole("button").map((group) => group.textContent)).toEqual(["Hauling", "Lowsec", "Untagged"]);
-    fireEvent.click(within(tree).getByRole("button", { name: "Hauling" }));
-    fireEvent.click(within(tree).getByRole("button", { name: "Lowsec" }));
-    expect(within(tree).getAllByRole("link", { name: "Lowsec Brick" })).toHaveLength(2);
+    fireEvent.click(within(filter).getByRole("checkbox", { name: /Lowsec/ }));
+    expect(rowKeys()).toEqual(["22222222-2222-2222-2222-222222222222"]);
+    expect(screen.getByText("1 saved fit · 1 hull")).toBeInTheDocument();
+
+    // Any ticked tag lets a fit through.
+    fireEvent.click(within(filter).getByRole("checkbox", { name: /Untagged/ }));
+    expect(rowKeys()).toHaveLength(2);
+    expect(screen.queryByRole("row", { name: /Null Transport/ })).not.toBeInTheDocument();
+
+    // The filter only applies while its panel shows.
+    fireEvent.click(screen.getByRole("button", { name: "Hulls" }));
+    expect(rowKeys()).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Tags" }));
+    expect(rowKeys()).toHaveLength(2);
+
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter fits by tag" })).getByRole("button", { name: "Clear" }));
+    expect(rowKeys()).toHaveLength(3);
 
     unmount();
     renderPage();
