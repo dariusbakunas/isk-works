@@ -18,8 +18,9 @@ use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 /// Extra select-list columns describing one transaction's recording state.
-/// Requires the query to alias `esi_wallet_transactions` as `w` and the SDE
-/// type join as `t`, and to include `RECORDING_JOINS`.
+/// Requires the query to alias `esi_wallet_transactions` as `w`, its
+/// `eve_connections` as `c` and the SDE type join as `t`, and to include
+/// `RECORDING_JOINS`.
 pub(crate) const RECORDING_COLUMNS: &str = r#"
                w.is_personal,
                (t.name_en IS NOT NULL) AS type_resolved,
@@ -27,7 +28,9 @@ pub(crate) const RECORDING_COLUMNS: &str = r#"
                recording.recorded_at,
                recording.reverted_at AS recording_reverted_at,
                abs(recording.quantity_delta) AS recording_quantity,
-               abs(recording.total_cost_delta) AS recording_total_basis"#;
+               abs(recording.total_cost_delta) AS recording_total_basis,
+               CASE WHEN w.is_buy THEN NULL
+                    ELSE COALESCE(on_hand.quantity, 0) END AS inventory_quantity"#;
 
 /// The accounting effect a wallet transaction records: a buy is a purchase
 /// into inventory, a sell a sale out of it.
@@ -54,7 +57,11 @@ pub(crate) const RECORDING_JOINS: &str = r#"
             AND s.accounting_effect_kind = CASE WHEN w.is_buy THEN 'purchase' ELSE 'sale' END
           ORDER BY (s.reverted_at IS NULL) DESC, s.accepted_at DESC
           LIMIT 1
-        ) recording ON true"#;
+        ) recording ON true
+        LEFT JOIN inventory_balances on_hand
+          ON on_hand.workspace_id = c.workspace_id
+         AND on_hand.owner_id = c.owner_id
+         AND on_hand.type_id = w.type_id"#;
 
 #[derive(sqlx::FromRow)]
 pub(crate) struct RecordingColumns {
@@ -65,6 +72,7 @@ pub(crate) struct RecordingColumns {
     recording_reverted_at: Option<DateTime<Utc>>,
     recording_quantity: Option<i64>,
     recording_total_basis: Option<Decimal>,
+    inventory_quantity: Option<i64>,
 }
 
 impl RecordingColumns {
@@ -93,6 +101,11 @@ impl RecordingColumns {
                 is_personal: self.is_personal,
                 type_resolved: self.type_resolved,
                 latest_recording,
+                inventory_quantity: self
+                    .inventory_quantity
+                    .map(u64::try_from)
+                    .transpose()
+                    .map_err(|_| InventoryError::InvalidProjection)?,
             },
         ))
     }

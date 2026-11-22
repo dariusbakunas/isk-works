@@ -327,6 +327,41 @@ describe("Finance inventory recording column", () => {
     expect(confirm).toHaveTextContent("restore 700,000,000 ISK of cost basis");
   });
 
+  test("a sell the inventory can't cover is disabled up front, with the reason on hover", async () => {
+    const fetchMock = mockApi([
+      row({ observationId: "obs-none", transactionType: "marketSell", typeName: "Saber", quantity: 14, inventoryRecording: { ...none, inventoryQuantity: 0 } }),
+      row({ observationId: "obs-short", transactionType: "marketSell", typeName: "Rifter", quantity: 5, inventoryRecording: { ...none, inventoryQuantity: 3 } }),
+      row({ observationId: "obs-ok", transactionType: "marketSell", typeName: "Merlin", quantity: 2, inventoryRecording: { ...none, inventoryQuantity: 2 } }),
+    ]);
+    renderPage();
+
+    const none0 = await screen.findByRole("button", { name: "Remove 14 Saber sold from inventory" });
+    expect(none0).toBeDisabled();
+    expect(none0.parentElement).toHaveAttribute(
+      "title",
+      "No Saber in inventory, but this sale is for 14. Add the missing stock to inventory first.",
+    );
+    const short = screen.getByRole("button", { name: "Remove 5 Rifter sold from inventory" });
+    expect(short).toBeDisabled();
+    expect(short.parentElement).toHaveAttribute(
+      "title",
+      "Only 3 Rifter in inventory, but this sale is for 5. Add the missing stock to inventory first.",
+    );
+    expect(screen.getByRole("button", { name: "Remove 2 Merlin sold from inventory" })).toBeEnabled();
+
+    fireEvent.click(none0);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/preview"))).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("a reverted sell the inventory can no longer cover can't be removed again", async () => {
+    mockApi([row({ transactionType: "marketSell", typeName: "Saber", quantity: 14, inventoryRecording: { ...reverted, inventoryQuantity: 10 } })]);
+    renderPage();
+    const again = await screen.findByRole("button", { name: "Remove 14 Saber sold from inventory again" });
+    expect(again).toBeDisabled();
+    expect(again.parentElement).toHaveAttribute("title", expect.stringContaining("Only 10 Saber in inventory"));
+  });
+
   test("a sell with too little stock in inventory flags why", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
