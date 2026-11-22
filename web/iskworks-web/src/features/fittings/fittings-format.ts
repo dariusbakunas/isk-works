@@ -117,7 +117,7 @@ export interface TreeGroup {
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 
-/** Fits grouped by `groupsOf` (a fit can be in several), then by ship, all by name; `fallback` goes last. */
+/** Fits grouped by `groupsOf`, then by ship, all by name; `fallback` goes last. */
 function groupedTree(fits: FitSummary[], groupsOf: (fit: FitSummary) => string[], fallback: string): TreeGroup[] {
   const groups = new Map<string, Map<number, TreeShip>>();
   for (const fit of fits) {
@@ -151,12 +151,40 @@ export function fitTree(fits: FitSummary[]): TreeGroup[] {
   return groupedTree(fits, (fit) => [fit.ship.groupName || "Unknown group"], "Unknown group");
 }
 
-/** Fits by tag: tag → ship → fits. A fit shows under each of its tags; untagged ones come last. */
-export function fitTagTree(fits: FitSummary[]): TreeGroup[] {
-  return groupedTree(fits, (fit) => (fit.tags.length ? fit.tags : [UNTAGGED]), UNTAGGED);
+export const UNTAGGED = "Untagged";
+
+/** The tag filter's key for fits without tags: no real tag is empty. */
+export const UNTAGGED_KEY = "";
+
+/** A tag's filter key: tags match without regard to case. */
+export const tagKey = (tag: string) => tag.toLowerCase();
+
+export interface TagFilterOption {
+  key: string;
+  label: string;
+  count: number;
 }
 
-export const UNTAGGED = "Untagged";
+/** The tag filter's options: each of `tags` with how many of `fits` hold it, then
+ * Untagged when any fit has no tags. */
+export function tagFilterOptions(tags: string[], fits: FitSummary[], anyUntagged: boolean): TagFilterOption[] {
+  const options = tags.map((tag) => ({
+    key: tagKey(tag),
+    label: tag,
+    count: fits.filter((fit) => fit.tags.some((held) => tagKey(held) === tagKey(tag))).length,
+  }));
+  if (anyUntagged) {
+    options.push({ key: UNTAGGED_KEY, label: UNTAGGED, count: fits.filter((fit) => fit.tags.length === 0).length });
+  }
+  return options;
+}
+
+/** Whether `fit` passes a tag filter: it holds any ticked tag (or is untagged with
+ * Untagged ticked). Nothing ticked passes every fit. */
+export function matchesTags(fit: FitSummary, ticked: Set<string>): boolean {
+  if (ticked.size === 0) return true;
+  return fit.tags.length ? fit.tags.some((tag) => ticked.has(tagKey(tag))) : ticked.has(UNTAGGED_KEY);
+}
 
 /** A fit's characters split for its flyability chips; unknown ones are left out. */
 export function pilotsByStatus(pilots: FitListPilot[]) {

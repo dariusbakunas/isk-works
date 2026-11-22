@@ -9,7 +9,7 @@ import { EmptyState, InlineAlert } from "../../components/primitives";
 import { PRIVATE_ATTR } from "../../observability/private";
 import { EngineUnavailableHint, PilotPortrait, useEngineAvailable, useFittingsContext } from "./fit-shared";
 import { TagChips, TagInput, workspaceTags } from "./fit-tags";
-import { fitTagTree, fitTree, pilotsByStatus, type TreeGroup } from "./fittings-format";
+import { fitTree, matchesTags, pilotsByStatus, tagFilterOptions, type TagFilterOption, type TreeGroup } from "./fittings-format";
 import { ImportDialog } from "./import-dialog";
 import { NewFitDialog } from "./new-fit-dialog";
 import { useFits } from "./use-fittings";
@@ -151,6 +151,44 @@ function HullTree({ groups, searching }: { groups: TreeGroup[]; searching: boole
   );
 }
 
+/** The Tags sidebar: tick tags to list only fits holding any of them. */
+function TagFilter({
+  options,
+  ticked,
+  onToggle,
+  onClear,
+}: {
+  options: TagFilterOption[];
+  ticked: Set<string>;
+  onToggle: (key: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div aria-label="Filter fits by tag" className="text-xs" role="group">
+      <div className="flex items-center justify-between px-1 py-1.5">
+        <span className="font-semibold text-muted">Show fits tagged</span>
+        {ticked.size ? (
+          <button className="text-[0.6875rem] text-muted hover:text-foreground" onClick={onClear} type="button">
+            Clear
+          </button>
+        ) : null}
+      </div>
+      {options.map((option) => (
+        <label
+          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-panel-strong"
+          key={option.key}
+        >
+          <input checked={ticked.has(option.key)} onChange={() => onToggle(option.key)} type="checkbox" />
+          <span className={`flex-1 truncate ${option.key === "" ? "italic text-muted" : "text-foreground"}`}>
+            {option.label}
+          </span>
+          <span className="font-mono text-muted" data-testid={`tag-count-${option.label}`}>{option.count}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 const flies = (fit: FitSummary, connectionId: string) =>
   fit.pilots.some(
     (pilot) => pilot.connectionId === connectionId && (pilot.status === "canUseAll" || pilot.status === "canFlyHull"),
@@ -167,8 +205,10 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
   const [creating, setCreating] = useState(false);
   const [mode, setMode] = useTreeMode();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [tickedTags, setTickedTags] = useState<Set<string>>(new Set());
 
-  const visible = useMemo(() => {
+  // Search and pilot filters; the tag counts are over these.
+  const searched = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (data ?? []).filter(
       (fit) =>
@@ -179,8 +219,26 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
         (!flyableBy || flies(fit, flyableBy)),
     );
   }, [data, flyableBy, query]);
-  const tree = useMemo(() => (mode === "tags" ? fitTagTree(visible) : fitTree(visible)), [mode, visible]);
-  const anyTags = (data ?? []).some((fit) => fit.tags.length > 0);
+  const allTags = useMemo(() => workspaceTags(data ?? []), [data]);
+  const anyTags = allTags.length > 0;
+  const tagOptions = useMemo(
+    () => tagFilterOptions(allTags, searched, (data ?? []).some((fit) => fit.tags.length === 0)),
+    [allTags, data, searched],
+  );
+  // The tag filter applies while its panel shows; a tag no fit holds any more drops out.
+  const activeTags = useMemo(
+    () => (mode === "tags" ? new Set(tagOptions.map((option) => option.key).filter((key) => tickedTags.has(key))) : new Set<string>()),
+    [mode, tagOptions, tickedTags],
+  );
+  const visible = useMemo(() => searched.filter((fit) => matchesTags(fit, activeTags)), [activeTags, searched]);
+  const tree = useMemo(() => fitTree(visible), [visible]);
+  const toggleTag = (key: string) =>
+    setTickedTags((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // Only fits shown count: a filter hides a fit from the bulk actions too.
   const selectedFits = visible.filter((fit) => selected.has(fit.id));
   const toggleSelected = (id: string) =>
@@ -211,8 +269,18 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
           {mode === "tags" && !anyTags && data?.length ? (
             <p className="px-1 pb-1.5 text-[0.6875rem] text-muted">Tag fits from a fit's header or by selecting them in the table.</p>
           ) : null}
-          {/* Each tree keeps its own open groups. */}
-          <HullTree groups={tree} key={mode} searching={query.trim() !== ""} />
+          {mode === "tags" ? (
+            anyTags ? (
+              <TagFilter
+                onClear={() => setTickedTags(new Set())}
+                onToggle={toggleTag}
+                options={tagOptions}
+                ticked={activeTags}
+              />
+            ) : null
+          ) : (
+            <HullTree groups={tree} searching={query.trim() !== ""} />
+          )}
         </div>
       </aside>
 
@@ -282,7 +350,7 @@ export function FitList({ revision, onChanged }: { revision: number; onChanged: 
         {visible.length ? (
           <div className="iw-panel">
             <BulkBar
-              allTags={workspaceTags(data ?? [])}
+              allTags={allTags}
               onChanged={onChanged}
               onClear={() => setSelected(new Set())}
               onSelectAll={(all) => setSelected(all ? new Set(visible.map((fit) => fit.id)) : new Set())}
