@@ -21,6 +21,8 @@ The CSV endpoint exports the current filtered page and accepts the visible colum
 
 A Market Buy can be recorded into Inventory as a purchase: preview with `POST /api/finance/transactions/:observation_id/inventory-recording/preview`, record with `POST .../inventory-recording`, and undo with `POST .../inventory-recording/:recording_id/revert`. A reverted purchase can be recorded again.
 
+A Market Sell uses the same three endpoints to record a sale out of Inventory (the "− Inventory" action): a `sale` ledger event removes the sold quantity at the owner's weighted average cost, linked to the transaction by an `inventory_event_sources` row with `accounting_effect_kind = 'sale'`. A sale larger than the owner's current balance is refused, not clamped; record the missing stock first. The preview dialog shows proceeds against the cost removed, before sales tax and broker fees. Reverting a sale puts the units and their cost basis back. Like purchases, only personal transactions of a known item type can be recorded.
+
 ## Analytics
 
 `GET /api/finance/analytics` (`finance_analytics` in `iskworks-core`) aggregates the same market transactions for a date range: KPIs, cash flow, spending and income by category, totals by character and location, top items, a daily net heatmap, and rule-based insights. Income is market sells and expenses are market buys; trading taxes and fees come from the wallet journal. `GET /api/finance/analytics/export` exports the analytics as CSV.

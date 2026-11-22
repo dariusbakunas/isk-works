@@ -1,8 +1,9 @@
 //! Shared persistence for "this ESI wallet transaction was recorded into
-//! accounting Inventory".
+//! accounting Inventory" -- a Market Buy as a purchase into it, a Market Sell
+//! as a sale out of it.
 //!
 //! The relationship is `inventory_event_sources`: one immutable row per
-//! recording, keyed by the purchase event, with `reverted_at` as its lifecycle.
+//! recording, keyed by the ledger event, with `reverted_at` as its lifecycle.
 //! Finance and generic ledger reversal both read and write it through here, so
 //! there is exactly one truth about whether a transaction is currently in
 //! inventory.
@@ -25,11 +26,21 @@ pub(crate) const RECORDING_COLUMNS: &str = r#"
                recording.recording_id,
                recording.recorded_at,
                recording.reverted_at AS recording_reverted_at,
-               recording.quantity_delta AS recording_quantity,
-               recording.total_cost_delta AS recording_total_basis"#;
+               abs(recording.quantity_delta) AS recording_quantity,
+               abs(recording.total_cost_delta) AS recording_total_basis"#;
 
-/// One batched join (no per-row lookups): the transaction's latest recording,
-/// preferring an active one over any reverted history.
+/// The accounting effect a wallet transaction records: a buy is a purchase
+/// into inventory, a sell a sale out of it.
+pub(crate) const fn accounting_effect_kind(is_buy: bool) -> &'static str {
+    if is_buy {
+        "purchase"
+    } else {
+        "sale"
+    }
+}
+
+/// One batched join (no per-row lookups): the transaction's latest recording
+/// of its own effect kind, preferring an active one over any reverted history.
 pub(crate) const RECORDING_JOINS: &str = r#"
         LEFT JOIN LATERAL (
           SELECT s.inventory_event_id AS recording_id,
@@ -39,7 +50,8 @@ pub(crate) const RECORDING_JOINS: &str = r#"
                  e.total_cost_delta
           FROM inventory_event_sources s
           JOIN inventory_events e ON e.id = s.inventory_event_id
-          WHERE s.observation_id = w.id AND s.accounting_effect_kind = 'purchase'
+          WHERE s.observation_id = w.id
+            AND s.accounting_effect_kind = CASE WHEN w.is_buy THEN 'purchase' ELSE 'sale' END
           ORDER BY (s.reverted_at IS NULL) DESC, s.accepted_at DESC
           LIMIT 1
         ) recording ON true"#;
@@ -56,10 +68,7 @@ pub(crate) struct RecordingColumns {
 }
 
 impl RecordingColumns {
-    pub(crate) fn recording(
-        self,
-        is_buy: bool,
-    ) -> Result<Option<FinanceInventoryRecording>, InventoryError> {
+    pub(crate) fn recording(self) -> Result<FinanceInventoryRecording, InventoryError> {
         let latest_recording = match (
             self.recording_id,
             self.recorded_at,
@@ -81,7 +90,6 @@ impl RecordingColumns {
         };
         Ok(FinanceInventoryRecording::derive(
             FinanceInventoryEvidence {
-                is_buy,
                 is_personal: self.is_personal,
                 type_resolved: self.type_resolved,
                 latest_recording,
@@ -90,29 +98,20 @@ impl RecordingColumns {
     }
 }
 
-#[derive(sqlx::FromRow)]
-struct StateRow {
-    is_buy: bool,
-    #[sqlx(flatten)]
-    columns: RecordingColumns,
-}
-
 /// Current recording state of one wallet transaction, scoped to a workspace
 /// through its connection (the transaction table has no workspace column).
-/// `None` when the transaction does not exist in this workspace *or* can never
-/// be recorded (Market Sell); callers distinguish the two themselves.
 pub(crate) async fn recording_state<'e, E>(
     executor: E,
     workspace_id: WorkspaceId,
     observation_id: Uuid,
-) -> Result<Option<FinanceInventoryRecording>, InventoryError>
+) -> Result<FinanceInventoryRecording, InventoryError>
 where
     E: sqlx::Executor<'e, Database = Postgres>,
 {
     let sql = format!(
         r#"
         WITH active_import AS (SELECT id FROM sde_imports WHERE active LIMIT 1)
-        SELECT w.is_buy, {RECORDING_COLUMNS}
+        SELECT {RECORDING_COLUMNS}
         FROM esi_wallet_transactions w
         JOIN eve_connections c ON c.id = w.connection_id
         LEFT JOIN active_import ai ON true
@@ -121,14 +120,14 @@ where
         WHERE w.id = $1 AND c.workspace_id = $2
         "#
     );
-    let row = sqlx::query_as::<_, StateRow>(&sql)
+    let row = sqlx::query_as::<_, RecordingColumns>(&sql)
         .bind(observation_id)
         .bind(workspace_id.0)
         .fetch_optional(executor)
         .await
         .map_err(|error| InventoryError::Persistence(error.to_string()))?
         .ok_or(InventoryError::ItemNotFound)?;
-    row.columns.recording(row.is_buy)
+    row.recording()
 }
 
 /// Locks the wallet transaction that `event_id` records, if any. Every path
@@ -155,7 +154,7 @@ pub(crate) async fn lock_recorded_transaction(
     Ok(())
 }
 
-/// Marks the recording whose purchase event was just reversed as reverted, so
+/// Marks the recording whose ledger event was just reversed as reverted, so
 /// Finance shows the transaction is no longer in inventory. A no-op for events
 /// with no wallet provenance. Never deletes history: the recording row stays,
 /// and a later re-record adds a new one.

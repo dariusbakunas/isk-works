@@ -14,7 +14,7 @@ export interface InventoryBalance {
 
 export interface InventoryEvent {
   id: string;
-  kind: "openingBalance" | "purchase" | "consumption" | "productionOutput" | "reversal" | "adjustment";
+  kind: "openingBalance" | "purchase" | "consumption" | "productionOutput" | "reversal" | "adjustment" | "sale";
   quantityDelta: number;
   totalCostDelta: string;
   unitCost: string | null;
@@ -155,7 +155,7 @@ export interface InventoryAdjustmentInput {
 export interface InventoryPreview {
   current: InventoryBalance;
   posting: {
-    kind: "openingBalance" | "purchase" | "adjustment";
+    kind: "openingBalance" | "purchase" | "adjustment" | "sale";
     quantityDelta: number;
     totalCostDelta: string;
     unitCost: string | null;

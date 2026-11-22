@@ -290,7 +290,7 @@ function InspectorLine({ label, value }: { label: string; value: string }) {
 }
 
 function eventLabel(kind: InventoryEvent["kind"]) {
-  return kind === "openingBalance" ? "Opening Balance" : kind === "purchase" ? "Purchase" : kind === "consumption" ? "Consumed by Build" : kind === "productionOutput" ? "Production Output" : kind === "adjustment" ? "Adjustment" : "Reversal";
+  return kind === "openingBalance" ? "Opening Balance" : kind === "purchase" ? "Purchase" : kind === "consumption" ? "Consumed by Build" : kind === "productionOutput" ? "Production Output" : kind === "adjustment" ? "Adjustment" : kind === "sale" ? "Sale" : "Reversal";
 }
 
 function signedQuantity(value: number) {
