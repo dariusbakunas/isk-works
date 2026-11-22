@@ -4,14 +4,18 @@ import {
   Boxes,
   Building2,
   CalendarDays,
+  ChartLine,
   Factory,
   Globe2,
+  Flame,
   GraduationCap,
   Hammer,
+  Hourglass,
   Kanban,
   Landmark,
   LayoutDashboard,
   Rocket,
+  ScrollText,
   Shield,
   Store,
   Tags,
@@ -77,11 +81,9 @@ export const navGroups: NavGroup[] = [
         label: "Builds",
         path: "/builds",
         icon: Factory,
-        children: [
-          { label: "New build", path: "/builds/new" },
-          { label: "Blueprints", path: "/builds/blueprints", keywords: ["bp", "bpo", "bpc"] },
-        ],
+        children: [{ label: "New build", path: "/builds/new" }],
       },
+      { label: "Blueprints", path: "/builds/blueprints", icon: ScrollText, keywords: ["bp", "bpo", "bpc"] },
       { label: "Board", path: "/board", icon: Kanban, keywords: ["kanban", "tickets"] },
       {
         label: "Jobs",
@@ -112,15 +114,9 @@ export const navGroups: NavGroup[] = [
     id: "stock",
     label: "Stock",
     items: [
-      {
-        label: "Inventory",
-        path: "/inventory",
-        icon: Boxes,
-        children: [
-          { label: "Runway", path: "/inventory/runway" },
-          { label: "Consumption", path: "/inventory/consumption" },
-        ],
-      },
+      { label: "Inventory", path: "/inventory", icon: Boxes },
+      { label: "Runway", path: "/inventory/runway", icon: Hourglass },
+      { label: "Consumption", path: "/inventory/consumption", icon: Flame },
       { label: "Assets", path: "/assets", icon: Warehouse },
     ],
   },
@@ -145,11 +141,9 @@ export const navGroups: NavGroup[] = [
         path: "/finance",
         icon: Landmark,
         keywords: ["wallet", "journal"],
-        children: [
-          { label: "Transactions", path: "/finance/transactions" },
-          { label: "Analytics", path: "/finance/analytics" },
-        ],
+        children: [{ label: "Transactions", path: "/finance/transactions" }],
       },
+      { label: "Analytics", path: "/finance/analytics", icon: ChartLine, keywords: ["finance", "profit"] },
     ],
   },
 ];
@@ -165,6 +159,18 @@ export function flatNavItems(isAdmin: boolean): NavItem[] {
 /** Whole path segments only: "/market" must not light up on "/market-orders". */
 export function isNavPathActive(pathname: string, path: string): boolean {
   return pathname === path || (path !== "/" && pathname.startsWith(`${path}/`));
+}
+
+/**
+ * The rail row a location lights: the most specific item, so /builds/blueprints
+ * lights Blueprints rather than Builds, even though Blueprints lives under /builds.
+ */
+export function activeNavItemPath(pathname: string, items: NavItem[]): string | null {
+  let best: string | null = null;
+  for (const item of items) {
+    if (isNavPathActive(pathname, item.path) && (!best || item.path.length > best.length)) best = item.path;
+  }
+  return best;
 }
 
 /** The most specific item or child a location belongs to, or null. */

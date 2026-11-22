@@ -9,9 +9,9 @@ const labels = (query: string) => searchPalette(entries, query).map((match) => m
 
 describe("pageEntries", () => {
   test("lists items and their sub-pages as Parent › Child with the parent's icon and group", () => {
-    const blueprints = pageEntries(false).find((entry) => entry.path === "/builds/blueprints");
+    const newBuild = pageEntries(false).find((entry) => entry.path === "/builds/new");
     const builds = pageEntries(false).find((entry) => entry.path === "/builds");
-    expect(blueprints).toMatchObject({ label: "Builds › Blueprints", group: "Industry", icon: builds?.icon });
+    expect(newBuild).toMatchObject({ label: "Builds › New build", group: "Industry", icon: builds?.icon });
   });
 
   test("lists Admin only for admins", () => {
@@ -40,7 +40,7 @@ describe("searchPalette", () => {
 
   test("a keyword match is flagged", () => {
     const [first] = searchPalette(entries, "bp");
-    expect(first.entry.label).toBe("Builds › Blueprints");
+    expect(first.entry.label).toBe("Blueprints");
     expect(first.viaKeyword).toBe(true);
     expect(searchPalette(entries, "wallet")[0].entry.label).toBe("Finance");
     expect(searchPalette(entries, "Board")[0].viaKeyword).toBe(false);

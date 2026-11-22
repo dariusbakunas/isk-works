@@ -1,4 +1,4 @@
-import { CircleHelp, PanelLeftClose, PanelLeftOpen, Search, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleHelp, PanelLeftClose, PanelLeftOpen, Search, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -6,8 +6,9 @@ import mascotHead from "../../assets/mascot-head.png";
 import { HELP_PATH } from "../community-links";
 import { EsiStatusItem } from "../esi-status";
 import { WindowDock } from "../tool-windows/window-dock";
-import { adminNavItem, isNavPathActive, navGroups } from "./registry";
+import { activeNavItemPath, adminNavItem, isNavPathActive, navGroups } from "./registry";
 import { modKey } from "./shortcut-keys";
+import { useNavCollapsedGroups } from "./use-nav-collapsed-groups";
 
 export const RAIL_COLLAPSED_WIDTH = 52;
 export const RAIL_EXPANDED_WIDTH = 220;
@@ -62,6 +63,8 @@ export interface RailContentProps {
 /** The rail's contents, shared by the desktop rail and the mobile drawer. */
 export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, onOpenSearch, pin }: RailContentProps) {
   const { pathname } = useLocation();
+  const [collapsedGroups, toggleGroup] = useNavCollapsedGroups();
+  const activePath = activeNavItemPath(pathname, navGroups.flatMap((group) => group.items));
 
   return (
     <>
@@ -99,28 +102,42 @@ export function RailContent({ expanded, isAdmin, workspaceName, renderAccount, o
 
       <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {/* Sub-pages live in their page's tabs and in ⌘K, not here: rows and group
-            headings keep one height, so no icon moves when the rail expands. */}
-        {navGroups.map((group, index) => (
-          <div key={group.id}>
-            {expanded ? (
-              <div className="flex h-5 items-center px-[14px] text-[8px] font-semibold uppercase tracking-[.14em] text-subtle">{group.label}</div>
-            ) : (
-              <div aria-hidden="true" className="flex h-5 items-center px-3">
-                {index > 0 ? <span className="w-full border-t border-border" /> : null}
-              </div>
-            )}
-            {group.items.map((item) => (
-              <RailLink
-                active={isNavPathActive(pathname, item.path)}
-                expanded={expanded}
-                icon={item.icon}
-                key={item.path}
-                label={item.label}
-                to={item.path}
-              />
-            ))}
-          </div>
-        ))}
+            headings keep one height, so no icon moves when the rail expands. A
+            collapsed group keeps only its current page's row, in both widths. */}
+        {navGroups.map((group, index) => {
+          const collapsed = collapsedGroups.has(group.id);
+          const Chevron = collapsed ? ChevronRight : ChevronDown;
+          const items = collapsed ? group.items.filter((item) => item.path === activePath) : group.items;
+          return (
+            <div key={group.id}>
+              {expanded ? (
+                <button
+                  aria-expanded={!collapsed}
+                  className={`flex h-5 w-full items-center gap-1 px-[14px] text-[8px] font-semibold uppercase tracking-[.14em] text-subtle hover:text-foreground ${rowFocus}`}
+                  onClick={() => toggleGroup(group.id)}
+                  type="button"
+                >
+                  <span className="truncate">{group.label}</span>
+                  <Chevron aria-hidden="true" className="ml-auto h-3 w-3 shrink-0" />
+                </button>
+              ) : (
+                <div aria-hidden="true" className="flex h-5 items-center px-3">
+                  {index > 0 ? <span className="w-full border-t border-border" /> : null}
+                </div>
+              )}
+              {items.map((item) => (
+                <RailLink
+                  active={item.path === activePath}
+                  expanded={expanded}
+                  icon={item.icon}
+                  key={item.path}
+                  label={item.label}
+                  to={item.path}
+                />
+              ))}
+            </div>
+          );
+        })}
       </nav>
 
       <WindowDock expanded={expanded} />
