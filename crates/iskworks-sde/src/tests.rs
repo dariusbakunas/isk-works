@@ -234,6 +234,8 @@ fn normalizes_structure_and_security_adjusted_rig_inputs() {
             RigFilterIds {
                 manufacturing_material: vec![5],
                 manufacturing_time: vec![5],
+                manufacturing_material_applies: true,
+                manufacturing_time_applies: true,
                 ..RigFilterIds::default()
             },
         )]),
@@ -367,6 +369,77 @@ fn normalizes_reaction_rig_inputs_and_skips_structure_level_reaction_bonus() {
     // separate time filter (this is an ME-only rig).
     assert_eq!(reaction_rigs[0].material_filter_ids, vec![18]);
     assert!(reaction_rigs[0].time_filter_ids.is_empty());
+}
+
+/// A rig's dogma magnitudes are generic (2593 time, 2594 material, 2595
+/// cost); `industryModifierSources` says which activity they are for. The
+/// rows are the real ones for the two invention rigs, an XL lab rig and a
+/// manufacturing rig.
+#[test]
+fn lab_rig_bonuses_go_to_invention_and_copying_not_manufacturing() {
+    let source = fixture_source_inner(
+        blueprints_fixture(),
+        None,
+        None,
+        &[
+            (
+                "industryModifierSources.jsonl",
+                concat!(
+                    r#"{"_key":43878,"invention":{"cost":[{"dogmaAttributeID":2563}]}}"#,
+                    "\n",
+                    r#"{"_key":43881,"invention":{"time":[{"dogmaAttributeID":2564}]}}"#,
+                    "\n",
+                    r#"{"_key":37182,"copying":{"cost":[{"dogmaAttributeID":2569}],"time":[{"dogmaAttributeID":2570}]},"invention":{"cost":[{"dogmaAttributeID":2563}],"time":[{"dogmaAttributeID":2564}]},"researchMaterial":{"cost":[{"dogmaAttributeID":2567}],"time":[{"dogmaAttributeID":2568}]}}"#,
+                    "\n",
+                    r#"{"_key":43921,"manufacturing":{"material":[{"dogmaAttributeID":2538,"filterID":2}]}}"#,
+                ),
+            ),
+            (
+                "typeDogma.jsonl",
+                concat!(
+                    r#"{"_key":43878,"dogmaAttributes":[{"attributeID":2357,"value":2.1},{"attributeID":2593,"value":0.0},{"attributeID":2594,"value":0.0},{"attributeID":2595,"value":-12.0}]}"#,
+                    "\n",
+                    r#"{"_key":43881,"dogmaAttributes":[{"attributeID":2357,"value":2.1},{"attributeID":2593,"value":-24.0},{"attributeID":2594,"value":0.0},{"attributeID":2595,"value":0.0}]}"#,
+                    "\n",
+                    r#"{"_key":37182,"dogmaAttributes":[{"attributeID":2593,"value":-24.0},{"attributeID":2594,"value":0.0},{"attributeID":2595,"value":-12.0}]}"#,
+                    "\n",
+                    r#"{"_key":43921,"dogmaAttributes":[{"attributeID":2593,"value":0.0},{"attributeID":2594,"value":-2.4},{"attributeID":2595,"value":0.0}]}"#,
+                ),
+            ),
+        ],
+    )
+    .unwrap();
+
+    let dataset = parse(&source).unwrap();
+    let rig = |type_id: i64| {
+        dataset
+            .rig_modifiers
+            .iter()
+            .find(|rig| rig.type_id == type_id)
+            .expect("rig present")
+    };
+    let science =
+        |invention_cost: i64, invention_time: i64, copying_cost: i64, copying_time: i64| {
+            ImportRigScienceModifiers {
+                invention_cost_reduction_percent: Decimal::from(invention_cost),
+                invention_time_reduction_percent: Decimal::from(invention_time),
+                copying_cost_reduction_percent: Decimal::from(copying_cost),
+                copying_time_reduction_percent: Decimal::from(copying_time),
+            }
+        };
+
+    // Invention Cost Optimization II.
+    assert_eq!(rig(43_878).science, science(12, 0, 0, 0));
+    assert_eq!(rig(43_878).null_sec_multiplier, Decimal::new(21, 1));
+    // Invention Accelerator II: its time bonus is not a manufacturing one.
+    assert_eq!(rig(43_881).science, science(0, 24, 0, 0));
+    assert_eq!(rig(43_881).time_reduction_percent, Decimal::ZERO);
+    // XL Laboratory Optimization II covers both activities.
+    assert_eq!(rig(37_182).science, science(12, 24, 12, 24));
+    assert_eq!(rig(37_182).time_reduction_percent, Decimal::ZERO);
+    // A manufacturing rig is untouched and has no science bonus.
+    assert_eq!(rig(43_921).material_reduction_percent, Decimal::new(24, 1));
+    assert_eq!(rig(43_921).science, ImportRigScienceModifiers::default());
 }
 
 #[test]

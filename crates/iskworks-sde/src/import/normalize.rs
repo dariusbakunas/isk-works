@@ -168,6 +168,12 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                     manufacturing_time: all(&source.manufacturing.time),
                     reaction_material: all(&source.reaction.material),
                     reaction_time: all(&source.reaction.time),
+                    manufacturing_material_applies: !source.manufacturing.material.is_empty(),
+                    manufacturing_time_applies: !source.manufacturing.time.is_empty(),
+                    invention_cost_applies: !source.invention.cost.is_empty(),
+                    invention_time_applies: !source.invention.time.is_empty(),
+                    copying_cost_applies: !source.copying.cost.is_empty(),
+                    copying_time_applies: !source.copying.time.is_empty(),
                 },
             )
         })
@@ -814,15 +820,33 @@ pub(crate) fn normalize_facility_dogma(
             ids.dedup();
             ids
         };
-        let filters = rig_filter_ids.get(&record.key).cloned().unwrap_or_default();
+        // A rig absent from `industryModifierSources` (an SDE without the
+        // dataset) keeps its bonuses as manufacturing ones, as before the
+        // dataset was read. A listed rig only gets the bonuses its entry
+        // names: a lab rig's time bonus is for invention or copying.
+        let source = rig_filter_ids.get(&record.key);
+        let filters = source.cloned().unwrap_or_default();
+        let reduction = |attribute_id: i64, applies: bool| {
+            if applies {
+                -attributes
+                    .get(&attribute_id)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO)
+            } else {
+                Decimal::ZERO
+            }
+        };
         if attributes.contains_key(&2593) || attributes.contains_key(&2594) {
             rigs.push(ImportRigModifiers {
                 type_id: record.key,
-                material_reduction_percent: -attributes
-                    .get(&2594)
-                    .copied()
-                    .unwrap_or(Decimal::ZERO),
-                time_reduction_percent: -attributes.get(&2593).copied().unwrap_or(Decimal::ZERO),
+                material_reduction_percent: reduction(
+                    2594,
+                    source.is_none_or(|source| source.manufacturing_material_applies),
+                ),
+                time_reduction_percent: reduction(
+                    2593,
+                    source.is_none_or(|source| source.manufacturing_time_applies),
+                ),
                 high_sec_multiplier: attributes.get(&2355).copied().unwrap_or(Decimal::ONE),
                 low_sec_multiplier: attributes.get(&2356).copied().unwrap_or(Decimal::ONE),
                 null_sec_multiplier: attributes.get(&2357).copied().unwrap_or(Decimal::ONE),
@@ -830,6 +854,18 @@ pub(crate) fn normalize_facility_dogma(
                 rig_size: attributes.get(&1547).and_then(ToPrimitive::to_i64),
                 material_filter_ids: filters.manufacturing_material.clone(),
                 time_filter_ids: filters.manufacturing_time.clone(),
+                science: ImportRigScienceModifiers {
+                    invention_cost_reduction_percent: reduction(
+                        2595,
+                        filters.invention_cost_applies,
+                    ),
+                    invention_time_reduction_percent: reduction(
+                        2593,
+                        filters.invention_time_applies,
+                    ),
+                    copying_cost_reduction_percent: reduction(2595, filters.copying_cost_applies),
+                    copying_time_reduction_percent: reduction(2593, filters.copying_time_applies),
+                },
             });
         }
         if attributes.contains_key(&2713) || attributes.contains_key(&2714) {
@@ -847,6 +883,7 @@ pub(crate) fn normalize_facility_dogma(
                 rig_size: attributes.get(&1547).and_then(ToPrimitive::to_i64),
                 material_filter_ids: filters.reaction_material.clone(),
                 time_filter_ids: filters.reaction_time.clone(),
+                science: ImportRigScienceModifiers::default(),
             });
         }
     }

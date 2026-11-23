@@ -51,6 +51,10 @@ export interface ScienceJobFee {
   estimatedItemValue: string | null;
   jobCostBase: string | null;
   systemCostIndex: string | null;
+  /** The index line before the facility's role and rig bonuses. */
+  unmodifiedSystemIndexCost: string | null;
+  /** What those bonuses take off the index line, combined; `"0"` for none. */
+  indexCostReductionPercent: string;
   systemIndexCost: string | null;
   facilityTax: string | null;
   sccSurcharge: string | null;

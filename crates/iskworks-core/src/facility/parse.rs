@@ -15,6 +15,7 @@ use super::rig_applicability::RigApplicability;
 use super::types::{
     CreateFacilityProfileCommand, FacilityError, FacilityIdentity, FacilityIdentityBasis,
     FacilityKind, FacilityProfileId, FacilityRig, FacilityRigInput, IndustryFacilityProfile,
+    RigScienceBonuses, RigScienceBonusesInput,
 };
 
 pub fn facility_identity(
@@ -118,6 +119,24 @@ pub fn parse_profile(
                 // Resolved from the SDE by the facility route after parsing,
                 // not carried on the wire command -- see `RigApplicability`.
                 applicability: RigApplicability::default(),
+                science: RigScienceBonuses {
+                    invention_cost_reduction_percent: parse_percent(
+                        &rig.science.invention_cost_reduction_percent,
+                        false,
+                    )?,
+                    invention_time_reduction_percent: parse_percent(
+                        &rig.science.invention_time_reduction_percent,
+                        false,
+                    )?,
+                    copying_cost_reduction_percent: parse_percent(
+                        &rig.science.copying_cost_reduction_percent,
+                        false,
+                    )?,
+                    copying_time_reduction_percent: parse_percent(
+                        &rig.science.copying_time_reduction_percent,
+                        false,
+                    )?,
+                },
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -196,6 +215,24 @@ pub fn export_command(profile: &IndustryFacilityProfile) -> CreateFacilityProfil
                 type_name: rig.type_name.clone(),
                 material_reduction_percent: rig.material_reduction_percent.to_string(),
                 time_reduction_percent: rig.time_reduction_percent.to_string(),
+                science: RigScienceBonusesInput {
+                    invention_cost_reduction_percent: rig
+                        .science
+                        .invention_cost_reduction_percent
+                        .to_string(),
+                    invention_time_reduction_percent: rig
+                        .science
+                        .invention_time_reduction_percent
+                        .to_string(),
+                    copying_cost_reduction_percent: rig
+                        .science
+                        .copying_cost_reduction_percent
+                        .to_string(),
+                    copying_time_reduction_percent: rig
+                        .science
+                        .copying_time_reduction_percent
+                        .to_string(),
+                },
             })
             .collect(),
     }
@@ -324,12 +361,23 @@ mod tests {
                     type_name: "Standup M-Set Basic Material Efficiency I".into(),
                     material_reduction_percent: "2".into(),
                     time_reduction_percent: "0".into(),
+                    science: RigScienceBonusesInput {
+                        invention_cost_reduction_percent: "25.2".into(),
+                        copying_time_reduction_percent: "50.4".into(),
+                        ..RigScienceBonusesInput::default()
+                    },
                 }],
             },
         )
         .unwrap();
 
         let reimported = parse_profile(workspace_id, export_command(&original)).unwrap();
+
+        assert_eq!(
+            original.rigs[0].science.invention_cost_reduction_percent,
+            Decimal::from_str("25.2").unwrap()
+        );
+        assert_eq!(reimported.rigs[0].science, original.rigs[0].science);
 
         assert_eq!(reimported.name, original.name);
         assert_eq!(reimported.kind, original.kind);

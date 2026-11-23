@@ -63,12 +63,23 @@ export interface RigApplicability {
   time: IndustryTargetFilter | null;
 }
 
+/** A rig's invention and copying bonuses for a security class: percentages
+ * off the system cost index line of the fee and off the job time. `"0"`
+ * where the rig has none. */
+export interface RigScienceModifiers {
+  inventionCostReductionPercent: string;
+  inventionTimeReductionPercent: string;
+  copyingCostReductionPercent: string;
+  copyingTimeReductionPercent: string;
+}
+
 export interface RigManufacturingModifiers {
   typeId: number;
   materialReductionPercent: string;
   timeReductionPercent: string;
   compatibleWithStructure: boolean | null;
   appliesTo: RigApplicability;
+  science: RigScienceModifiers;
 }
 
 export interface ReactionRigModifiers {

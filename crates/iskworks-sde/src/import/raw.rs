@@ -289,9 +289,10 @@ pub(crate) struct RawIndustryTargetFilter {
 }
 
 /// `industryModifierSources.jsonl` -- keyed by a structure or rig type id.
-/// Only the `manufacturing`/`reaction` activities and only each entry's
-/// `filterID` matter here; bonus magnitudes still come from `typeDogma`
-/// (2593/2594 etc.), and research/copy/invention activities are ignored.
+/// What matters here is which activities and dimensions an entry lists and,
+/// for manufacturing and reactions, each entry's `filterID`. Bonus
+/// magnitudes still come from `typeDogma` (2593/2594/2595 etc.); the
+/// research activities are ignored.
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawIndustryModifierSource {
     #[serde(rename = "_key")]
@@ -300,6 +301,10 @@ pub(crate) struct RawIndustryModifierSource {
     pub(crate) manufacturing: RawIndustryActivityModifiers,
     #[serde(default)]
     pub(crate) reaction: RawIndustryActivityModifiers,
+    #[serde(default)]
+    pub(crate) invention: RawIndustryActivityModifiers,
+    #[serde(default)]
+    pub(crate) copying: RawIndustryActivityModifiers,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -308,6 +313,8 @@ pub(crate) struct RawIndustryActivityModifiers {
     pub(crate) material: Vec<RawIndustryModifierEntry>,
     #[serde(default)]
     pub(crate) time: Vec<RawIndustryModifierEntry>,
+    #[serde(default)]
+    pub(crate) cost: Vec<RawIndustryModifierEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -316,18 +323,30 @@ pub(crate) struct RawIndustryModifierEntry {
     pub(crate) filter_id: Option<i64>,
 }
 
-/// A rig type's resolved `filterID`s for the two activities ISK Works
-/// models, extracted from `RawIndustryModifierSource` and handed to
-/// `normalize_facility_dogma`. Each activity/dimension carries *every*
-/// referenced filter (EVE emits one `industryModifierSources` entry per
-/// covered filter for a multi-scope rig); an empty vec means "unrestricted"
-/// (no `filterID`, or the SDE lacks the dataset). Sorted and de-duplicated.
+/// What a rig type's `RawIndustryModifierSource` says its bonuses apply
+/// to, handed to `normalize_facility_dogma`.
+///
+/// For manufacturing and reactions each dimension carries *every*
+/// referenced filter (EVE emits one entry per covered filter for a
+/// multi-scope rig); an empty vec means "unrestricted" (no `filterID`).
+/// Sorted and de-duplicated.
+///
+/// A rig's dogma magnitudes are generic (one time, one material, one cost
+/// attribute), so the `*_applies` flags say which activity they belong
+/// to: an Invention Accelerator has a time bonus and only an
+/// `invention.time` entry, so it speeds up invention and nothing else.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct RigFilterIds {
     pub(crate) manufacturing_material: Vec<i64>,
     pub(crate) manufacturing_time: Vec<i64>,
     pub(crate) reaction_material: Vec<i64>,
     pub(crate) reaction_time: Vec<i64>,
+    pub(crate) manufacturing_material_applies: bool,
+    pub(crate) manufacturing_time_applies: bool,
+    pub(crate) invention_cost_applies: bool,
+    pub(crate) invention_time_applies: bool,
+    pub(crate) copying_cost_applies: bool,
+    pub(crate) copying_time_applies: bool,
 }
 
 pub(crate) fn deserialize_decimal<'de, D>(deserializer: D) -> Result<Decimal, D::Error>

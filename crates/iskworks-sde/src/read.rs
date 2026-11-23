@@ -241,6 +241,31 @@ pub struct RigManufacturingModifiers {
     pub time_reduction_percent: String,
     pub compatible_with_structure: Option<bool>,
     pub applies_to: RigApplicability,
+    pub science: RigScienceModifiers,
+}
+
+/// A rig's invention and copying bonuses for a security class, as
+/// percentages of the system cost index line and of the job time. `"0"`
+/// where the rig has none. They apply to every blueprint.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RigScienceModifiers {
+    pub invention_cost_reduction_percent: String,
+    pub invention_time_reduction_percent: String,
+    pub copying_cost_reduction_percent: String,
+    pub copying_time_reduction_percent: String,
+}
+
+impl Default for RigScienceModifiers {
+    fn default() -> Self {
+        let zero = || "0".to_string();
+        Self {
+            invention_cost_reduction_percent: zero(),
+            invention_time_reduction_percent: zero(),
+            copying_cost_reduction_percent: zero(),
+            copying_time_reduction_percent: zero(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]

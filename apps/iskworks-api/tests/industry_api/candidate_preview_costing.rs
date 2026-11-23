@@ -888,6 +888,7 @@ async fn candidate_preview_succeeds_with_a_root_rig_configured_and_a_build_resol
             material_reduction_percent: rust_decimal::Decimal::new(2, 0), // 2%.
             time_reduction_percent: rust_decimal::Decimal::ZERO,
             applicability: Default::default(),
+            science: Default::default(),
         }],
         ..fixture_facility_profile(iskworks_core::FacilityRole::Manufacturing)
     };

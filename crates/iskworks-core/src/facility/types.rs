@@ -160,6 +160,37 @@ pub enum SecurityClass {
     Unknown,
 }
 
+/// What a fitted rig takes off invention and copying jobs: the share of
+/// the system cost index line and of the job time, as percentages already
+/// scaled for the structure's security class. All zero for a rig that only
+/// affects manufacturing or reactions.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RigScienceBonuses {
+    #[serde(default, with = "rust_decimal::serde::str")]
+    pub invention_cost_reduction_percent: Decimal,
+    #[serde(default, with = "rust_decimal::serde::str")]
+    pub invention_time_reduction_percent: Decimal,
+    #[serde(default, with = "rust_decimal::serde::str")]
+    pub copying_cost_reduction_percent: Decimal,
+    #[serde(default, with = "rust_decimal::serde::str")]
+    pub copying_time_reduction_percent: Decimal,
+}
+
+/// [`RigScienceBonuses`] as typed: an empty string is zero.
+#[derive(Debug, Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RigScienceBonusesInput {
+    #[serde(default)]
+    pub invention_cost_reduction_percent: String,
+    #[serde(default)]
+    pub invention_time_reduction_percent: String,
+    #[serde(default)]
+    pub copying_cost_reduction_percent: String,
+    #[serde(default)]
+    pub copying_time_reduction_percent: String,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FacilityRig {
@@ -176,6 +207,10 @@ pub struct FacilityRig {
     /// applicability existed keeps its exact current behavior until re-saved.
     #[serde(default)]
     pub applicability: super::rig_applicability::RigApplicability,
+    /// Invention and copying bonuses. Zero for a profile saved before
+    /// they were captured.
+    #[serde(default)]
+    pub science: RigScienceBonuses,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -226,6 +261,8 @@ pub struct FacilityRigInput {
     pub material_reduction_percent: String,
     #[serde(default)]
     pub time_reduction_percent: String,
+    #[serde(default)]
+    pub science: RigScienceBonusesInput,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
