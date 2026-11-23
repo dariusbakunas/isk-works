@@ -22,8 +22,7 @@ use iskworks_core::{
 };
 use iskworks_sde::{
     ActiveSde, Decryptor, ImportCounts, InventableProduct, InventionProduct, InventionRecipe,
-    InventionSkillRequirement, ManufacturingRecipe, RecipeLine, RequiredSkill, SdeError,
-    SdeTypeClassification,
+    InventionSkillRequirement, ManufacturingRecipe, RecipeLine, SdeError, SdeTypeClassification,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -181,27 +180,6 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
                 run_modifier: 0,
             },
         ])
-    }
-    async fn required_skills(
-        &self,
-        type_ids: &[i64],
-    ) -> Result<BTreeMap<i64, Vec<RequiredSkill>>, SdeError> {
-        let skill = |skill_type_id| {
-            vec![RequiredSkill {
-                skill_type_id,
-                level: 1,
-            }]
-        };
-        Ok([
-            (DATACORE_STARSHIP, skill(STARSHIP)),
-            (DATACORE_MECHANICAL, skill(MECHANICAL)),
-        ]
-        .into_iter()
-        .filter(|(type_id, _)| type_ids.contains(type_id))
-        .collect())
-    }
-    async fn type_names(&self, _: &[i64]) -> Result<BTreeMap<i64, String>, SdeError> {
-        Ok(BTreeMap::new())
     }
     async fn type_classifications(
         &self,

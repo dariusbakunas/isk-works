@@ -144,7 +144,7 @@ pub fn quote(inputs: &QuoteInputs) -> InventionQuote {
 
 fn option(inputs: &QuoteInputs, decryptor: Option<&QuoteDecryptor>) -> InventionOption {
     let effect = decryptor.map_or(DecryptorEffect::NONE, |decryptor| decryptor.effect);
-    let chance = invention_chance(inputs.base_chance, inputs.skills, &effect);
+    let chance = invention_chance(inputs.base_chance, &inputs.skills, &effect);
     let copy = invented_copy(inputs.base_runs, &effect);
     let mut gaps = Vec::new();
 

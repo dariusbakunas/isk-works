@@ -31,14 +31,15 @@ pub const BASE_INVENTED_TE: i32 = 4;
 /// A science job's cost base is this share of the output's EIV.
 pub const SCIENCE_JOB_COST_BASE_RATE: Decimal = Decimal::from_parts(2, 0, 0, false, 2);
 
-/// The three skill levels the chance depends on: the encryption skill and
-/// the science skill of each datacore. Other skills a job lists (Capital
-/// Ship Construction) are requirements only.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+/// The skill levels the chance depends on: the job's encryption skill
+/// (0 when it lists none) and every other skill it lists. That is usually
+/// two science skills; a capital blueprint also lists Capital Ship
+/// Construction, which counts like a science skill.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InventionSkills {
     pub encryption: u8,
-    pub science: [u8; 2],
+    pub science: Vec<u8>,
 }
 
 /// What a decryptor changes. [`DecryptorEffect::NONE`] is "no decryptor".
@@ -70,12 +71,12 @@ pub struct InventedCopy {
     pub runs: u64,
 }
 
-/// `base × (1 + encryption / 40 + (science₁ + science₂) / 30) × decryptor`,
-/// capped at 1. Levels above 5 count as 5.
+/// `base × (1 + encryption / 40 + Σ science / 30) × decryptor`, capped at
+/// 1. Levels above 5 count as 5.
 #[must_use]
 pub fn invention_chance(
     base_chance: Decimal,
-    skills: InventionSkills,
+    skills: &InventionSkills,
     decryptor: &DecryptorEffect,
 ) -> Decimal {
     (base_chance * skill_chance_factor(skills) * decryptor.probability_multiplier)
@@ -84,11 +85,10 @@ pub fn invention_chance(
 
 /// The skill part of [`invention_chance`] alone, for display ("×1.367").
 #[must_use]
-pub fn skill_chance_factor(skills: InventionSkills) -> Decimal {
+pub fn skill_chance_factor(skills: &InventionSkills) -> Decimal {
     let level = |value: u8| Decimal::from(value.min(5));
-    Decimal::ONE
-        + level(skills.encryption) / Decimal::from(40)
-        + (level(skills.science[0]) + level(skills.science[1])) / Decimal::from(30)
+    let science = skills.science.iter().copied().map(level).sum::<Decimal>();
+    Decimal::ONE + level(skills.encryption) / Decimal::from(40) + science / Decimal::from(30)
 }
 
 /// A chance as the game shows it: a percentage truncated to one decimal

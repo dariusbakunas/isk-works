@@ -24,9 +24,7 @@ use iskworks_core::{
     IndustryError, IndustryFacilityProfile, IndustryRepository, MarketRepository, MarketScope,
     Money, ProductClassification, SkillsCharacterSource, StoreError, WorkspaceId,
 };
-use iskworks_sde::{
-    InventableProduct, InventionProduct, InventionRecipe, RequiredSkill, SdeReadRepository,
-};
+use iskworks_sde::{InventableProduct, InventionProduct, InventionRecipe, SdeReadRepository};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -69,10 +67,10 @@ pub struct InventionProductSearch {
 pub enum InventionSkillRole {
     /// Counts towards the chance at 1/40 per level.
     Encryption,
-    /// A datacore's skill: counts at 1/30 per level.
+    /// Every other skill the job lists: counts at 1/30 per level. Usually
+    /// two science skills; capital blueprints add Capital Ship
+    /// Construction.
     Science,
-    /// Needed to start the job; does not change the chance.
-    Requirement,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
@@ -81,8 +79,8 @@ pub struct InventionSkillView {
     pub skill_type_id: i64,
     pub skill_name: String,
     pub role: InventionSkillRole,
-    /// The level the job lists; `None` for a datacore skill it does not.
-    pub required_level: Option<u8>,
+    /// The level the job needs to start.
+    pub required_level: u8,
     /// The character's level; `None` when no character was chosen.
     pub character_level: Option<u8>,
     /// The level the quote used.
@@ -280,29 +278,7 @@ impl InventionService {
             ),
             None => None,
         };
-        let material_ids = recipe
-            .materials
-            .iter()
-            .map(|line| line.type_id)
-            .collect::<Vec<_>>();
-        let datacore_skills = self
-            .sde
-            .required_skills(&material_ids)
-            .await
-            .map_err(storage)?;
-        let science_skill_ids = science_skill_ids(&recipe, &datacore_skills);
-        let skill_names = self
-            .sde
-            .type_names(&science_skill_ids)
-            .await
-            .map_err(storage)?;
-        let skills = resolve_skills(
-            &recipe,
-            &science_skill_ids,
-            &skill_names,
-            snapshot.as_ref(),
-            &command.skill_overrides,
-        );
+        let skills = resolve_skills(&recipe, snapshot.as_ref(), &command.skill_overrides);
         let advanced_industry = snapshot.as_ref().map_or(DEFAULT_SKILL_LEVEL, |snapshot| {
             character_level(snapshot, ADVANCED_INDUSTRY_SKILL_ID)
         });
@@ -507,7 +483,7 @@ impl InventionService {
         let inputs = QuoteInputs {
             base_chance: product.probability,
             base_runs,
-            skills: skills.levels,
+            skills: skills.levels.clone(),
             materials: materials.clone(),
             decryptors: quote_decryptors,
             job_fee: job_fee.total,
@@ -533,10 +509,10 @@ impl InventionService {
                 outputs: recipe.products.iter().map(output_view).collect(),
                 base_chance: product.probability,
                 base_runs,
-                skill_factor: skill_chance_factor(skills.levels).round_dp(6).normalize(),
+                skill_factor: skill_chance_factor(&skills.levels).round_dp(6).normalize(),
                 chance_with_skills: invention_chance(
                     product.probability,
-                    skills.levels,
+                    &skills.levels,
                     &DecryptorEffect::NONE,
                 )
                 .round_dp(6)
@@ -638,114 +614,68 @@ fn is_encryption_skill(name: &str) -> bool {
     name.contains("Encryption Methods")
 }
 
-/// The two skills that count at 1/30 per level: each datacore's own
-/// required skill, in material order. When a datacore names none, the
-/// job's remaining non-encryption skills fill in.
-fn science_skill_ids(
-    recipe: &InventionRecipe,
-    datacore_skills: &BTreeMap<i64, Vec<RequiredSkill>>,
-) -> Vec<i64> {
-    let mut ids = recipe
-        .materials
-        .iter()
-        .filter_map(|line| datacore_skills.get(&line.type_id)?.first())
-        .map(|skill| skill.skill_type_id)
-        .collect::<Vec<_>>();
-    ids.dedup();
-    for skill in &recipe.skills {
-        if ids.len() >= 2 {
-            break;
-        }
-        if !is_encryption_skill(&skill.skill_name) && !ids.contains(&skill.skill_type_id) {
-            ids.push(skill.skill_type_id);
-        }
-    }
-    ids.truncate(2);
-    ids
-}
-
 struct ResolvedSkills {
     views: Vec<InventionSkillView>,
     levels: InventionSkills,
     missing: Vec<String>,
 }
 
-/// Works out each skill's level (override, else the character's, else 4),
-/// its part in the chance, and which listed skills are below the job's
-/// level. Encryption first, then the science skills, then requirements.
+/// Works out each listed skill's level (override, else the character's,
+/// else 4), its part in the chance, and which skills are below the job's
+/// level. The encryption skill comes first, then the others as listed.
 fn resolve_skills(
     recipe: &InventionRecipe,
-    science_skill_ids: &[i64],
-    skill_names: &BTreeMap<i64, String>,
     snapshot: Option<&CharacterSkillsSnapshot>,
     overrides: &BTreeMap<i64, u8>,
 ) -> ResolvedSkills {
-    let required = |skill_type_id: i64| {
-        recipe
-            .skills
-            .iter()
-            .find(|skill| skill.skill_type_id == skill_type_id)
-    };
-    let view = |skill_type_id: i64, role: InventionSkillRole| {
-        let character_level = snapshot.map(|snapshot| character_level(snapshot, skill_type_id));
-        let overridden = overrides.contains_key(&skill_type_id);
-        InventionSkillView {
-            skill_type_id,
-            skill_name: required(skill_type_id)
-                .map(|skill| skill.skill_name.clone())
-                .or_else(|| skill_names.get(&skill_type_id).cloned())
-                .unwrap_or_else(|| format!("Skill {skill_type_id}")),
-            role,
-            required_level: required(skill_type_id).map(|skill| skill.level.clamp(0, 5) as u8),
-            character_level,
-            level: overrides
-                .get(&skill_type_id)
-                .copied()
-                .or(character_level)
-                .unwrap_or(DEFAULT_SKILL_LEVEL)
-                .min(5),
-            overridden,
-        }
-    };
-
     let encryption = recipe
         .skills
         .iter()
         .find(|skill| is_encryption_skill(&skill.skill_name))
         .map(|skill| skill.skill_type_id);
-    let mut views = Vec::new();
-    views.extend(encryption.map(|id| view(id, InventionSkillRole::Encryption)));
-    views.extend(
-        science_skill_ids
-            .iter()
-            .map(|id| view(*id, InventionSkillRole::Science)),
-    );
-    for skill in &recipe.skills {
-        if !views
-            .iter()
-            .any(|view| view.skill_type_id == skill.skill_type_id)
-        {
-            views.push(view(skill.skill_type_id, InventionSkillRole::Requirement));
-        }
-    }
+    let mut views = recipe
+        .skills
+        .iter()
+        .map(|skill| {
+            let character_level =
+                snapshot.map(|snapshot| character_level(snapshot, skill.skill_type_id));
+            InventionSkillView {
+                skill_type_id: skill.skill_type_id,
+                skill_name: skill.skill_name.clone(),
+                role: if Some(skill.skill_type_id) == encryption {
+                    InventionSkillRole::Encryption
+                } else {
+                    InventionSkillRole::Science
+                },
+                required_level: skill.level.clamp(0, 5) as u8,
+                character_level,
+                level: overrides
+                    .get(&skill.skill_type_id)
+                    .copied()
+                    .or(character_level)
+                    .unwrap_or(DEFAULT_SKILL_LEVEL)
+                    .min(5),
+                overridden: overrides.contains_key(&skill.skill_type_id),
+            }
+        })
+        .collect::<Vec<_>>();
+    // Stable, so the science skills keep the job's order.
+    views.sort_by_key(|view| view.role != InventionSkillRole::Encryption);
 
-    let level_of = |role: InventionSkillRole, index: usize| {
-        views
-            .iter()
-            .filter(|view| view.role == role)
-            .nth(index)
-            .map_or(0, |view| view.level)
-    };
     let levels = InventionSkills {
-        encryption: level_of(InventionSkillRole::Encryption, 0),
-        science: [
-            level_of(InventionSkillRole::Science, 0),
-            level_of(InventionSkillRole::Science, 1),
-        ],
+        encryption: views
+            .iter()
+            .find(|view| view.role == InventionSkillRole::Encryption)
+            .map_or(0, |view| view.level),
+        science: views
+            .iter()
+            .filter(|view| view.role == InventionSkillRole::Science)
+            .map(|view| view.level)
+            .collect(),
     };
     let missing = views
         .iter()
-        .filter(|view| view.required_level.is_some_and(|level| view.level < level))
+        .filter(|view| view.level < view.required_level)
         .map(|view| view.skill_name.clone())
         .collect();
     ResolvedSkills {

@@ -15,10 +15,16 @@ fn isk(value: &str) -> Money {
     Money(dec(value))
 }
 
-const ALL_FIVE: InventionSkills = InventionSkills {
-    encryption: 5,
-    science: [5, 5],
-};
+fn skills(encryption: u8, science: &[u8]) -> InventionSkills {
+    InventionSkills {
+        encryption,
+        science: science.to_vec(),
+    }
+}
+
+fn all_five() -> InventionSkills {
+    skills(5, &[5, 5])
+}
 
 fn process() -> DecryptorEffect {
     DecryptorEffect {
@@ -40,59 +46,73 @@ fn augmentation() -> DecryptorEffect {
 
 #[test]
 fn chance_matches_the_industry_window() {
-    let none = invention_chance(dec("0.30"), ALL_FIVE, &DecryptorEffect::NONE);
+    let none = invention_chance(dec("0.30"), &all_five(), &DecryptorEffect::NONE);
     assert_eq!(none, dec("0.4375"));
     // The game truncates: 43.75% reads 43.7%.
     assert_eq!(chance_percent_truncated(none), dec("43.7"));
 
-    let with_process = invention_chance(dec("0.30"), ALL_FIVE, &process());
+    let with_process = invention_chance(dec("0.30"), &all_five(), &process());
     assert_eq!(with_process, dec("0.48125"));
     assert_eq!(chance_percent_truncated(with_process), dec("48.1"));
 }
 
 #[test]
 fn chance_uses_each_skill_level_and_is_capped_at_one() {
-    let untrained = InventionSkills {
-        encryption: 0,
-        science: [0, 0],
-    };
+    let untrained = skills(0, &[0, 0]);
     assert_eq!(
-        invention_chance(dec("0.34"), untrained, &DecryptorEffect::NONE),
+        invention_chance(dec("0.34"), &untrained, &DecryptorEffect::NONE),
         dec("0.34")
     );
-    let fours = InventionSkills {
-        encryption: 4,
-        science: [4, 4],
-    };
+    let fours = skills(4, &[4, 4]);
     // 0.34 × (1 + 4/40 + 8/30)
     assert_eq!(
-        chance_percent_truncated(invention_chance(dec("0.34"), fours, &DecryptorEffect::NONE)),
+        chance_percent_truncated(invention_chance(
+            dec("0.34"),
+            &fours,
+            &DecryptorEffect::NONE
+        )),
         dec("46.4")
     );
     let sure = DecryptorEffect {
         probability_multiplier: dec("5"),
         ..DecryptorEffect::NONE
     };
-    assert_eq!(invention_chance(dec("0.34"), ALL_FIVE, &sure), Decimal::ONE);
-    // A level above 5 counts as 5.
-    let over = InventionSkills {
-        encryption: 9,
-        science: [9, 9],
-    };
     assert_eq!(
-        invention_chance(dec("0.30"), over, &DecryptorEffect::NONE),
+        invention_chance(dec("0.34"), &all_five(), &sure),
+        Decimal::ONE
+    );
+    // A level above 5 counts as 5.
+    let over = skills(9, &[9, 9]);
+    assert_eq!(
+        invention_chance(dec("0.30"), &over, &DecryptorEffect::NONE),
         dec("0.4375")
     );
 }
 
+/// Synced jobs from 2026-08-31 to 2026-09-03: three capital module
+/// inventions (25000mm Steel Plates II and others, base 0.34) with a
+/// Process Decryptor reported a probability of 0.5952833 on a character
+/// with every other skill at 5 and Capital Ship Construction at 4. Only
+/// counting that fourth skill at 1/30 per level gives that figure.
+#[test]
+fn a_capital_blueprints_fourth_skill_counts_like_a_science_skill() {
+    let chance = invention_chance(dec("0.34"), &skills(5, &[5, 5, 4]), &process());
+    assert_eq!(chance.round_dp(7), dec("0.5952833"));
+}
+
+/// Four more synced jobs (cruiser and transport hulls, base 0.26) with a
+/// Process Decryptor and every skill at 5 reported 0.4170833.
+#[test]
+fn chance_matches_synced_cruiser_jobs() {
+    let chance = invention_chance(dec("0.26"), &all_five(), &process());
+    assert_eq!(chance.round_dp(7), dec("0.4170833"));
+}
+
 #[test]
 fn skill_factor_is_reported_alone() {
-    assert_eq!(skill_chance_factor(ALL_FIVE).round_dp(4), dec("1.4583"));
-    let fours = InventionSkills {
-        encryption: 4,
-        science: [4, 4],
-    };
-    assert_eq!(skill_chance_factor(fours).round_dp(3), dec("1.367"));
+    assert_eq!(skill_chance_factor(&all_five()).round_dp(4), dec("1.4583"));
+    let fours = skills(4, &[4, 4]);
+    assert_eq!(skill_chance_factor(&fours).round_dp(3), dec("1.367"));
 }
 
 #[test]
@@ -264,10 +284,7 @@ fn inputs() -> QuoteInputs {
     QuoteInputs {
         base_chance: dec("0.5"),
         base_runs: 10,
-        skills: InventionSkills {
-            encryption: 0,
-            science: [0, 0],
-        },
+        skills: skills(0, &[0, 0]),
         materials: vec![datacore(1, Some("100")), datacore(2, Some("100"))],
         decryptors: Vec::new(),
         job_fee: Some(isk("90")),

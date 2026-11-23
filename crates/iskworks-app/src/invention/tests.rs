@@ -49,25 +49,6 @@ fn frigate_skills() -> Vec<InventionSkillRequirement> {
     ]
 }
 
-fn datacore_skills() -> BTreeMap<i64, Vec<RequiredSkill>> {
-    BTreeMap::from([
-        (
-            DATACORE_STARSHIP,
-            vec![RequiredSkill {
-                skill_type_id: GALLENTE_STARSHIP,
-                level: 1,
-            }],
-        ),
-        (
-            DATACORE_MECHANICAL,
-            vec![RequiredSkill {
-                skill_type_id: MECHANICAL,
-                level: 1,
-            }],
-        ),
-    ])
-}
-
 fn snapshot(levels: &[(i64, i64)]) -> CharacterSkillsSnapshot {
     let skills = levels
         .iter()
@@ -88,24 +69,7 @@ fn resolve(
     snapshot: Option<&CharacterSkillsSnapshot>,
     overrides: &BTreeMap<i64, u8>,
 ) -> ResolvedSkills {
-    let science = science_skill_ids(recipe, &datacore_skills());
-    resolve_skills(recipe, &science, &BTreeMap::new(), snapshot, overrides)
-}
-
-#[test]
-fn the_science_skills_are_the_datacores_own_in_material_order() {
-    assert_eq!(
-        science_skill_ids(&recipe(frigate_skills()), &datacore_skills()),
-        vec![GALLENTE_STARSHIP, MECHANICAL]
-    );
-}
-
-#[test]
-fn without_datacore_skills_the_jobs_other_skills_fill_in() {
-    assert_eq!(
-        science_skill_ids(&recipe(frigate_skills()), &BTreeMap::new()),
-        vec![GALLENTE_STARSHIP, MECHANICAL]
-    );
+    resolve_skills(recipe, snapshot, overrides)
 }
 
 #[test]
@@ -122,7 +86,7 @@ fn a_characters_levels_feed_the_chance() {
         resolved.levels,
         InventionSkills {
             encryption: 5,
-            science: [4, 3],
+            science: vec![4, 3],
         }
     );
     assert_eq!(
@@ -148,7 +112,7 @@ fn no_character_means_every_level_is_four() {
         resolved.levels,
         InventionSkills {
             encryption: 4,
-            science: [4, 4],
+            science: vec![4, 4],
         }
     );
     assert!(resolved
@@ -167,7 +131,7 @@ fn an_override_replaces_the_characters_level_and_is_marked() {
         &BTreeMap::from([(MECHANICAL, 5)]),
     );
 
-    assert_eq!(resolved.levels.science, [2, 5]);
+    assert_eq!(resolved.levels.science, vec![2, 5]);
     let mechanical = &resolved.views[2];
     assert_eq!(mechanical.character_level, Some(2));
     assert!(mechanical.overridden);
@@ -187,16 +151,15 @@ fn an_untrained_skill_counts_as_zero_and_blocks_the_job() {
     assert_eq!(resolved.missing, vec!["Gallente Encryption Methods"]);
 }
 
-/// Capital Ship Construction on a capital blueprint is needed to start the
-/// job and adds nothing to the chance.
+/// Capital Ship Construction on a capital blueprint counts towards the
+/// chance like a science skill (see the core tests for the evidence).
 #[test]
-fn a_fourth_skill_is_a_requirement_only() {
+fn a_fourth_skill_counts_as_a_science_skill() {
     let mut skills = frigate_skills();
-    skills.push(requirement(
-        CAPITAL_CONSTRUCTION,
-        "Capital Ship Construction",
-        4,
-    ));
+    skills.insert(
+        1,
+        requirement(CAPITAL_CONSTRUCTION, "Capital Ship Construction", 4),
+    );
     let character = snapshot(&[
         (ENCRYPTION, 5),
         (GALLENTE_STARSHIP, 5),
@@ -210,13 +173,33 @@ fn a_fourth_skill_is_a_requirement_only() {
         resolved.levels,
         InventionSkills {
             encryption: 5,
-            science: [5, 5],
+            science: vec![3, 5, 5],
         }
     );
-    let capital = resolved.views.last().unwrap();
-    assert_eq!(capital.role, InventionSkillRole::Requirement);
-    assert_eq!(capital.required_level, Some(4));
+    assert_eq!(resolved.views[1].role, InventionSkillRole::Science);
+    assert_eq!(resolved.views[1].required_level, 4);
     assert_eq!(resolved.missing, vec!["Capital Ship Construction"]);
+}
+
+/// The encryption skill is shown first wherever the job lists it.
+#[test]
+fn the_encryption_skill_leads_and_the_rest_keep_their_order() {
+    let skills = vec![
+        requirement(MECHANICAL, "Mechanical Engineering", 1),
+        requirement(ENCRYPTION, "Gallente Encryption Methods", 1),
+        requirement(GALLENTE_STARSHIP, "Gallentean Starship Engineering", 1),
+    ];
+
+    let resolved = resolve(&recipe(skills), None, &BTreeMap::new());
+
+    assert_eq!(
+        resolved
+            .views
+            .iter()
+            .map(|view| view.skill_type_id)
+            .collect::<Vec<_>>(),
+        vec![ENCRYPTION, MECHANICAL, GALLENTE_STARSHIP]
+    );
 }
 
 #[test]
@@ -229,7 +212,7 @@ fn a_job_without_an_encryption_skill_gets_no_encryption_bonus() {
     let resolved = resolve(&recipe(skills), None, &BTreeMap::new());
 
     assert_eq!(resolved.levels.encryption, 0);
-    assert_eq!(resolved.levels.science, [4, 4]);
+    assert_eq!(resolved.levels.science, vec![4, 4]);
 }
 
 fn captured() -> CapturedRecipe {
