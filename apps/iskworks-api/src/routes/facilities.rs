@@ -1,9 +1,11 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use iskworks_app::SystemCostIndex;
-use iskworks_core::facility_defaults::{FacilityDefaultAssignment, FacilityDefaultsView};
+use iskworks_core::facility_defaults::{
+    FacilityDefaultAssignment, FacilityDefaultsView, ProductFacilityDefaults,
+};
 use iskworks_core::{
     BuildId, CreateFacilityProfileCommand, FacilityPreviewCommand, FacilityProfileId, Money,
     ResolvedMarketLocation,
@@ -48,6 +50,14 @@ pub(crate) fn router() -> Router<AppState> {
             get(get_facility_defaults).put(put_facility_defaults),
         )
         .route(
+            "/api/industry/facility-defaults/invention",
+            put(put_invention_facility_default),
+        )
+        .route(
+            "/api/industry/facility-defaults/for-product",
+            get(get_product_facility_defaults),
+        )
+        .route(
             "/api/builds/:build_id/facility-preview",
             post(preview_build_facility),
         )
@@ -80,6 +90,46 @@ async fn put_facility_defaults(
         state
             .facility_defaults_service()?
             .assign(workspace_id, request.assignments)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InventionFacilityDefaultRequest {
+    /// `null` clears the default.
+    facility_profile_id: Option<FacilityProfileId>,
+}
+
+async fn put_invention_facility_default(
+    State(state): State<AppState>,
+    Json(request): Json<InventionFacilityDefaultRequest>,
+) -> Result<Json<FacilityDefaultsView>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .facility_defaults_service()?
+            .assign_invention(workspace_id, request.facility_profile_id)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductFacilityDefaultsQuery {
+    product_type_id: Option<i64>,
+}
+
+/// The facilities the Invention page pre-selects for a product.
+async fn get_product_facility_defaults(
+    State(state): State<AppState>,
+    Query(query): Query<ProductFacilityDefaultsQuery>,
+) -> Result<Json<ProductFacilityDefaults>, ApiError> {
+    let (workspace_id, _) = workspace_context(&state).await?;
+    Ok(Json(
+        state
+            .facility_defaults_service()?
+            .for_product(workspace_id, query.product_type_id)
             .await?,
     ))
 }

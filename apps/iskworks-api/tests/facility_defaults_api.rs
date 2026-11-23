@@ -29,6 +29,7 @@ use support::workspace::configured_workspace;
 struct FakeDefaults {
     profiles: Vec<IndustryFacilityProfile>,
     defaults: Mutex<Vec<FacilityDefault>>,
+    invention: Mutex<Option<FacilityProfileId>>,
 }
 
 #[async_trait]
@@ -69,7 +70,28 @@ impl FacilityDefaultsRepository for FakeDefaults {
         }
         Ok(())
     }
+
+    async fn invention_facility_default(
+        &self,
+        _workspace_id: WorkspaceId,
+    ) -> Result<Option<FacilityProfileId>, FacilityError> {
+        Ok(*self.invention.lock().unwrap())
+    }
+
+    async fn set_invention_facility_default(
+        &self,
+        _workspace_id: WorkspaceId,
+        facility_profile_id: Option<FacilityProfileId>,
+    ) -> Result<(), FacilityError> {
+        *self.invention.lock().unwrap() = facility_profile_id;
+        Ok(())
+    }
 }
+
+/// A frigate (group 25, category 6): in "Small T1 Ships" and "Ships".
+const FRIGATE: i64 = 594;
+/// A module (category 7): in no target.
+const MODULE: i64 = 2048;
 
 struct FakeSde;
 
@@ -127,6 +149,31 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
                 filter(16, "Hybrid Reactions", vec![], vec![974]),
             ),
         ])
+    }
+
+    async fn type_classifications(
+        &self,
+        type_ids: &[i64],
+    ) -> Result<BTreeMap<i64, iskworks_sde::SdeTypeClassification>, SdeError> {
+        Ok(type_ids
+            .iter()
+            .filter_map(|type_id| {
+                let (category_id, group_id) = match *type_id {
+                    FRIGATE => (6, 25),
+                    MODULE => (7, 60),
+                    _ => return None,
+                };
+                Some((
+                    *type_id,
+                    iskworks_sde::SdeTypeClassification {
+                        category_id: Some(category_id),
+                        category_name: None,
+                        group_id: Some(group_id),
+                        group_name: None,
+                    },
+                ))
+            })
+            .collect())
     }
 
     async fn group_categories(&self, group_ids: &[i64]) -> Result<BTreeMap<i64, i64>, SdeError> {
@@ -209,9 +256,19 @@ async fn send(
     method: &str,
     body: Option<serde_json::Value>,
 ) -> (StatusCode, serde_json::Value) {
+    send_to(app, method, "", body).await
+}
+
+/// `suffix` is appended to `/api/industry/facility-defaults`.
+async fn send_to(
+    app: axum::Router,
+    method: &str,
+    suffix: &str,
+    body: Option<serde_json::Value>,
+) -> (StatusCode, serde_json::Value) {
     let request = Request::builder()
         .method(method)
-        .uri("/api/industry/facility-defaults")
+        .uri(format!("/api/industry/facility-defaults{suffix}"))
         .header("content-type", "application/json")
         .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
         .unwrap();
@@ -427,4 +484,175 @@ async fn put_rejects_an_oversized_assignment_batch() {
     .await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+fn lab_rig() -> FacilityRig {
+    FacilityRig {
+        slot_number: 1,
+        type_id: 43_879,
+        type_name: "Standup M-Set Invention Accelerator II".into(),
+        material_reduction_percent: Decimal::ZERO,
+        time_reduction_percent: Decimal::ZERO,
+        applicability: RigApplicability::default(),
+        science: iskworks_core::RigScienceBonuses {
+            invention_cost_reduction_percent: Decimal::from(10),
+            invention_time_reduction_percent: Decimal::from(50),
+            ..Default::default()
+        },
+    }
+}
+
+fn archived(mut profile: IndustryFacilityProfile) -> IndustryFacilityProfile {
+    profile.archived_at = Some(chrono::Utc::now());
+    profile
+}
+
+#[tokio::test]
+async fn the_invention_default_is_set_shown_with_its_bonus_and_cleared() {
+    let repository = Arc::new(FakeDefaults {
+        profiles: vec![
+            profile(3, "Tatara", FacilityRole::Reaction, vec![]),
+            profile(1, "Raitaru", FacilityRole::Manufacturing, vec![]),
+            profile(2, "Lab", FacilityRole::Manufacturing, vec![lab_rig()]),
+            archived(profile(4, "Old", FacilityRole::Manufacturing, vec![])),
+        ],
+        ..Default::default()
+    });
+
+    let (status, view) = send(app(repository.clone()), "GET", None).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["invention"]["default"], serde_json::Value::Null);
+    let names: Vec<_> = view["invention"]["facilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|facility| facility["facilityName"].as_str().unwrap())
+        .collect();
+    // Manufacturing profiles first; the archived one is not offered.
+    assert_eq!(names, vec!["Raitaru", "Lab", "Tatara"]);
+
+    let (status, view) = send_to(
+        app(repository.clone()),
+        "PUT",
+        "/invention",
+        Some(serde_json::json!({ "facilityProfileId": id(2).0 })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    let default = &view["invention"]["default"];
+    assert_eq!(default["facilityName"], "Lab");
+    // Job cost 0% and time 15% from the structure, then the rig.
+    assert_eq!(default["costBonusPercent"], "10");
+    assert_eq!(default["timeBonusPercent"], "57.5");
+    // A reaction profile has no structure bonus for science jobs.
+    assert_eq!(view["invention"]["facilities"][2]["timeBonusPercent"], "0");
+
+    let (status, view) = send_to(
+        app(repository),
+        "PUT",
+        "/invention",
+        Some(serde_json::json!({ "facilityProfileId": null })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["invention"]["default"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn the_invention_default_rejects_an_archived_or_unknown_facility() {
+    let repository = Arc::new(FakeDefaults {
+        profiles: vec![archived(profile(
+            4,
+            "Old",
+            FacilityRole::Manufacturing,
+            vec![],
+        ))],
+        ..Default::default()
+    });
+    for facility in [id(4), id(9)] {
+        let (status, body) = send_to(
+            app(repository.clone()),
+            "PUT",
+            "/invention",
+            Some(serde_json::json!({ "facilityProfileId": facility.0 })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    assert_eq!(*repository.invention.lock().unwrap(), None);
+}
+
+fn manufacturing_default(target: Option<i64>, n: u128) -> FacilityDefault {
+    FacilityDefault {
+        role: FacilityRole::Manufacturing,
+        target_filter_id: target,
+        facility_profile_id: id(n),
+        rig_covered_at_assignment: false,
+    }
+}
+
+#[tokio::test]
+async fn product_defaults_follow_the_most_specific_target_then_the_fallback() {
+    let repository = Arc::new(FakeDefaults {
+        profiles: vec![
+            profile(1, "Raitaru", FacilityRole::Manufacturing, vec![]),
+            profile(2, "Azbel", FacilityRole::Manufacturing, vec![]),
+            profile(5, "Sotiyo", FacilityRole::Manufacturing, vec![]),
+            profile(3, "Tatara", FacilityRole::Reaction, vec![]),
+        ],
+        defaults: Mutex::new(vec![
+            manufacturing_default(Some(3), 1),
+            manufacturing_default(Some(5), 2),
+            manufacturing_default(None, 5),
+        ]),
+        invention: Mutex::new(Some(id(3))),
+    });
+    let defaults_for = |query: &'static str| {
+        let repository = repository.clone();
+        async move {
+            let (status, body) = send_to(app(repository), "GET", query, None).await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            body
+        }
+    };
+
+    let frigate = defaults_for("/for-product?productTypeId=594").await;
+    assert_eq!(frigate["manufacturingFacilityId"], id(2).0.to_string());
+    assert_eq!(frigate["inventionFacilityId"], id(3).0.to_string());
+
+    let module = defaults_for("/for-product?productTypeId=2048").await;
+    assert_eq!(module["manufacturingFacilityId"], id(5).0.to_string());
+
+    // Without a product only the invention default is known.
+    let none = defaults_for("/for-product").await;
+    assert_eq!(none["manufacturingFacilityId"], serde_json::Value::Null);
+    assert_eq!(none["inventionFacilityId"], id(3).0.to_string());
+}
+
+#[tokio::test]
+async fn product_defaults_skip_a_facility_that_is_no_longer_usable() {
+    let repository = Arc::new(FakeDefaults {
+        profiles: vec![
+            profile(1, "Raitaru", FacilityRole::Manufacturing, vec![]),
+            archived(profile(2, "Azbel", FacilityRole::Manufacturing, vec![])),
+        ],
+        defaults: Mutex::new(vec![
+            manufacturing_default(Some(3), 1),
+            manufacturing_default(Some(5), 2),
+        ]),
+        invention: Mutex::new(Some(id(2))),
+    });
+
+    let (status, body) = send_to(
+        app(repository),
+        "GET",
+        "/for-product?productTypeId=594",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // The archived Small T1 Ships default gives way to the Ships one.
+    assert_eq!(body["manufacturingFacilityId"], id(1).0.to_string());
+    assert_eq!(body["inventionFacilityId"], serde_json::Value::Null);
 }
