@@ -129,6 +129,19 @@ impl AppState {
             ))
     }
 
+    pub(crate) fn invention_service(&self) -> Result<iskworks_app::InventionService, ApiError> {
+        let mut service = iskworks_app::InventionService::new(
+            self.sde_repository.clone(),
+            self.industry_repository()?,
+            self.market_repository()?,
+            self.adjusted_price_repository()?,
+        );
+        if let Some(characters) = self.character_views.skills_characters.clone() {
+            service = service.with_characters(characters);
+        }
+        Ok(service)
+    }
+
     pub(crate) fn opportunity_service(&self) -> Result<Arc<OpportunityQueryService>, ApiError> {
         if let Some(service) = self.market.built_opportunity_service.get() {
             return Ok(service.clone());

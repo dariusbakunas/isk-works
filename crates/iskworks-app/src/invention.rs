@@ -118,7 +118,7 @@ pub struct InventionQuoteView {
     pub skills_defaulted: bool,
     #[serde(with = "rust_decimal::serde::str")]
     pub skill_factor: Decimal,
-    /// The chance with skills and no decryptor.
+    /// The chance with skills and no decryptor, to six decimals.
     #[serde(with = "rust_decimal::serde::str")]
     pub chance_with_skills: Decimal,
     /// Skills the job lists that are below its level. Empty when it can
@@ -533,12 +533,14 @@ impl InventionService {
                 outputs: recipe.products.iter().map(output_view).collect(),
                 base_chance: product.probability,
                 base_runs,
-                skill_factor: skill_chance_factor(skills.levels),
+                skill_factor: skill_chance_factor(skills.levels).round_dp(6).normalize(),
                 chance_with_skills: invention_chance(
                     product.probability,
                     skills.levels,
                     &DecryptorEffect::NONE,
-                ),
+                )
+                .round_dp(6)
+                .normalize(),
                 skills_defaulted: snapshot.is_none(),
                 missing_skills: skills.missing,
                 skills: skills.views,

@@ -52,7 +52,11 @@ pub struct QuoteInputs {
 
 /// Why an option's costs are incomplete.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum QuoteGap {
     MaterialPrice { type_id: i64 },
     DecryptorPrice { type_id: i64 },
@@ -67,6 +71,7 @@ pub enum QuoteGap {
 pub struct InventionOption {
     /// `None` for "no decryptor".
     pub decryptor: Option<QuoteDecryptor>,
+    /// Rounded to six decimals.
     #[serde(with = "rust_decimal::serde::str")]
     pub chance: Decimal,
     pub copy: InventedCopy,
@@ -202,7 +207,7 @@ fn option(inputs: &QuoteInputs, decryptor: Option<&QuoteDecryptor>) -> Invention
     let money = |value: Option<Decimal>| value.map(|value| Money(value.round_dp(4)));
     InventionOption {
         decryptor: decryptor.cloned(),
-        chance,
+        chance: display_chance(chance),
         copy,
         attempt_cost: money(attempt_cost),
         cost_per_copy: money(cost_per_copy),
@@ -218,4 +223,10 @@ fn option(inputs: &QuoteInputs, decryptor: Option<&QuoteDecryptor>) -> Invention
         complete: gaps.is_empty() && unit_cost.is_some(),
         gaps,
     }
+}
+
+/// A chance for display: six decimals, without trailing zeros. Costs and
+/// attempts are worked out from the exact value.
+fn display_chance(chance: Decimal) -> Decimal {
+    chance.round_dp(6).normalize()
 }
