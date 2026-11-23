@@ -347,6 +347,13 @@ impl SdeReadRepository for UnavailableSdeRepository {
         let _ = planet_ids;
         Ok(BTreeMap::new())
     }
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError> {
+        let _ = blueprint_type_id;
+        Ok(None)
+    }
     async fn has_invention_data(&self) -> Result<bool, SdeError> {
         Ok(false)
     }

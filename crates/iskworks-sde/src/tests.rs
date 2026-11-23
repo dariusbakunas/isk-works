@@ -1822,3 +1822,99 @@ fn parses_generic_decryptors_only() {
         }]
     );
 }
+
+#[test]
+fn parses_every_blueprint_activity_for_type_info() {
+    let source = invention_source(
+        r#"{"_key":2184,"activities":{"copying":{"materials":[{"typeID":20419,"quantity":1}],"skills":[{"typeID":11446,"level":2}],"time":12720},"invention":{"materials":[{"typeID":20419,"quantity":2},{"typeID":20418,"quantity":2}],"products":[{"typeID":2186,"quantity":10,"probability":0.34}],"skills":[{"typeID":11453,"level":1},{"typeID":11446,"level":1}],"time":15900},"research_material":{"skills":[{"typeID":11453,"level":4}],"time":2100},"research_time":{"time":2100}},"maxProductionLimit":30}"#,
+        None,
+    );
+    assert!(source.has_blueprint_activities());
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.blueprint_limits,
+        vec![ImportBlueprintLimit {
+            blueprint_type_id: 2184,
+            max_production_limit: 30,
+        }]
+    );
+    let activity = |kind, duration_seconds, materials, products, skills| ImportBlueprintActivity {
+        blueprint_type_id: 2184,
+        kind,
+        duration_seconds: Some(duration_seconds),
+        materials,
+        products,
+        skills,
+    };
+    let material = |type_id, quantity, position| ImportMaterial {
+        type_id,
+        quantity,
+        position,
+    };
+    let skill = |skill_type_id, level, position| ImportActivitySkill {
+        skill_type_id,
+        level,
+        position,
+    };
+    assert_eq!(
+        dataset.blueprint_activities,
+        vec![
+            activity(
+                BlueprintActivityKind::ResearchMaterial,
+                2_100,
+                vec![],
+                vec![],
+                vec![skill(11_453, 4, 0)],
+            ),
+            activity(
+                BlueprintActivityKind::ResearchTime,
+                2_100,
+                vec![],
+                vec![],
+                vec![]
+            ),
+            activity(
+                BlueprintActivityKind::Copying,
+                12_720,
+                vec![material(20_419, 1, 0)],
+                vec![],
+                vec![skill(11_446, 2, 0)],
+            ),
+            activity(
+                BlueprintActivityKind::Invention,
+                15_900,
+                vec![material(20_418, 2, 0), material(20_419, 2, 1)],
+                vec![ImportActivityProduct {
+                    type_id: 2186,
+                    quantity: 10,
+                    probability: Some(Decimal::new(34, 2)),
+                    position: 0,
+                }],
+                // In SDE order, unlike the invention recipe's.
+                vec![skill(11_453, 1, 0), skill(11_446, 1, 1)],
+            ),
+        ]
+    );
+}
+
+#[test]
+fn blueprint_activity_with_an_unknown_type_is_left_out() {
+    let source = invention_source(
+        r#"{"_key":2184,"activities":{"copying":{"skills":[{"typeID":999999,"level":1}],"time":12720},"research_time":{"time":2100}}}"#,
+        None,
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset
+            .blueprint_activities
+            .iter()
+            .map(|activity| activity.kind)
+            .collect::<Vec<_>>(),
+        vec![BlueprintActivityKind::ResearchTime]
+    );
+    assert!(dataset.blueprint_limits.is_empty());
+}

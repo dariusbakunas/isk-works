@@ -231,6 +231,15 @@ impl SdeSource {
             .is_some_and(|contents| contents.contains("\"probability\":"))
     }
 
+    /// Every researchable blueprint has a `research_time` activity, and
+    /// nothing else in the file is called that.
+    #[must_use]
+    pub fn has_blueprint_activities(&self) -> bool {
+        self.files
+            .get("blueprints.jsonl")
+            .is_some_and(|contents| contents.contains("\"research_time\":"))
+    }
+
     #[must_use]
     pub fn has_packaged_volumes(&self) -> bool {
         self.files.get("types.jsonl").is_some_and(|contents| {

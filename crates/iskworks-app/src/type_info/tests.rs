@@ -4,10 +4,11 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use iskworks_core::{ConnectedCharacterId, StoreError};
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, ProductRecipeRefs, RecipeLine,
-    RequiredSkill, SdeError, SkillAttribute, SkillDefinition, TypeAttributeValue, TypeBonusLine,
-    TypeBonusSource, TypeInfoBase, TypeInfoCounts, TypeListEntry, TypeSearchResult, TypeUsage,
-    UsedWithKind,
+    ActiveSde, ActivityMaterial, ActivityProduct, BlueprintActivities, BlueprintActivity,
+    BlueprintActivityKind, BlueprintSearchResult, ManufacturingRecipe, ProductRecipeRefs,
+    RecipeLine, RequiredSkill, SdeError, SkillAttribute, SkillDefinition, TypeAttributeValue,
+    TypeBonusLine, TypeBonusSource, TypeInfoBase, TypeInfoCounts, TypeListEntry, TypeSearchResult,
+    TypeUsage, UsedWithKind,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -123,6 +124,14 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
         Ok(match type_id {
             HARPY => Some(harpy()),
             SCRIPT => Some(script()),
+            HARPY_BLUEPRINT => Some(TypeInfoBase {
+                type_id: HARPY_BLUEPRINT,
+                name: "Harpy Blueprint".into(),
+                published: true,
+                category_id: Some(9),
+                category_name: Some("Blueprint".into()),
+                ..TypeInfoBase::default()
+            }),
             GUNNERY => Some(TypeInfoBase {
                 type_id: GUNNERY,
                 name: "Gunnery".into(),
@@ -312,6 +321,65 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
                 )
             })
             .collect())
+    }
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError> {
+        let activity = |kind, duration_seconds| BlueprintActivity {
+            kind,
+            duration_seconds: Some(duration_seconds),
+            materials: Vec::new(),
+            products: Vec::new(),
+            skills: Vec::new(),
+        };
+        let material = |type_id, type_name: &str, group: Option<(i64, &str)>| ActivityMaterial {
+            type_id,
+            type_name: type_name.into(),
+            quantity: 10,
+            group_id: group.map(|(id, _)| id),
+            group_name: group.map(|(_, name)| name.into()),
+        };
+        Ok(
+            (blueprint_type_id == HARPY_BLUEPRINT).then(|| BlueprintActivities {
+                max_production_limit: Some(10),
+                activities: vec![
+                    BlueprintActivity {
+                        materials: vec![
+                            material(TRITANIUM, "Tritanium", Some((18, "Mineral"))),
+                            material(11_399, "Morphite", Some((18, "Mineral"))),
+                            material(603, "Merlin", Some((25, "Frigate"))),
+                            material(9_999, "Oddity", None),
+                        ],
+                        products: vec![ActivityProduct {
+                            type_id: HARPY,
+                            type_name: "Harpy".into(),
+                            quantity: 1,
+                            probability: None,
+                        }],
+                        skills: vec![RequiredSkill {
+                            skill_type_id: ASSAULT_FRIGATES,
+                            level: 1,
+                        }],
+                        ..activity(BlueprintActivityKind::Manufacturing, 80_000)
+                    },
+                    activity(BlueprintActivityKind::Copying, 64_000),
+                    BlueprintActivity {
+                        products: vec![ActivityProduct {
+                            type_id: 99_001,
+                            type_name: "Harpy Mk II Blueprint".into(),
+                            quantity: 1,
+                            probability: Some(Decimal::new(3, 1)),
+                        }],
+                        skills: vec![RequiredSkill {
+                            skill_type_id: CALDARI_FRIGATE,
+                            level: 5,
+                        }],
+                        ..activity(BlueprintActivityKind::Invention, 63_900)
+                    },
+                ],
+            }),
+        )
     }
     async fn skill_catalogue(&self) -> Result<Vec<SkillDefinition>, SdeError> {
         let skill = |type_id, name: &str, prerequisites: Vec<(i64, i16)>| SkillDefinition {
@@ -636,4 +704,128 @@ async fn used_in_pages_with_a_next_offset() {
 async fn used_in_caps_the_page_size() {
     let page = service().used_in(TRITANIUM, 10_000, 0).await.unwrap();
     assert_eq!(page.limit, MAX_USED_IN_LIMIT);
+}
+
+#[tokio::test]
+async fn a_blueprint_lists_its_activities() {
+    let view = info(HARPY_BLUEPRINT, PilotChoice::AllV)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let blueprint = view.blueprint.expect("a blueprint has activities");
+    assert_eq!(blueprint.max_runs, Some(10));
+    assert_eq!(
+        blueprint
+            .activities
+            .iter()
+            .map(|activity| (activity.kind, activity.time_seconds))
+            .collect::<Vec<_>>(),
+        [
+            (BlueprintActivityKind::Manufacturing, Some(80_000)),
+            (BlueprintActivityKind::Copying, Some(64_000)),
+            (BlueprintActivityKind::Invention, Some(63_900)),
+        ]
+    );
+
+    let manufacturing = &blueprint.activities[0];
+    assert_eq!(
+        manufacturing.outcome,
+        [TypeActivityOutcome {
+            type_id: HARPY,
+            name: "Harpy".into(),
+            quantity: 1,
+            probability: None,
+        }]
+    );
+    // Materials sit under their groups, both in the order they first appear.
+    let quantity = |type_id, name: &str| TypeQuantity {
+        type_id,
+        name: name.into(),
+        quantity: 10,
+    };
+    assert_eq!(
+        manufacturing.materials,
+        [
+            TypeMaterialGroup {
+                name: "Mineral".into(),
+                items: vec![
+                    quantity(TRITANIUM, "Tritanium"),
+                    quantity(11_399, "Morphite")
+                ],
+            },
+            TypeMaterialGroup {
+                name: "Frigate".into(),
+                items: vec![quantity(603, "Merlin")],
+            },
+            TypeMaterialGroup {
+                name: "Other".into(),
+                items: vec![quantity(9_999, "Oddity")],
+            },
+        ]
+    );
+    // The skill tree nests prerequisites like the Requirements tab's.
+    assert_eq!(
+        manufacturing
+            .skills
+            .iter()
+            .map(|node| (node.skill_type_id, node.level, node.children.len()))
+            .collect::<Vec<_>>(),
+        [(ASSAULT_FRIGATES, 1, 1)]
+    );
+    assert_eq!(manufacturing.missing, None, "All V has nothing to train");
+
+    let copying = &blueprint.activities[1];
+    assert!(
+        copying.outcome.is_empty() && copying.skills.is_empty() && copying.materials.is_empty()
+    );
+    assert_eq!(
+        blueprint.activities[2].outcome[0].probability,
+        Some(Decimal::new(3, 1))
+    );
+}
+
+#[tokio::test]
+async fn a_character_is_checked_against_each_activity() {
+    let pilot = PilotChoice::Character(ConnectedCharacterId(Uuid::from_u128(7)));
+    let blueprint = info(HARPY_BLUEPRINT, pilot)
+        .await
+        .unwrap()
+        .unwrap()
+        .blueprint
+        .unwrap();
+
+    // Aura has Spaceship Command III, so only Assault Frigates is missing.
+    let manufacturing = &blueprint.activities[0];
+    assert_eq!(manufacturing.skills[0].trained_level, 0);
+    assert_eq!(manufacturing.skills[0].children[0].trained_level, 3);
+    assert_eq!(
+        manufacturing
+            .missing
+            .as_ref()
+            .map(|missing| missing.missing_skills),
+        Some(1)
+    );
+    // Nothing to train for an activity without skills.
+    assert_eq!(
+        blueprint.activities[1]
+            .missing
+            .as_ref()
+            .map(|missing| missing.missing_skills),
+        Some(0)
+    );
+    // Caldari Frigate IV of V.
+    assert_eq!(
+        blueprint.activities[2]
+            .missing
+            .as_ref()
+            .map(|missing| missing.missing_skills),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn a_type_that_is_not_a_blueprint_has_no_activities() {
+    let view = info(HARPY, PilotChoice::AllV).await.unwrap().unwrap();
+    assert_eq!(view.blueprint, None);
 }

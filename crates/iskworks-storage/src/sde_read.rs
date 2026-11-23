@@ -1952,6 +1952,13 @@ impl SdeReadRepository for PgSdeRepository {
             .collect())
     }
 
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<iskworks_sde::BlueprintActivities>, SdeError> {
+        self.read_blueprint_activities(blueprint_type_id).await
+    }
+
     async fn has_invention_data(&self) -> Result<bool, SdeError> {
         self.read_has_invention_data().await
     }

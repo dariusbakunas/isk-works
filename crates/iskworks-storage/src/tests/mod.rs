@@ -12,6 +12,7 @@ mod auth_sessions;
 mod fits;
 mod pi_planner;
 mod pi_saved_plans;
+mod sde_blueprint_activities;
 mod sde_geography;
 mod sde_invention;
 mod sde_market_catalog;
@@ -302,6 +303,8 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
         inventions: Vec::new(),
+        blueprint_activities: Vec::new(),
+        blueprint_limits: Vec::new(),
         blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,

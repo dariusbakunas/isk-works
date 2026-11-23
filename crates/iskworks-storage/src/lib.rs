@@ -65,6 +65,7 @@ pub use production::PgProductionRepository;
 mod fits;
 mod pi_planner;
 mod pi_saved_plans;
+mod sde_blueprint_activities;
 mod sde_categories;
 mod sde_import;
 mod sde_invention;

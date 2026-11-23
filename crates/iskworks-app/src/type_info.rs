@@ -16,6 +16,9 @@ use iskworks_sde::{CandidateRecipeKind, SdeReadRepository, TypeListEntry, UsedWi
 use rust_decimal::Decimal;
 use serde::Serialize;
 
+mod blueprint;
+pub use blueprint::{TypeActivityOutcome, TypeBlueprint, TypeBlueprintActivity, TypeMaterialGroup};
+
 use crate::fittings::character_snapshot;
 use crate::{PilotChoice, SkillsCharacterSource};
 
@@ -94,6 +97,9 @@ pub struct TypeInfoView {
     /// For a character pilot: what it still has to train.
     pub missing: Option<RequirementSummary>,
     pub industry: TypeIndustry,
+    /// A blueprint's or reaction formula's activities; `None` for anything
+    /// else, and for an import made before they were read.
+    pub blueprint: Option<TypeBlueprint>,
     /// Types in its variation family, itself included.
     pub variation_count: i64,
     /// Whether a Used with list exists, and how long it is.
@@ -320,15 +326,30 @@ impl TypeInfoService {
             types: type_names.clone(),
         };
 
+        let activities = if base.category_id == Some(blueprint::BLUEPRINT_CATEGORY_ID) {
+            self.sde
+                .blueprint_activities(type_id)
+                .await
+                .map_err(sde_error)?
+        } else {
+            None
+        };
+        let activity_skills = activities
+            .as_ref()
+            .is_some_and(|found| found.activities.iter().any(|one| !one.skills.is_empty()));
+        let definitions = if required.is_empty() && !activity_skills {
+            Vec::new()
+        } else {
+            self.sde.skill_catalogue().await.map_err(sde_error)?
+        };
+        let requirement_pilot = match (&character, pilot) {
+            (Some(snapshot), _) => RequirementPilot::Character(snapshot),
+            (None, PilotChoice::AllZero) => RequirementPilot::AllZero,
+            (None, _) => RequirementPilot::AllV,
+        };
         let (requirements, missing) = if required.is_empty() {
             (Vec::new(), None)
         } else {
-            let definitions = self.sde.skill_catalogue().await.map_err(sde_error)?;
-            let requirement_pilot = match (&character, pilot) {
-                (Some(snapshot), _) => RequirementPilot::Character(snapshot),
-                (None, PilotChoice::AllZero) => RequirementPilot::AllZero,
-                (None, _) => RequirementPilot::AllV,
-            };
             (
                 requirement_tree(&required, &definitions, requirement_pilot),
                 character
@@ -336,6 +357,15 @@ impl TypeInfoService {
                     .map(|snapshot| requirement_summary(&required, &definitions, snapshot, now)),
             )
         };
+        let blueprint = activities.map(|found| {
+            blueprint::blueprint_view(
+                found,
+                &definitions,
+                requirement_pilot,
+                character.as_ref(),
+                now,
+            )
+        });
 
         let produced_by = [
             (
@@ -400,6 +430,7 @@ impl TypeInfoService {
                     .collect(),
                 used_in_count: counts.used_in,
             },
+            blueprint,
             variation_count: counts.variations,
             used_with,
         }))

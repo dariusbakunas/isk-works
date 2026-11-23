@@ -107,6 +107,8 @@ pub(crate) struct RawBlueprint {
     pub(crate) key: i64,
     #[serde(default)]
     pub(crate) activities: HashMap<String, RawActivity>,
+    #[serde(rename = "maxProductionLimit")]
+    pub(crate) max_production_limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -375,7 +377,6 @@ pub(crate) struct RawActivity {
     pub(crate) materials: Vec<RawTypeQuantity>,
     #[serde(default)]
     pub(crate) products: Vec<RawTypeQuantity>,
-    /// Kept for the invention activity only.
     #[serde(default)]
     pub(crate) skills: Vec<RawActivitySkill>,
 }
