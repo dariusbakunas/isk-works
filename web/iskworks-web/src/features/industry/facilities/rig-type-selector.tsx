@@ -5,6 +5,7 @@ import {
   getRigManufacturingModifiers,
   getRigReactionModifiers,
   type RigApplicability,
+  type RigManufacturingModifiers,
   type RigScienceModifiers,
   searchReactionRigs,
   searchStructureRigs,
@@ -102,7 +103,9 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     getModifiers(rig.typeId, securityClass, structureTypeId)
       .then((modifiers) => {
         if (cancelled) return;
-        const science = "science" in modifiers ? modifiers.science : NO_RIG_SCIENCE_BONUSES;
+        // Only a structure rig has them; a reaction rig's are zero.
+        const science: RigScienceModifiers =
+          (modifiers as Partial<RigManufacturingModifiers>).science ?? NO_RIG_SCIENCE_BONUSES;
         reportModifiers({
           materialReductionPercent: modifiers.materialReductionPercent,
           timeReductionPercent: modifiers.timeReductionPercent,
