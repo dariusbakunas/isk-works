@@ -2,15 +2,16 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import type { TypeInfo, UsedInPage } from "../../../api/types";
+import type { SkillNode, TypeInfo, UsedInPage } from "../../../api/types";
 import { ApiError } from "../../../api/workspace";
 import { ToolWindowLayer } from "../../../components/tool-windows/tool-window-layer";
 import { ToolWindowsProvider, useToolWindows } from "../../../components/tool-windows/tool-windows-context";
 import { WindowDock } from "../../../components/tool-windows/window-dock";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
+import { formatActivityTime } from "../blueprint-section";
 import { formatTrainingTime, hasBasics } from "../type-info-sections";
 import { typeInfoKind } from "../type-info-kind";
-import { visibleTabs } from "../type-info-window";
+import { planBuildPath, visibleTabs } from "../type-info-window";
 
 const api = vi.hoisted(() => ({
   getTypeInfo: vi.fn(),
@@ -32,6 +33,8 @@ vi.mock("../../../api/characters", async () => {
 const HARPY = 11381;
 const SCRIPT = 40334;
 const TRITANIUM = 34;
+const TRISTAN_BLUEPRINT = 954;
+const NEMESIS_BLUEPRINT = 11173;
 
 function info(overrides: Partial<TypeInfo>): TypeInfo {
   return {
@@ -50,6 +53,7 @@ function info(overrides: Partial<TypeInfo>): TypeInfo {
     requirements: [],
     missing: null,
     industry: { producedBy: [], reprocessesInto: [], usedInCount: 0 },
+    blueprint: null,
     variationCount: 1,
     usedWith: null,
     ...overrides,
@@ -128,6 +132,58 @@ const tritanium = info({
   industry: { producedBy: [], reprocessesInto: [], usedInCount: 10 },
 });
 
+const skill = (skillTypeId: number, name: string, level: number, trainedLevel: number, children: SkillNode[] = []): SkillNode => ({
+  skillTypeId,
+  name,
+  level,
+  trainedLevel,
+  children,
+});
+
+/** The Tristan Blueprint: no time research or reaction here, so those stay unavailable. */
+const tristanBlueprint = (trained: boolean, missing: TypeInfo["missing"] = null) =>
+  info({
+    typeId: TRISTAN_BLUEPRINT,
+    name: "Tristan Blueprint",
+    group: { id: 105, name: "Frigate Blueprint" },
+    category: { id: 9, name: "Blueprint" },
+    description: [{ kind: "text", text: "Tristan Blueprint", bold: false }],
+    blueprint: {
+      maxRuns: 30,
+      activities: [
+        {
+          kind: "manufacturing",
+          timeSeconds: 6000,
+          outcome: [{ typeId: 593, name: "Tristan", quantity: 1, probability: null }],
+          skills: [skill(3380, "Industry", 1, trained ? 5 : 0)],
+          missing,
+          materials: [
+            {
+              name: "Mineral",
+              items: [
+                { typeId: TRITANIUM, name: "Tritanium", quantity: 35200 },
+                { typeId: 35, name: "Pyerite", quantity: 6600 },
+              ],
+            },
+          ],
+        },
+        { kind: "researchMaterial", timeSeconds: 2100, outcome: [], skills: [], missing, materials: [] },
+        { kind: "copying", timeSeconds: 4800, outcome: [], skills: [], missing, materials: [] },
+        {
+          kind: "invention",
+          timeSeconds: 63900,
+          outcome: [{ typeId: NEMESIS_BLUEPRINT, name: "Nemesis Blueprint", quantity: 1, probability: "0.3" }],
+          skills: [
+            skill(11450, "Gallente Starship Engineering", 1, trained ? 1 : 0, [skill(3403, "Mechanics", 5, 5)]),
+            skill(23121, "Gallente Encryption Methods", 1, 1),
+          ],
+          missing,
+          materials: [{ name: "Datacores", items: [{ typeId: 20410, name: "Datacore - Gallentean Starship Engineering", quantity: 2 }] }],
+        },
+      ],
+    },
+  });
+
 function usedInPage(offset: number, count: number, total = 10): UsedInPage {
   return {
     items: Array.from({ length: count }, (_, index) => ({
@@ -153,6 +209,13 @@ beforeEach(() => {
   api.getTypeInfo.mockImplementation(async (typeId: number, pilot?: string) => {
     if (typeId === SCRIPT) return script;
     if (typeId === TRITANIUM) return tritanium;
+    // Aura (c1) lacks one skill for the Tristan Blueprint; Mira (c2) has them all.
+    if (typeId === TRISTAN_BLUEPRINT) {
+      if (pilot === "c1") return tristanBlueprint(false, { missingSkills: 1, remainingSeconds: 3600 });
+      if (pilot === "c2") return tristanBlueprint(true, { missingSkills: 0, remainingSeconds: 0 });
+      return tristanBlueprint(true);
+    }
+    if (typeId === NEMESIS_BLUEPRINT) return info({ typeId: NEMESIS_BLUEPRINT, name: "Nemesis Blueprint", description: [{ kind: "text", text: "T2", bold: false }] });
     // Aura (c1) lacks two skills; Mira (c2) has them all.
     if (typeId === HARPY) {
       if (pilot === "c1") return harpy({ missingSkills: 2, remainingSeconds: 274_000 });
@@ -196,6 +259,15 @@ function renderApp() {
         <TypeInfoButton alwaysVisible name="Harpy" typeId={HARPY} />
         <TypeInfoButton alwaysVisible name="Tritanium" typeId={TRITANIUM} />
         <TypeInfoButton alwaysVisible name="Gone" typeId={77777} />
+        <TypeInfoButton alwaysVisible name="Tristan Blueprint" typeId={TRISTAN_BLUEPRINT} />
+        <span data-testid="owned-copy">
+          <TypeInfoButton
+            alwaysVisible
+            blueprint={{ kind: "copy", runs: 26, materialEfficiency: 10, timeEfficiency: 20 }}
+            name="Tristan Blueprint"
+            typeId={TRISTAN_BLUEPRINT}
+          />
+        </span>
         <Narrow />
         <WindowDock expanded />
         <ToolWindowLayer />
@@ -206,7 +278,7 @@ function renderApp() {
 
 async function openInfo(name: string) {
   renderApp();
-  fireEvent.click(screen.getByRole("button", { name: `Show info: ${name}` }));
+  fireEvent.click(screen.getAllByRole("button", { name: `Show info: ${name}` })[0]);
   const dialog = await screen.findByRole("dialog");
   await within(dialog).findByRole("tablist");
   return dialog;
@@ -555,4 +627,123 @@ test("basics keep tiny volumes readable and show the reprocessing batch", async 
 test("a portion of one isn't worth a row", () => {
   expect(hasBasics(info({ basics: { volumeM3: null, packagedVolumeM3: null, massKg: null, capacityM3: null, portionSize: 1 } }))).toBe(false);
   expect(hasBasics(info({ basics: { volumeM3: null, packagedVolumeM3: null, massKg: null, capacityM3: null, portionSize: 100 } }))).toBe(true);
+});
+
+describe("a blueprint's Type Info", () => {
+  test("it opens on Industry with the game's activities; the ones it lacks are unavailable", async () => {
+    const dialog = await openInfo("Tristan Blueprint");
+
+    expect(within(dialog).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Industry", "Description"]);
+    expect(within(dialog).getByRole("tab", { name: "Industry" })).toHaveAttribute("aria-selected", "true");
+    const switcher = within(dialog).getByRole("group", { name: "Activity" });
+    expect(within(switcher).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Manufacturing",
+      "Material efficiency research",
+      "Time efficiency research",
+      "Copying",
+      "Invention",
+      "Reactions",
+    ]);
+    expect(within(switcher).getByRole("button", { name: "Manufacturing" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(switcher).getByRole("button", { name: "Time efficiency research" })).toBeDisabled();
+    expect(within(switcher).getByRole("button", { name: "Reactions" })).toBeDisabled();
+    expect(within(switcher).getByRole("button", { name: "Invention" })).toBeEnabled();
+    // Opened by type alone: nothing is known about a particular blueprint.
+    expect(within(dialog).queryByText(/runs remaining|infinite runs/)).not.toBeInTheDocument();
+  });
+
+  test("manufacturing lists time, outcome, skills and materials by group", async () => {
+    const dialog = await openInfo("Tristan Blueprint");
+    const panel = within(dialog).getByRole("tabpanel");
+
+    expect(within(panel).getByRole("heading", { level: 4, name: "Manufacturing" })).toBeInTheDocument();
+    expect(within(panel).getByText("Time per run").nextSibling).toHaveTextContent("01:40:00");
+    expect(within(panel).getByRole("button", { name: "Tristan" })).toBeInTheDocument();
+    expect(within(panel).getByText("1 / run")).toBeInTheDocument();
+    expect(within(panel).getByText("Required skills [1]")).toBeInTheDocument();
+    expect(within(panel).getByText("Required input materials [2]")).toBeInTheDocument();
+    const minerals = within(panel).getByRole("region", { name: "Mineral" });
+    expect(within(minerals).getByText("Mineral [2]")).toBeInTheDocument();
+    expect(within(minerals).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["35,200 xTritanium", "6,600 xPyerite"]);
+    // The blueprint makes the Tristan: Plan a build starts from the blueprint itself.
+    expect(within(dialog).getByRole("link", { name: "Plan a build" })).toHaveAttribute("href", "/builds/new?blueprintTypeId=954");
+  });
+
+  test("research and copying say what they yield, and nothing where nothing is needed", async () => {
+    const dialog = await openInfo("Tristan Blueprint");
+    const panel = within(dialog).getByRole("tabpanel");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Material efficiency research" }));
+    expect(within(panel).getByText("Time per run").nextSibling).toHaveTextContent("00:35:00");
+    expect(within(panel).getByText("Blueprint Material Efficiency", { exact: false })).toHaveTextContent("+1% Blueprint Material Efficiency");
+    expect(within(panel).getByText("Required skills [0]")).toBeInTheDocument();
+    expect(within(panel).getAllByText("None")).toHaveLength(2);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Copying" }));
+    expect(within(panel).getByText("Time per run").nextSibling).toHaveTextContent("01:20:00");
+    expect(within(panel).getByText("Max runs per copy").nextSibling).toHaveTextContent("30");
+    // The outcome is the blueprint itself: named, not a link to where you are.
+    expect(within(panel).getByText("Tristan Blueprint")).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Tristan Blueprint" })).not.toBeInTheDocument();
+  });
+
+  test("invention shows the chance and what it invents; the outcome opens in the window", async () => {
+    const dialog = await openInfo("Tristan Blueprint");
+    const panel = within(dialog).getByRole("tabpanel");
+    fireEvent.click(within(panel).getByRole("button", { name: "Invention" }));
+
+    expect(within(panel).getByText("Time per run").nextSibling).toHaveTextContent("17:45:00");
+    expect(within(panel).getByText("Success probability").nextSibling).toHaveTextContent("30.0%");
+    expect(within(panel).getByText("Required skills [2]")).toBeInTheDocument();
+    expect(within(panel).getByText("Mechanics").closest("span[style]")).toHaveStyle({ paddingLeft: "14px" });
+    expect(within(panel).getByRole("region", { name: "Datacores" })).toHaveTextContent("2 xDatacore - Gallentean Starship Engineering");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Nemesis Blueprint" }));
+    expect(await screen.findByRole("heading", { level: 3, name: "Nemesis Blueprint" })).toBeInTheDocument();
+    // Back on the Tristan Blueprint, the activity starts over.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("heading", { level: 4, name: "Manufacturing" })).toBeInTheDocument();
+  });
+
+  test("activity skills check against the picked character", async () => {
+    const dialog = await openInfo("Tristan Blueprint");
+
+    expect(await within(dialog).findByText("Missing 1 skill · 1h 0m to train")).toBeInTheDocument();
+    expect(api.getTypeInfo).toHaveBeenLastCalledWith(TRISTAN_BLUEPRINT, "c1", expect.anything());
+    expect(within(dialog).getAllByLabelText("Missing")).toHaveLength(1);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Pilot: Aura Starfall" }));
+    fireEvent.click(within(dialog).getByRole("option", { name: "Mira" }));
+    expect(await within(dialog).findByText("All requirements met")).toBeInTheDocument();
+  });
+
+  test("opened from an owned copy, the header says so with its runs and research", async () => {
+    renderApp();
+    fireEvent.click(within(screen.getByTestId("owned-copy")).getByRole("button"));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findByText("Copy · 26 runs remaining")).toBeInTheDocument();
+    expect(within(dialog).getByTitle("Material efficiency")).toHaveTextContent("ME 10%");
+    expect(within(dialog).getByTitle("Time efficiency")).toHaveTextContent("TE 20%");
+  });
+});
+
+test("a blueprint without activities (an older import) reads like any other item", () => {
+  const plain = info({ description: [{ kind: "text", text: "x", bold: false }], industry: { producedBy: [], reprocessesInto: [], usedInCount: 2 } });
+  expect(visibleTabs(plain)).toEqual(["Description", "Industry"]);
+  expect(visibleTabs({ ...plain, blueprint: { maxRuns: null, activities: [] } })).toEqual(["Description", "Industry"]);
+});
+
+test("a reaction formula plans a reaction build of what it makes", () => {
+  const formula = info({
+    typeId: 46207,
+    blueprint: { maxRuns: null, activities: [{ kind: "reaction", timeSeconds: 10800, outcome: [], skills: [], missing: null, materials: [] }] },
+  });
+  expect(planBuildPath(formula)).toBe("/builds/new?reactionFormulaTypeId=46207");
+});
+
+test("activity time reads like the game's clock, with days past one", () => {
+  expect(formatActivityTime(6000)).toBe("01:40:00");
+  expect(formatActivityTime(63_900)).toBe("17:45:00");
+  expect(formatActivityTime(90_061)).toBe("1d 01:01:01");
 });

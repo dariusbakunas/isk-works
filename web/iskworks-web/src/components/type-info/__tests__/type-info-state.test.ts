@@ -9,8 +9,10 @@ import {
   goForward,
   mergeTypeInfo,
   newTypeInfoState,
+  ownedBlueprint,
   rememberLoaded,
   showType,
+  withActivity,
   withPilot,
   withTab,
 } from "../type-info-state";
@@ -74,5 +76,43 @@ describe("type info window state", () => {
     expect(rememberLoaded(loaded, { typeId: 11381, name: "Harpy", metaGroupId: 2 })).toBe(loaded);
     // A late answer for a type no longer shown is ignored.
     expect(rememberLoaded(showType(harpy, 34), { typeId: 11381, name: "X", metaGroupId: null }).history[0].name).toBe("Harpy");
+  });
+
+  const copy = { kind: "copy" as const, runs: 26, materialEfficiency: 10, timeEfficiency: 20 };
+
+  test("an entry remembers the owned blueprint it was opened from, across loading", () => {
+    const state = newTypeInfoState(954, "Tristan Blueprint", copy);
+    expect(currentEntry(state).blueprint).toEqual(copy);
+    const loaded = rememberLoaded(state, { typeId: 954, name: "Tristan Blueprint", metaGroupId: 1 });
+    expect(currentEntry(loaded)).toEqual({ typeId: 954, name: "Tristan Blueprint", metaGroupId: 1, blueprint: copy });
+  });
+
+  test("the same type opened from another owned blueprint swaps the blueprint, not the history", () => {
+    const state = withTab(newTypeInfoState(954, "Tristan Blueprint", copy), "Description");
+    const original = { kind: "original" as const, runs: null, materialEfficiency: 0, timeEfficiency: 0 };
+    const merged = mergeTypeInfo(state, newTypeInfoState(954, "Tristan Blueprint", original));
+    expect(merged.history).toHaveLength(1);
+    expect(currentEntry(merged).blueprint).toEqual(original);
+    expect(merged.tab).toBe("Description");
+    // Opened again the same way, or with nothing known: unchanged.
+    expect(mergeTypeInfo(merged, newTypeInfoState(954, "Tristan Blueprint", { ...original }))).toBe(merged);
+    expect(mergeTypeInfo(merged, newTypeInfoState(954, "Tristan Blueprint"))).toBe(merged);
+  });
+
+  test("the selected activity belongs to the item showing", () => {
+    const state = withActivity(newTypeInfoState(954, "Tristan Blueprint"), "invention");
+    expect(state.activity).toBe("invention");
+    const next = showType(state, 11173, "Nemesis Blueprint");
+    expect(next.activity).toBeUndefined();
+    expect(goBack(withActivity(next, "copying")).activity).toBeUndefined();
+  });
+
+  test("an observed blueprint carries over only when it is an original or a copy", () => {
+    const observed = { kind: "copy", licensedRuns: 26, materialEfficiency: 10, timeEfficiency: 20, observedAt: "x" };
+    expect(ownedBlueprint(observed)).toEqual(copy);
+    // An original's runs are unlimited whatever the observation says.
+    expect(ownedBlueprint({ ...observed, kind: "original", licensedRuns: -1 })?.runs).toBeNull();
+    expect(ownedBlueprint({ ...observed, kind: "unknown" })).toBeUndefined();
+    expect(ownedBlueprint(null)).toBeUndefined();
   });
 });

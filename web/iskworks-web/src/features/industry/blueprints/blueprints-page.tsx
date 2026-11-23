@@ -41,6 +41,7 @@ import {
 } from "./blueprint-library-url-state";
 import { fetchAllBlueprintPages, useBlueprintLibrary } from "./use-blueprint-library";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
+import { ownedBlueprint } from "../../../components/type-info/type-info-state";
 import { useStableCallback } from "../../../hooks/use-stable-callback";
 
 const COLUMN_DEFS: Array<{ key: string; label: string; width: string; sort: BlueprintLibrarySort; numeric?: boolean; hideBelow?: "tablet" | "desktop" }> = [
@@ -248,7 +249,7 @@ function cells(row: BlueprintLibraryRow): Record<string, ReactNode> {
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-1">
             <span className="block truncate font-medium text-foreground" title={row.blueprintName}>{row.blueprintName}</span>
-            <TypeInfoButton name={row.blueprintName} typeId={row.blueprintTypeId} />
+            <TypeInfoButton blueprint={ownedBlueprint(row)} name={row.blueprintName} typeId={row.blueprintTypeId} />
           </span>
           {row.usedByBuilds.length > 0 ? (
             <span className="block text-[0.625rem] text-muted">
