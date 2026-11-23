@@ -347,4 +347,25 @@ impl SdeReadRepository for UnavailableSdeRepository {
         let _ = planet_ids;
         Ok(BTreeMap::new())
     }
+    async fn has_invention_data(&self) -> Result<bool, SdeError> {
+        Ok(false)
+    }
+    async fn invention_recipe(
+        &self,
+        product_blueprint_type_id: i64,
+    ) -> Result<Option<InventionRecipe>, SdeError> {
+        let _ = product_blueprint_type_id;
+        Ok(None)
+    }
+    async fn decryptors(&self) -> Result<Vec<Decryptor>, SdeError> {
+        Ok(Vec::new())
+    }
+    async fn search_inventable_products(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<InventableProduct>, SdeError> {
+        let _ = (query, limit);
+        Ok(Vec::new())
+    }
 }

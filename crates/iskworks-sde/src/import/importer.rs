@@ -90,6 +90,7 @@ pub struct SdeDatasetRequirements {
     pub skill_dogma: bool,
     pub type_info: bool,
     pub pi_planner_data: bool,
+    pub invention: bool,
 }
 
 #[async_trait]
@@ -150,6 +151,7 @@ impl<'a> SdeImporter<'a> {
                         skill_dogma: source.has_skill_dogma(),
                         type_info: source.has_type_info(),
                         pi_planner_data: source.has_pi_planner_data(),
+                        invention: source.has_invention(),
                     },
                 )
                 .await?

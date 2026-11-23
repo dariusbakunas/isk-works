@@ -1933,6 +1933,29 @@ impl SdeReadRepository for PgSdeRepository {
             })
             .collect())
     }
+
+    async fn has_invention_data(&self) -> Result<bool, SdeError> {
+        self.read_has_invention_data().await
+    }
+
+    async fn invention_recipe(
+        &self,
+        product_blueprint_type_id: i64,
+    ) -> Result<Option<iskworks_sde::InventionRecipe>, SdeError> {
+        self.read_invention_recipe(product_blueprint_type_id).await
+    }
+
+    async fn decryptors(&self) -> Result<Vec<iskworks_sde::Decryptor>, SdeError> {
+        self.read_decryptors().await
+    }
+
+    async fn search_inventable_products(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<iskworks_sde::InventableProduct>, SdeError> {
+        self.read_inventable_products(query, limit).await
+    }
 }
 
 #[derive(sqlx::FromRow)]

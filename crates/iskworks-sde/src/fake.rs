@@ -518,6 +518,39 @@ pub trait FakeSdeRead: Send + Sync {
             std::any::type_name::<Self>()
         )
     }
+    async fn has_invention_data(&self) -> Result<bool, SdeError> {
+        unimplemented!(
+            "{} does not stub FakeSdeRead::has_invention_data",
+            std::any::type_name::<Self>()
+        )
+    }
+    async fn invention_recipe(
+        &self,
+        product_blueprint_type_id: i64,
+    ) -> Result<Option<InventionRecipe>, SdeError> {
+        let _ = product_blueprint_type_id;
+        unimplemented!(
+            "{} does not stub FakeSdeRead::invention_recipe",
+            std::any::type_name::<Self>()
+        )
+    }
+    async fn decryptors(&self) -> Result<Vec<Decryptor>, SdeError> {
+        unimplemented!(
+            "{} does not stub FakeSdeRead::decryptors",
+            std::any::type_name::<Self>()
+        )
+    }
+    async fn search_inventable_products(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<InventableProduct>, SdeError> {
+        let _ = (query, limit);
+        unimplemented!(
+            "{} does not stub FakeSdeRead::search_inventable_products",
+            std::any::type_name::<Self>()
+        )
+    }
 }
 
 /// Every [`FakeSdeRead`] is an [`SdeReadRepository`].
@@ -813,5 +846,24 @@ impl<T: FakeSdeRead> SdeReadRepository for T {
         planet_ids: &[i64],
     ) -> Result<BTreeMap<i64, PlanetReference>, SdeError> {
         FakeSdeRead::planet_references(self, planet_ids).await
+    }
+    async fn has_invention_data(&self) -> Result<bool, SdeError> {
+        FakeSdeRead::has_invention_data(self).await
+    }
+    async fn invention_recipe(
+        &self,
+        product_blueprint_type_id: i64,
+    ) -> Result<Option<InventionRecipe>, SdeError> {
+        FakeSdeRead::invention_recipe(self, product_blueprint_type_id).await
+    }
+    async fn decryptors(&self) -> Result<Vec<Decryptor>, SdeError> {
+        FakeSdeRead::decryptors(self).await
+    }
+    async fn search_inventable_products(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<InventableProduct>, SdeError> {
+        FakeSdeRead::search_inventable_products(self, query, limit).await
     }
 }

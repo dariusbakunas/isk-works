@@ -1542,3 +1542,210 @@ fn imports_commodity_customs_tax_multipliers() {
         ]
     );
 }
+
+/// Types, groups and categories for the invention fixtures. Type ids and
+/// activity shapes are copied from SDE 3482594 (Hammerhead I Blueprint
+/// 2184 invents Hammerhead II Blueprint 2186).
+fn invention_source(blueprints: &str, type_dogma: Option<&str>) -> SdeSource {
+    let extra_types = concat!(
+        r#"{"_key":2184,"groupID":176,"name":{"en":"Hammerhead I Blueprint"},"published":true}"#,
+        "\n",
+        r#"{"_key":2186,"groupID":176,"name":{"en":"Hammerhead II Blueprint"},"published":true}"#,
+        "\n",
+        r#"{"_key":2187,"groupID":176,"name":{"en":"Second Output Blueprint"},"published":true}"#,
+        "\n",
+        r#"{"_key":20418,"groupID":333,"name":{"en":"Datacore - Electronic Engineering"},"published":true}"#,
+        "\n",
+        r#"{"_key":20419,"groupID":333,"name":{"en":"Datacore - Graviton Physics"},"published":true}"#,
+        "\n",
+        r#"{"_key":11453,"groupID":270,"name":{"en":"Electronic Engineering"},"published":true}"#,
+        "\n",
+        r#"{"_key":11446,"groupID":270,"name":{"en":"Graviton Physics"},"published":true}"#,
+        "\n",
+        r#"{"_key":23121,"groupID":270,"name":{"en":"Gallente Encryption Methods"},"published":true}"#,
+        "\n",
+        r#"{"_key":34201,"groupID":1304,"name":{"en":"Accelerant Decryptor"},"published":true}"#,
+        "\n",
+        r#"{"_key":21573,"groupID":728,"name":{"en":"Occult Legacy Decryptor"},"published":true}"#,
+        "\n",
+        r#"{"_key":30752,"groupID":971,"name":{"en":"Intact Hull Section"},"published":true}"#,
+        "\n",
+        r#"{"_key":29985,"groupID":996,"name":{"en":"Legion Blueprint"},"published":true}"#
+    );
+    let mut extra_files = vec![
+        (
+            "groups.jsonl",
+            concat!(
+                r#"{"_key":176,"categoryID":9,"name":{"en":"Combat Drone Blueprint"},"published":true}"#,
+                "\n",
+                r#"{"_key":333,"name":{"en":"Datacores"},"published":true}"#,
+                "\n",
+                r#"{"_key":270,"name":{"en":"Science"},"published":true}"#,
+                "\n",
+                r#"{"_key":1304,"name":{"en":"Generic Decryptor"},"published":true}"#,
+                "\n",
+                r#"{"_key":728,"name":{"en":"Decryptors - Amarr"},"published":true}"#,
+                "\n",
+                r#"{"_key":971,"categoryID":34,"name":{"en":"Ancient Relics"},"published":true}"#,
+                "\n",
+                r#"{"_key":996,"categoryID":9,"name":{"en":"Strategic Cruiser Blueprints"},"published":true}"#
+            ),
+        ),
+        (
+            "categories.jsonl",
+            concat!(
+                r#"{"_key":9,"name":{"en":"Blueprint"},"published":true}"#,
+                "\n",
+                r#"{"_key":34,"name":{"en":"Ancient Relics"},"published":true}"#
+            ),
+        ),
+    ];
+    if let Some(type_dogma) = type_dogma {
+        extra_files.push((TYPE_DOGMA_FILE, type_dogma));
+    }
+    fixture_source_inner(blueprints, None, Some(extra_types), &extra_files).unwrap()
+}
+
+fn hammerhead_invention_fixture() -> &'static str {
+    r#"{"_key":2184,"activities":{"copying":{"time":12720},"invention":{"materials":[{"typeID":20419,"quantity":2},{"typeID":20418,"quantity":2}],"products":[{"typeID":2186,"quantity":10,"probability":0.34}],"skills":[{"typeID":11453,"level":1},{"typeID":11446,"level":1},{"typeID":23121,"level":1}],"time":15900}}}"#
+}
+
+#[test]
+fn parses_invention_and_copying_activities() {
+    let source = invention_source(hammerhead_invention_fixture(), None);
+    assert!(source.has_invention());
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.inventions,
+        vec![ImportInvention {
+            blueprint_type_id: 2184,
+            duration_seconds: Some(15_900),
+            materials: vec![
+                ImportMaterial {
+                    type_id: 20_418,
+                    quantity: 2,
+                    position: 0
+                },
+                ImportMaterial {
+                    type_id: 20_419,
+                    quantity: 2,
+                    position: 1
+                },
+            ],
+            products: vec![ImportInventionProduct {
+                blueprint_type_id: 2186,
+                base_runs: 10,
+                probability: Decimal::new(34, 2),
+                position: 0,
+            }],
+            skills: vec![
+                ImportInventionSkill {
+                    skill_type_id: 11_446,
+                    level: 1
+                },
+                ImportInventionSkill {
+                    skill_type_id: 11_453,
+                    level: 1
+                },
+                ImportInventionSkill {
+                    skill_type_id: 23_121,
+                    level: 1
+                },
+            ],
+        }]
+    );
+    assert_eq!(
+        dataset.blueprint_copying,
+        vec![ImportBlueprintCopying {
+            blueprint_type_id: 2184,
+            duration_seconds: 12_720,
+        }]
+    );
+}
+
+#[test]
+fn invention_keeps_every_product_in_source_order() {
+    let source = invention_source(
+        r#"{"_key":2184,"activities":{"invention":{"materials":[{"typeID":20419,"quantity":2}],"products":[{"typeID":2187,"quantity":1,"probability":0.3},{"typeID":2186,"quantity":1,"probability":0.3}],"skills":[{"typeID":23121,"level":1}],"time":63900}}}"#,
+        None,
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    let products = &dataset.inventions[0].products;
+    assert_eq!(
+        products
+            .iter()
+            .map(|product| (product.blueprint_type_id, product.position))
+            .collect::<Vec<_>>(),
+        vec![(2187, 0), (2186, 1)]
+    );
+}
+
+#[test]
+fn invention_from_an_ancient_relic_is_left_out() {
+    let source = invention_source(
+        r#"{"_key":30752,"activities":{"invention":{"materials":[{"typeID":20419,"quantity":3}],"products":[{"typeID":29985,"quantity":20,"probability":0.26}],"skills":[{"typeID":23121,"level":1}],"time":3600}}}"#,
+        None,
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    assert!(dataset.inventions.is_empty());
+}
+
+#[test]
+fn a_blueprint_without_invention_yields_no_invention_row() {
+    // The base fixture carries an empty `invention` activity.
+    let dataset = parse(&fixture_source(blueprints_fixture()).unwrap()).unwrap();
+
+    assert!(dataset.inventions.is_empty());
+    assert!(dataset.blueprint_copying.is_empty());
+}
+
+#[test]
+fn an_invention_product_without_a_usable_chance_is_dropped() {
+    let source = invention_source(
+        r#"{"_key":2184,"activities":{"invention":{"materials":[{"typeID":20419,"quantity":2}],"products":[{"typeID":2186,"quantity":10},{"typeID":2187,"quantity":10,"probability":0.34}],"time":15900}}}"#,
+        None,
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.inventions[0]
+            .products
+            .iter()
+            .map(|product| product.blueprint_type_id)
+            .collect::<Vec<_>>(),
+        vec![2187]
+    );
+}
+
+#[test]
+fn parses_generic_decryptors_only() {
+    let source = invention_source(
+        hammerhead_invention_fixture(),
+        Some(concat!(
+            r#"{"_key":34201,"dogmaAttributes":[{"attributeID":1112,"value":1.2},{"attributeID":1113,"value":2.0},{"attributeID":1114,"value":10.0},{"attributeID":1124,"value":1.0}]}"#,
+            "\n",
+            // Another decryptor group with the same attributes: not usable.
+            r#"{"_key":21573,"dogmaAttributes":[{"attributeID":1112,"value":5.0},{"attributeID":1113,"value":3.0},{"attributeID":1114,"value":3.0},{"attributeID":1124,"value":9.0}]}"#
+        )),
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset.decryptors,
+        vec![ImportDecryptor {
+            type_id: 34_201,
+            probability_multiplier: Decimal::new(12, 1),
+            me_modifier: 2,
+            te_modifier: 10,
+            run_modifier: 1,
+        }]
+    );
+}

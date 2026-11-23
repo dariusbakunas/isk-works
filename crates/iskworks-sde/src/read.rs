@@ -803,4 +803,23 @@ pub trait SdeReadRepository: Send + Sync {
         &self,
         planet_ids: &[i64],
     ) -> Result<BTreeMap<i64, PlanetReference>, SdeError>;
+    /// Whether the active import carries invention data. False for an
+    /// import made before it was read: the SDE must be imported again.
+    async fn has_invention_data(&self) -> Result<bool, SdeError>;
+    /// The invention recipe that yields `product_blueprint_type_id` (the
+    /// invented blueprint, not the item it builds). `None` when nothing
+    /// invents it. The lowest source blueprint id wins if several do.
+    async fn invention_recipe(
+        &self,
+        product_blueprint_type_id: i64,
+    ) -> Result<Option<InventionRecipe>, SdeError>;
+    /// Every usable decryptor, by name.
+    async fn decryptors(&self) -> Result<Vec<Decryptor>, SdeError>;
+    /// Published items whose blueprint can be invented, matched on the
+    /// item's name; an exact match first, then by name.
+    async fn search_inventable_products(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<InventableProduct>, SdeError>;
 }
