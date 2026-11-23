@@ -176,3 +176,28 @@ writing so stale previews cannot silently overwrite a newer profile.
 
 Structured errors include `facility_not_found`, `facility_archived`,
 `facility_revision_conflict`, and `facility_calculation_failed`.
+
+### Facility defaults
+
+**Facilities › Defaults** sets the workspace's default facility per EVE rig
+target (`industry_facility_defaults`, one row per role and target, with an
+"Everything else" fallback per role). New Builds created without a facility
+take the most specific matching target's default, then the fallback.
+
+Invention has no rig targets, because lab rigs apply to every product, so it
+has one default for all invention jobs
+(`industry_invention_facility_defaults`, one row per workspace). It may be a
+profile of either role. Archiving or deleting a facility drops every default
+pointing at it.
+
+```text
+GET /api/industry/facility-defaults
+PUT /api/industry/facility-defaults
+PUT /api/industry/facility-defaults/invention
+GET /api/industry/facility-defaults/for-product?productTypeId=
+```
+
+`for-product` answers which facilities to pre-select for inventing and then
+building a product: the invention default, and the manufacturing default a
+new Build of that product would get. The Invention page uses it; without a
+product it returns only the invention default.

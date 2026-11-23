@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { listCharacters, type CharacterRosterEntry } from "../../../../api/characters";
-import { listFacilities, type FacilityProfile } from "../../../../api/industry";
+import { getProductFacilityDefaults, listFacilities, type FacilityProfile } from "../../../../api/industry";
 import { quoteInvention, searchInventableProducts, type InventionQuote } from "../../../../api/invention";
 import { InventionPage } from "../invention-page";
 import { ACCELERANT, PROCESS, quote } from "./invention-fixtures";
@@ -21,11 +21,13 @@ vi.mock("../../../../api/characters", async (importOriginal) => ({
 vi.mock("../../../../api/industry", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../../api/industry")>(),
   listFacilities: vi.fn(),
+  getProductFacilityDefaults: vi.fn(),
 }));
 
 const CHARACTER = "0b8f8d6e-2f43-4c1a-9a55-5d0f3c6f9a11";
 const RAITARU = "5d0f3c6f-9a11-4c1a-9a55-0b8f8d6e2f43";
 const TATARA = "9a115d0f-3c6f-4c1a-9a55-2f430b8f8d6e";
+const AZBEL = "3c6f9a11-5d0f-4c1a-9a55-8d6e2f430b8f";
 
 function facility(id: string, name: string, role: FacilityProfile["role"]): FacilityProfile {
   return { id, name, role, solarSystemName: "Tama", archivedAt: null } as FacilityProfile;
@@ -69,6 +71,10 @@ beforeEach(() => {
     facility(TATARA, "Tatara", "reaction"),
     facility(RAITARU, "Raitaru", "manufacturing"),
   ]);
+  vi.mocked(getProductFacilityDefaults).mockReset().mockResolvedValue({
+    manufacturingFacilityId: null,
+    inventionFacilityId: null,
+  });
   respond(quote());
 });
 
@@ -95,6 +101,57 @@ describe("InventionPage", () => {
       expect.any(AbortSignal),
     );
     expect(screen.getByRole("combobox", { name: "Product" })).toHaveValue("Hammerhead II");
+  });
+
+  test("starts on the workspace's default facilities for the product", async () => {
+    vi.mocked(listFacilities).mockResolvedValue([
+      facility(RAITARU, "Raitaru", "manufacturing"),
+      facility(AZBEL, "Azbel", "manufacturing"),
+      facility(TATARA, "Tatara", "reaction"),
+    ]);
+    vi.mocked(getProductFacilityDefaults).mockResolvedValue({
+      manufacturingFacilityId: AZBEL,
+      inventionFacilityId: TATARA,
+    });
+    renderPage();
+
+    await screen.findByRole("table", { name: "Decryptor comparison" });
+    expect(getProductFacilityDefaults).toHaveBeenCalledWith(2185, expect.any(AbortSignal));
+    expect(quoteInvention).toHaveBeenCalledTimes(1);
+    expect(quoteInvention).toHaveBeenCalledWith(
+      expect.objectContaining({ inventionFacilityId: TATARA, manufacturingFacilityId: AZBEL }),
+      expect.any(AbortSignal),
+    );
+    expect(screen.getByRole("combobox", { name: "Manufacturing facility" })).toHaveValue(AZBEL);
+    expect(screen.getByRole("combobox", { name: "Invention facility" })).toHaveValue(TATARA);
+  });
+
+  test("keeps a facility picked in the URL over the default", async () => {
+    vi.mocked(listFacilities).mockResolvedValue([
+      facility(RAITARU, "Raitaru", "manufacturing"),
+      facility(AZBEL, "Azbel", "manufacturing"),
+    ]);
+    vi.mocked(getProductFacilityDefaults).mockResolvedValue({
+      manufacturingFacilityId: AZBEL,
+      inventionFacilityId: AZBEL,
+    });
+    renderPage(`/invention?product=2185&mfg=${RAITARU}&inv=none`);
+
+    await screen.findByRole("table", { name: "Decryptor comparison" });
+    const command = vi.mocked(quoteInvention).mock.calls[0][0];
+    expect(command.manufacturingFacilityId).toBe(RAITARU);
+    expect(command.inventionFacilityId).toBeUndefined();
+  });
+
+  test("falls back to the first facility when the defaults can't be loaded", async () => {
+    vi.mocked(getProductFacilityDefaults).mockRejectedValue(new Error("offline"));
+    renderPage();
+
+    await screen.findByRole("table", { name: "Decryptor comparison" });
+    expect(quoteInvention).toHaveBeenCalledWith(
+      expect.objectContaining({ inventionFacilityId: RAITARU, manufacturingFacilityId: RAITARU }),
+      expect.any(AbortSignal),
+    );
   });
 
   test("lists every option, cheapest unit cost first and unpriced last", async () => {

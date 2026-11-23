@@ -55,6 +55,11 @@ describe("invention url state", () => {
     expect(resolveChoice(null, [])).toBeNull();
     // A stored choice that no longer exists falls back to the default.
     expect(resolveChoice(CHARACTER, [FACILITY])).toBe(FACILITY);
+    // A workspace default leads, unless it isn't on offer or a pick was made.
+    expect(resolveChoice(null, [FACILITY, CHARACTER], CHARACTER)).toBe(CHARACTER);
+    expect(resolveChoice(null, [FACILITY], CHARACTER)).toBe(FACILITY);
+    expect(resolveChoice(FACILITY, [FACILITY, CHARACTER], CHARACTER)).toBe(FACILITY);
+    expect(resolveChoice("none", [FACILITY, CHARACTER], CHARACTER)).toBeNull();
   });
 
   test("no product means no quote request", () => {

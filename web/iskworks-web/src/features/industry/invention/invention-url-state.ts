@@ -11,7 +11,7 @@ export interface InventionView {
   characterId: Choice;
   /** Levels used in place of the character's, by skill type id. */
   skillOverrides: Record<number, number>;
-  /** `null` picks the first facility; `"none"` leaves the fee unknown. */
+  /** `null` picks the default facility, else the first; `"none"` leaves the fee unknown. */
   inventionFacilityId: Choice;
   manufacturingFacilityId: Choice;
   targetRuns: number;
@@ -92,10 +92,14 @@ export interface ResolvedChoices {
   manufacturingFacilityId: string | null;
 }
 
-/** A default (`null`) becomes the first candidate; `"none"` stays nothing. */
-export function resolveChoice(value: Choice, candidates: string[]): string | null {
+/**
+ * A default (`null`) becomes `preferred` when that is a candidate, else the
+ * first candidate; `"none"` stays nothing.
+ */
+export function resolveChoice(value: Choice, candidates: string[], preferred?: string | null): string | null {
   if (value === "none") return null;
   if (value !== null && candidates.includes(value)) return value;
+  if (preferred && candidates.includes(preferred)) return preferred;
   return candidates[0] ?? null;
 }
 

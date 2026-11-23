@@ -9,6 +9,7 @@ import { FacilityDefaultsPage } from "../facility-defaults-page";
 const industryApi = vi.hoisted(() => ({
   getFacilityDefaults: vi.fn(),
   assignFacilityDefaults: vi.fn(),
+  assignInventionFacilityDefault: vi.fn(),
   listFacilities: vi.fn(),
 }));
 
@@ -50,6 +51,9 @@ function profile(id: string, name: string, role: FacilityProfile["role"]): Facil
 const raitaru = { facilityProfileId: "raitaru", facilityName: "Raitaru", materialBonusPercent: "1", timeBonusPercent: "15" };
 const azbel = { facilityProfileId: "azbel", facilityName: "Azbel", materialBonusPercent: "2.98", timeBonusPercent: "32" };
 
+const labRaitaru = { facilityProfileId: "raitaru", facilityName: "Raitaru", costBonusPercent: "27.444", timeBonusPercent: "57.84" };
+const labTatara = { facilityProfileId: "tatara", facilityName: "Tatara", costBonusPercent: "0", timeBonusPercent: "0" };
+
 function view(overrides: Partial<FacilityDefaultsView> = {}): FacilityDefaultsView {
   return {
     targets: [
@@ -65,6 +69,7 @@ function view(overrides: Partial<FacilityDefaultsView> = {}): FacilityDefaultsVi
       { facilityProfileId: "azbel", role: "manufacturing", filterId: 5, materialBonusPercent: "2.98", timeBonusPercent: "32", covered: true },
       { facilityProfileId: "raitaru", role: "manufacturing", filterId: 5, materialBonusPercent: "1", timeBonusPercent: "15", covered: false },
     ],
+    invention: { default: null, facilities: [labRaitaru, labTatara] },
     ...overrides,
   };
 }
@@ -187,5 +192,31 @@ describe("FacilityDefaultsPage", () => {
 
     expect(await screen.findByText("Facility defaults unavailable")).toBeInTheDocument();
     expect(screen.getByText("Small T1 Ships")).toBeInTheDocument();
+  });
+
+  test("invention has one default, offered from every facility with its science bonus", async () => {
+    const user = userEvent.setup();
+    industryApi.assignInventionFacilityDefault.mockResolvedValue(
+      view({ invention: { default: labRaitaru, facilities: [labRaitaru, labTatara] } }),
+    );
+    renderPage();
+
+    const select = await screen.findByRole("combobox", { name: "Default facility for invention" });
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "— No default",
+      "Raitaru (job cost 27.44% / time 57.84%)",
+      "Tatara (job cost 0% / time 0%)",
+    ]);
+    expect(within(row("All invention jobs")).getByText("No default")).toBeInTheDocument();
+
+    await user.selectOptions(select, "raitaru");
+
+    expect(industryApi.assignInventionFacilityDefault).toHaveBeenCalledWith("raitaru");
+    const invention = row("All invention jobs");
+    expect(await within(invention).findByText("Set")).toBeInTheDocument();
+    expect(within(invention).getByText("57.84%")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Default facility for invention" }), "");
+    expect(industryApi.assignInventionFacilityDefault).toHaveBeenLastCalledWith(null);
   });
 });
