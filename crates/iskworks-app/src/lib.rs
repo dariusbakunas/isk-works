@@ -20,6 +20,7 @@ mod esi_service;
 mod evidence_refresh;
 mod execution_plan;
 mod fittings;
+mod invention;
 mod jobs;
 mod manual_sync_gate;
 mod market_orders;
@@ -58,6 +59,10 @@ pub use fittings::{
     AttributeView, CatalogueItem, CatalogueQuery, CatalogueView, ExplainedSource, FitAssetsView,
     FitCostLine, FitCostView, FitDetail, FitItemView, FitListPilot, FitPilot, FitPreview,
     FitStatsView, FitSummary, FitTextPreview, FitType, FittingService, PilotChoice, PilotHeadline,
+};
+pub use invention::{
+    InventionProductSearch, InventionQuoteCommand, InventionQuoteResponse, InventionQuoteView,
+    InventionService, InventionSkillRole, InventionSkillView,
 };
 pub use jobs::{
     ActiveJobs, JobCharacter, JobCharacterSnapshot, JobHistoryView, JobSlots, JobView,

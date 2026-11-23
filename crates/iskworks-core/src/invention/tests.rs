@@ -272,7 +272,7 @@ fn inputs() -> QuoteInputs {
         decryptors: Vec::new(),
         job_fee: Some(isk("90")),
         copy_cost: Some(isk("10")),
-        manufacturing_cost_by_me: (0..=10).map(|me| (me, Some(isk("1000")))).collect(),
+        manufacturing_cost_by_copy: (0..=10).map(|me| ((me, 10), Some(isk("1000")))).collect(),
         output_per_run: 1,
         target_runs: 100,
         confidence: dec("0.9"),
@@ -321,7 +321,9 @@ fn options_rank_by_unit_cost_not_by_cost_per_copy() {
         ..DecryptorEffect::NONE
     };
     inputs.decryptors = vec![decryptor(10, better_me, Some("200"))];
-    inputs.manufacturing_cost_by_me.insert(5, Some(isk("900")));
+    inputs
+        .manufacturing_cost_by_copy
+        .insert((5, 10), Some(isk("900")));
 
     let quote = quote(&inputs);
 
@@ -393,7 +395,7 @@ fn missing_fees_and_manufacturing_costs_are_named() {
     let mut inputs = inputs();
     inputs.job_fee = None;
     inputs.copy_cost = None;
-    inputs.manufacturing_cost_by_me.insert(2, None);
+    inputs.manufacturing_cost_by_copy.insert((2, 10), None);
 
     let none = &quote(&inputs).options[0];
 

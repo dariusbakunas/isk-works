@@ -207,6 +207,8 @@ pub fn invention_duration_seconds(base_seconds: u64, advanced_industry_level: u8
         .unwrap_or(base_seconds)
 }
 
-/// Manufacturing cost of one run of the product, by the copy's ME. `None`
-/// for an ME whose cost could not be worked out.
-pub type ManufacturingCostByMe = BTreeMap<u8, Option<Money>>;
+/// Manufacturing cost of one run of the product, by the copy's `(ME, runs)`:
+/// a job is costed over all the copy's runs, because material rounding
+/// depends on how many runs it has. `None` where the cost could not be
+/// worked out.
+pub type ManufacturingCostByCopy = BTreeMap<(u8, u64), Option<Money>>;

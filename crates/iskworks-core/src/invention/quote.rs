@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use super::{
     attempts_for, invented_copy, invention_chance, AttemptPlan, DecryptorEffect, InventedCopy,
-    InventionSkills, ManufacturingCostByMe,
+    InventionSkills, ManufacturingCostByCopy,
 };
 use crate::Money;
 
@@ -41,7 +41,7 @@ pub struct QuoteInputs {
     pub job_fee: Option<Money>,
     /// One run of the Tech I blueprint copy.
     pub copy_cost: Option<Money>,
-    pub manufacturing_cost_by_me: ManufacturingCostByMe,
+    pub manufacturing_cost_by_copy: ManufacturingCostByCopy,
     /// Units one manufacturing run of the product yields.
     pub output_per_run: u64,
     /// Manufacturing runs the user wants copies for.
@@ -76,7 +76,8 @@ pub struct InventionOption {
     pub cost_per_copy: Option<Money>,
     /// Blueprint cost per manufacturing run.
     pub cost_per_run: Option<Money>,
-    /// One manufacturing run at the copy's ME, inputs bought at market.
+    /// One manufacturing run at the copy's ME, as a share of a job over all
+    /// the copy's runs, inputs bought at market.
     pub manufacturing_cost_per_run: Option<Money>,
     /// `(manufacturing cost per run + cost per run) ÷ output per run`.
     pub unit_cost: Option<Money>,
@@ -176,8 +177,8 @@ fn option(inputs: &QuoteInputs, decryptor: Option<&QuoteDecryptor>) -> Invention
         .and_then(|cost| cost.checked_div(chance));
     let cost_per_run = cost_per_copy.and_then(|cost| cost.checked_div(Decimal::from(copy.runs)));
     let manufacturing_cost_per_run = inputs
-        .manufacturing_cost_by_me
-        .get(&copy.material_efficiency)
+        .manufacturing_cost_by_copy
+        .get(&(copy.material_efficiency, copy.runs))
         .copied()
         .flatten();
     if manufacturing_cost_per_run.is_none() {
