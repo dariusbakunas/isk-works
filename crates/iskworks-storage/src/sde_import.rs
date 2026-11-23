@@ -436,7 +436,9 @@ impl SdeImportStore for PgSdeRepository {
                 "INSERT INTO sde_structure_rig_modifiers \
                  (import_id, type_id, material_reduction_percent, time_reduction_percent, \
                   high_sec_multiplier, low_sec_multiplier, null_sec_multiplier, compatible_structure_group_ids, rig_size, \
-                  material_filter_ids, time_filter_ids) ",
+                  material_filter_ids, time_filter_ids, \
+                  invention_cost_reduction_percent, invention_time_reduction_percent, \
+                  copying_cost_reduction_percent, copying_time_reduction_percent) ",
             );
             query.push_values(batch, |mut row, modifiers| {
                 row.push_bind(import_id)
@@ -449,7 +451,11 @@ impl SdeImportStore for PgSdeRepository {
                     .push_bind(&modifiers.compatible_structure_group_ids)
                     .push_bind(modifiers.rig_size)
                     .push_bind(&modifiers.material_filter_ids)
-                    .push_bind(&modifiers.time_filter_ids);
+                    .push_bind(&modifiers.time_filter_ids)
+                    .push_bind(modifiers.science.invention_cost_reduction_percent)
+                    .push_bind(modifiers.science.invention_time_reduction_percent)
+                    .push_bind(modifiers.science.copying_cost_reduction_percent)
+                    .push_bind(modifiers.science.copying_time_reduction_percent);
             });
             query
                 .build()
@@ -463,7 +469,9 @@ impl SdeImportStore for PgSdeRepository {
                 "INSERT INTO sde_reaction_rig_modifiers \
                  (import_id, type_id, material_reduction_percent, time_reduction_percent, \
                   high_sec_multiplier, low_sec_multiplier, null_sec_multiplier, compatible_structure_group_ids, rig_size, \
-                  material_filter_ids, time_filter_ids) ",
+                  material_filter_ids, time_filter_ids, \
+                  invention_cost_reduction_percent, invention_time_reduction_percent, \
+                  copying_cost_reduction_percent, copying_time_reduction_percent) ",
             );
             query.push_values(batch, |mut row, modifiers| {
                 row.push_bind(import_id)
@@ -476,7 +484,11 @@ impl SdeImportStore for PgSdeRepository {
                     .push_bind(&modifiers.compatible_structure_group_ids)
                     .push_bind(modifiers.rig_size)
                     .push_bind(&modifiers.material_filter_ids)
-                    .push_bind(&modifiers.time_filter_ids);
+                    .push_bind(&modifiers.time_filter_ids)
+                    .push_bind(modifiers.science.invention_cost_reduction_percent)
+                    .push_bind(modifiers.science.invention_time_reduction_percent)
+                    .push_bind(modifiers.science.copying_cost_reduction_percent)
+                    .push_bind(modifiers.science.copying_time_reduction_percent);
             });
             query
                 .build()

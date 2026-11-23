@@ -967,6 +967,24 @@ impl SdeReadRepository for PgSdeRepository {
             time_reduction_percent: row.time_reduction_percent.normalize().to_string(),
             compatible_with_structure: row.compatible_with_structure,
             applies_to: row.applicability(),
+            science: iskworks_sde::RigScienceModifiers {
+                invention_cost_reduction_percent: row
+                    .invention_cost_reduction_percent
+                    .normalize()
+                    .to_string(),
+                invention_time_reduction_percent: row
+                    .invention_time_reduction_percent
+                    .normalize()
+                    .to_string(),
+                copying_cost_reduction_percent: row
+                    .copying_cost_reduction_percent
+                    .normalize()
+                    .to_string(),
+                copying_time_reduction_percent: row
+                    .copying_time_reduction_percent
+                    .normalize()
+                    .to_string(),
+            },
         }))
     }
 
@@ -2147,6 +2165,10 @@ fn rig_modifier_query(table: &str, multiplier: &str) -> String {
         r#"SELECT rig.type_id,
                   rig.material_reduction_percent * {multiplier} AS material_reduction_percent,
                   rig.time_reduction_percent * {multiplier} AS time_reduction_percent,
+                  rig.invention_cost_reduction_percent * {multiplier} AS invention_cost_reduction_percent,
+                  rig.invention_time_reduction_percent * {multiplier} AS invention_time_reduction_percent,
+                  rig.copying_cost_reduction_percent * {multiplier} AS copying_cost_reduction_percent,
+                  rig.copying_time_reduction_percent * {multiplier} AS copying_time_reduction_percent,
                   CASE WHEN structure_type.type_id IS NULL THEN NULL
                        ELSE structure_type.group_id = ANY(rig.compatible_structure_group_ids)
                          AND structure.structure_size = rig.rig_size
@@ -2197,6 +2219,10 @@ struct RigModifierRow {
     type_id: i64,
     material_reduction_percent: rust_decimal::Decimal,
     time_reduction_percent: rust_decimal::Decimal,
+    invention_cost_reduction_percent: rust_decimal::Decimal,
+    invention_time_reduction_percent: rust_decimal::Decimal,
+    copying_cost_reduction_percent: rust_decimal::Decimal,
+    copying_time_reduction_percent: rust_decimal::Decimal,
     compatible_with_structure: Option<bool>,
     material_filter_count: i64,
     material_filter_min_id: Option<i64>,

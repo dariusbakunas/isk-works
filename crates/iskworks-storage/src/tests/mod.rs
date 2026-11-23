@@ -248,6 +248,7 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
             rig_size: Some(2),
             material_filter_ids: vec![3],
             time_filter_ids: vec![3],
+            science: Default::default(),
         }],
         reaction_formulas: vec![iskworks_sde::ImportReactionFormula {
             reaction_formula_type_id: 46_157,
@@ -275,6 +276,7 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
             rig_size: Some(2),
             material_filter_ids: vec![18],
             time_filter_ids: vec![],
+            science: Default::default(),
         }],
         industry_target_filters: vec![
             iskworks_sde::ImportIndustryTargetFilter {

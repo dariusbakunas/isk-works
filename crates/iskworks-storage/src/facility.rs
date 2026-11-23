@@ -587,11 +587,15 @@ async fn insert_rigs(
 ) -> Result<(), FacilityError> {
     for rig in &profile.rigs {
         sqlx::query(
-            "INSERT INTO industry_facility_profile_rigs (facility_profile_id, slot_number, type_id, captured_name, material_reduction_percent, time_reduction_percent) VALUES ($1,$2,$3,$4,$5,$6)",
+            "INSERT INTO industry_facility_profile_rigs (facility_profile_id, slot_number, type_id, captured_name, material_reduction_percent, time_reduction_percent, invention_cost_reduction_percent, invention_time_reduction_percent, copying_cost_reduction_percent, copying_time_reduction_percent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
         )
         .bind(profile.id.0).bind(i16::from(rig.slot_number)).bind(rig.type_id)
         .bind(&rig.type_name).bind(rig.material_reduction_percent)
         .bind(rig.time_reduction_percent)
+        .bind(rig.science.invention_cost_reduction_percent)
+        .bind(rig.science.invention_time_reduction_percent)
+        .bind(rig.science.copying_cost_reduction_percent)
+        .bind(rig.science.copying_time_reduction_percent)
         .execute(&mut **tx).await.map_err(map_error)?;
     }
     Ok(())
@@ -673,6 +677,10 @@ struct RigRow {
     captured_name: String,
     material_reduction_percent: Decimal,
     time_reduction_percent: Decimal,
+    invention_cost_reduction_percent: Decimal,
+    invention_time_reduction_percent: Decimal,
+    copying_cost_reduction_percent: Decimal,
+    copying_time_reduction_percent: Decimal,
     /// Resolved from the active SDE by `rig_select_query`; never stored.
     applicability: sqlx::types::Json<RigApplicability>,
 }
@@ -687,7 +695,12 @@ impl RigRow {
             material_reduction_percent: self.material_reduction_percent,
             time_reduction_percent: self.time_reduction_percent,
             applicability: self.applicability.0,
-            science: Default::default(),
+            science: iskworks_core::RigScienceBonuses {
+                invention_cost_reduction_percent: self.invention_cost_reduction_percent,
+                invention_time_reduction_percent: self.invention_time_reduction_percent,
+                copying_cost_reduction_percent: self.copying_cost_reduction_percent,
+                copying_time_reduction_percent: self.copying_time_reduction_percent,
+            },
         })
     }
 }
@@ -734,6 +747,8 @@ fn rig_select_query(role_table: &str) -> String {
     format!(
         r#"SELECT r.slot_number, r.type_id, r.captured_name,
                   r.material_reduction_percent, r.time_reduction_percent,
+                  r.invention_cost_reduction_percent, r.invention_time_reduction_percent,
+                  r.copying_cost_reduction_percent, r.copying_time_reduction_percent,
                   jsonb_build_object(
                     'material', {material_json},
                     'time', {time_json}) AS applicability
@@ -956,7 +971,11 @@ mod tests {
                 type_name: "Standup M-Set Basic Material Efficiency I".into(),
                 material_reduction_percent: "2".into(),
                 time_reduction_percent: "0".into(),
-                science: Default::default(),
+                science: iskworks_core::RigScienceBonusesInput {
+                    invention_cost_reduction_percent: "25.2".into(),
+                    copying_time_reduction_percent: "50.4".into(),
+                    ..Default::default()
+                },
             }],
         };
         let created = repository
@@ -974,6 +993,15 @@ mod tests {
         assert_eq!(
             created.rigs[0].applicability.time,
             iskworks_core::RigTargetFilter::Unrestricted
+        );
+        // The rig's invention and copying bonuses are stored with it.
+        assert_eq!(
+            created.rigs[0].science,
+            iskworks_core::RigScienceBonuses {
+                invention_cost_reduction_percent: Decimal::new(252, 1),
+                copying_time_reduction_percent: Decimal::new(504, 1),
+                ..Default::default()
+            }
         );
     }
 

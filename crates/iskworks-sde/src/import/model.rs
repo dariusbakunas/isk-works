@@ -476,6 +476,19 @@ pub struct ImportRigModifiers {
     pub material_filter_ids: Vec<i64>,
     /// The same for the time bonus (`...time[].filterID`).
     pub time_filter_ids: Vec<i64>,
+    pub science: ImportRigScienceModifiers,
+}
+
+/// A rig's invention and copying bonuses, as percentages before the
+/// security multiplier. Zero where the rig's `industryModifierSources`
+/// entry does not list the activity and dimension. Science entries carry
+/// no `filterID`: they apply to every blueprint.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
+pub struct ImportRigScienceModifiers {
+    pub invention_cost_reduction_percent: Decimal,
+    pub invention_time_reduction_percent: Decimal,
+    pub copying_cost_reduction_percent: Decimal,
+    pub copying_time_reduction_percent: Decimal,
 }
 
 /// One row of EVE's `industryTargetFilters` -- a named `(categoryIDs,
