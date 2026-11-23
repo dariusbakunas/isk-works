@@ -773,6 +773,9 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
+        inventions: Vec::new(),
+        blueprint_copying: Vec::new(),
+        decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }
 }
@@ -882,6 +885,9 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
+        inventions: Vec::new(),
+        blueprint_copying: Vec::new(),
+        decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }
 }
@@ -992,6 +998,9 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
+        inventions: Vec::new(),
+        blueprint_copying: Vec::new(),
+        decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }
 }

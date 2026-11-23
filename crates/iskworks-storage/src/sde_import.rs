@@ -46,6 +46,7 @@ impl SdeImportStore for PgSdeRepository {
             skill_dogma: requires_skill_dogma,
             type_info: requires_type_info,
             pi_planner_data: requires_pi_planner_data,
+            invention: requires_invention,
         } = requires;
         let row = sqlx::query_as::<_, ImportIdentityRow>(
             r#"
@@ -160,6 +161,14 @@ impl SdeImportStore for PgSdeRepository {
                   WHERE pins.import_id = sde_imports.id
                 )
               )
+              AND (
+                $13 = false
+                OR EXISTS (
+                  SELECT 1
+                  FROM sde_blueprint_invention invention
+                  WHERE invention.import_id = sde_imports.id
+                )
+              )
             "#,
         )
         .bind(checksum)
@@ -174,6 +183,7 @@ impl SdeImportStore for PgSdeRepository {
         .bind(requires_skill_dogma)
         .bind(requires_type_info)
         .bind(requires_pi_planner_data)
+        .bind(requires_invention)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sde_sqlx_error)?;
@@ -858,6 +868,7 @@ impl SdeImportStore for PgSdeRepository {
         }
 
         self.write_type_info(import_id, &dataset.type_info).await?;
+        self.write_invention(import_id, dataset).await?;
         self.rebuild_type_categories(import_id).await?;
         Ok(())
     }
