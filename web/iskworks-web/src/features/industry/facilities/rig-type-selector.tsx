@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
-import type { FacilityInput } from "../../../api/industry";
+import { NO_RIG_SCIENCE_BONUSES, type FacilityInput } from "../../../api/industry";
 import {
   getRigManufacturingModifiers,
   getRigReactionModifiers,
   type RigApplicability,
+  type RigScienceModifiers,
   searchReactionRigs,
   searchStructureRigs,
   type TypeSearchResult,
@@ -25,6 +26,17 @@ export function describeRigApplicability(appliesTo: RigApplicability, activity: 
   return `Material bonus: ${part(material)} · Time bonus: ${part(time)}`;
 }
 
+/** "invention and copying" for a rig with a bonus to either; `null` for a
+ * rig with none. */
+export function describeRigScience(science: RigScienceModifiers): string | null {
+  const has = (...values: string[]) => values.some((value) => Number(value) > 0);
+  const activities = [
+    has(science.inventionCostReductionPercent, science.inventionTimeReductionPercent) ? "invention" : null,
+    has(science.copyingCostReductionPercent, science.copyingTimeReductionPercent) ? "copying" : null,
+  ].filter((activity) => activity !== null);
+  return activities.length > 0 ? activities.join(" and ") : null;
+}
+
 interface RigTypeSelectorProps {
   rig: FacilityInput["rigs"][number];
   securityClass: FacilityInput["securityClass"];
@@ -41,6 +53,10 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
   const [deriving, setDeriving] = useState(false);
   const [compatibility, setCompatibility] = useState<boolean | null>(null);
   const [appliesTo, setAppliesTo] = useState<RigApplicability | null>(null);
+  // Set for a lab rig: the science activities it has a bonus for.
+  const [scienceActivities, setScienceActivities] = useState<string | null>(null);
+  // True when the rig has a manufacturing or reaction bonus of its own.
+  const [hasActivityBonus, setHasActivityBonus] = useState(true);
   const searchRigs = activity === "reaction" ? searchReactionRigs : searchStructureRigs;
   const getModifiers = activity === "reaction" ? getRigReactionModifiers : getRigManufacturingModifiers;
 
@@ -78,6 +94,7 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     if (!rig.typeId) {
       setCompatibility(null);
       setAppliesTo(null);
+      setScienceActivities(null);
       return;
     }
     let cancelled = false;
@@ -85,12 +102,18 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
     getModifiers(rig.typeId, securityClass, structureTypeId)
       .then((modifiers) => {
         if (cancelled) return;
+        const science = "science" in modifiers ? modifiers.science : NO_RIG_SCIENCE_BONUSES;
         reportModifiers({
           materialReductionPercent: modifiers.materialReductionPercent,
           timeReductionPercent: modifiers.timeReductionPercent,
+          science,
         });
         setCompatibility(modifiers.compatibleWithStructure);
         setAppliesTo(modifiers.appliesTo);
+        setScienceActivities(describeRigScience(science));
+        setHasActivityBonus(
+          Number(modifiers.materialReductionPercent) > 0 || Number(modifiers.timeReductionPercent) > 0,
+        );
       })
       .catch((requestError) => {
         if (!cancelled) reportError(apiMessage(requestError));
@@ -136,8 +159,11 @@ export function RigTypeSelector({ rig, securityClass, structureTypeId, activity,
       ) : null}
       {rig.typeId ? <p className="iw-muted mt-1 text-xs">Selected from active SDE</p> : null}
       {deriving ? <p className="iw-muted mt-1 text-xs">Calculating SDE bonuses...</p> : null}
-      {!deriving && appliesTo ? (
+      {!deriving && appliesTo && (hasActivityBonus || !scienceActivities) ? (
         <p className="iw-muted mt-1 text-xs">{describeRigApplicability(appliesTo, activity)}. Its bonus only reaches a Build whose product is in that group.</p>
+      ) : null}
+      {!deriving && scienceActivities ? (
+        <p className="iw-muted mt-1 text-xs">Affects {scienceActivities} jobs: the system cost index part of the fee and the job time.</p>
       ) : null}
       {compatibility === false ? <p className="mt-1 text-xs text-danger">This rig is not compatible with the selected structure type.</p> : null}
     </div>

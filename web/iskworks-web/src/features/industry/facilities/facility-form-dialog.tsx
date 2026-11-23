@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   createFacility,
   getSystemCostIndex,
+  NO_RIG_SCIENCE_BONUSES,
   resolveKnownStructure,
   searchKnownStructures,
   searchNpcStations,
@@ -11,6 +12,7 @@ import {
   type FacilityInput,
   type FacilityProfile,
   type KnownStructure,
+  type RigScienceBonuses,
   type SecurityClass,
 } from "../../../api/industry";
 import { getStructureManufacturingModifiers, searchStructureTypes } from "../../../api/sde";
@@ -115,6 +117,13 @@ function facilityInput(profile: FacilityProfile): FacilityInput {
     rigs: profile.rigs,
   };
 }
+
+const SCIENCE_FIELDS: Array<[keyof RigScienceBonuses, string]> = [
+  ["inventionCostReductionPercent", "Invention cost reduction %"],
+  ["inventionTimeReductionPercent", "Invention time reduction %"],
+  ["copyingCostReductionPercent", "Copying cost reduction %"],
+  ["copyingTimeReductionPercent", "Copying time reduction %"],
+];
 
 export interface FacilityFormDialogProps {
   facility: FacilityProfile | null;
@@ -689,7 +698,7 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
               )}
               <div className="sm:col-span-2 border-t border-border pt-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div><h3 className="text-sm font-semibold">Applicable rigs</h3><p className="iw-muted text-xs">Capture only rigs that affect the {form.role === "reaction" ? "reaction" : "manufacturing"} category represented by this profile.</p></div>
+                  <div><h3 className="text-sm font-semibold">Applicable rigs</h3><p className="iw-muted text-xs">{form.role === "reaction" ? "Capture only rigs that affect the reaction category represented by this profile." : "Capture the rigs that affect the manufacturing category represented by this profile, and any invention or copying rigs."}</p></div>
                   <button className="iw-button-secondary" disabled={form.rigs.length >= 3} onClick={addRig} type="button"><Plus className="mr-2 h-4 w-4" />Add rig</button>
                 </div>
                 <div className="mt-3 grid gap-3">
@@ -706,6 +715,14 @@ export function FacilityFormDialog({ facility, open, onClose, onSaved }: Facilit
                       />
                       <Field label="Material reduction %" value={rig.materialReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { materialReductionPercent: value })} />
                       <Field label="Time reduction %" value={rig.timeReductionPercent} onChange={(value) => updateRig(rig.slotNumber, { timeReductionPercent: value })} />
+                      {form.role === "manufacturing" ? SCIENCE_FIELDS.map(([key, label]) => (
+                        <Field
+                          key={key}
+                          label={label}
+                          value={(rig.science ?? NO_RIG_SCIENCE_BONUSES)[key]}
+                          onChange={(value) => updateRig(rig.slotNumber, { science: { ...NO_RIG_SCIENCE_BONUSES, ...rig.science, [key]: value } })}
+                        />
+                      )) : null}
                     </div>
                   ))}
                 </div>

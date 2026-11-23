@@ -319,6 +319,20 @@ describe("InventionPage", () => {
     expect(within(ledger).getByText("429K")).toBeInTheDocument();
   });
 
+  test("a fee reduced by the structure and its rigs says by how much", async () => {
+    respond(quote({
+      jobFee: { ...quote().jobFee, indexCostReductionPercent: "27.444", systemIndexCost: "5884.1465" },
+    }));
+    renderPage(`/invention?product=2185&option=none`);
+
+    const details = await screen.findByRole("complementary", { name: "No decryptor" });
+    const ledger = within(details).getByRole("region", { name: "Attempt cost" });
+    // Only the invention fee has a bonus; the copy fee's line stays out.
+    expect(within(ledger).getAllByText("Structure and rig bonuses")).toHaveLength(1);
+    expect(within(ledger).getByText("−27.4%")).toBeInTheDocument();
+    expect(screen.queryByText(/bonuses for invention are not applied/)).not.toBeInTheDocument();
+  });
+
   test("copies the shopping list for the confident attempts", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

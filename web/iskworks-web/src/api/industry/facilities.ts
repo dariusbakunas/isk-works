@@ -65,6 +65,9 @@ export interface FacilityProfile {
     typeName: string;
     materialReductionPercent: string;
     timeReductionPercent: string;
+    /** Invention and copying bonuses. A profile always carries them; left
+     * out of an input they are zero. */
+    science?: RigScienceBonuses;
   }>;
   archivedAt: string | null;
   revision: number;
@@ -159,6 +162,22 @@ export interface FacilityInput {
   notes: string;
   rigs: FacilityProfile["rigs"];
 }
+
+/** What a fitted rig takes off invention and copying jobs, as percentages
+ * for the profile's security class. */
+export interface RigScienceBonuses {
+  inventionCostReductionPercent: string;
+  inventionTimeReductionPercent: string;
+  copyingCostReductionPercent: string;
+  copyingTimeReductionPercent: string;
+}
+
+export const NO_RIG_SCIENCE_BONUSES: RigScienceBonuses = {
+  inventionCostReductionPercent: "0",
+  inventionTimeReductionPercent: "0",
+  copyingCostReductionPercent: "0",
+  copyingTimeReductionPercent: "0",
+};
 
 export function listFacilities(): Promise<FacilityProfile[]> {
   return request("/api/industry/facilities");

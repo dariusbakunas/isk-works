@@ -306,7 +306,6 @@ export function InventionPage() {
               Unit cost assumes every manufacturing input is bought at market
               {quote.manufacturingInstallationIncluded ? "" : " and leaves out the installation cost"}. A{" "}
               <Link className="text-primary hover:underline" to="/builds">Build plan</Link> gives the exact figure.
-              Structure and rig bonuses for invention are not applied, so the job fee reads slightly high.
             </p>
           </div>
         )}

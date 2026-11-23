@@ -73,7 +73,7 @@ export function InventionInspector({
           <Line emphasis label="Unit cost"><Money value={option.unitCost} /></Line>
           {quote.inventionDurationSeconds !== null ? (
             <Line label="Invention time">
-              <span title="With Advanced Industry only. Structure and rig time bonuses are not applied.">
+              <span title="With Advanced Industry and the invention facility's role and rig time bonuses.">
                 {formatDuration(quote.inventionDurationSeconds)}
               </span>
             </Line>
@@ -131,6 +131,7 @@ function Money({ value }: { value: string | null }) {
 /** A job fee that opens into its lines, as the industry window lists them. */
 function FeeLine({ fee, label }: { fee: ScienceJobFee; label: string }) {
   const percent = fee.systemCostIndex === null ? "unknown" : formatPercent(Number(fee.systemCostIndex) * 100, 2);
+  const bonus = Number(fee.indexCostReductionPercent);
   return (
     <details className="group">
       <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] gap-2">
@@ -141,6 +142,13 @@ function FeeLine({ fee, label }: { fee: ScienceJobFee; label: string }) {
         <Line label="Estimated item value"><Money value={fee.estimatedItemValue} /></Line>
         <Line label="Job cost base (2%)"><Money value={fee.jobCostBase} /></Line>
         <Line label={`System cost index (${percent})`}><Money value={fee.systemIndexCost} /></Line>
+        {bonus > 0 ? (
+          <Line label="Structure and rig bonuses">
+            <span title="The structure's role bonus and its rigs reduce the system cost index part only.">
+              −{formatPercent(bonus, 1)}
+            </span>
+          </Line>
+        ) : null}
         <Line label="Facility tax"><Money value={fee.facilityTax} /></Line>
         <Line label="SCC surcharge"><Money value={fee.sccSurcharge} /></Line>
         {fee.allianceSurcharge !== null && Number(fee.allianceSurcharge) > 0 ? (

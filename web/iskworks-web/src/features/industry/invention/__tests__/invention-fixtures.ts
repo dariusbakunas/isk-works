@@ -42,6 +42,8 @@ export const jobFee: ScienceJobFee = {
   estimatedItemValue: "9890000.0000",
   jobCostBase: "197800.0000",
   systemCostIndex: "0.041",
+  unmodifiedSystemIndexCost: "8109.8000",
+  indexCostReductionPercent: "0",
   systemIndexCost: "8109.8000",
   facilityTax: "1978.0000",
   sccSurcharge: "7912.0000",
