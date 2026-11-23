@@ -84,9 +84,12 @@ index is absent, the estimate is incomplete and zero is not substituted; a
 Build can supply a manual EIV fallback.
 
 The schema includes reusable ESI observation tables for adjusted prices and
-manufacturing system cost indices. `apps/iskworks-worker` refreshes adjusted
-prices and system cost indices from ESI, and values are persisted at their
-source precision. The
+system cost indices. `apps/iskworks-worker` refreshes adjusted prices and
+system cost indices from ESI, and values are persisted at their source
+precision. For each registered solar system the worker stores the
+manufacturing index and, from the same response, the invention and copying
+indices (`latest_system_cost_index_for`). Build planning reads only the
+manufacturing one. The
 active normalized SDE imports solar-system names and a targeted manufacturing
 dogma projection from `typeDogma.jsonl`. Consequently:
 

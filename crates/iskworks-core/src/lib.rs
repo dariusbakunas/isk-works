@@ -107,7 +107,9 @@ pub use esi_observation::{
     EsiResponseMetadata, EveEntityName, StructureInformation, WalletJournalObservation,
     WalletTransactionObservation,
 };
-pub use esi_refresh_state::{CharacterSourceRefreshRepository, EvidenceRefreshRepository};
+pub use esi_refresh_state::{
+    CharacterSourceRefreshRepository, EvidenceRefreshRepository, ScienceCostIndices,
+};
 pub use esi_sync_run::EsiSyncRunRepository;
 pub use esi_wallet::{EntityNameRepository, EsiWalletRepository};
 pub use facility::defaults as facility_defaults;

@@ -1,4 +1,5 @@
 use super::*;
+use iskworks_core::{IndustryActivity, ScienceCostIndices};
 
 #[sqlx::test(migrations = "../../migrations")]
 #[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
@@ -387,6 +388,7 @@ async fn failing_prices_and_indices_back_off_exponentially_until_a_success(pool:
             system_id,
             claim,
             Decimal::new(1, 2),
+            ScienceCostIndices::default(),
             at,
             at,
             None,
@@ -461,6 +463,7 @@ async fn expired_system_index_claim_cannot_overwrite_a_newer_claim(pool: PgPool)
             system_id,
             first_claim,
             Decimal::new(1, 2),
+            ScienceCostIndices::default(),
             first,
             first + chrono::Duration::hours(1),
             None,
@@ -473,6 +476,7 @@ async fn expired_system_index_claim_cannot_overwrite_a_newer_claim(pool: PgPool)
             system_id,
             second_claim,
             Decimal::new(2, 2),
+            ScienceCostIndices::default(),
             second,
             second + chrono::Duration::hours(1),
             None,
@@ -581,6 +585,7 @@ async fn failed_system_index_refresh_preserves_the_last_stale_observation(pool: 
             30_000_142,
             initial_claim,
             Decimal::new(425, 4),
+            ScienceCostIndices::default(),
             observed_at,
             observed_at + chrono::Duration::hours(1),
             None,
@@ -622,4 +627,68 @@ async fn failed_system_index_refresh_preserves_the_last_stale_observation(pool: 
         .unwrap();
     assert!(!overlay.pending);
     assert_eq!(overlay.last_error.as_deref(), Some("temporary ESI error"));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+async fn science_cost_indices_are_stored_and_read_per_activity(pool: PgPool) {
+    let repository = PgEsiRepository::new(pool.clone());
+    let system_id = 30_000_142;
+    let at = crate::db_now();
+    repository
+        .register_system_cost_index(system_id, at)
+        .await
+        .unwrap();
+    let claim = repository
+        .begin_system_cost_index_refresh(system_id, at, at + chrono::Duration::minutes(1))
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(repository
+        .complete_system_cost_index_refresh(
+            system_id,
+            claim,
+            Decimal::new(979, 4),
+            ScienceCostIndices {
+                invention: Some(Decimal::new(760, 4)),
+                copying: None,
+            },
+            at,
+            at + chrono::Duration::hours(1),
+            None,
+            Some("fixture"),
+        )
+        .await
+        .unwrap());
+
+    let latest = |activity| {
+        let repository = &repository;
+        async move {
+            repository
+                .latest_system_cost_index_for(system_id, activity)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        latest(IndustryActivity::Invention).await,
+        Some((Decimal::new(760, 4), at))
+    );
+    // ESI did not list copying, so nothing is stored for it.
+    assert_eq!(latest(IndustryActivity::Copying).await, None);
+    // An activity that is never observed has no index.
+    assert_eq!(latest(IndustryActivity::Reaction).await, None);
+    // The manufacturing read is unchanged by the science rows beside it.
+    assert_eq!(
+        latest(IndustryActivity::Manufacturing).await,
+        Some((Decimal::new(979, 4), at))
+    );
+    assert_eq!(
+        repository
+            .latest_system_cost_index(system_id)
+            .await
+            .unwrap(),
+        Some((Decimal::new(979, 4), at))
+    );
 }

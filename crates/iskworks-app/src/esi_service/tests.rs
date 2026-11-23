@@ -2253,6 +2253,7 @@ impl EvidenceRefreshRepository for RecordingPriceSaves {
         _solar_system_id: i64,
         _claim: DateTime<Utc>,
         _cost_index: Decimal,
+        _science: iskworks_core::ScienceCostIndices,
         _observed_at: DateTime<Utc>,
         _next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,

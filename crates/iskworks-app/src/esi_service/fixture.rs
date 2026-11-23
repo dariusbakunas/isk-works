@@ -184,6 +184,8 @@ impl EsiTransport for FixtureEsiTransport {
                 solar_system_id: 30_000_772,
                 manufacturing: "0.0979".parse().expect("fixture cost index"),
                 reaction: "0.0450".parse().expect("fixture cost index"),
+                invention: Some("0.0760".parse().expect("fixture cost index")),
+                copying: Some("0.0310".parse().expect("fixture cost index")),
             }],
             not_modified: false,
             metadata: EsiResponseMetadata {

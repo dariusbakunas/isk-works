@@ -168,6 +168,38 @@ fn manufacturing_and_reaction_cost_indices_are_selected_from_industry_activities
 }
 
 #[test]
+fn science_cost_indices_are_kept_when_present() {
+    let raw = serde_json::json!({
+        "solar_system_id": 30000772,
+        "cost_indices": [
+            { "activity": "copying", "cost_index": 0.0123 },
+            { "activity": "invention", "cost_index": 0.076 },
+            { "activity": "manufacturing", "cost_index": 0.0979 },
+            { "activity": "reaction", "cost_index": 0.0231 }
+        ]
+    });
+
+    let value = parse_industry_system(raw).unwrap();
+    assert_eq!(value.invention, Some(Decimal::from_str("0.076").unwrap()));
+    assert_eq!(value.copying, Some(Decimal::from_str("0.0123").unwrap()));
+}
+
+#[test]
+fn a_missing_science_cost_index_is_not_an_invalid_response() {
+    let raw = serde_json::json!({
+        "solar_system_id": 30000772,
+        "cost_indices": [
+            { "activity": "manufacturing", "cost_index": 0.0979 },
+            { "activity": "reaction", "cost_index": 0.0231 }
+        ]
+    });
+
+    let value = parse_industry_system(raw).unwrap();
+    assert_eq!(value.invention, None);
+    assert_eq!(value.copying, None);
+}
+
+#[test]
 fn industry_system_without_a_reaction_cost_index_is_an_invalid_response() {
     let raw = serde_json::json!({
         "solar_system_id": 30000772,

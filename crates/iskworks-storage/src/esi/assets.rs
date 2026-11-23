@@ -2,7 +2,8 @@ use super::sync_runs::{checksum, finalize_run};
 use super::*;
 use async_trait::async_trait;
 use iskworks_core::{
-    EsiAssetSnapshotRepository, EvidenceRefreshRepository, RetryPolicy, StructureNameRepository,
+    EsiAssetSnapshotRepository, EvidenceRefreshRepository, IndustryActivity, RetryPolicy,
+    ScienceCostIndices, StructureNameRepository,
 };
 
 /// Rows per batched `esi_asset_observations` INSERT. Each row binds 11
@@ -183,13 +184,26 @@ impl iskworks_core::AdjustedPriceRepository for PgEsiRepository {
         &self,
         solar_system_id: i64,
     ) -> Result<Option<(Decimal, DateTime<Utc>)>, StoreError> {
+        self.latest_system_cost_index_for(solar_system_id, IndustryActivity::Manufacturing)
+            .await
+    }
+
+    async fn latest_system_cost_index_for(
+        &self,
+        solar_system_id: i64,
+        activity: IndustryActivity,
+    ) -> Result<Option<(Decimal, DateTime<Utc>)>, StoreError> {
+        let Some(activity) = cost_index_activity(activity) else {
+            return Ok(None);
+        };
         sqlx::query_as(
             r#"SELECT cost_index,observed_at
                FROM industry_system_cost_index_observations
-               WHERE solar_system_id=$1 AND activity='manufacturing'
+               WHERE solar_system_id=$1 AND activity=$2
                ORDER BY observed_at DESC LIMIT 1"#,
         )
         .bind(solar_system_id)
+        .bind(activity)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_sqlx)
@@ -783,6 +797,7 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         solar_system_id: i64,
         claim: DateTime<Utc>,
         cost_index: Decimal,
+        science: ScienceCostIndices,
         observed_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
@@ -802,24 +817,35 @@ impl EvidenceRefreshRepository for PgEsiRepository {
             return Ok(false);
         }
         let checksum = etag.unwrap_or("esi-industry-systems");
-        sqlx::query(
-            r#"INSERT INTO industry_system_cost_index_observations
-               (id,solar_system_id,activity,cost_index,observed_at,expires_at,
-                etag,source_checksum,source_url)
-               VALUES ($1,$2,'manufacturing',$3,$4,$5,$6,$7,$8)
-               ON CONFLICT (solar_system_id,activity,observed_at,source_checksum) DO NOTHING"#,
-        )
-        .bind(Uuid::new_v4())
-        .bind(solar_system_id)
-        .bind(cost_index)
-        .bind(observed_at)
-        .bind(next_refresh_at)
-        .bind(etag)
-        .bind(checksum)
-        .bind("https://esi.evetech.net/latest/industry/systems/")
-        .execute(&mut *tx)
-        .await
-        .map_err(map_sqlx)?;
+        let observed = [
+            (IndustryActivity::Manufacturing, Some(cost_index)),
+            (IndustryActivity::Invention, science.invention),
+            (IndustryActivity::Copying, science.copying),
+        ];
+        for (activity, value) in observed {
+            let (Some(activity), Some(value)) = (cost_index_activity(activity), value) else {
+                continue;
+            };
+            sqlx::query(
+                r#"INSERT INTO industry_system_cost_index_observations
+                   (id,solar_system_id,activity,cost_index,observed_at,expires_at,
+                    etag,source_checksum,source_url)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                   ON CONFLICT (solar_system_id,activity,observed_at,source_checksum) DO NOTHING"#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(solar_system_id)
+            .bind(activity)
+            .bind(value)
+            .bind(observed_at)
+            .bind(next_refresh_at)
+            .bind(etag)
+            .bind(checksum)
+            .bind("https://esi.evetech.net/latest/industry/systems/")
+            .execute(&mut *tx)
+            .await
+            .map_err(map_sqlx)?;
+        }
         sqlx::query(
             r#"UPDATE industry_system_cost_index_registrations
                SET refresh_state='current',observed_at=$2,
@@ -888,5 +914,16 @@ impl EvidenceRefreshRepository for PgEsiRepository {
         .map_err(map_sqlx)?;
         tx.commit().await.map_err(map_sqlx)?;
         Ok(true)
+    }
+}
+
+/// The `activity` value an observed cost index is stored under. Only these
+/// three activities are kept.
+fn cost_index_activity(activity: IndustryActivity) -> Option<&'static str> {
+    match activity {
+        IndustryActivity::Manufacturing => Some("manufacturing"),
+        IndustryActivity::Invention => Some("invention"),
+        IndustryActivity::Copying => Some("copying"),
+        _ => None,
     }
 }
