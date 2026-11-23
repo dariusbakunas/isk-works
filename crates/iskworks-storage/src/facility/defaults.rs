@@ -1,5 +1,6 @@
 //! `industry_facility_defaults`: the workspace default facility per EVE
-//! industry target filter (`target_filter_id NULL` is the role's fallback).
+//! industry target filter (`target_filter_id NULL` is the role's fallback),
+//! and `industry_invention_facility_defaults`: the one invention default.
 
 use async_trait::async_trait;
 use iskworks_core::facility_defaults::{
@@ -50,11 +51,15 @@ pub(super) async fn clear_facility<'e>(
     executor: impl PgExecutor<'e>,
     facility_id: FacilityProfileId,
 ) -> Result<(), FacilityError> {
-    sqlx::query("DELETE FROM industry_facility_defaults WHERE facility_profile_id = $1")
-        .bind(facility_id.0)
-        .execute(executor)
-        .await
-        .map_err(map_error)?;
+    sqlx::query(
+        "WITH targets AS ( \
+           DELETE FROM industry_facility_defaults WHERE facility_profile_id = $1) \
+         DELETE FROM industry_invention_facility_defaults WHERE facility_profile_id = $1",
+    )
+    .bind(facility_id.0)
+    .execute(executor)
+    .await
+    .map_err(map_error)?;
     Ok(())
 }
 
@@ -147,6 +152,75 @@ impl FacilityDefaultsRepository for PgFacilityRepository {
                 }
             }
         }
+        tx.commit().await.map_err(map_error)
+    }
+
+    async fn invention_facility_default(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<FacilityProfileId>, FacilityError> {
+        let id = sqlx::query_scalar::<_, Uuid>(
+            "SELECT facility_profile_id FROM industry_invention_facility_defaults \
+             WHERE workspace_id = $1",
+        )
+        .bind(workspace_id.0)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_error)?;
+        Ok(id.map(FacilityProfileId))
+    }
+
+    async fn set_invention_facility_default(
+        &self,
+        workspace_id: WorkspaceId,
+        facility_profile_id: Option<FacilityProfileId>,
+    ) -> Result<(), FacilityError> {
+        let Some(facility_profile_id) = facility_profile_id else {
+            sqlx::query("DELETE FROM industry_invention_facility_defaults WHERE workspace_id = $1")
+                .bind(workspace_id.0)
+                .execute(&self.pool)
+                .await
+                .map_err(map_error)?;
+            return Ok(());
+        };
+        let mut tx = self.pool.begin().await.map_err(map_error)?;
+        // FOR SHARE keeps the profile from being archived underneath this
+        // write.
+        let archived = sqlx::query_scalar::<_, bool>(
+            "SELECT archived_at IS NOT NULL FROM industry_facility_profiles \
+             WHERE workspace_id = $1 AND id = $2 FOR SHARE",
+        )
+        .bind(workspace_id.0)
+        .bind(facility_profile_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        match archived {
+            None => {
+                return Err(FacilityError::Validation(
+                    "default facility was not found".into(),
+                ))
+            }
+            Some(true) => {
+                return Err(FacilityError::Validation(
+                    "default facility is archived".into(),
+                ))
+            }
+            Some(false) => {}
+        }
+        sqlx::query(
+            "INSERT INTO industry_invention_facility_defaults \
+               (workspace_id, facility_profile_id, updated_at) \
+             VALUES ($1, $2, now()) \
+             ON CONFLICT (workspace_id) \
+             DO UPDATE SET facility_profile_id = EXCLUDED.facility_profile_id, \
+               updated_at = EXCLUDED.updated_at",
+        )
+        .bind(workspace_id.0)
+        .bind(facility_profile_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_error)?;
         tx.commit().await.map_err(map_error)
     }
 }

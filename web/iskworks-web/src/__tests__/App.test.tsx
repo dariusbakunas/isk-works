@@ -2499,6 +2499,7 @@ describe("Facilities section tabs", () => {
           { role: "manufacturing", filterId: null, name: "Everything else", default: null, suggestion: null, status: "none" },
         ],
         bonuses: [],
+        invention: { default: null, facilities: [] },
       });
       throw new Error(`Unexpected request: ${url}`);
     });

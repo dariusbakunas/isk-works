@@ -9,13 +9,14 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 
 use super::{
-    default_status, facility_target_bonus, suggest_facility, target_filters_from_sde,
-    target_probes, DefaultStatus, FacilityDefault, FacilityDefaultAssignment,
-    FacilityDefaultChange, FacilityDefaultsRepository, TargetFilter,
+    default_candidates, default_status, facility_target_bonus, suggest_facility,
+    target_filters_from_sde, target_probes, DefaultStatus, FacilityDefault,
+    FacilityDefaultAssignment, FacilityDefaultChange, FacilityDefaultsRepository, TargetFilter,
 };
 use crate::facility::{
     FacilityError, FacilityProfileId, FacilityRole, IndustryFacilityProfile, ProductClassification,
 };
+use crate::invention::{ScienceActivity, ScienceFacilityBonus};
 use crate::WorkspaceId;
 
 /// A facility shown for a target, with its bonus for that target.
@@ -53,11 +54,42 @@ pub struct FacilityTargetBonusRow {
     pub covered: bool,
 }
 
+/// A facility as an invention site: what its role bonus and rigs take off
+/// an invention job's system cost index line and its time.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventionFacilityChoice {
+    pub facility_profile_id: FacilityProfileId,
+    pub facility_name: String,
+    pub cost_bonus_percent: Decimal,
+    pub time_bonus_percent: Decimal,
+}
+
+/// The workspace's one invention default and every facility it could be:
+/// manufacturing profiles first (an engineering complex is where invention
+/// runs), each group in profile order.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventionDefaultRow {
+    pub default: Option<InventionFacilityChoice>,
+    pub facilities: Vec<InventionFacilityChoice>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FacilityDefaultsView {
     pub targets: Vec<DefaultTargetRow>,
     pub bonuses: Vec<FacilityTargetBonusRow>,
+    pub invention: InventionDefaultRow,
+}
+
+/// The default facilities for inventing and then building one product.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductFacilityDefaults {
+    /// The manufacturing default a new Build of the product would get.
+    pub manufacturing_facility_id: Option<FacilityProfileId>,
+    pub invention_facility_id: Option<FacilityProfileId>,
 }
 
 pub const FALLBACK_TARGET_NAME: &str = "Everything else";
@@ -77,6 +109,7 @@ struct Snapshot {
     profiles: Vec<IndustryFacilityProfile>,
     filters: Vec<TargetFilter>,
     probes: BTreeMap<i64, Vec<ProductClassification>>,
+    invention_default: Option<FacilityProfileId>,
 }
 
 impl Snapshot {
@@ -105,6 +138,10 @@ impl FacilityDefaultsService {
     async fn snapshot(&self, workspace_id: WorkspaceId) -> Result<Snapshot, FacilityError> {
         let defaults = self.repository.list_facility_defaults(workspace_id).await?;
         let profiles = self.repository.list_facility_profiles(workspace_id).await?;
+        let invention_default = self
+            .repository
+            .invention_facility_default(workspace_id)
+            .await?;
         let filters = target_filters_from_sde(
             self.sde
                 .industry_target_filters_by_activity()
@@ -131,6 +168,7 @@ impl FacilityDefaultsService {
             profiles,
             filters,
             probes,
+            invention_default,
         })
     }
 
@@ -206,6 +244,125 @@ impl FacilityDefaultsService {
             .apply_facility_default_changes(workspace_id, changes)
             .await?;
         self.view(workspace_id).await
+    }
+
+    /// Sets or (`None`) clears the invention default and returns the
+    /// refreshed view.
+    pub async fn assign_invention(
+        &self,
+        workspace_id: WorkspaceId,
+        facility_profile_id: Option<FacilityProfileId>,
+    ) -> Result<FacilityDefaultsView, FacilityError> {
+        if let Some(id) = facility_profile_id {
+            let profiles = self.repository.list_facility_profiles(workspace_id).await?;
+            if !profiles
+                .iter()
+                .any(|profile| profile.id == id && profile.archived_at.is_none())
+            {
+                return Err(FacilityError::Validation(
+                    "default facility was not found or is archived".into(),
+                ));
+            }
+        }
+        self.repository
+            .set_invention_facility_default(workspace_id, facility_profile_id)
+            .await?;
+        self.view(workspace_id).await
+    }
+
+    /// The facilities to pre-select for inventing and building
+    /// `product_type_id`: the invention default, and the manufacturing
+    /// default by the rule new Builds follow (most specific matching target,
+    /// then the fallback, skipping a default whose facility is no longer an
+    /// active manufacturing profile). Without a product only the invention
+    /// default is known.
+    pub async fn for_product(
+        &self,
+        workspace_id: WorkspaceId,
+        product_type_id: Option<i64>,
+    ) -> Result<ProductFacilityDefaults, FacilityError> {
+        let profiles = self.repository.list_facility_profiles(workspace_id).await?;
+        let active = |id: FacilityProfileId| {
+            profiles
+                .iter()
+                .find(|profile| profile.id == id && profile.archived_at.is_none())
+        };
+        let invention_facility_id = self
+            .repository
+            .invention_facility_default(workspace_id)
+            .await?
+            .filter(|id| active(*id).is_some());
+        let defaults = self.repository.list_facility_defaults(workspace_id).await?;
+        let manufacturing_facility_id = match product_type_id {
+            Some(type_id)
+                if defaults
+                    .iter()
+                    .any(|default| default.role == FacilityRole::Manufacturing) =>
+            {
+                let sde_error =
+                    |error: iskworks_sde::SdeError| FacilityError::Persistence(error.to_string());
+                let filters = target_filters_from_sde(
+                    self.sde
+                        .industry_target_filters_by_activity()
+                        .await
+                        .map_err(sde_error)?,
+                );
+                let product = self
+                    .sde
+                    .type_classifications(&[type_id])
+                    .await
+                    .map_err(sde_error)?
+                    .get(&type_id)
+                    .map(|classification| ProductClassification {
+                        category_id: classification.category_id,
+                        group_id: classification.group_id,
+                    })
+                    .unwrap_or_default();
+                default_candidates(FacilityRole::Manufacturing, product, &filters, &defaults)
+                    .into_iter()
+                    .map(|candidate| candidate.facility_profile_id)
+                    .find(|id| {
+                        active(*id)
+                            .is_some_and(|profile| profile.role == FacilityRole::Manufacturing)
+                    })
+            }
+            _ => None,
+        };
+        Ok(ProductFacilityDefaults {
+            manufacturing_facility_id,
+            invention_facility_id,
+        })
+    }
+}
+
+fn invention_choice(profile: &IndustryFacilityProfile) -> InventionFacilityChoice {
+    let bonus = ScienceFacilityBonus::from_profile(profile, ScienceActivity::Invention);
+    let percent =
+        |multiplier: Decimal| ((Decimal::ONE - multiplier) * Decimal::ONE_HUNDRED).normalize();
+    InventionFacilityChoice {
+        facility_profile_id: profile.id,
+        facility_name: profile.name.clone(),
+        cost_bonus_percent: percent(bonus.cost_multiplier),
+        time_bonus_percent: percent(bonus.time_multiplier),
+    }
+}
+
+fn invention_row(snapshot: &Snapshot) -> InventionDefaultRow {
+    let active = |role_is_manufacturing: bool| {
+        snapshot.profiles.iter().filter(move |profile| {
+            profile.archived_at.is_none()
+                && (profile.role == FacilityRole::Manufacturing) == role_is_manufacturing
+        })
+    };
+    InventionDefaultRow {
+        default: snapshot
+            .invention_default
+            .and_then(|id| snapshot.active_profile(id))
+            .map(invention_choice),
+        facilities: active(true)
+            .chain(active(false))
+            .map(invention_choice)
+            .collect(),
     }
 }
 
@@ -338,5 +495,9 @@ fn build_view(snapshot: &Snapshot) -> Result<FacilityDefaultsView, FacilityError
             });
         }
     }
-    Ok(FacilityDefaultsView { targets, bonuses })
+    Ok(FacilityDefaultsView {
+        targets,
+        bonuses,
+        invention: invention_row(snapshot),
+    })
 }

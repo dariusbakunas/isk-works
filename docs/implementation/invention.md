@@ -160,8 +160,12 @@ calculator: it has no save, record or "add to plan" action.
 - Inputs live in the URL (`product`, `char`, `skills`, `inv`, `mfg`, `runs`,
   `option`), so a comparison can be bookmarked. A picker left alone takes a
   default: the character chosen last on this page (else the first), and
-  the first manufacturing facility for both facilities. "None" is a choice
-  of its own.
+  for the facilities the workspace's facility defaults
+  (`GET /api/industry/facility-defaults/for-product`): the invention
+  default, and the manufacturing default a new Build of the product would
+  get. With no default set, both start on the first manufacturing
+  facility. A facility picked here stays in the URL and wins over the
+  default. "None" is a choice of its own.
 - Each skill the job lists has a level stepper. Changing one re-quotes with
   an override and marks the skill; Reset drops every override.
 - The table has one row per option, sorted by unit cost with unpriced rows

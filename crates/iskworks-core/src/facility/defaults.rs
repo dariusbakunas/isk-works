@@ -5,6 +5,9 @@
 //! their facility from the most specific target matching their product that
 //! has a default, then from the role's fallback.
 //!
+//! Invention has no rig targets (science rigs apply to every product), so
+//! it has a single workspace default, kept apart from the per-target ones.
+//!
 //! This module is pure policy: target specificity, resolution, and the
 //! per-target bonus/coverage/suggestion math the Defaults view shows.
 
@@ -106,6 +109,21 @@ pub trait FacilityDefaultsRepository: Send + Sync {
         &self,
         workspace_id: crate::WorkspaceId,
         changes: Vec<FacilityDefaultChange>,
+    ) -> Result<(), FacilityError>;
+
+    /// The facility new invention jobs are quoted in, if one is set.
+    async fn invention_facility_default(
+        &self,
+        workspace_id: crate::WorkspaceId,
+    ) -> Result<Option<FacilityProfileId>, FacilityError>;
+
+    /// Sets or (`None`) clears the invention default. A facility outside
+    /// the workspace or archived is a `Validation` error; either role is
+    /// accepted, since an invention job can be priced in any profile.
+    async fn set_invention_facility_default(
+        &self,
+        workspace_id: crate::WorkspaceId,
+        facility_profile_id: Option<FacilityProfileId>,
     ) -> Result<(), FacilityError>;
 }
 
@@ -370,7 +388,7 @@ pub fn default_status(
 mod service;
 pub use service::{
     DefaultTargetRow, FacilityChoice, FacilityDefaultsService, FacilityDefaultsView,
-    FacilityTargetBonusRow,
+    FacilityTargetBonusRow, InventionDefaultRow, InventionFacilityChoice, ProductFacilityDefaults,
 };
 
 #[cfg(test)]

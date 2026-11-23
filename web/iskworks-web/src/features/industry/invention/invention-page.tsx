@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { listCharacters } from "../../../api/characters";
-import { listFacilities } from "../../../api/industry";
+import { getProductFacilityDefaults, listFacilities } from "../../../api/industry";
 import {
   quoteInvention,
   searchInventableProducts,
@@ -82,8 +82,17 @@ export function InventionPage() {
   const availability = useLoad((signal) => searchInventableProducts("", signal), "availability");
   const characters = useLoad(() => listCharacters(), "characters");
   const facilities = useLoad(() => listFacilities(), "facilities");
+  // The workspace's facility defaults for this product. They can fail or
+  // be unset: the pickers then start on the first facility.
+  const defaultsLoad = useLoad(
+    (signal) => getProductFacilityDefaults(view.productTypeId, signal),
+    `defaults:${view.productTypeId}`,
+  );
+  // A previous product's defaults stay in `data` while the next load runs.
+  const defaults = defaultsLoad.loading ? null : defaultsLoad.data;
   const settled = (characters.data !== null || characters.error !== null)
-    && (facilities.data !== null || facilities.error !== null);
+    && (facilities.data !== null || facilities.error !== null)
+    && !defaultsLoad.loading;
   const roster = useMemo(() => characters.data ?? [], [characters.data]);
   const profiles = useMemo(() => (facilities.data ?? []).filter((profile) => profile.archivedAt === null), [facilities.data]);
   const manufacturingProfiles = useMemo(() => profiles.filter((profile) => profile.role === "manufacturing"), [profiles]);
@@ -100,8 +109,16 @@ export function InventionPage() {
   }, [roster, preferredCharacter]);
   const choices = {
     characterId: resolveChoice(view.characterId, characterIds),
-    inventionFacilityId: resolveChoice(view.inventionFacilityId, inventionProfiles.map((profile) => profile.id)),
-    manufacturingFacilityId: resolveChoice(view.manufacturingFacilityId, manufacturingProfiles.map((profile) => profile.id)),
+    inventionFacilityId: resolveChoice(
+      view.inventionFacilityId,
+      inventionProfiles.map((profile) => profile.id),
+      defaults?.inventionFacilityId,
+    ),
+    manufacturingFacilityId: resolveChoice(
+      view.manufacturingFacilityId,
+      manufacturingProfiles.map((profile) => profile.id),
+      defaults?.manufacturingFacilityId,
+    ),
   };
   const command = settled ? inventionQuoteCommand(view, choices) : null;
   const quoteLoad = useLoad(command ? (signal) => quoteInvention(command, signal) : null, `quote:${JSON.stringify(command)}`);

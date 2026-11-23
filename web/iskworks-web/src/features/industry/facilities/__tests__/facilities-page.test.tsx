@@ -98,7 +98,7 @@ describe("FacilitiesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     industryApi.listFacilities.mockResolvedValue([]);
-    industryApi.getFacilityDefaults.mockResolvedValue({ targets: [], bonuses: [] });
+    industryApi.getFacilityDefaults.mockResolvedValue({ targets: [], bonuses: [], invention: { default: null, facilities: [] } });
     industryApi.searchSolarSystems.mockResolvedValue([]);
     industryApi.searchNpcStations.mockResolvedValue([]);
     industryApi.searchKnownStructures.mockResolvedValue([]);
@@ -245,15 +245,19 @@ describe("FacilitiesPage", () => {
         status: name === "Charges" ? "coverageLost" : "set",
       })),
       bonuses: [],
+      invention: {
+        default: { facilityProfileId: choice.facilityProfileId, facilityName: choice.facilityName, costBonusPercent: "3", timeBonusPercent: "15" },
+        facilities: [],
+      },
     });
 
     renderPage();
 
-    const defaults = await screen.findByLabelText("Default for: Small T1 Ships, Medium T1 Ships, Equipment, Charges");
+    const defaults = await screen.findByLabelText("Default for: Small T1 Ships, Medium T1 Ships, Equipment, Charges, Invention");
     expect(within(defaults).getByText("Small T1 Ships")).toBeInTheDocument();
     expect(within(defaults).getByText("Equipment")).toBeInTheDocument();
     expect(within(defaults).queryByText("Charges")).not.toBeInTheDocument();
-    expect(within(defaults).getByText("+1")).toBeInTheDocument();
+    expect(within(defaults).getByText("+2")).toBeInTheDocument();
     expect(within(defaults).getByRole("button", { name: "1 rig coverage warnings" })).toBeInTheDocument();
   });
 

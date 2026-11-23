@@ -33,9 +33,31 @@ export interface FacilityTargetBonus {
   covered: boolean;
 }
 
+/** A facility as an invention site: its role and rig bonuses on an
+ * invention job's cost index line and time. */
+export interface InventionFacilityChoice {
+  facilityProfileId: string;
+  facilityName: string;
+  costBonusPercent: string;
+  timeBonusPercent: string;
+}
+
+/** The one invention default, and every active facility it could be. */
+export interface InventionFacilityDefault {
+  default: InventionFacilityChoice | null;
+  facilities: InventionFacilityChoice[];
+}
+
 export interface FacilityDefaultsView {
   targets: FacilityDefaultTarget[];
   bonuses: FacilityTargetBonus[];
+  invention: InventionFacilityDefault;
+}
+
+/** The facilities to pre-select for inventing and building a product. */
+export interface ProductFacilityDefaults {
+  manufacturingFacilityId: string | null;
+  inventionFacilityId: string | null;
 }
 
 /** `facilityProfileId: null` clears the target. */
@@ -53,4 +75,18 @@ export function assignFacilityDefaults(
   assignments: FacilityDefaultAssignment[],
 ): Promise<FacilityDefaultsView> {
   return request("/api/industry/facility-defaults", json("PUT", { assignments }));
+}
+
+/** `facilityProfileId: null` clears the invention default. */
+export function assignInventionFacilityDefault(facilityProfileId: string | null): Promise<FacilityDefaultsView> {
+  return request("/api/industry/facility-defaults/invention", json("PUT", { facilityProfileId }));
+}
+
+/** Without a product only the invention default is known. */
+export function getProductFacilityDefaults(
+  productTypeId: number | null,
+  signal?: AbortSignal,
+): Promise<ProductFacilityDefaults> {
+  const query = productTypeId === null ? "" : `?productTypeId=${productTypeId}`;
+  return request(`/api/industry/facility-defaults/for-product${query}`, { signal });
 }

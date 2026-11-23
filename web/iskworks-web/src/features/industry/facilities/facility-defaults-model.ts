@@ -6,6 +6,8 @@ import type {
   FacilityTargetBonus,
 } from "../../../api/industry";
 
+export const INVENTION_TARGET_NAME = "Invention";
+
 export function targetKey(role: FacilityRole, filterId: number | null): string {
   return `${role}:${filterId ?? "fallback"}`;
 }
@@ -75,6 +77,12 @@ export function defaultsByFacility(view: FacilityDefaultsView | null): Map<strin
     entry.targets.push(target.name);
     if (target.status === "coverageLost") entry.coverageLost.push(target.name);
     byFacility.set(target.default.facilityProfileId, entry);
+  }
+  const invention = view?.invention?.default;
+  if (invention) {
+    const entry = byFacility.get(invention.facilityProfileId) ?? { targets: [], coverageLost: [] };
+    entry.targets.push(INVENTION_TARGET_NAME);
+    byFacility.set(invention.facilityProfileId, entry);
   }
   return byFacility;
 }

@@ -201,3 +201,77 @@ async fn archiving_or_deleting_a_facility_drops_its_defaults(pool: PgPool) {
         .unwrap_err();
     assert!(matches!(error, FacilityError::Validation(_)));
 }
+
+#[ignore = "requires DATABASE_URL and a PostgreSQL test database"]
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_invention_default_is_one_facility_of_either_role_per_workspace(pool: PgPool) {
+    let workspace_id = workspace(&pool).await;
+    let other_workspace = workspace(&pool).await;
+    let repository = PgFacilityRepository::new(pool.clone());
+    let lab = facility(
+        &repository,
+        workspace_id,
+        "Lab",
+        FacilityRole::Manufacturing,
+    )
+    .await;
+    let refinery = facility(
+        &repository,
+        workspace_id,
+        "Refinery",
+        FacilityRole::Reaction,
+    )
+    .await;
+    let foreign = facility(
+        &repository,
+        other_workspace,
+        "Foreign",
+        FacilityRole::Manufacturing,
+    )
+    .await;
+    let default = || async {
+        repository
+            .invention_facility_default(workspace_id)
+            .await
+            .unwrap()
+    };
+
+    assert_eq!(default().await, None);
+    for profile in [&lab, &refinery] {
+        repository
+            .set_invention_facility_default(workspace_id, Some(profile.id))
+            .await
+            .unwrap();
+        assert_eq!(default().await, Some(profile.id));
+    }
+
+    let error = repository
+        .set_invention_facility_default(workspace_id, Some(foreign.id))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, FacilityError::Validation(_)), "{error:?}");
+    assert_eq!(default().await, Some(refinery.id));
+
+    repository
+        .set_invention_facility_default(workspace_id, None)
+        .await
+        .unwrap();
+    assert_eq!(default().await, None);
+
+    // Archiving the default facility drops the default, and an archived
+    // facility cannot become it.
+    repository
+        .set_invention_facility_default(workspace_id, Some(lab.id))
+        .await
+        .unwrap();
+    repository
+        .archive(workspace_id, lab.id, lab.revision)
+        .await
+        .unwrap();
+    assert_eq!(default().await, None);
+    let error = repository
+        .set_invention_facility_default(workspace_id, Some(lab.id))
+        .await
+        .unwrap_err();
+    assert!(matches!(error, FacilityError::Validation(_)), "{error:?}");
+}

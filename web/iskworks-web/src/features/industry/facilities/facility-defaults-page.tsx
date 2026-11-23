@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   assignFacilityDefaults,
+  assignInventionFacilityDefault,
   getFacilityDefaults,
   listFacilities,
   type FacilityDefaultAssignment,
@@ -11,6 +12,7 @@ import {
   type FacilityDefaultsView,
   type FacilityProfile,
   type FacilityRole,
+  type InventionFacilityDefault,
 } from "../../../api/industry";
 import {
   OperationalTable,
@@ -72,17 +74,21 @@ export function FacilityDefaultsPage() {
       .catch((requestError) => setError(apiMessage(requestError)));
   }, []);
 
-  async function assign(assignments: FacilityDefaultAssignment[]) {
-    if (assignments.length === 0) return;
+  async function save(change: () => Promise<FacilityDefaultsView>) {
     setSaving(true);
     setError("");
     try {
-      setView(await assignFacilityDefaults(assignments));
+      setView(await change());
     } catch (requestError) {
       setError(apiMessage(requestError));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function assign(assignments: FacilityDefaultAssignment[]) {
+    if (assignments.length === 0) return;
+    await save(() => assignFacilityDefaults(assignments));
   }
 
   const pending = useMemo(() => (view ? suggestionAssignments(view) : []), [view]);
@@ -97,7 +103,7 @@ export function FacilityDefaultsPage() {
   return (
     <>
       <PageHeader eyebrow="Industry assumptions" title="Facilities">
-        Default facility per EVE rig target. New Builds take the most specific matching target's default, then “Everything else”.
+        Default facility per EVE rig target. New Builds take the most specific matching target's default, then “Everything else”. The Invention page starts with the same defaults.
       </PageHeader>
       <FacilitiesSectionTabs />
       {error ? <InlineAlert title="Facility defaults unavailable">{error}</InlineAlert> : null}
@@ -146,6 +152,13 @@ export function FacilityDefaultsPage() {
                   </OperationalTableGroup>
                 );
               })}
+              <OperationalTableGroup groupKey="invention" itemCount={1} label="Invention">
+                <InventionRow
+                  disabled={saving}
+                  invention={view.invention}
+                  onAssign={(facilityProfileId) => void save(() => assignInventionFacilityDefault(facilityProfileId))}
+                />
+              </OperationalTableGroup>
             </OperationalTable>
           </div>
         </>
@@ -234,6 +247,56 @@ function TargetRow({
       }}
       rowKey={targetKey(target.role, target.filterId)}
       status={status.tone === "warning" ? "warning" : "neutral"}
+    />
+  );
+}
+
+/** Invention has no rig targets: one default for every invention job. */
+function InventionRow({
+  disabled,
+  invention,
+  onAssign,
+}: {
+  disabled: boolean;
+  invention: InventionFacilityDefault;
+  onAssign: (facilityProfileId: string | null) => void;
+}) {
+  const chosen = invention.default;
+  return (
+    <OperationalTableRow
+      align="top"
+      cells={{
+        target: <span>All invention jobs</span>,
+        facility: (
+          <select
+            aria-label="Default facility for invention"
+            className="iw-input w-full"
+            disabled={disabled}
+            onChange={(event) => onAssign(event.target.value || null)}
+            value={chosen?.facilityProfileId ?? ""}
+          >
+            <option value="">— No default</option>
+            {invention.facilities.map((facility) => (
+              <option key={facility.facilityProfileId} value={facility.facilityProfileId}>
+                {`${facility.facilityName} (job cost ${percent(facility.costBonusPercent)} / time ${percent(facility.timeBonusPercent)})`}
+              </option>
+            ))}
+          </select>
+        ),
+        material: <span title="Invention uses no material bonus.">—</span>,
+        time: chosen ? percent(chosen.timeBonusPercent) : "—",
+        status: (
+          <span
+            title={chosen
+              ? "The Invention page starts with this facility."
+              : "The Invention page starts with the first manufacturing facility."}
+          >
+            <Badge tone={chosen ? "positive" : "muted"}>{chosen ? "Set" : "No default"}</Badge>
+          </span>
+        ),
+      }}
+      rowKey="invention"
+      status="neutral"
     />
   );
 }
