@@ -16,9 +16,10 @@ use iskworks_api::{build_router, AppState};
 use iskworks_app::{FakeSkillsCharacters, SkillsCharacter};
 use iskworks_core::{
     AdjustedPriceRepository, ConnectedCharacterId, FacilityError, FacilityKind, FacilityProfileId,
-    FacilityRole, IndustryActivity, IndustryError, IndustryFacilityProfile, IndustryRepository,
-    MarketError, MarketOrderSide, MarketOrderView, Money, NewWorkspace, PriceSource, PriceSourceId,
-    SecurityClass, StoreError, WorkspaceId, WorkspaceState,
+    FacilityRig, FacilityRole, IndustryActivity, IndustryError, IndustryFacilityProfile,
+    IndustryRepository, MarketError, MarketOrderSide, MarketOrderView, Money, NewWorkspace,
+    PriceSource, PriceSourceId, RigScienceBonuses, SecurityClass, StoreError, WorkspaceId,
+    WorkspaceState,
 };
 use iskworks_sde::{
     ActiveSde, Decryptor, ImportCounts, InventableProduct, InventionProduct, InventionRecipe,
@@ -44,6 +45,7 @@ const STARSHIP: i64 = 11_450;
 const MECHANICAL: i64 = 11_452;
 const PROCESS: i64 = 34_206;
 const AUGMENTATION: i64 = 34_203;
+const ADVANCED_INDUSTRY: i64 = 3_388;
 const SYSTEM: i64 = 30_000_142;
 
 struct FakeSde {
@@ -370,7 +372,7 @@ impl AdjustedPriceRepository for FakeAdjustedPrices {
         activity: IndustryActivity,
     ) -> Result<Option<(Decimal, DateTime<Utc>)>, StoreError> {
         let index = match activity {
-            IndustryActivity::Invention => "0.076018",
+            IndustryActivity::Invention => "0.076016",
             IndustryActivity::Copying => "0.031",
             _ => return Ok(None),
         };
@@ -430,10 +432,60 @@ fn character(levels: &[(i64, i64)]) -> SkillsCharacter {
     }
 }
 
+/// The structure the fixture job ran in: a nullsec Raitaru (3% job cost
+/// and 15% time role bonus) with Standup M-Set Invention Cost Optimization
+/// II (25.2%) and Standup M-Set Invention Accelerator II (50.4%).
+fn rigged_raitaru(workspace_id: WorkspaceId) -> IndustryFacilityProfile {
+    let rig =
+        |slot_number: u8, type_id: i64, type_name: &str, science: RigScienceBonuses| FacilityRig {
+            slot_number,
+            type_id,
+            type_name: type_name.to_string(),
+            material_reduction_percent: Decimal::ZERO,
+            time_reduction_percent: Decimal::ZERO,
+            applicability: Default::default(),
+            science,
+        };
+    IndustryFacilityProfile {
+        kind: FacilityKind::UpwellStructure,
+        structure_type_name: "Raitaru".to_string(),
+        security_class: SecurityClass::NullSec,
+        material_reduction_percent: Decimal::ONE,
+        time_reduction_percent: Decimal::from(15),
+        job_cost_reduction_percent: Decimal::from(3),
+        rigs: vec![
+            rig(
+                1,
+                43_878,
+                "Standup M-Set Invention Cost Optimization II",
+                RigScienceBonuses {
+                    invention_cost_reduction_percent: Decimal::new(252, 1),
+                    ..Default::default()
+                },
+            ),
+            rig(
+                2,
+                43_881,
+                "Standup M-Set Invention Accelerator II",
+                RigScienceBonuses {
+                    invention_time_reduction_percent: Decimal::new(504, 1),
+                    ..Default::default()
+                },
+            ),
+        ],
+        ..facility(workspace_id, FacilityRole::Manufacturing)
+    }
+}
+
 struct Fixture {
     app: axum::Router,
+    /// A profile with no bonuses.
     facility_id: Uuid,
+    raitaru_id: Uuid,
+    /// Invention skills at 5, Advanced Industry untrained.
     character_id: Uuid,
+    /// The same with Advanced Industry 5.
+    expert_id: Uuid,
 }
 
 fn all_prices() -> BTreeMap<i64, &'static str> {
@@ -451,24 +503,35 @@ fn fixture_with(invention_data: bool, prices: BTreeMap<i64, &'static str>) -> Fi
     let workspace_id = workspace.workspace.id;
     let facility = facility(workspace_id, FacilityRole::Manufacturing);
     let pilot = character(&[(ENCRYPTION, 5), (STARSHIP, 5), (MECHANICAL, 5)]);
+    let raitaru = rigged_raitaru(workspace_id);
+    let expert = character(&[
+        (ENCRYPTION, 5),
+        (STARSHIP, 5),
+        (MECHANICAL, 5),
+        (ADVANCED_INDUSTRY, 5),
+    ]);
     let facility_id = facility.id.0;
+    let raitaru_id = raitaru.id.0;
     let character_id = pilot.connection_id.0;
+    let expert_id = expert.connection_id.0;
     let app = build_router(
         AppState::new(Arc::new(ConfiguredWorkspaceRepository::new(
             WorkspaceState::configured(workspace.workspace, workspace.owner),
         )))
         .with_sde_repository(Arc::new(FakeSde { invention_data }))
         .with_industry_repository(Arc::new(FakeIndustry {
-            facilities: vec![facility],
+            facilities: vec![facility, raitaru],
         }))
         .with_market_repository(Arc::new(FakeMarket { prices }))
         .with_adjusted_price_repository(Arc::new(FakeAdjustedPrices))
-        .with_skills_characters(Arc::new(FakeSkillsCharacters(vec![pilot]))),
+        .with_skills_characters(Arc::new(FakeSkillsCharacters(vec![pilot, expert]))),
     );
     Fixture {
         app,
         facility_id,
+        raitaru_id,
         character_id,
+        expert_id,
     }
 }
 
@@ -560,8 +623,9 @@ async fn a_quote_matches_the_industry_window() {
     // 63,900 s with Advanced Industry untrained on this character.
     assert_eq!(quote["inventionDurationSeconds"], 63_900);
 
-    // The fee lines of the industry window, without its structure bonuses.
+    // The fee lines of the industry window, in a facility with no bonuses.
     let fee = &quote["jobFee"];
+    assert_eq!(fee["indexCostReductionPercent"], "0");
     assert_eq!(fee["estimatedItemValue"], "12687150");
     assert_eq!(whole(&fee["jobCostBase"]), Decimal::from(253_743));
     assert_eq!(whole(&fee["systemIndexCost"]), Decimal::from(19_289));
@@ -599,6 +663,42 @@ async fn a_quote_matches_the_industry_window() {
     );
     // Datacores 2 × 100,000 + 2 × 90,000.
     assert_eq!(whole(&quote["materialsCost"]), Decimal::from(380_000));
+}
+
+/// The job as the industry window showed it: 26,682 ISK and 06:21:39 in a
+/// rigged nullsec Raitaru at Advanced Industry 5.
+#[tokio::test]
+async fn a_rigged_structure_reduces_the_fee_and_the_time() {
+    let fixture = fixture();
+
+    let (status, body) = quote(
+        &fixture.app,
+        json!({
+            "productTypeId": NEMESIS,
+            "characterId": fixture.expert_id,
+            "inventionFacilityId": fixture.raitaru_id,
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let quote = &body["quote"];
+    let fee = &quote["jobFee"];
+    // Role bonus 3% and rig 25.2% multiply: 1 − 0.97 × 0.748.
+    assert_eq!(fee["indexCostReductionPercent"], "27.444");
+    assert_eq!(
+        whole(&fee["unmodifiedSystemIndexCost"]),
+        Decimal::from(19_289)
+    );
+    assert_eq!(whole(&fee["systemIndexCost"]), Decimal::from(13_995));
+    // Tax and surcharge are not reduced.
+    assert_eq!(whole(&fee["facilityTax"]), Decimal::from(2_537));
+    assert_eq!(whole(&fee["sccSurcharge"]), Decimal::from(10_150));
+    assert_eq!(whole(&fee["total"]), Decimal::from(26_682));
+    // 63,900 s × 0.85 (Advanced Industry 5) × 0.85 (role) × 0.496 (rig).
+    assert_eq!(quote["inventionDurationSeconds"], 6 * 3_600 + 21 * 60 + 39);
+    // The invention rigs do nothing for the copy; the role bonus does.
+    assert_eq!(quote["copyFee"]["indexCostReductionPercent"], "3");
 }
 
 #[tokio::test]
