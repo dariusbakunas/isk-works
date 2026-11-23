@@ -33,3 +33,23 @@ export function rememberProduct(product: RecentProduct): RecentProduct[] {
   }
   return next;
 }
+
+const CHARACTER_KEY = "iskworks.invention.character";
+
+/** The character last chosen on the page, which becomes its default. */
+export function readPreferredCharacter(): string | null {
+  try {
+    return window.localStorage.getItem(CHARACTER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberPreferredCharacter(connectionId: string): string {
+  try {
+    window.localStorage.setItem(CHARACTER_KEY, connectionId);
+  } catch {
+    // Storage is a convenience; the page works without it.
+  }
+  return connectionId;
+}

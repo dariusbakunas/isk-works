@@ -341,6 +341,25 @@ describe("InventionPage", () => {
     expect(within(details).getByText("No decryptor price")).toBeInTheDocument();
   });
 
+  test("the character chosen last becomes the default", async () => {
+    const user = userEvent.setup();
+    const other = "63484f19-af12-49ce-aa68-858ef8ddfad2";
+    vi.mocked(listCharacters).mockResolvedValue([
+      { connectionId: CHARACTER, characterName: "Ana Belle" } as CharacterRosterEntry,
+      { connectionId: other, characterName: "Xuesen" } as CharacterRosterEntry,
+    ]);
+    const first = renderPage();
+    await screen.findByRole("table", { name: "Decryptor comparison" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Character" }), "Xuesen");
+    await waitFor(() => expect(location).toContain(`char=${other}`));
+    first.unmount();
+
+    renderPage();
+
+    await waitFor(() => expect(vi.mocked(quoteInvention).mock.calls.at(-1)![0]).toMatchObject({ characterId: other }));
+    expect(location).toBe("/invention?product=2185");
+  });
+
   test("offers recently quoted products on the empty page", async () => {
     const first = renderPage();
     await screen.findByRole("table", { name: "Decryptor comparison" });

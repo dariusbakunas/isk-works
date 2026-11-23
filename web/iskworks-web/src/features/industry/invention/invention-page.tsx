@@ -42,7 +42,13 @@ import {
   type InventionView,
 } from "./invention-url-state";
 import { ProductSearch } from "./product-search";
-import { readRecentProducts, rememberProduct, type RecentProduct } from "./recent-products";
+import {
+  readPreferredCharacter,
+  readRecentProducts,
+  rememberPreferredCharacter,
+  rememberProduct,
+  type RecentProduct,
+} from "./recent-products";
 
 const COLUMN_DEFS: Array<{
   key: string;
@@ -60,7 +66,7 @@ const COLUMN_DEFS: Array<{
   { key: "perCopy", label: "Per copy", width: "84px", sort: "perCopy", numeric: true, title: "Attempt cost divided by the chance: the expected cost of one successful copy." },
   { key: "perRun", label: "Per run", width: "84px", sort: "perRun", numeric: true, hideBelow: "tablet", title: "Blueprint cost per manufacturing run." },
   { key: "unitCost", label: "Unit cost", width: "92px", sort: "unitCost", numeric: true, title: "Manufacturing cost of one unit at the copy's ME, plus its share of the blueprint cost." },
-  { key: "vsNone", label: "vs none", width: "128px", numeric: true, hideBelow: "desktop", title: "Unit cost against no decryptor." },
+  { key: "vsNone", label: "vs none", width: "156px", numeric: true, hideBelow: "desktop", title: "Unit cost against no decryptor." },
   { key: "attempts", label: "Attempts", width: "92px", sort: "attempts", numeric: true, hideBelow: "tablet", title: "Expected attempts · attempts to be 90% sure, for the target runs." },
 ];
 
@@ -70,6 +76,7 @@ export function InventionPage() {
   const [runsText, setRunsText] = useState(String(view.targetRuns));
   const [sort, setSort] = useState<{ key: InventionSort; order: SortOrder }>({ key: "unitCost", order: "asc" });
   const [recent, setRecent] = useState<RecentProduct[]>(readRecentProducts);
+  const [preferredCharacter, setPreferredCharacter] = useState(readPreferredCharacter);
 
   // An empty search finds nothing but says whether the SDE has the data.
   const availability = useLoad((signal) => searchInventableProducts("", signal), "availability");
@@ -86,8 +93,13 @@ export function InventionPage() {
     () => [...manufacturingProfiles, ...profiles.filter((profile) => profile.role !== "manufacturing")],
     [manufacturingProfiles, profiles],
   );
+  // The character last chosen here leads, so the default is the inventor.
+  const characterIds = useMemo(() => {
+    const ids = roster.map((entry) => entry.connectionId);
+    return [...ids.filter((id) => id === preferredCharacter), ...ids.filter((id) => id !== preferredCharacter)];
+  }, [roster, preferredCharacter]);
   const choices = {
-    characterId: resolveChoice(view.characterId, roster.map((entry) => entry.connectionId)),
+    characterId: resolveChoice(view.characterId, characterIds),
     inventionFacilityId: resolveChoice(view.inventionFacilityId, inventionProfiles.map((profile) => profile.id)),
     manufacturingFacilityId: resolveChoice(view.manufacturingFacilityId, manufacturingProfiles.map((profile) => profile.id)),
   };
@@ -188,7 +200,10 @@ export function InventionPage() {
             {...PRIVATE_ATTR}
             aria-label="Character"
             className="iw-input min-h-7 w-auto py-0.5 text-xs"
-            onChange={(event) => update({ characterId: event.target.value, skillOverrides: {} })}
+            onChange={(event) => {
+              if (event.target.value !== "none") setPreferredCharacter(rememberPreferredCharacter(event.target.value));
+              update({ characterId: event.target.value, skillOverrides: {} });
+            }}
             value={choices.characterId ?? "none"}
           >
             {roster.map((entry) => <option key={entry.connectionId} value={entry.connectionId}>{entry.characterName}</option>)}
@@ -276,14 +291,16 @@ export function InventionPage() {
               onSelectRow={(rowKey) => update({ selected: rowKey })}
               selectedRowKey={view.selected}
             >
-              {options.map((option) => (
-                <OperationalTableRow
-                  cells={cells(option, quote, baseline)}
-                  key={optionKey(option)}
-                  rowKey={optionKey(option)}
-                  status={option.best ? "positive" : option.complete ? "neutral" : "warning"}
-                />
-              ))}
+              <tbody>
+                {options.map((option) => (
+                  <OperationalTableRow
+                    cells={cells(option, quote, baseline)}
+                    key={optionKey(option)}
+                    rowKey={optionKey(option)}
+                    status={option.best ? "positive" : option.complete ? "neutral" : "warning"}
+                  />
+                ))}
+              </tbody>
             </OperationalTable>
             <p className="px-3 py-2 text-[0.6875rem] text-muted">
               Unit cost assumes every manufacturing input is bought at market
