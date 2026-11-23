@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use iskworks_core::{AdjustedPriceRepository, EvidenceRefreshRepository};
+use iskworks_core::{AdjustedPriceRepository, EvidenceRefreshRepository, ScienceCostIndices};
 use iskworks_esi::{EsiError, EsiTransport};
 
 /// When evidence goes stale, how long a claim holds, how soon a failure
@@ -156,19 +156,31 @@ impl EvidenceRefreshService {
                 let values = response
                     .records
                     .into_iter()
-                    .map(|value| (value.solar_system_id, value.manufacturing))
+                    .map(|value| {
+                        (
+                            value.solar_system_id,
+                            (
+                                value.manufacturing,
+                                ScienceCostIndices {
+                                    invention: value.invention,
+                                    copying: value.copying,
+                                },
+                            ),
+                        )
+                    })
                     .collect::<BTreeMap<_, _>>();
                 let next_refresh_at = now
                     + chrono::Duration::from_std(self.schedule.system_index_freshness)
                         .map_err(|error| error.to_string())?;
                 for (system_id, claim) in &claimed {
-                    if let Some(value) = values.get(system_id) {
+                    if let Some((manufacturing, science)) = values.get(system_id) {
                         if let Err(error) = self
                             .repository
                             .complete_system_cost_index_refresh(
                                 *system_id,
                                 *claim,
-                                *value,
+                                *manufacturing,
+                                *science,
                                 now,
                                 next_refresh_at,
                                 response.metadata.expires_at(),

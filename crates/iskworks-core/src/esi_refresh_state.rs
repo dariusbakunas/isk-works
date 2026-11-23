@@ -135,14 +135,16 @@ pub trait EvidenceRefreshRepository: Send + Sync {
         lease_expires_at: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, StoreError>;
 
-    /// Stores the system's manufacturing cost index and marks it current,
-    /// as `complete_adjusted_price_refresh` does.
+    /// Stores the system's manufacturing cost index (`cost_index`) and the
+    /// science indices ESI listed with it, and marks the system current, as
+    /// `complete_adjusted_price_refresh` does.
     #[allow(clippy::too_many_arguments)]
     async fn complete_system_cost_index_refresh(
         &self,
         solar_system_id: i64,
         claim: DateTime<Utc>,
         cost_index: Decimal,
+        science: ScienceCostIndices,
         observed_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         cache_expires_at: Option<DateTime<Utc>>,
@@ -158,4 +160,12 @@ pub trait EvidenceRefreshRepository: Send + Sync {
         next_refresh_at: DateTime<Utc>,
         error_message: &str,
     ) -> Result<bool, StoreError>;
+}
+
+/// A solar system's invention and copying cost indices, as observed with
+/// its manufacturing index. `None` when ESI did not list the activity.
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub struct ScienceCostIndices {
+    pub invention: Option<Decimal>,
+    pub copying: Option<Decimal>,
 }

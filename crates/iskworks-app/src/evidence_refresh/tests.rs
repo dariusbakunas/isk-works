@@ -25,6 +25,7 @@ enum Write {
     IndexCompleted {
         system_id: i64,
         cost_index: Decimal,
+        science: ScienceCostIndices,
         next_refresh_at: DateTime<Utc>,
     },
     IndexFailed {
@@ -152,6 +153,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         solar_system_id: i64,
         claim: DateTime<Utc>,
         cost_index: Decimal,
+        science: ScienceCostIndices,
         _observed_at: DateTime<Utc>,
         next_refresh_at: DateTime<Utc>,
         _cache_expires_at: Option<DateTime<Utc>>,
@@ -161,6 +163,7 @@ impl EvidenceRefreshRepository for FakeEvidence {
         self.record(Write::IndexCompleted {
             system_id: solar_system_id,
             cost_index,
+            science,
             next_refresh_at,
         });
         Ok(true)
@@ -396,6 +399,7 @@ async fn one_system_fetch_completes_claimed_systems_and_fails_omitted_ones() {
             Write::IndexCompleted {
                 system_id: priced,
                 cost_index: Decimal::new(42, 3),
+                science: ScienceCostIndices::default(),
                 next_refresh_at,
             },
             Write::IndexFailed {
@@ -450,5 +454,43 @@ fn retry_floor_is_the_longer_of_the_retry_delay_and_esis_wait() {
             }
         ),
         chrono::Duration::minutes(15)
+    );
+}
+
+/// The science indices ESI lists for a system are stored with its
+/// manufacturing index, in the same completion.
+#[tokio::test]
+async fn a_system_refresh_carries_its_invention_and_copying_indices() {
+    let system_id = 30_000_142;
+    let store = Arc::new(FakeEvidence {
+        candidates: vec![system_id],
+        ..Default::default()
+    });
+    let transport = Arc::new(EvidenceTransport::new(
+        Ok(vec![]),
+        Ok(vec![IndustrySystemCostIndex {
+            invention: Some(Decimal::new(76, 3)),
+            copying: Some(Decimal::new(31, 3)),
+            ..system(system_id, 42)
+        }]),
+    ));
+    let now = claim_at();
+
+    service(&store, &transport)
+        .refresh_due_system_indices(now)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.writes(),
+        [Write::IndexCompleted {
+            system_id,
+            cost_index: Decimal::new(42, 3),
+            science: ScienceCostIndices {
+                invention: Some(Decimal::new(76, 3)),
+                copying: Some(Decimal::new(31, 3)),
+            },
+            next_refresh_at: now + chrono::Duration::hours(1),
+        }]
     );
 }

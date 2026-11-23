@@ -63,9 +63,21 @@ pub trait AdjustedPriceRepository: Send + Sync {
         Ok(())
     }
 
+    /// The latest manufacturing cost index of a solar system.
     async fn latest_system_cost_index(
         &self,
         _solar_system_id: i64,
+    ) -> Result<Option<(Decimal, DateTime<Utc>)>, crate::StoreError> {
+        Ok(None)
+    }
+
+    /// The latest cost index of a solar system for one activity. Only
+    /// manufacturing, invention and copying are observed; any other
+    /// activity has none.
+    async fn latest_system_cost_index_for(
+        &self,
+        _solar_system_id: i64,
+        _activity: crate::IndustryActivity,
     ) -> Result<Option<(Decimal, DateTime<Utc>)>, crate::StoreError> {
         Ok(None)
     }
