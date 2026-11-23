@@ -157,28 +157,106 @@ fn augmentation_floors_me_at_zero_and_adds_runs() {
 fn fixture_rates(index: Option<&str>) -> ScienceJobRates {
     ScienceJobRates {
         system_cost_index: index.map(dec),
+        index_cost_multiplier: Decimal::ONE,
         facility_tax_percent: dec("1"),
         scc_surcharge_percent: dec("4"),
         alliance_surcharge_percent: Decimal::ZERO,
     }
 }
 
+/// The window shows the index as 7.60%; 0.076016 is the value that gives
+/// the window's totals both with and without the structure's bonuses.
+const FIXTURE_INDEX: &str = "0.076016";
+
+/// The fixture's structure: a nullsec Raitaru (3% job cost and 15% time
+/// role bonus) with Standup M-Set Invention Cost Optimization II (25.2%)
+/// and Standup M-Set Invention Accelerator II (50.4%).
+fn fixture_raitaru() -> IndustryFacilityProfile {
+    let rig = |slot: u8, name: &str, cost: &str, time: &str| crate::FacilityRig {
+        slot_number: slot,
+        type_id: 43_877 + i64::from(slot),
+        type_name: name.into(),
+        material_reduction_percent: Decimal::ZERO,
+        time_reduction_percent: Decimal::ZERO,
+        applicability: crate::RigApplicability::default(),
+        science: crate::RigScienceBonuses {
+            invention_cost_reduction_percent: dec(cost),
+            invention_time_reduction_percent: dec(time),
+            ..crate::RigScienceBonuses::default()
+        },
+    };
+    let mut profile = crate::facility::tests_common::fixture_profile("1", "15");
+    profile.job_cost_reduction_percent = dec("3");
+    profile.facility_tax_percent = dec("1");
+    profile.scc_surcharge_percent = dec("4");
+    profile.rigs = vec![
+        rig(
+            1,
+            "Standup M-Set Invention Cost Optimization II",
+            "25.2",
+            "0",
+        ),
+        rig(2, "Standup M-Set Invention Accelerator II", "0", "50.4"),
+    ];
+    profile
+}
+
 /// The window showed EIV 12,687,150; job cost base 253,743; system cost
-/// index 7.60% = 19,289; facility tax 1% = 2,537; SCC 4% = 10,150. The
-/// structure's rig and role bonus (not modelled) took 5,294 off the index
-/// line, so the total here is 31,976 where the game charged 26,682.
+/// index 7.60% = 19,289; facility tax 1% = 2,537; SCC 4% = 10,150. With
+/// no bonuses that is 31,976.
 #[test]
-fn job_fee_lines_match_the_industry_window() {
-    let fee = science_job_fee(Some(isk("12687150")), 1, fixture_rates(Some("0.076018")));
+fn job_fee_lines_without_bonuses() {
+    let fee = science_job_fee(Some(isk("12687150")), 1, fixture_rates(Some(FIXTURE_INDEX)));
     let whole = |value: Option<Money>| value.unwrap().0.round();
 
     assert_eq!(fee.estimated_item_value, Some(isk("12687150")));
     assert_eq!(whole(fee.job_cost_base), dec("253743"));
     assert_eq!(whole(fee.system_index_cost), dec("19289"));
+    assert_eq!(fee.unmodified_system_index_cost, fee.system_index_cost);
+    assert_eq!(fee.index_cost_reduction_percent, Decimal::ZERO);
     assert_eq!(whole(fee.facility_tax), dec("2537"));
     assert_eq!(whole(fee.scc_surcharge), dec("10150"));
     assert_eq!(fee.alliance_surcharge, Some(Money(Decimal::ZERO)));
     assert_eq!(whole(fee.total), dec("31976"));
+}
+
+/// The game charged 26,682: the Raitaru's 3% role bonus and the 25.2% rig
+/// multiply together and come off the index line only.
+#[test]
+fn job_fee_matches_the_industry_window_for_a_rigged_structure() {
+    let rates = ScienceJobRates::from_profile(
+        &fixture_raitaru(),
+        ScienceActivity::Invention,
+        Some(dec(FIXTURE_INDEX)),
+    );
+    let fee = science_job_fee(Some(isk("12687150")), 1, rates);
+    let whole = |value: Option<Money>| value.unwrap().0.round();
+
+    assert_eq!(rates.index_cost_multiplier, dec("0.72556"));
+    assert_eq!(fee.index_cost_reduction_percent, dec("27.444"));
+    assert_eq!(whole(fee.unmodified_system_index_cost), dec("19289"));
+    assert_eq!(whole(fee.system_index_cost), dec("13995"));
+    // Tax and surcharge are charged on the full job cost base.
+    assert_eq!(whole(fee.facility_tax), dec("2537"));
+    assert_eq!(whole(fee.scc_surcharge), dec("10150"));
+    assert_eq!(whole(fee.total), dec("26682"));
+}
+
+#[test]
+fn a_rig_only_counts_for_its_own_activity() {
+    let copying = ScienceFacilityBonus::from_profile(&fixture_raitaru(), ScienceActivity::Copying);
+    // The role bonus covers copying; the two invention rigs do not.
+    assert_eq!(copying.cost_multiplier, dec("0.97"));
+    assert_eq!(copying.time_multiplier, dec("0.85"));
+}
+
+#[test]
+fn a_reaction_profile_contributes_rigs_but_no_role_bonus() {
+    let mut profile = fixture_raitaru();
+    profile.role = FacilityRole::Reaction;
+    let bonus = ScienceFacilityBonus::from_profile(&profile, ScienceActivity::Invention);
+    assert_eq!(bonus.cost_multiplier, dec("0.748"));
+    assert_eq!(bonus.time_multiplier, dec("0.496"));
 }
 
 #[test]
@@ -203,13 +281,24 @@ fn a_job_fee_without_its_eiv_or_index_is_unknown_not_zero() {
     assert_eq!(no_eiv.job_cost_base, None);
 }
 
-/// The window showed 06:21:39 with a 15% role bonus and a 50.4% rig on top
-/// of Advanced Industry 5; without those two the same job takes 15:05:15.
+/// The window showed 06:21:39: Advanced Industry 5, the Raitaru's 15%
+/// role bonus and the 50.4% rig. Without the structure the same job takes
+/// 15:05:15.
 #[test]
-fn invention_time_applies_advanced_industry_only() {
-    assert_eq!(invention_duration_seconds(63_900, 0), 63_900);
-    assert_eq!(invention_duration_seconds(63_900, 5), 54_315);
-    assert_eq!(invention_duration_seconds(63_900, 9), 54_315);
+fn invention_time_applies_advanced_industry_and_the_facility() {
+    let none = Decimal::ONE;
+    assert_eq!(invention_duration_seconds(63_900, 0, none), 63_900);
+    assert_eq!(invention_duration_seconds(63_900, 5, none), 54_315);
+    assert_eq!(invention_duration_seconds(63_900, 9, none), 54_315);
+
+    let facility =
+        ScienceFacilityBonus::from_profile(&fixture_raitaru(), ScienceActivity::Invention);
+    assert_eq!(facility.time_multiplier, dec("0.4216"));
+    // 6 h 21 min 39 s.
+    assert_eq!(
+        invention_duration_seconds(63_900, 5, facility.time_multiplier),
+        6 * 3_600 + 21 * 60 + 39
+    );
 }
 
 #[test]

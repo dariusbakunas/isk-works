@@ -46,6 +46,7 @@ pub(crate) fn unrestricted_rig(
         material_reduction_percent: Decimal::from_str(material).unwrap(),
         time_reduction_percent: Decimal::from_str(time).unwrap(),
         applicability: RigApplicability::default(),
+        science: Default::default(),
     }
 }
 

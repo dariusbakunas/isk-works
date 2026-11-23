@@ -26,7 +26,7 @@ mod rig_applicability;
 mod types;
 
 #[cfg(test)]
-mod tests_common;
+pub(crate) mod tests_common;
 
 pub use import::{
     decide_facility_import, FacilityImportAction, FacilityImportActionKind, FacilityImportDecision,
@@ -43,8 +43,8 @@ pub use types::{
     DurationCalculationStep, EffectiveMaterialRequirement, EvidenceRefreshOverlay, FacilityError,
     FacilityIdentityBasis, FacilityKind, FacilityPlanPreview, FacilityPreviewCommand,
     FacilityProfileId, FacilityRig, FacilityRigInput, FacilityRole, IndustryFacilityProfile,
-    InstallationCostBreakdown, ReactionFacilityPreviewCommand, SecurityClass,
-    UpdateFacilityProfileCommand,
+    InstallationCostBreakdown, ReactionFacilityPreviewCommand, RigScienceBonuses,
+    RigScienceBonusesInput, SecurityClass, UpdateFacilityProfileCommand,
 };
 
 // Crate-internal calculation helpers reached via `crate::facility::...` from

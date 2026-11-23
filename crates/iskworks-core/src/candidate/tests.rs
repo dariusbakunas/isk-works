@@ -909,6 +909,7 @@ fn calculation_evidence_rig_multiplier_ignores_non_applicable_rigs() {
         material_reduction_percent: Decimal::new(22, 1),
         time_reduction_percent: Decimal::new(22, 0),
         applicability: Default::default(),
+        science: Default::default(),
     });
     root_facility.rig_material_factor = Decimal::ONE;
 

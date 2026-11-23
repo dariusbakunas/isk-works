@@ -86,6 +86,7 @@ fn role_rig_and_job_cost_modifiers_remain_separate() {
         material_reduction_percent: Decimal::from(5),
         time_reduction_percent: Decimal::from_str("50.4").unwrap(),
         applicability: RigApplicability::default(),
+        science: Default::default(),
     });
     let result = preview_facility(
         &fixture_recipe(),
@@ -173,6 +174,7 @@ fn reaction_preview_applies_real_reaction_rig_bonuses() {
         material_reduction_percent: Decimal::from(2),
         time_reduction_percent: Decimal::ZERO,
         applicability: RigApplicability::default(),
+        science: Default::default(),
     });
 
     let result =
@@ -229,6 +231,7 @@ fn reaction_facility_preview_converts_without_a_material_efficiency() {
         material_reduction_percent: Decimal::from(2),
         time_reduction_percent: Decimal::ZERO,
         applicability: RigApplicability::default(),
+        science: Default::default(),
     });
 
     let reaction_preview =
@@ -283,6 +286,7 @@ fn gez_rifter_materials_match_the_in_game_requirement() {
         material_reduction_percent: Decimal::from_str("5.04").unwrap(),
         time_reduction_percent: Decimal::from_str("50.4").unwrap(),
         applicability: RigApplicability::default(),
+        science: Default::default(),
     });
 
     let result = preview_facility(&recipe, 1, profile, ANY_PRODUCT, 10, 20, None, None).unwrap();

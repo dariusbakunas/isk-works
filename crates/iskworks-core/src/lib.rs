@@ -124,7 +124,8 @@ pub use facility::{
     FacilityImportStatus, FacilityKind, FacilityPlanPreview, FacilityPreviewCommand,
     FacilityProfileId, FacilityRig, FacilityRigInput, FacilityRole, IndustryFacilityProfile,
     InstallationCostBreakdown, ProductClassification, ReactionFacilityPreviewCommand,
-    RigApplicability, RigTargetFilter, SecurityClass, UpdateFacilityProfileCommand,
+    RigApplicability, RigScienceBonuses, RigScienceBonusesInput, RigTargetFilter, SecurityClass,
+    UpdateFacilityProfileCommand,
 };
 pub use finance::*;
 pub use finance_analytics::*;

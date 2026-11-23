@@ -14,7 +14,8 @@ use chrono::{DateTime, Utc};
 use iskworks_core::invention::{
     invention_chance, invention_duration_seconds, quote, science_job_fee, skill_chance_factor,
     DecryptorEffect, InventedCopy, InventionOption, InventionSkills, ManufacturingCostByCopy,
-    QuoteDecryptor, QuoteInputs, QuoteMaterial, ScienceJobFee, ScienceJobRates,
+    QuoteDecryptor, QuoteInputs, QuoteMaterial, ScienceActivity, ScienceFacilityBonus,
+    ScienceJobFee, ScienceJobRates,
 };
 use iskworks_core::skills::{parse_skills_summary, CharacterSkillsSnapshot};
 use iskworks_core::{
@@ -128,7 +129,8 @@ pub struct InventionQuoteView {
     pub job_fee: ScienceJobFee,
     /// One run of the Tech I blueprint copy.
     pub copy_fee: ScienceJobFee,
-    /// With Advanced Industry only; structure bonuses are not applied.
+    /// With Advanced Industry and the invention facility's role and rig
+    /// time bonuses.
     pub invention_duration_seconds: Option<u64>,
     pub target_runs: u64,
     pub output_per_run: u64,
@@ -361,23 +363,34 @@ impl InventionService {
                 .ok()
                 .and_then(|eiv| eiv.value)
         };
-        let rates = |index: Option<Decimal>| match &invention_facility {
-            Some(profile) => ScienceJobRates::from_profile(profile, index),
+        let rates = |activity: ScienceActivity, index: Option<Decimal>| match &invention_facility {
+            Some(profile) => ScienceJobRates::from_profile(profile, activity, index),
             None => ScienceJobRates {
                 system_cost_index: None,
+                index_cost_multiplier: Decimal::ONE,
                 facility_tax_percent: Decimal::ZERO,
                 scc_surcharge_percent: Decimal::ZERO,
                 alliance_surcharge_percent: Decimal::ZERO,
             },
         };
-        let job_fee = science_job_fee(eiv(&manufacturing, 1), 1, rates(invention_index));
+        let job_fee = science_job_fee(
+            eiv(&manufacturing, 1),
+            1,
+            rates(ScienceActivity::Invention, invention_index),
+        );
         let copy_fee = science_job_fee(
             source_manufacturing
                 .as_ref()
                 .and_then(|recipe| eiv(recipe, 1)),
             1,
-            rates(copying_index),
+            rates(ScienceActivity::Copying, copying_index),
         );
+        let invention_time_multiplier = invention_facility
+            .as_ref()
+            .map_or(ScienceFacilityBonus::NONE, |profile| {
+                ScienceFacilityBonus::from_profile(profile, ScienceActivity::Invention)
+            })
+            .time_multiplier;
 
         // Market prices: what an attempt consumes and what a run consumes.
         let mut priced_types = BTreeMap::new();
@@ -527,7 +540,13 @@ impl InventionService {
                 invention_duration_seconds: recipe
                     .duration_seconds
                     .and_then(|seconds| u64::try_from(seconds).ok())
-                    .map(|seconds| invention_duration_seconds(seconds, advanced_industry)),
+                    .map(|seconds| {
+                        invention_duration_seconds(
+                            seconds,
+                            advanced_industry,
+                            invention_time_multiplier,
+                        )
+                    }),
                 target_runs,
                 output_per_run,
                 manufacturing_installation_included: manufacturing_facility.is_some(),

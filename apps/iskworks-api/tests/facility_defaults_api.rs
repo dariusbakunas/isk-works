@@ -192,6 +192,7 @@ fn small_ship_rig() -> FacilityRig {
             material: filter.clone(),
             time: filter,
         },
+        science: Default::default(),
     }
 }
 

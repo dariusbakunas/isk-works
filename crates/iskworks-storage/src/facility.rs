@@ -687,6 +687,7 @@ impl RigRow {
             material_reduction_percent: self.material_reduction_percent,
             time_reduction_percent: self.time_reduction_percent,
             applicability: self.applicability.0,
+            science: Default::default(),
         })
     }
 }
@@ -955,6 +956,7 @@ mod tests {
                 type_name: "Standup M-Set Basic Material Efficiency I".into(),
                 material_reduction_percent: "2".into(),
                 time_reduction_percent: "0".into(),
+                science: Default::default(),
             }],
         };
         let created = repository
@@ -1033,6 +1035,7 @@ mod tests {
                 type_name: "Standup L-Set Reactor Efficiency I".into(),
                 material_reduction_percent: "2".into(),
                 time_reduction_percent: "20".into(),
+                science: Default::default(),
             }],
         };
         let created = repository
@@ -1109,6 +1112,7 @@ mod tests {
                 type_name: "Standup L-Set Reactor Efficiency I".into(),
                 material_reduction_percent: "2".into(),
                 time_reduction_percent: "20".into(),
+                science: Default::default(),
             }],
         };
         let mut profile = iskworks_core::parse_profile(WorkspaceId(workspace_id), command).unwrap();
