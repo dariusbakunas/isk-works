@@ -69,6 +69,7 @@ For each component, choose **Buy** or **Build**. A component you build becomes i
 
 - **Characters**: connected characters, wallets, skills and jobs.
 - **Builds**: build plans and their costs.
+- **Invention**: compare decryptors for a Tech II product: chance, the copy you get, and cost per unit.
 - **Board**: what to do next.
 - **Calendar**: job completions, skill finishes, planetary timers and in-game calendar events (corp, alliance and personal events seen by several characters show once).
 - **Inventory**: accounting inventory with historical cost.

@@ -8,6 +8,7 @@ import {
   Factory,
   Globe2,
   Flame,
+  FlaskConical,
   GraduationCap,
   Hammer,
   Hourglass,
@@ -84,6 +85,7 @@ export const navGroups: NavGroup[] = [
         children: [{ label: "New build", path: "/builds/new" }],
       },
       { label: "Blueprints", path: "/builds/blueprints", icon: ScrollText, keywords: ["bp", "bpo", "bpc"] },
+      { label: "Invention", path: "/invention", icon: FlaskConical, keywords: ["decryptor", "datacore", "t2"] },
       { label: "Board", path: "/board", icon: Kanban, keywords: ["kanban", "tickets"] },
       {
         label: "Jobs",
