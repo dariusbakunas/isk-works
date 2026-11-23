@@ -97,6 +97,16 @@ dogma projection from `typeDogma.jsonl`. Consequently:
   attributes `2600`, `2602`, and `2601`;
 - rig material/time modifiers are derived from attributes `2594` and `2593`,
   adjusted by security multipliers `2355`-`2357`;
+- a rig's magnitudes are generic, so `industryModifierSources` decides
+  which activity they are for: a rig keeps its manufacturing time or
+  material bonus only where its entry lists `manufacturing.time` /
+  `manufacturing.material` (a rig absent from the dataset keeps both);
+- a lab rig's invention and copying bonuses come from the same time
+  attribute `2593` and the cost attribute `2595`, where its entry lists
+  `invention` / `copying` with `time` / `cost`. They carry no target
+  filter. A manufacturing profile's rig stores them for its security
+  class; the Invention quote reads them (see [invention](invention.md)).
+  An SDE imported before this was read has them as 0 until re-imported;
 - rig compatibility uses structure-group attributes `1298`-`1300` and the
   structure/rig size attribute `1547`;
 - users select solar systems by name from the active SDE; the application stores

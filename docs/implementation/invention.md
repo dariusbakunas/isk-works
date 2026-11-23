@@ -91,9 +91,32 @@ unit cost     = (manufacturing cost per run + cost per run) ÷ output per run
   of the blueprint being copied.
 - **Cost index.** Invention and copying use their own system cost index,
   not the manufacturing one (`latest_system_cost_index_for`).
-- **Not modelled.** Structure role bonuses and rigs reduce the index part
-  of the fee and the job time. Without them the fee reads a little high
-  (31,976 ISK against 26,682 on the fixture) and the time longer.
+- **Structure and rig bonuses.** The invention facility's bonuses
+  multiply together. On the fee they reduce the system cost index line
+  only; tax and surcharges are charged on the full job cost base. On the
+  time they follow Advanced Industry (3% per level).
+
+  ```
+  index cost = job cost base × index × (1 − structure cost %) × Π (1 − rig cost %)
+  time       = base × (1 − 0.03 × Advanced Industry) × (1 − structure time %) × Π (1 − rig time %)
+  ```
+
+  The structure part is the job cost and time reduction of a
+  manufacturing profile: an engineering complex's role bonus covers
+  invention and copying as well as manufacturing (the same dogma
+  attributes, 2601 and 2602). A reaction profile contributes none,
+  because a refinery has no science bonus. The rig part is each fitted
+  rig's invention bonus (copying bonus for the copy fee), captured on the
+  profile for its security class; see
+  [facilities](industry-facilities-and-structure-modifiers.md).
+
+  Fixture: a nullsec Raitaru (3% cost, 15% time) with Standup M-Set
+  Invention Cost Optimization II (25.2%) and Invention Accelerator II
+  (50.4%) charges 26,682 ISK where an unbonused facility charges 31,976,
+  and at Advanced Industry 5 takes 06:21:39 instead of 15:05:15.
+- **Not modelled.** Outpost conversion rigs ("Upwell … Outpost Rig"),
+  which carry their science bonuses in attributes of their own, and the
+  copy job's time.
 - **Manufacturing cost per run** is a share of one job over all the
   copy's runs at the copy's ME, because material rounding depends on the
   run count. Inputs are priced at the best sell order in the workspace's
@@ -117,9 +140,10 @@ unit cost     = (manufacturing cost per run + cost per run) ÷ output per run
 ```
 
 - Without a character every skill is taken as level 4.
-- The invention facility is any facility profile. Only its solar system,
-  facility tax and surcharges are used; its manual cost index and job
-  cost reduction describe manufacturing. Without one the fee is unknown.
+- The invention facility is any facility profile. Its solar system, tax
+  and surcharges are used, and its structure and rig bonuses as described
+  above; its manual cost index describes manufacturing and is not.
+  Without one the fee is unknown and the time has no facility bonus.
 - Without a manufacturing facility the unit cost has materials only
   (`manufacturingInstallationIncluded: false`).
 - Both responses carry `inventionDataAvailable`; false means the SDE must
