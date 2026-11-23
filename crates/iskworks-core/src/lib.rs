@@ -32,6 +32,7 @@ pub mod fitting;
 pub mod industry;
 mod industry_jobs;
 mod integration;
+pub mod invention;
 mod inventory;
 mod inventory_consumption;
 mod inventory_runway;
