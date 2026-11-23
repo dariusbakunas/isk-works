@@ -356,6 +356,16 @@ pub(crate) struct RawActivity {
     pub(crate) materials: Vec<RawTypeQuantity>,
     #[serde(default)]
     pub(crate) products: Vec<RawTypeQuantity>,
+    /// Kept for the invention activity only.
+    #[serde(default)]
+    pub(crate) skills: Vec<RawActivitySkill>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawActivitySkill {
+    #[serde(rename = "typeID")]
+    pub(crate) type_id: i64,
+    pub(crate) level: i16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -363,6 +373,8 @@ pub(crate) struct RawTypeQuantity {
     #[serde(rename = "typeID")]
     pub(crate) type_id: i64,
     pub(crate) quantity: i64,
+    /// The base success chance, on invention products only.
+    pub(crate) probability: Option<serde_json::Number>,
 }
 
 #[derive(Debug, Deserialize)]

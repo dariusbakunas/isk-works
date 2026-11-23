@@ -221,6 +221,16 @@ impl SdeSource {
             .is_some_and(|contents| contents.contains("\"reaction\":"))
     }
 
+    /// Invention lives inside `blueprints.jsonl` like reactions do. Only
+    /// invention products carry a `probability`, so its presence means the
+    /// archive has invention data worth importing.
+    #[must_use]
+    pub fn has_invention(&self) -> bool {
+        self.files
+            .get("blueprints.jsonl")
+            .is_some_and(|contents| contents.contains("\"probability\":"))
+    }
+
     #[must_use]
     pub fn has_packaged_volumes(&self) -> bool {
         self.files.get("types.jsonl").is_some_and(|contents| {

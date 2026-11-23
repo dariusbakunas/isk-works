@@ -45,6 +45,14 @@ pub struct NormalizedSde {
     /// What the Type Info window shows: descriptions, attributes,
     /// reprocessing and ship bonuses.
     pub type_info: ImportTypeInfo,
+    /// The `invention` activity of Tech I blueprints. Empty when the SDE's
+    /// blueprints carry none.
+    pub inventions: Vec<ImportInvention>,
+    /// The `copying` time of every published blueprint that has one.
+    pub blueprint_copying: Vec<ImportBlueprintCopying>,
+    /// The Generic Decryptors (group 1304). Empty when the SDE lacks
+    /// `typeDogma`.
+    pub decryptors: Vec<ImportDecryptor>,
     pub skipped_blueprints: u64,
     pub skipped_reaction_formulas: u64,
 }
@@ -494,4 +502,52 @@ pub struct ImportProduct {
     pub type_id: i64,
     pub quantity: i64,
     pub position: i32,
+}
+
+/// What one invention attempt on a Tech I blueprint consumes and can yield.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportInvention {
+    /// The source (Tech I) blueprint.
+    pub blueprint_type_id: i64,
+    pub duration_seconds: Option<i64>,
+    pub materials: Vec<ImportMaterial>,
+    /// The blueprint copies the source can yield, in SDE order. The player
+    /// picks one per job.
+    pub products: Vec<ImportInventionProduct>,
+    /// Sorted by skill type.
+    pub skills: Vec<ImportInventionSkill>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportInventionProduct {
+    /// The invented blueprint, not the item it builds.
+    pub blueprint_type_id: i64,
+    /// Runs on the invented copy before any decryptor.
+    pub base_runs: i64,
+    /// The base success chance, in `(0, 1]`.
+    pub probability: Decimal,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportInventionSkill {
+    pub skill_type_id: i64,
+    pub level: i16,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportBlueprintCopying {
+    pub blueprint_type_id: i64,
+    pub duration_seconds: i64,
+}
+
+/// A decryptor's effect on an invention attempt: the chance is multiplied,
+/// the copy's ME, TE and runs are added to.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportDecryptor {
+    pub type_id: i64,
+    pub probability_multiplier: Decimal,
+    pub me_modifier: i32,
+    pub te_modifier: i32,
+    pub run_modifier: i32,
 }

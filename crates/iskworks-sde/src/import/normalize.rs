@@ -93,6 +93,7 @@ pub(super) fn normalize_market_groups(
     Ok(ordered)
 }
 
+mod invention;
 #[cfg(test)]
 mod market_group_ordering_tests;
 mod pi_planner;
@@ -261,6 +262,13 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let mut skipped_blueprints = 0_u64;
     let mut reaction_formulas = Vec::new();
     let mut skipped_reaction_formulas = 0_u64;
+    let mut inventions = Vec::new();
+    let mut blueprint_copying = Vec::new();
+    let blueprint_group_ids = groups
+        .iter()
+        .filter(|group| group.category_id == Some(invention::BLUEPRINT_CATEGORY_ID))
+        .map(|group| group.group_id)
+        .collect::<HashSet<_>>();
 
     for blueprint in raw_blueprints {
         if !blueprint_ids.insert(blueprint.key) {
@@ -314,7 +322,43 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                 }
             }
         }
+
+        // Ancient relics (Tech III) carry an `invention` activity too; only
+        // blueprints are kept.
+        let source = raw_types_by_id
+            .get(&blueprint.key)
+            .filter(|item| item.published && item.name.en.is_some())
+            .filter(|item| {
+                item.group_id
+                    .is_some_and(|id| blueprint_group_ids.contains(&id))
+            });
+        if source.is_some() {
+            if let Some(activity) = blueprint.activities.get("invention") {
+                if let Some(parsed) = invention::normalize_invention(
+                    blueprint.key,
+                    activity,
+                    &raw_types_by_id,
+                    &mut referenced_type_ids,
+                )? {
+                    inventions.push(parsed);
+                }
+            }
+            if let Some(duration_seconds) = blueprint
+                .activities
+                .get("copying")
+                .and_then(|activity| activity.time)
+                .filter(|seconds| *seconds > 0)
+            {
+                blueprint_copying.push(ImportBlueprintCopying {
+                    blueprint_type_id: blueprint.key,
+                    duration_seconds,
+                });
+            }
+        }
     }
+    inventions.sort_by_key(|item| item.blueprint_type_id);
+    blueprint_copying.sort_by_key(|item| item.blueprint_type_id);
+    let decryptors = invention::normalize_decryptors(&raw_type_dogma, &raw_types_by_id);
 
     let planet_schematics = normalize_planet_schematics(
         raw_planet_schematics,
@@ -511,6 +555,9 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         skills,
         required_skills,
         type_info,
+        inventions,
+        blueprint_copying,
+        decryptors,
         skipped_blueprints,
         skipped_reaction_formulas,
     })
