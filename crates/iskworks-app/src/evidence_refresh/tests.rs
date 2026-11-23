@@ -276,6 +276,8 @@ fn system(solar_system_id: i64, manufacturing: i64) -> IndustrySystemCostIndex {
         solar_system_id,
         manufacturing: Decimal::new(manufacturing, 3),
         reaction: Decimal::ZERO,
+        invention: None,
+        copying: None,
     }
 }
 

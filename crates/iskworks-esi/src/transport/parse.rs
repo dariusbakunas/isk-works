@@ -17,6 +17,8 @@ pub(super) fn parse_industry_system(raw: Value) -> Result<IndustrySystemCostInde
         solar_system_id,
         manufacturing,
         reaction,
+        invention: cost_index_for("invention"),
+        copying: cost_index_for("copying"),
     })
 }
 

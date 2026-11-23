@@ -141,6 +141,10 @@ pub struct IndustrySystemCostIndex {
     pub solar_system_id: i64,
     pub manufacturing: Decimal,
     pub reaction: Decimal,
+    /// The science indices are kept when ESI lists them; a system without
+    /// one is still a valid record.
+    pub invention: Option<Decimal>,
+    pub copying: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
