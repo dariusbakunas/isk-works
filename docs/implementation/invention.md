@@ -3,7 +3,7 @@
 Invention turns a run of a Tech I blueprint copy, some datacores and an
 optional decryptor into a chance at a limited-run Tech II blueprint copy.
 This page covers the SDE data, the rules in `iskworks_core::invention` and
-the quote API. The page itself comes later.
+the quote API, and the page built on them.
 
 ## SDE data
 
@@ -127,3 +127,22 @@ unit cost     = (manufacturing cost per run + cost per run) ÷ output per run
 - The quote registers the facility's solar system for cost indices and
   the priced types for market coverage, so data missing on the first
   request is there on a later one.
+
+## Page
+
+**Invention** (`/invention`, `features/industry/invention/`) is a read-only
+calculator: it has no save, record or "add to plan" action.
+
+- Inputs live in the URL (`product`, `char`, `skills`, `inv`, `mfg`, `runs`,
+  `option`), so a comparison can be bookmarked. A picker left alone takes a
+  default: the character chosen last on this page (else the first), and
+  the first manufacturing facility for both facilities. "None" is a choice
+  of its own.
+- Each skill the job lists has a level stepper. Changing one re-quotes with
+  an override and marks the skill; Reset drops every override.
+- The table has one row per option, sorted by unit cost with unpriced rows
+  last. Chances are truncated to one decimal like the game's.
+- Selecting a row opens its details: the attempt cost line by line (the job
+  fee opens into its own lines), the outcome, and the attempts and shopping
+  list for the target runs. "Copy shopping list" copies the market items as
+  `name quantity` lines, which EVE's multibuy accepts.
