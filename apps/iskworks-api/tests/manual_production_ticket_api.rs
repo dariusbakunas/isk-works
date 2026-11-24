@@ -77,28 +77,28 @@ async fn fixture(pool: &PgPool) -> Fixture {
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO sde_blueprints (import_id,blueprint_type_id,name_en,duration_seconds) VALUES ($1,6830,'Rifter Blueprint',600)",
+        "INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity,duration_seconds) VALUES ($1,6830,'manufacturing',600)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprint_materials (import_id,blueprint_type_id,material_type_id,quantity,position) VALUES
-             ($1,6830,34,1000,0),($1,6830,35,200,1)"#,
+        r#"INSERT INTO sde_blueprint_activity_materials (import_id,blueprint_type_id,activity,material_type_id,quantity,position) VALUES
+             ($1,6830,'manufacturing',34,1000,0),($1,6830,'manufacturing',35,200,1)"#,
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_blueprint_products (import_id,blueprint_type_id,product_type_id,quantity,position) VALUES ($1,6830,5876,1,0)",
+        "INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES ($1,6830,'manufacturing',5876,1,0)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formulas (import_id,reaction_formula_type_id,name_en,duration_seconds) VALUES ($1,90003,'Hull Section Reaction Formula',50)",
+        "INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity,duration_seconds) VALUES ($1,90003,'reaction',50)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formula_materials (import_id,reaction_formula_type_id,material_type_id,quantity,position) VALUES ($1,90003,35,50,0)",
+        "INSERT INTO sde_blueprint_activity_materials (import_id,blueprint_type_id,activity,material_type_id,quantity,position) VALUES ($1,90003,'reaction',35,50,0)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formula_products (import_id,reaction_formula_type_id,product_type_id,quantity,position) VALUES ($1,90003,90001,1,0)",
+        "INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES ($1,90003,'reaction',90001,1,0)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
 

@@ -42,7 +42,7 @@ const LIBRARY_CTE: &str = r#"
     SELECT observation.id AS observation_id,observation.eve_item_id,
            observation.blueprint_type_id,
            COALESCE(blueprint_type.name_en,observation.captured_blueprint_name) AS blueprint_name,
-           CASE WHEN formula.reaction_formula_type_id IS NOT NULL
+           CASE WHEN formula.blueprint_type_id IS NOT NULL
                 THEN 'reaction' ELSE 'manufacturing' END AS activity,
            product.product_type_id,product_type.name_en AS product_name,
            product_type.group_id AS product_group_id,
@@ -64,21 +64,17 @@ const LIBRARY_CTE: &str = r#"
     LEFT JOIN eve_connections connection ON connection.id=observation.connection_id
     LEFT JOIN sde_types blueprint_type
       ON blueprint_type.import_id=import.id AND blueprint_type.type_id=observation.blueprint_type_id
-    LEFT JOIN sde_reaction_formulas formula
+    LEFT JOIN sde_blueprint_activities formula
       ON formula.import_id=import.id
-     AND formula.reaction_formula_type_id=observation.blueprint_type_id
+     AND formula.blueprint_type_id=observation.blueprint_type_id
+     AND formula.activity='reaction'
     LEFT JOIN LATERAL (
-      SELECT candidate.product_type_id FROM (
-        SELECT 0 AS source,product.position,product.product_type_id
-        FROM sde_blueprint_products product
-        WHERE product.import_id=import.id AND product.blueprint_type_id=observation.blueprint_type_id
-        UNION ALL
-        SELECT 1,product.position,product.product_type_id
-        FROM sde_reaction_formula_products product
-        WHERE product.import_id=import.id
-          AND product.reaction_formula_type_id=observation.blueprint_type_id
-      ) candidate
-      ORDER BY candidate.source,candidate.position LIMIT 1
+      SELECT candidate.product_type_id
+      FROM sde_blueprint_activity_products candidate
+      WHERE candidate.import_id=import.id
+        AND candidate.blueprint_type_id=observation.blueprint_type_id
+        AND candidate.activity IN ('manufacturing','reaction')
+      ORDER BY candidate.activity,candidate.position LIMIT 1
     ) product ON true
     LEFT JOIN sde_types product_type
       ON product_type.import_id=import.id AND product_type.type_id=product.product_type_id
@@ -453,14 +449,10 @@ mod tests {
             .bind(import_id).execute(&mut *tx).await.expect("groups");
         sqlx::query("INSERT INTO sde_types (import_id,type_id,name_en,group_id,group_name_en,published) VALUES ($1,587,'Rifter',25,'Frigate',true),($1,691,'Rifter Blueprint',105,'Frigate Blueprint',true),($1,603,'Merlin',25,'Frigate',true),($1,950,'Merlin Blueprint',105,'Frigate Blueprint',true),($1,16670,'Crystalline Carbonide',429,'Composite',true),($1,46166,'Crystalline Carbonide Reaction Formula',1888,'Composite Reaction Formulas',true)")
             .bind(import_id).execute(&mut *tx).await.expect("types");
-        sqlx::query("INSERT INTO sde_blueprints (import_id,blueprint_type_id,name_en) VALUES ($1,691,'Rifter Blueprint'),($1,950,'Merlin Blueprint')")
-            .bind(import_id).execute(&mut *tx).await.expect("blueprints");
-        sqlx::query("INSERT INTO sde_blueprint_products (import_id,blueprint_type_id,product_type_id,quantity,position) VALUES ($1,691,587,1,0),($1,950,603,1,0)")
-            .bind(import_id).execute(&mut *tx).await.expect("blueprint products");
-        sqlx::query("INSERT INTO sde_reaction_formulas (import_id,reaction_formula_type_id,name_en) VALUES ($1,46166,'Crystalline Carbonide Reaction Formula')")
-            .bind(import_id).execute(&mut *tx).await.expect("formula");
-        sqlx::query("INSERT INTO sde_reaction_formula_products (import_id,reaction_formula_type_id,product_type_id,quantity,position) VALUES ($1,46166,16670,10000,0)")
-            .bind(import_id).execute(&mut *tx).await.expect("formula products");
+        sqlx::query("INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity) VALUES ($1,691,'manufacturing'),($1,950,'manufacturing'),($1,46166,'reaction')")
+            .bind(import_id).execute(&mut *tx).await.expect("activities");
+        sqlx::query("INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES ($1,691,'manufacturing',587,1,0),($1,950,'manufacturing',603,1,0),($1,46166,'reaction',16670,10000,0)")
+            .bind(import_id).execute(&mut *tx).await.expect("activity products");
 
         let other_workspace = Uuid::new_v4();
         let other_owner = Uuid::new_v4();

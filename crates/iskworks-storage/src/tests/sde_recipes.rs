@@ -123,6 +123,7 @@ async fn reverse_recipe_lookup_ignores_unpublished_test_recipes(pool: PgPool) {
                 position: 0,
             }],
         });
+    mirror_recipes(&mut dataset);
 
     let import_id = repository
         .begin_import(NewImport {
@@ -169,6 +170,7 @@ async fn active_by_checksum_requires_reaction_formulas_when_requested(pool: PgPo
     // written for it.
     let mut legacy = fixture_sde("checksum-legacy", "100000");
     legacy.reaction_formulas.clear();
+    mirror_recipes(&mut legacy);
     legacy.reaction_rig_modifiers.clear();
 
     let import_id = repository

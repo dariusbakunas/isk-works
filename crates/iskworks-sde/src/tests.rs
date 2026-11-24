@@ -1627,6 +1627,8 @@ fn invention_source(blueprints: &str, type_dogma: Option<&str>) -> SdeSource {
         "\n",
         r#"{"_key":2187,"groupID":176,"name":{"en":"Second Output Blueprint"},"published":true}"#,
         "\n",
+        r#"{"_key":2188,"groupID":176,"name":{"en":"Storyline Drone Blueprint"},"published":false}"#,
+        "\n",
         r#"{"_key":20418,"groupID":333,"name":{"en":"Datacore - Electronic Engineering"},"published":true}"#,
         "\n",
         r#"{"_key":20419,"groupID":333,"name":{"en":"Datacore - Graviton Physics"},"published":true}"#,
@@ -1917,4 +1919,36 @@ fn blueprint_activity_with_an_unknown_type_is_left_out() {
         vec![BlueprintActivityKind::ResearchTime]
     );
     assert!(dataset.blueprint_limits.is_empty());
+}
+
+#[test]
+fn an_unpublished_blueprint_keeps_its_activities() {
+    // Players hold copies of some unpublished blueprints (storyline
+    // modules), so their recipes are kept.
+    let source = invention_source(
+        r#"{"_key":2188,"activities":{"copying":{"time":300},"manufacturing":{"materials":[{"typeID":20419,"quantity":2}],"products":[{"typeID":20418,"quantity":1}],"time":600}},"maxProductionLimit":10}"#,
+        None,
+    );
+
+    let dataset = parse(&source).unwrap();
+
+    assert_eq!(
+        dataset
+            .blueprint_activities
+            .iter()
+            .map(|activity| (activity.blueprint_type_id, activity.kind))
+            .collect::<Vec<_>>(),
+        vec![
+            (2188, BlueprintActivityKind::Manufacturing),
+            (2188, BlueprintActivityKind::Copying),
+        ]
+    );
+    assert_eq!(
+        dataset.blueprint_limits,
+        vec![ImportBlueprintLimit {
+            blueprint_type_id: 2188,
+            max_production_limit: 10,
+        }]
+    );
+    assert!(dataset.types.iter().any(|item| item.type_id == 2188));
 }

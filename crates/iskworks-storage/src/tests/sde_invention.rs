@@ -125,6 +125,7 @@ fn invention_dataset(checksum: &str) -> NormalizedSde {
             run_modifier: 0,
         },
     ];
+    mirror_recipes(&mut dataset);
     dataset
 }
 

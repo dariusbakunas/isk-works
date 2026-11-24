@@ -176,6 +176,7 @@ impl SdeImportStore for PgSdeRepository {
                   SELECT 1
                   FROM sde_blueprint_activities activity
                   WHERE activity.import_id = sde_imports.id
+                    AND activity.activity IN ('research_material', 'research_time')
                 )
               )
             "#,

@@ -18,9 +18,10 @@ the quote API, and the page built on them.
 | `blueprints.jsonl`, `activities.copying` | `sde_blueprint_copying` | Copy time of every published blueprint that has one. |
 | `typeDogma.jsonl` | `sde_decryptors` | The chance multiplier (attribute 1112) and the ME, TE and run modifiers (1113, 1114, 1124) of each decryptor. |
 
-These tables sit beside `sde_blueprints`, which keeps meaning
-"manufacturing". They reference `sde_types`, because a source blueprint is
-kept whether or not its manufacturing recipe was.
+The invention and copying tables are still written but no longer read: the
+lookups below use the `invention` and `copying` rows of
+`sde_blueprint_activities` and its line tables (see
+[type-info.md](type-info.md)), with the same rules applied when reading.
 
 ### What is kept and what is not
 

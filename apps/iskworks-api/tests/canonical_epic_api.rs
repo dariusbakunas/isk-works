@@ -101,25 +101,25 @@ async fn fixture(pool: &PgPool) -> Fixture {
     .await
     .unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprints (import_id,blueprint_type_id,name_en,duration_seconds) VALUES
-             ($1,97100,'Root Blueprint',600),($1,97111,'A Blueprint',300),
-             ($1,97121,'B Blueprint',300),($1,97131,'X Blueprint',300)"#,
+        r#"INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity,duration_seconds) VALUES
+             ($1,97100,'manufacturing',600),($1,97111,'manufacturing',300),
+             ($1,97121,'manufacturing',300),($1,97131,'manufacturing',300)"#,
     )
     .bind(import_id)
     .execute(&mut *tx)
     .await
     .unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprint_materials (import_id,blueprint_type_id,material_type_id,quantity,position) VALUES
-             ($1,97100,97110,1,0),($1,97100,97120,1,1),
-             ($1,97111,97130,20,0),($1,97121,97130,30,0),
-             ($1,97131,34,5,0)"#,
+        r#"INSERT INTO sde_blueprint_activity_materials (import_id,blueprint_type_id,activity,material_type_id,quantity,position) VALUES
+             ($1,97100,'manufacturing',97110,1,0),($1,97100,'manufacturing',97120,1,1),
+             ($1,97111,'manufacturing',97130,20,0),($1,97121,'manufacturing',97130,30,0),
+             ($1,97131,'manufacturing',34,5,0)"#,
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprint_products (import_id,blueprint_type_id,product_type_id,quantity,position) VALUES
-             ($1,97100,97101,1,0),($1,97111,97110,1,0),
-             ($1,97121,97120,1,0),($1,97131,97130,10,0)"#,
+        r#"INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES
+             ($1,97100,'manufacturing',97101,1,0),($1,97111,'manufacturing',97110,1,0),
+             ($1,97121,'manufacturing',97120,1,0),($1,97131,'manufacturing',97130,10,0)"#,
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(

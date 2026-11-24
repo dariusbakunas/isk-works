@@ -321,13 +321,10 @@ impl PgSdeRepository {
                  WHERE t.import_id = active.id AND t.type_id = family.root)
               + (SELECT count(*) FROM sde_type_details d, active, family
                  WHERE d.import_id = active.id AND d.variation_parent_type_id = family.root),
-              (SELECT count(DISTINCT b.blueprint_type_id) FROM sde_blueprint_materials b
-                 JOIN active ON b.import_id = active.id
-                 WHERE b.material_type_id = $1)
-              + (SELECT count(DISTINCT r.reaction_formula_type_id)
-                 FROM sde_reaction_formula_materials r
-                 JOIN active ON r.import_id = active.id
-                 WHERE r.material_type_id = $1)
+              (SELECT count(*) FROM sde_blueprint_activity_materials m
+                 JOIN active ON m.import_id = active.id
+                 WHERE m.material_type_id = $1
+                   AND m.activity IN ('manufacturing', 'reaction'))
             "#,
         )
         .bind(type_id)
@@ -520,34 +517,20 @@ impl PgSdeRepository {
             WITH active AS (
               SELECT id FROM sde_imports WHERE active = true
             ), usages AS (
-              SELECT 'manufacturing' kind, m.blueprint_type_id recipe_type_id,
+              SELECT m.activity kind, m.blueprint_type_id recipe_type_id,
                      recipe.name_en recipe_name, p.product_type_id,
                      product.name_en product_name, m.quantity
-              FROM sde_blueprint_materials m
+              FROM sde_blueprint_activity_materials m
               JOIN active ON m.import_id = active.id
-              JOIN sde_blueprints recipe
-                ON recipe.import_id = m.import_id AND recipe.blueprint_type_id = m.blueprint_type_id
-              JOIN sde_blueprint_products p
+              JOIN sde_types recipe
+                ON recipe.import_id = m.import_id AND recipe.type_id = m.blueprint_type_id
+              JOIN sde_blueprint_activity_products p
                 ON p.import_id = m.import_id AND p.blueprint_type_id = m.blueprint_type_id
-               AND p.position = 0
+               AND p.activity = m.activity AND p.position = 0
               JOIN sde_types product
                 ON product.import_id = p.import_id AND product.type_id = p.product_type_id
               WHERE m.material_type_id = $1
-              UNION ALL
-              SELECT 'reaction', m.reaction_formula_type_id, recipe.name_en, p.product_type_id,
-                     product.name_en, m.quantity
-              FROM sde_reaction_formula_materials m
-              JOIN active ON m.import_id = active.id
-              JOIN sde_reaction_formulas recipe
-                ON recipe.import_id = m.import_id
-               AND recipe.reaction_formula_type_id = m.reaction_formula_type_id
-              JOIN sde_reaction_formula_products p
-                ON p.import_id = m.import_id
-               AND p.reaction_formula_type_id = m.reaction_formula_type_id
-               AND p.position = 0
-              JOIN sde_types product
-                ON product.import_id = p.import_id AND product.type_id = p.product_type_id
-              WHERE m.material_type_id = $1
+                AND m.activity IN ('manufacturing', 'reaction')
             )
         "#;
         let rows = sqlx::query_as::<_, TypeUsageRow>(&format!(

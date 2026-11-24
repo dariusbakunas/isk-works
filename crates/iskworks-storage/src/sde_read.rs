@@ -138,22 +138,17 @@ impl SdeReadRepository for PgSdeRepository {
               FROM market_ancestors
               GROUP BY import_id, leaf_market_group_id
             ), recipes AS (
-              SELECT 'manufacturing'::text kind, i.id import_id, i.source_version,
-                     b.blueprint_type_id recipe_id, b.name_en recipe_name, b.duration_seconds,
+              SELECT a.activity kind, i.id import_id, i.source_version,
+                     a.blueprint_type_id recipe_id, a.duration_seconds,
                      p.product_type_id, p.position,
-                     count(*) OVER (PARTITION BY b.import_id, b.blueprint_type_id) product_count
-              FROM sde_imports i JOIN sde_blueprints b ON b.import_id=i.id
-              JOIN sde_blueprint_products p ON p.import_id=b.import_id AND p.blueprint_type_id=b.blueprint_type_id
-              WHERE i.active
-              UNION ALL
-              SELECT 'reaction', i.id, i.source_version, f.reaction_formula_type_id,
-                     f.name_en, f.duration_seconds, p.product_type_id, p.position,
-                     count(*) OVER (PARTITION BY f.import_id, f.reaction_formula_type_id)
-              FROM sde_imports i JOIN sde_reaction_formulas f ON f.import_id=i.id
-              JOIN sde_reaction_formula_products p ON p.import_id=f.import_id AND p.reaction_formula_type_id=f.reaction_formula_type_id
-              WHERE i.active
+                     count(*) OVER (PARTITION BY a.import_id, a.blueprint_type_id, a.activity) product_count
+              FROM sde_imports i JOIN sde_blueprint_activities a ON a.import_id=i.id
+              JOIN sde_blueprint_activity_products p ON p.import_id=a.import_id
+               AND p.blueprint_type_id=a.blueprint_type_id AND p.activity=a.activity
+              WHERE i.active AND a.activity IN ('manufacturing', 'reaction')
             )
-            SELECT r.kind, r.import_id, r.source_version, r.recipe_id, r.recipe_name,
+            SELECT r.kind, r.import_id, r.source_version, r.recipe_id,
+                   recipe_type.name_en recipe_name,
                    r.duration_seconds, r.product_type_id, r.product_count,
                    product.published product_published, recipe_type.published recipe_published,
                    product.group_id, groups.name_en group_name, groups.category_id,
@@ -257,17 +252,19 @@ impl SdeReadRepository for PgSdeRepository {
         let contains = like_contains(query);
         let rows = sqlx::query_as::<_, BlueprintSearchRow>(
             r#"
-            SELECT b.blueprint_type_id,
+            SELECT b.type_id AS blueprint_type_id,
                    b.name_en AS blueprint_name,
                    p.product_type_id,
                    product.name_en AS product_name,
                    product.group_name_en AS group_name,
                    product.published
             FROM sde_imports import
-            JOIN sde_blueprints b ON b.import_id = import.id
-            JOIN sde_blueprint_products p
-              ON p.import_id = b.import_id
-             AND p.blueprint_type_id = b.blueprint_type_id
+            JOIN sde_blueprint_activity_products p
+              ON p.import_id = import.id
+             AND p.activity = 'manufacturing'
+            JOIN sde_types b
+              ON b.import_id = p.import_id
+             AND b.type_id = p.blueprint_type_id
             JOIN sde_types product
               ON product.import_id = p.import_id
              AND product.type_id = p.product_type_id
@@ -286,7 +283,7 @@ impl SdeReadRepository for PgSdeRepository {
                 ELSE 3
               END,
               product.name_en,
-              b.blueprint_type_id
+              b.type_id
             LIMIT $4
             "#,
         )
@@ -316,66 +313,16 @@ impl SdeReadRepository for PgSdeRepository {
         &self,
         blueprint_type_id: i64,
     ) -> Result<Option<ManufacturingRecipe>, SdeError> {
-        let blueprint = sqlx::query_as::<_, RecipeHeaderRow>(
-            r#"
-            SELECT b.blueprint_type_id, b.name_en, b.duration_seconds
-            FROM sde_imports import
-            JOIN sde_blueprints b ON b.import_id = import.id
-            WHERE import.active = true AND b.blueprint_type_id = $1
-            "#,
-        )
-        .bind(blueprint_type_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-        let Some(blueprint) = blueprint else {
-            return Ok(None);
-        };
-
-        let materials = sqlx::query_as::<_, RecipeLineRow>(
-            r#"
-            SELECT line.material_type_id AS type_id, item.name_en AS type_name, line.quantity
-            FROM sde_imports import
-            JOIN sde_blueprint_materials line ON line.import_id = import.id
-            JOIN sde_types item
-              ON item.import_id = line.import_id
-             AND item.type_id = line.material_type_id
-            WHERE import.active = true AND line.blueprint_type_id = $1
-            ORDER BY line.position, line.material_type_id
-            "#,
-        )
-        .bind(blueprint_type_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-
-        let products = sqlx::query_as::<_, RecipeLineRow>(
-            r#"
-            SELECT line.product_type_id AS type_id, item.name_en AS type_name, line.quantity
-            FROM sde_imports import
-            JOIN sde_blueprint_products line ON line.import_id = import.id
-            JOIN sde_types item
-              ON item.import_id = line.import_id
-             AND item.type_id = line.product_type_id
-            WHERE import.active = true AND line.blueprint_type_id = $1
-            ORDER BY line.position, line.product_type_id
-            "#,
-        )
-        .bind(blueprint_type_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-
-        Ok(Some(ManufacturingRecipe {
-            blueprint_type_id: blueprint.blueprint_type_id,
-            blueprint_name: blueprint.name_en,
-            duration_seconds: blueprint.duration_seconds,
-            materials: materials
-                .into_iter()
-                .map(RecipeLineRow::into_line)
-                .collect(),
-            products: products.into_iter().map(RecipeLineRow::into_line).collect(),
-        }))
+        Ok(self
+            .activity_recipe(blueprint_type_id, "manufacturing")
+            .await?
+            .map(|recipe| ManufacturingRecipe {
+                blueprint_type_id,
+                blueprint_name: recipe.name_en,
+                duration_seconds: recipe.duration_seconds,
+                materials: recipe.materials,
+                products: recipe.products,
+            }))
     }
 
     async fn search_reaction_formulas(
@@ -391,17 +338,19 @@ impl SdeReadRepository for PgSdeRepository {
         let contains = like_contains(query);
         let rows = sqlx::query_as::<_, ReactionFormulaSearchRow>(
             r#"
-            SELECT f.reaction_formula_type_id,
+            SELECT f.type_id AS reaction_formula_type_id,
                    f.name_en AS reaction_formula_name,
                    p.product_type_id,
                    product.name_en AS product_name,
                    product.group_name_en AS group_name,
                    product.published
             FROM sde_imports import
-            JOIN sde_reaction_formulas f ON f.import_id = import.id
-            JOIN sde_reaction_formula_products p
-              ON p.import_id = f.import_id
-             AND p.reaction_formula_type_id = f.reaction_formula_type_id
+            JOIN sde_blueprint_activity_products p
+              ON p.import_id = import.id
+             AND p.activity = 'reaction'
+            JOIN sde_types f
+              ON f.import_id = p.import_id
+             AND f.type_id = p.blueprint_type_id
             JOIN sde_types product
               ON product.import_id = p.import_id
              AND product.type_id = p.product_type_id
@@ -420,7 +369,7 @@ impl SdeReadRepository for PgSdeRepository {
                 ELSE 3
               END,
               product.name_en,
-              f.reaction_formula_type_id
+              f.type_id
             LIMIT $4
             "#,
         )
@@ -449,66 +398,16 @@ impl SdeReadRepository for PgSdeRepository {
         &self,
         reaction_formula_type_id: i64,
     ) -> Result<Option<ReactionFormulaRecipe>, SdeError> {
-        let formula = sqlx::query_as::<_, ReactionFormulaHeaderRow>(
-            r#"
-            SELECT f.reaction_formula_type_id, f.name_en, f.duration_seconds
-            FROM sde_imports import
-            JOIN sde_reaction_formulas f ON f.import_id = import.id
-            WHERE import.active = true AND f.reaction_formula_type_id = $1
-            "#,
-        )
-        .bind(reaction_formula_type_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-        let Some(formula) = formula else {
-            return Ok(None);
-        };
-
-        let materials = sqlx::query_as::<_, RecipeLineRow>(
-            r#"
-            SELECT line.material_type_id AS type_id, item.name_en AS type_name, line.quantity
-            FROM sde_imports import
-            JOIN sde_reaction_formula_materials line ON line.import_id = import.id
-            JOIN sde_types item
-              ON item.import_id = line.import_id
-             AND item.type_id = line.material_type_id
-            WHERE import.active = true AND line.reaction_formula_type_id = $1
-            ORDER BY line.position, line.material_type_id
-            "#,
-        )
-        .bind(reaction_formula_type_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-
-        let products = sqlx::query_as::<_, RecipeLineRow>(
-            r#"
-            SELECT line.product_type_id AS type_id, item.name_en AS type_name, line.quantity
-            FROM sde_imports import
-            JOIN sde_reaction_formula_products line ON line.import_id = import.id
-            JOIN sde_types item
-              ON item.import_id = line.import_id
-             AND item.type_id = line.product_type_id
-            WHERE import.active = true AND line.reaction_formula_type_id = $1
-            ORDER BY line.position, line.product_type_id
-            "#,
-        )
-        .bind(reaction_formula_type_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sde_sqlx_error)?;
-
-        Ok(Some(ReactionFormulaRecipe {
-            reaction_formula_type_id: formula.reaction_formula_type_id,
-            reaction_formula_name: formula.name_en,
-            duration_seconds: formula.duration_seconds,
-            materials: materials
-                .into_iter()
-                .map(RecipeLineRow::into_line)
-                .collect(),
-            products: products.into_iter().map(RecipeLineRow::into_line).collect(),
-        }))
+        Ok(self
+            .activity_recipe(reaction_formula_type_id, "reaction")
+            .await?
+            .map(|recipe| ReactionFormulaRecipe {
+                reaction_formula_type_id,
+                reaction_formula_name: recipe.name_en,
+                duration_seconds: recipe.duration_seconds,
+                materials: recipe.materials,
+                products: recipe.products,
+            }))
     }
 
     async fn manufacturing_blueprint_for_product(
@@ -528,7 +427,9 @@ impl SdeReadRepository for PgSdeRepository {
             r#"
             SELECT p.blueprint_type_id
             FROM sde_imports import
-            JOIN sde_blueprint_products p ON p.import_id = import.id
+            JOIN sde_blueprint_activity_products p
+              ON p.import_id = import.id
+             AND p.activity = 'manufacturing'
             JOIN sde_types recipe_type
               ON recipe_type.import_id = import.id
              AND recipe_type.type_id = p.blueprint_type_id
@@ -556,16 +457,18 @@ impl SdeReadRepository for PgSdeRepository {
         // as the buildable recipe, and order deterministically.
         sqlx::query_scalar::<_, i64>(
             r#"
-            SELECT p.reaction_formula_type_id
+            SELECT p.blueprint_type_id
             FROM sde_imports import
-            JOIN sde_reaction_formula_products p ON p.import_id = import.id
+            JOIN sde_blueprint_activity_products p
+              ON p.import_id = import.id
+             AND p.activity = 'reaction'
             JOIN sde_types recipe_type
               ON recipe_type.import_id = import.id
-             AND recipe_type.type_id = p.reaction_formula_type_id
+             AND recipe_type.type_id = p.blueprint_type_id
             WHERE import.active = true
               AND p.product_type_id = $1
               AND recipe_type.published = true
-            ORDER BY p.reaction_formula_type_id
+            ORDER BY p.blueprint_type_id
             LIMIT 1
             "#,
         )
@@ -586,31 +489,19 @@ impl SdeReadRepository for PgSdeRepository {
         // lookups' semantics: published recipes only, lowest id wins.
         let rows = sqlx::query_as::<_, (i64, Option<i64>, Option<i64>)>(
             r#"
-            WITH active AS (SELECT id FROM sde_imports WHERE active = true),
-            blueprints AS (
-              SELECT p.product_type_id, min(p.blueprint_type_id) AS recipe_type_id
-              FROM sde_blueprint_products p
-              JOIN active ON active.id = p.import_id
-              JOIN sde_types recipe_type
-                ON recipe_type.import_id = p.import_id
-               AND recipe_type.type_id = p.blueprint_type_id
-              WHERE p.product_type_id = ANY($1) AND recipe_type.published = true
-              GROUP BY p.product_type_id
-            ),
-            formulas AS (
-              SELECT p.product_type_id, min(p.reaction_formula_type_id) AS recipe_type_id
-              FROM sde_reaction_formula_products p
-              JOIN active ON active.id = p.import_id
-              JOIN sde_types recipe_type
-                ON recipe_type.import_id = p.import_id
-               AND recipe_type.type_id = p.reaction_formula_type_id
-              WHERE p.product_type_id = ANY($1) AND recipe_type.published = true
-              GROUP BY p.product_type_id
-            )
-            SELECT coalesce(b.product_type_id, f.product_type_id),
-                   b.recipe_type_id, f.recipe_type_id
-            FROM blueprints b
-            FULL OUTER JOIN formulas f ON f.product_type_id = b.product_type_id
+            SELECT p.product_type_id,
+                   min(p.blueprint_type_id) FILTER (WHERE p.activity = 'manufacturing'),
+                   min(p.blueprint_type_id) FILTER (WHERE p.activity = 'reaction')
+            FROM sde_imports import
+            JOIN sde_blueprint_activity_products p ON p.import_id = import.id
+            JOIN sde_types recipe_type
+              ON recipe_type.import_id = p.import_id
+             AND recipe_type.type_id = p.blueprint_type_id
+            WHERE import.active = true
+              AND p.product_type_id = ANY($1)
+              AND p.activity IN ('manufacturing', 'reaction')
+              AND recipe_type.published = true
+            GROUP BY p.product_type_id
             "#,
         )
         .bind(product_type_ids)
@@ -2078,32 +1969,27 @@ async fn candidate_lines(
     reaction_ids: &[i64],
     materials: bool,
 ) -> Result<BTreeMap<(String, i64), Vec<RecipeLine>>, SdeError> {
+    // One recipe id can be both kinds, so each kind matches its own id list.
     let sql = if materials {
         r#"
-        SELECT 'manufacturing'::text kind, line.blueprint_type_id recipe_id,
+        SELECT line.activity kind, line.blueprint_type_id recipe_id,
                line.material_type_id type_id, item.name_en type_name, line.quantity
-        FROM sde_imports i JOIN sde_blueprint_materials line ON line.import_id=i.id
+        FROM sde_imports i JOIN sde_blueprint_activity_materials line ON line.import_id=i.id
         JOIN sde_types item ON item.import_id=line.import_id AND item.type_id=line.material_type_id
-        WHERE i.active AND line.blueprint_type_id = ANY($1)
-        UNION ALL
-        SELECT 'reaction', line.reaction_formula_type_id, line.material_type_id, item.name_en, line.quantity
-        FROM sde_imports i JOIN sde_reaction_formula_materials line ON line.import_id=i.id
-        JOIN sde_types item ON item.import_id=line.import_id AND item.type_id=line.material_type_id
-        WHERE i.active AND line.reaction_formula_type_id = ANY($2)
+        WHERE i.active
+          AND ((line.activity = 'manufacturing' AND line.blueprint_type_id = ANY($1))
+            OR (line.activity = 'reaction' AND line.blueprint_type_id = ANY($2)))
         ORDER BY 1, 2, 3
         "#
     } else {
         r#"
-        SELECT 'manufacturing'::text kind, line.blueprint_type_id recipe_id,
+        SELECT line.activity kind, line.blueprint_type_id recipe_id,
                line.product_type_id type_id, item.name_en type_name, line.quantity
-        FROM sde_imports i JOIN sde_blueprint_products line ON line.import_id=i.id
+        FROM sde_imports i JOIN sde_blueprint_activity_products line ON line.import_id=i.id
         JOIN sde_types item ON item.import_id=line.import_id AND item.type_id=line.product_type_id
-        WHERE i.active AND line.blueprint_type_id = ANY($1)
-        UNION ALL
-        SELECT 'reaction', line.reaction_formula_type_id, line.product_type_id, item.name_en, line.quantity
-        FROM sde_imports i JOIN sde_reaction_formula_products line ON line.import_id=i.id
-        JOIN sde_types item ON item.import_id=line.import_id AND item.type_id=line.product_type_id
-        WHERE i.active AND line.reaction_formula_type_id = ANY($2)
+        WHERE i.active
+          AND ((line.activity = 'manufacturing' AND line.blueprint_type_id = ANY($1))
+            OR (line.activity = 'reaction' AND line.blueprint_type_id = ANY($2)))
         ORDER BY 1, 2, 3
         "#
     };
@@ -2345,17 +2231,17 @@ struct ReactionFormulaSearchRow {
 }
 
 #[derive(sqlx::FromRow)]
-struct ReactionFormulaHeaderRow {
-    reaction_formula_type_id: i64,
+struct RecipeHeaderRow {
     name_en: String,
     duration_seconds: Option<i64>,
 }
 
-#[derive(sqlx::FromRow)]
-struct RecipeHeaderRow {
-    blueprint_type_id: i64,
+/// One activity of one blueprint, as the planner reads a recipe.
+struct ActivityRecipe {
     name_en: String,
     duration_seconds: Option<i64>,
+    materials: Vec<RecipeLine>,
+    products: Vec<RecipeLine>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -2401,6 +2287,86 @@ struct TypeNameRow {
 const MAX_PLANNER_JUMPS: u8 = 5;
 
 impl PgSdeRepository {
+    /// A blueprint's manufacturing or reaction recipe, lines in SDE order.
+    /// `None` when the blueprint has no such activity.
+    async fn activity_recipe(
+        &self,
+        blueprint_type_id: i64,
+        activity: &str,
+    ) -> Result<Option<ActivityRecipe>, SdeError> {
+        let header = sqlx::query_as::<_, RecipeHeaderRow>(
+            r#"
+            SELECT blueprint.name_en, activity.duration_seconds
+            FROM sde_imports import
+            JOIN sde_blueprint_activities activity ON activity.import_id = import.id
+            JOIN sde_types blueprint
+              ON blueprint.import_id = activity.import_id
+             AND blueprint.type_id = activity.blueprint_type_id
+            WHERE import.active = true
+              AND activity.blueprint_type_id = $1
+              AND activity.activity = $2
+            "#,
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        let Some(header) = header else {
+            return Ok(None);
+        };
+
+        let materials = sqlx::query_as::<_, RecipeLineRow>(
+            r#"
+            SELECT line.material_type_id AS type_id, item.name_en AS type_name, line.quantity
+            FROM sde_imports import
+            JOIN sde_blueprint_activity_materials line ON line.import_id = import.id
+            JOIN sde_types item
+              ON item.import_id = line.import_id
+             AND item.type_id = line.material_type_id
+            WHERE import.active = true
+              AND line.blueprint_type_id = $1
+              AND line.activity = $2
+            ORDER BY line.position, line.material_type_id
+            "#,
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+
+        let products = sqlx::query_as::<_, RecipeLineRow>(
+            r#"
+            SELECT line.product_type_id AS type_id, item.name_en AS type_name, line.quantity
+            FROM sde_imports import
+            JOIN sde_blueprint_activity_products line ON line.import_id = import.id
+            JOIN sde_types item
+              ON item.import_id = line.import_id
+             AND item.type_id = line.product_type_id
+            WHERE import.active = true
+              AND line.blueprint_type_id = $1
+              AND line.activity = $2
+            ORDER BY line.position, line.product_type_id
+            "#,
+        )
+        .bind(blueprint_type_id)
+        .bind(activity)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+
+        Ok(Some(ActivityRecipe {
+            name_en: header.name_en,
+            duration_seconds: header.duration_seconds,
+            materials: materials
+                .into_iter()
+                .map(RecipeLineRow::into_line)
+                .collect(),
+            products: products.into_iter().map(RecipeLineRow::into_line).collect(),
+        }))
+    }
+
     /// PI schematics with their lines and processor types, sorted by id;
     /// `None` reads them all.
     async fn read_planet_schematics(
