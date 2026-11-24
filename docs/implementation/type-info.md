@@ -29,10 +29,11 @@ imports, with those tables empty.
 - Re-importing the same archive redoes the import when the active import
   has no `sde_dogma_attributes` rows (`SdeDatasetRequirements::type_info`).
   After deploying this, run `make sde-import` again.
-- The activity tables repeat the manufacturing, reaction and invention
-  recipes the planner and the Invention page read from their own tables, so
-  the window gets every activity in one shape. They add research, copying
-  materials and each activity's skills, which nothing else stores.
+- The activity tables are meant to become the one source of recipes. For
+  now they repeat the manufacturing, reaction and invention recipes the
+  planner and the Invention page still read from their own tables, and add
+  research, copying materials and each activity's skills, which nothing
+  else stores. Only published blueprints are kept.
 - Re-importing the same archive also redoes the import when the active
   import has no `sde_blueprint_activities` rows
   (`SdeDatasetRequirements::blueprint_activities`). Until then

@@ -3,10 +3,14 @@
 -- yields and the skills it needs. The Type Info window lists them the way
 -- the game's blueprint info window does.
 --
--- Manufacturing, reaction and invention recipes stay in their own tables
--- (sde_blueprints*, sde_reaction_formula*, sde_blueprint_invention*), which
--- the planner and the Invention page read. These tables repeat them for
--- display and add what those leave out: material and time research, copying
+-- Only published types in the Blueprint category are kept: a blueprint the
+-- game does not offer has no place in the app.
+--
+-- These tables are meant to become the one source of recipes. For now the
+-- planner and the Invention page still read manufacturing, reaction and
+-- invention recipes from their own tables (sde_blueprints*,
+-- sde_reaction_formula*, sde_blueprint_invention*), which these repeat; they
+-- also add what those leave out: material and time research, copying
 -- materials, and each activity's skills.
 CREATE TABLE sde_blueprint_activities (
   import_id uuid NOT NULL,
@@ -66,6 +70,10 @@ CREATE TABLE sde_blueprint_activity_products (
     CHECK (probability IS NULL OR (probability > 0 AND probability <= 1)),
   CONSTRAINT sde_blueprint_activity_products_position_non_negative CHECK (position >= 0)
 );
+
+-- What makes or invents a type: the lookup recipe readers start from.
+CREATE INDEX sde_blueprint_activity_products_product_idx
+  ON sde_blueprint_activity_products (import_id, product_type_id, activity);
 
 CREATE TABLE sde_blueprint_activity_skills (
   import_id uuid NOT NULL,
