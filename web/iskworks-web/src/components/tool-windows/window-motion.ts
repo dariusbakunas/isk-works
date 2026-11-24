@@ -67,7 +67,7 @@ export function minimizeWithMotion(id: string, minimize: () => void): void {
     width: `${from.width}px`,
     height: `${from.height}px`,
     margin: "0",
-    zIndex: "36",
+    zIndex: "61",
     pointerEvents: "none",
     transformOrigin: "0 0",
   });
