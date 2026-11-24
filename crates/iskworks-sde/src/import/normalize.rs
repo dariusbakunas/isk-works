@@ -333,28 +333,35 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         }
 
         // Ancient relics (Tech III) carry an `invention` activity too; only
-        // blueprints are kept.
-        let source = raw_types_by_id
+        // blueprints are kept. Unpublished ones stay: players hold copies
+        // of some (storyline modules), and readers that must not offer one
+        // filter on `published` themselves.
+        let blueprint_type = raw_types_by_id
             .get(&blueprint.key)
-            .filter(|item| item.published && item.name.en.is_some())
+            .filter(|item| item.name.en.is_some())
             .filter(|item| {
                 item.group_id
                     .is_some_and(|id| blueprint_group_ids.contains(&id))
             });
-        if source.is_some() {
-            blueprint_activities.extend(blueprint_activities::normalize_blueprint_activities(
+        if blueprint_type.is_some() {
+            let activities = blueprint_activities::normalize_blueprint_activities(
                 &blueprint,
                 &raw_types_by_id,
                 &mut referenced_type_ids,
-            ));
-            if let Some(max_production_limit) =
-                blueprint.max_production_limit.filter(|limit| *limit > 0)
+            );
+            if let Some(max_production_limit) = blueprint
+                .max_production_limit
+                .filter(|limit| *limit > 0 && !activities.is_empty())
             {
                 blueprint_limits.push(ImportBlueprintLimit {
                     blueprint_type_id: blueprint.key,
                     max_production_limit,
                 });
             }
+            blueprint_activities.extend(activities);
+        }
+        let source = blueprint_type.filter(|item| item.published);
+        if source.is_some() {
             if let Some(activity) = blueprint.activities.get("invention") {
                 if let Some(parsed) = invention::normalize_invention(
                     blueprint.key,

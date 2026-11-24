@@ -120,13 +120,18 @@ async fn active_by_checksum_requires_blueprint_activities_when_requested(pool: P
         blueprint_activities: true,
         ..SdeDatasetRequirements::default()
     };
-    // The same archive imported before activities were read must be redone.
+    // The same archive imported before activities were read must be redone,
+    // even though its recipes were copied into the activity tables since:
+    // it has no research activity.
     import_active(&repository, &fixture_sde("checksum-activities", "100010")).await;
     assert!(repository
         .blueprint_activities(6_830)
         .await
         .unwrap()
-        .is_none());
+        .is_some_and(|blueprint| blueprint
+            .activities
+            .iter()
+            .all(|activity| activity.kind == BlueprintActivityKind::Manufacturing)));
     assert!(repository
         .active_by_checksum("checksum-activities", requires)
         .await

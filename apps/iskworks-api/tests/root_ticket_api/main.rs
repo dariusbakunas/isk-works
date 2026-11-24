@@ -89,50 +89,50 @@ async fn fixture(pool: &PgPool) -> Fixture {
     .await
     .unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprints (import_id,blueprint_type_id,name_en,duration_seconds) VALUES
-             ($1,6830,'Rifter Blueprint',600),
-             ($1,6002,'Charge Blueprint',180),
-             ($1,90101,'Fabricated Component Blueprint',120),
-             ($1,90110,'Assembly Blueprint',300),
-             ($1,90112,'Reacted Assembly Blueprint',300)"#,
+        r#"INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity,duration_seconds) VALUES
+             ($1,6830,'manufacturing',600),
+             ($1,6002,'manufacturing',180),
+             ($1,90101,'manufacturing',120),
+             ($1,90110,'manufacturing',300),
+             ($1,90112,'manufacturing',300)"#,
     )
     .bind(import_id)
     .execute(&mut *tx)
     .await
     .unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprint_materials (import_id,blueprint_type_id,material_type_id,quantity,position) VALUES
-             ($1,6830,34,1000,0),($1,6830,35,200,1),
-             ($1,6002,34,100,0),
+        r#"INSERT INTO sde_blueprint_activity_materials (import_id,blueprint_type_id,activity,material_type_id,quantity,position) VALUES
+             ($1,6830,'manufacturing',34,1000,0),($1,6830,'manufacturing',35,200,1),
+             ($1,6002,'manufacturing',34,100,0),
              -- Fabricated Component: 60 Pyerite + 100 Tritanium -> 1 unit per run.
              -- (Tritanium is also consumed by the Assembly parent directly --
              -- used to exercise within-one-Epic shared-raw-material planning.)
-             ($1,90101,35,60,0),($1,90101,34,100,1),
+             ($1,90101,'manufacturing',35,60,0),($1,90101,'manufacturing',34,100,1),
              -- Assembly: 5 Fabricated Component + 2000 Tritanium raw -> 1 unit per run.
-             ($1,90110,90100,5,0),($1,90110,34,2000,1),
+             ($1,90110,'manufacturing',90100,5,0),($1,90110,'manufacturing',34,2000,1),
              -- Reacted Assembly: 5 Reacted Part + 2000 Tritanium raw -> 1 unit per run.
-             ($1,90112,90200,5,0),($1,90112,34,2000,1)"#,
+             ($1,90112,'manufacturing',90200,5,0),($1,90112,'manufacturing',34,2000,1)"#,
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        r#"INSERT INTO sde_blueprint_products (import_id,blueprint_type_id,product_type_id,quantity,position) VALUES
-             ($1,6830,5876,1,0),
-             ($1,6002,6001,5,0),
-             ($1,90101,90100,1,0),
-             ($1,90110,90111,1,0),
-             ($1,90112,90113,1,0)"#,
+        r#"INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES
+             ($1,6830,'manufacturing',5876,1,0),
+             ($1,6002,'manufacturing',6001,5,0),
+             ($1,90101,'manufacturing',90100,1,0),
+             ($1,90110,'manufacturing',90111,1,0),
+             ($1,90112,'manufacturing',90113,1,0)"#,
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formulas (import_id,reaction_formula_type_id,name_en,duration_seconds) VALUES ($1,90201,'Reacted Part Formula',90)",
+        "INSERT INTO sde_blueprint_activities (import_id,blueprint_type_id,activity,duration_seconds) VALUES ($1,90201,'reaction',90)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formula_materials (import_id,reaction_formula_type_id,material_type_id,quantity,position) VALUES ($1,90201,35,40,0)",
+        "INSERT INTO sde_blueprint_activity_materials (import_id,blueprint_type_id,activity,material_type_id,quantity,position) VALUES ($1,90201,'reaction',35,40,0)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
     sqlx::query(
-        "INSERT INTO sde_reaction_formula_products (import_id,reaction_formula_type_id,product_type_id,quantity,position) VALUES ($1,90201,90200,1,0)",
+        "INSERT INTO sde_blueprint_activity_products (import_id,blueprint_type_id,activity,product_type_id,quantity,position) VALUES ($1,90201,'reaction',90200,1,0)",
     )
     .bind(import_id).execute(&mut *tx).await.unwrap();
 

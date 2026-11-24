@@ -1,7 +1,8 @@
 use super::*;
 
-/// A published blueprint's activities for the Type Info window, in
-/// [`BlueprintActivityKind`] order. An activity naming a type the SDE has
+/// A blueprint's activities, in [`BlueprintActivityKind`] order: the
+/// recipes the planner and the Invention page read, and what the Type Info
+/// window lists. An activity naming a type the SDE has
 /// no name for is left out whole. Kept types are marked referenced so they
 /// survive the published-types filter.
 pub(super) fn normalize_blueprint_activities(

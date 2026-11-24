@@ -41,7 +41,7 @@ mod invite_codes;
 // ---------------------------------------------------------------------------
 
 fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
-    NormalizedSde {
+    let mut dataset = NormalizedSde {
         categories: vec![ImportCategory {
             category_id: 6,
             name: "Ship".into(),
@@ -308,6 +308,95 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
+    };
+    mirror_recipes(&mut dataset);
+    dataset
+}
+
+/// Fixtures still describe recipes in the per-activity shape; readers use
+/// the activity tables, so mirror the recipes there. Call it again after
+/// changing a fixture's recipes.
+fn mirror_recipes(dataset: &mut NormalizedSde) {
+    use iskworks_sde::{
+        BlueprintActivityKind, ImportActivityProduct, ImportActivitySkill, ImportBlueprintActivity,
+    };
+    let products = |products: &[ImportProduct]| {
+        products
+            .iter()
+            .map(|product| ImportActivityProduct {
+                type_id: product.type_id,
+                quantity: product.quantity,
+                probability: None,
+                position: product.position,
+            })
+            .collect::<Vec<_>>()
+    };
+    let mirrored = [
+        BlueprintActivityKind::Manufacturing,
+        BlueprintActivityKind::Reaction,
+        BlueprintActivityKind::Invention,
+        BlueprintActivityKind::Copying,
+    ];
+    dataset
+        .blueprint_activities
+        .retain(|activity| !mirrored.contains(&activity.kind));
+    for blueprint in &dataset.blueprints {
+        dataset.blueprint_activities.push(ImportBlueprintActivity {
+            blueprint_type_id: blueprint.blueprint_type_id,
+            kind: BlueprintActivityKind::Manufacturing,
+            duration_seconds: blueprint.duration_seconds,
+            materials: blueprint.materials.clone(),
+            products: products(&blueprint.products),
+            skills: Vec::new(),
+        });
+    }
+    for formula in &dataset.reaction_formulas {
+        dataset.blueprint_activities.push(ImportBlueprintActivity {
+            blueprint_type_id: formula.reaction_formula_type_id,
+            kind: BlueprintActivityKind::Reaction,
+            duration_seconds: formula.duration_seconds,
+            materials: formula.materials.clone(),
+            products: products(&formula.products),
+            skills: Vec::new(),
+        });
+    }
+    for invention in &dataset.inventions {
+        dataset.blueprint_activities.push(ImportBlueprintActivity {
+            blueprint_type_id: invention.blueprint_type_id,
+            kind: BlueprintActivityKind::Invention,
+            duration_seconds: invention.duration_seconds,
+            materials: invention.materials.clone(),
+            products: invention
+                .products
+                .iter()
+                .map(|product| ImportActivityProduct {
+                    type_id: product.blueprint_type_id,
+                    quantity: product.base_runs,
+                    probability: Some(product.probability),
+                    position: product.position,
+                })
+                .collect(),
+            skills: invention
+                .skills
+                .iter()
+                .enumerate()
+                .map(|(position, skill)| ImportActivitySkill {
+                    skill_type_id: skill.skill_type_id,
+                    level: skill.level,
+                    position: position as i32,
+                })
+                .collect(),
+        });
+    }
+    for copying in &dataset.blueprint_copying {
+        dataset.blueprint_activities.push(ImportBlueprintActivity {
+            blueprint_type_id: copying.blueprint_type_id,
+            kind: BlueprintActivityKind::Copying,
+            duration_seconds: Some(copying.duration_seconds),
+            materials: Vec::new(),
+            products: Vec::new(),
+            skills: Vec::new(),
+        });
     }
 }
 
@@ -558,5 +647,6 @@ fn strict_opportunity_fixture() -> NormalizedSde {
             }],
         });
 
+    mirror_recipes(&mut dataset);
     dataset
 }

@@ -169,8 +169,8 @@ impl PgSdeRepository {
             SELECT EXISTS (
               SELECT 1
               FROM sde_imports import
-              JOIN sde_blueprint_invention invention ON invention.import_id = import.id
-              WHERE import.active = true
+              JOIN sde_blueprint_activities invention ON invention.import_id = import.id
+              WHERE import.active = true AND invention.activity = 'invention'
             )
             "#,
         )
@@ -188,17 +188,24 @@ impl PgSdeRepository {
             SELECT invention.blueprint_type_id, source.name_en, invention.duration_seconds,
                    copying.duration_seconds
             FROM sde_imports import
-            JOIN sde_blueprint_invention_products product ON product.import_id = import.id
-            JOIN sde_blueprint_invention invention
+            JOIN sde_blueprint_activity_products product
+              ON product.import_id = import.id
+             AND product.activity = 'invention'
+            JOIN sde_blueprint_activities invention
               ON invention.import_id = product.import_id
              AND invention.blueprint_type_id = product.blueprint_type_id
+             AND invention.activity = product.activity
             JOIN sde_types source
               ON source.import_id = invention.import_id
              AND source.type_id = invention.blueprint_type_id
-            LEFT JOIN sde_blueprint_copying copying
+            LEFT JOIN sde_blueprint_activities copying
               ON copying.import_id = invention.import_id
              AND copying.blueprint_type_id = invention.blueprint_type_id
-            WHERE import.active = true AND product.product_blueprint_type_id = $1
+             AND copying.activity = 'copying'
+            WHERE import.active = true
+              AND product.product_type_id = $1
+              AND product.probability IS NOT NULL
+              AND source.published = true
             ORDER BY invention.blueprint_type_id
             LIMIT 1
             "#,
@@ -217,7 +224,9 @@ impl PgSdeRepository {
             r#"
             SELECT line.material_type_id, item.name_en, line.quantity
             FROM sde_imports import
-            JOIN sde_blueprint_invention_materials line ON line.import_id = import.id
+            JOIN sde_blueprint_activity_materials line
+              ON line.import_id = import.id
+             AND line.activity = 'invention'
             JOIN sde_types item
               ON item.import_id = line.import_id
              AND item.type_id = line.material_type_id
@@ -235,26 +244,31 @@ impl PgSdeRepository {
         let products =
             sqlx::query_as::<_, (i64, String, Option<i64>, Option<String>, i64, Decimal)>(
                 r#"
-            SELECT line.product_blueprint_type_id, blueprint.name_en,
+            SELECT line.product_type_id, blueprint.name_en,
                    built.product_type_id, built.product_name,
-                   line.base_runs, line.probability
+                   line.quantity, line.probability
             FROM sde_imports import
-            JOIN sde_blueprint_invention_products line ON line.import_id = import.id
+            JOIN sde_blueprint_activity_products line
+              ON line.import_id = import.id
+             AND line.activity = 'invention'
             JOIN sde_types blueprint
               ON blueprint.import_id = line.import_id
-             AND blueprint.type_id = line.product_blueprint_type_id
+             AND blueprint.type_id = line.product_type_id
             LEFT JOIN LATERAL (
               SELECT p.product_type_id, item.name_en AS product_name
-              FROM sde_blueprint_products p
+              FROM sde_blueprint_activity_products p
               JOIN sde_types item
                 ON item.import_id = p.import_id AND item.type_id = p.product_type_id
               WHERE p.import_id = line.import_id
-                AND p.blueprint_type_id = line.product_blueprint_type_id
+                AND p.blueprint_type_id = line.product_type_id
+                AND p.activity = 'manufacturing'
               ORDER BY p.position, p.product_type_id
               LIMIT 1
             ) built ON true
-            WHERE import.active = true AND line.blueprint_type_id = $1
-            ORDER BY line.position, line.product_blueprint_type_id
+            WHERE import.active = true
+              AND line.blueprint_type_id = $1
+              AND line.probability IS NOT NULL
+            ORDER BY line.position, line.product_type_id
             "#,
             )
             .bind(source_blueprint_type_id)
@@ -266,7 +280,9 @@ impl PgSdeRepository {
             r#"
             SELECT line.skill_type_id, skill.name_en, line.level
             FROM sde_imports import
-            JOIN sde_blueprint_invention_skills line ON line.import_id = import.id
+            JOIN sde_blueprint_activity_skills line
+              ON line.import_id = import.id
+             AND line.activity = 'invention'
             JOIN sde_types skill
               ON skill.import_id = line.import_id
              AND skill.type_id = line.skill_type_id
@@ -379,25 +395,32 @@ impl PgSdeRepository {
             r#"
             SELECT DISTINCT ON (exact, item.name_en, item.type_id)
                    item.type_id, item.name_en, item.group_name_en,
-                   line.product_blueprint_type_id,
+                   line.product_type_id,
                    line.blueprint_type_id, source.name_en,
                    (SELECT count(*)
-                    FROM sde_blueprint_invention_products sibling
+                    FROM sde_blueprint_activity_products sibling
                     WHERE sibling.import_id = line.import_id
-                      AND sibling.blueprint_type_id = line.blueprint_type_id),
+                      AND sibling.blueprint_type_id = line.blueprint_type_id
+                      AND sibling.activity = 'invention'
+                      AND sibling.probability IS NOT NULL),
                    CASE WHEN lower(item.name_en) = lower($2) THEN 0 ELSE 1 END AS exact
             FROM sde_imports import
-            JOIN sde_blueprint_invention_products line ON line.import_id = import.id
+            JOIN sde_blueprint_activity_products line
+              ON line.import_id = import.id
+             AND line.activity = 'invention'
             JOIN sde_types source
               ON source.import_id = line.import_id
              AND source.type_id = line.blueprint_type_id
-            JOIN sde_blueprint_products built
+            JOIN sde_blueprint_activity_products built
               ON built.import_id = line.import_id
-             AND built.blueprint_type_id = line.product_blueprint_type_id
+             AND built.blueprint_type_id = line.product_type_id
+             AND built.activity = 'manufacturing'
             JOIN sde_types item
               ON item.import_id = built.import_id
              AND item.type_id = built.product_type_id
             WHERE import.active = true
+              AND line.probability IS NOT NULL
+              AND source.published = true
               AND item.published = true
               AND lower(item.name_en) LIKE lower($1)
             ORDER BY exact, item.name_en, item.type_id, line.blueprint_type_id
