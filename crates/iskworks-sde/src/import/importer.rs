@@ -91,6 +91,7 @@ pub struct SdeDatasetRequirements {
     pub type_info: bool,
     pub pi_planner_data: bool,
     pub invention: bool,
+    pub blueprint_activities: bool,
 }
 
 #[async_trait]
@@ -152,6 +153,7 @@ impl<'a> SdeImporter<'a> {
                         type_info: source.has_type_info(),
                         pi_planner_data: source.has_pi_planner_data(),
                         invention: source.has_invention(),
+                        blueprint_activities: source.has_blueprint_activities(),
                     },
                 )
                 .await?

@@ -13,9 +13,10 @@ use iskworks_core::{
     Money, PriceSourceId, WorkspaceId,
 };
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError, SkillAttribute,
-    SkillDefinition, TypeBonusLine, TypeBonusSource, TypeInfoBase, TypeListEntry, TypeSearchResult,
-    TypeUsage, UsedWithKind,
+    ActiveSde, ActivityMaterial, ActivityProduct, BlueprintActivities, BlueprintActivity,
+    BlueprintActivityKind, BlueprintSearchResult, ManufacturingRecipe, RequiredSkill, SdeError,
+    SkillAttribute, SkillDefinition, TypeBonusLine, TypeBonusSource, TypeInfoBase, TypeListEntry,
+    TypeSearchResult, TypeUsage, UsedWithKind,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -29,6 +30,7 @@ const HARPY: i64 = 11_381;
 const CALDARI_FRIGATE: i64 = 3_330;
 const SCRIPT: i64 = 40_334;
 const TRITANIUM: i64 = 34;
+const HARPY_BLUEPRINT: i64 = 11_382;
 
 struct FakeSde;
 
@@ -51,6 +53,16 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
         unimplemented!()
     }
     async fn type_info_base(&self, type_id: i64) -> Result<Option<TypeInfoBase>, SdeError> {
+        if type_id == HARPY_BLUEPRINT {
+            return Ok(Some(TypeInfoBase {
+                type_id,
+                name: "Harpy Blueprint".into(),
+                published: true,
+                category_id: Some(9),
+                category_name: Some("Blueprint".into()),
+                ..TypeInfoBase::default()
+            }));
+        }
         Ok((type_id == HARPY).then(|| TypeInfoBase {
             type_id: HARPY,
             name: "Harpy".into(),
@@ -65,6 +77,46 @@ impl iskworks_sde::FakeSdeRead for FakeSde {
             volume_m3: Some(Decimal::new(28_600, 0)),
             ..TypeInfoBase::default()
         }))
+    }
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError> {
+        Ok(
+            (blueprint_type_id == HARPY_BLUEPRINT).then(|| BlueprintActivities {
+                max_production_limit: Some(10),
+                activities: vec![
+                    BlueprintActivity {
+                        kind: BlueprintActivityKind::ResearchMaterial,
+                        duration_seconds: Some(2_100),
+                        materials: Vec::new(),
+                        products: Vec::new(),
+                        skills: vec![RequiredSkill {
+                            skill_type_id: CALDARI_FRIGATE,
+                            level: 4,
+                        }],
+                    },
+                    BlueprintActivity {
+                        kind: BlueprintActivityKind::Invention,
+                        duration_seconds: Some(63_900),
+                        materials: vec![ActivityMaterial {
+                            type_id: 20_410,
+                            type_name: "Datacore - Gallentean Starship Engineering".into(),
+                            quantity: 2,
+                            group_id: Some(333),
+                            group_name: Some("Datacores".into()),
+                        }],
+                        products: vec![ActivityProduct {
+                            type_id: 99_001,
+                            type_name: "Harpy Mk II Blueprint".into(),
+                            quantity: 1,
+                            probability: Some(Decimal::new(3, 1)),
+                        }],
+                        skills: Vec::new(),
+                    },
+                ],
+            }),
+        )
     }
     async fn type_bonuses(&self, type_id: i64) -> Result<Vec<TypeBonusLine>, SdeError> {
         Ok(if type_id == HARPY {
@@ -535,4 +587,59 @@ async fn a_bad_page_query_is_a_bad_request() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_blueprint_lists_its_activities() {
+    let (status, body) = get(&app(false), &format!("/api/types/{HARPY_BLUEPRINT}/info")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["blueprint"],
+        json!({
+            "maxRuns": 10,
+            "activities": [
+                {
+                    "kind": "researchMaterial",
+                    "timeSeconds": 2100,
+                    "outcome": [],
+                    "skills": [{
+                        "skillTypeId": CALDARI_FRIGATE,
+                        "name": "Caldari Frigate",
+                        "level": 4,
+                        "trainedLevel": 5,
+                        "children": [],
+                    }],
+                    "missing": null,
+                    "materials": [],
+                },
+                {
+                    "kind": "invention",
+                    "timeSeconds": 63900,
+                    "outcome": [{
+                        "typeId": 99001,
+                        "name": "Harpy Mk II Blueprint",
+                        "quantity": 1,
+                        "probability": "0.3",
+                    }],
+                    "skills": [],
+                    "missing": null,
+                    "materials": [{
+                        "name": "Datacores",
+                        "items": [{
+                            "typeId": 20410,
+                            "name": "Datacore - Gallentean Starship Engineering",
+                            "quantity": 2,
+                        }],
+                    }],
+                },
+            ],
+        })
+    );
+}
+
+#[tokio::test]
+async fn anything_else_has_no_blueprint() {
+    let (_, body) = get(&app(false), &format!("/api/types/{HARPY}/info")).await;
+    assert_eq!(body["blueprint"], Value::Null);
 }

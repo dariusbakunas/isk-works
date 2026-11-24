@@ -53,6 +53,13 @@ pub struct NormalizedSde {
     /// The Generic Decryptors (group 1304). Empty when the SDE lacks
     /// `typeDogma`.
     pub decryptors: Vec<ImportDecryptor>,
+    /// Every industry activity of the published blueprints and reaction
+    /// formulas, for the Type Info window. Repeats the manufacturing,
+    /// reaction and invention recipes above in one shape, and adds what
+    /// they leave out: research, copying and each activity's skills.
+    pub blueprint_activities: Vec<ImportBlueprintActivity>,
+    /// `maxProductionLimit` of the same blueprints.
+    pub blueprint_limits: Vec<ImportBlueprintLimit>,
     pub skipped_blueprints: u64,
     pub skipped_reaction_formulas: u64,
 }
@@ -546,6 +553,42 @@ pub struct ImportInventionProduct {
 pub struct ImportInventionSkill {
     pub skill_type_id: i64,
     pub level: i16,
+}
+
+/// One industry activity of a blueprint, as the game's info window lists
+/// it.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportBlueprintActivity {
+    pub blueprint_type_id: i64,
+    pub kind: BlueprintActivityKind,
+    pub duration_seconds: Option<i64>,
+    pub materials: Vec<ImportMaterial>,
+    /// In SDE order.
+    pub products: Vec<ImportActivityProduct>,
+    /// In SDE order.
+    pub skills: Vec<ImportActivitySkill>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportActivityProduct {
+    pub type_id: i64,
+    pub quantity: i64,
+    /// The base success chance in `(0, 1]`, on invention products only.
+    pub probability: Option<Decimal>,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportActivitySkill {
+    pub skill_type_id: i64,
+    pub level: i16,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ImportBlueprintLimit {
+    pub blueprint_type_id: i64,
+    pub max_production_limit: i64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

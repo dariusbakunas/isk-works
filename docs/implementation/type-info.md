@@ -13,6 +13,7 @@ import. This page covers the data. The API and the window come later.
 | `typeDogma.jsonl` | `sde_type_attributes` | Imported types' values of the kept attributes. |
 | `typeMaterials.jsonl` | `sde_type_materials` | Fixed reprocessing outputs per portion whose output type was imported. `randomizedMaterials` (min/max quantities) is skipped. |
 | `typeBonus.jsonl` | `sde_type_bonuses` | Ship, subsystem and structure bonuses. `ordinal` runs over the per-skill bonuses (`source_kind = 'skill'`, `skill_type_id` set), then role, then misc. Text keeps CCP markup. |
+| `blueprints.jsonl` | `sde_blueprint_activities`, `_materials`, `_products`, `_skills`, `sde_blueprint_limits` | Every activity (manufacturing, material and time research, copying, invention, reaction) of the published blueprints and reaction formulas: base time, materials, products (with the base chance for invention) and skills, in SDE order, plus `maxProductionLimit`. An activity naming an unnamed type is left out. |
 
 All files except `types.jsonl` are optional. An export without them still
 imports, with those tables empty.
@@ -28,6 +29,19 @@ imports, with those tables empty.
 - Re-importing the same archive redoes the import when the active import
   has no `sde_dogma_attributes` rows (`SdeDatasetRequirements::type_info`).
   After deploying this, run `make sde-import` again.
+- The activity tables are meant to become the one source of recipes. For
+  now they repeat the manufacturing, reaction and invention recipes the
+  planner and the Invention page still read from their own tables, and add
+  research, copying materials and each activity's skills, which nothing
+  else stores. Only published blueprints are kept.
+- Re-importing the same archive also redoes the import when the active
+  import has no `sde_blueprint_activities` rows
+  (`SdeDatasetRequirements::blueprint_activities`). Until then
+  `TypeInfoView.blueprint` is `null` and the window shows a blueprint like
+  any other type.
+- `TypeInfoView.blueprint` is read only for types in the Blueprint category
+  (9). Each activity carries its own skill tree, checked against the same
+  pilot as the Requirements tab.
 - Size, SDE 3482594: 1,182 attributes, about 145k attribute values, 44k
   reprocessing lines, 3.9k bonus lines; about 43 MB per import, all tables
   included.

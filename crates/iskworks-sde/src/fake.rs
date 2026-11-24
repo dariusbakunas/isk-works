@@ -551,6 +551,16 @@ pub trait FakeSdeRead: Send + Sync {
             std::any::type_name::<Self>()
         )
     }
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError> {
+        let _ = blueprint_type_id;
+        unimplemented!(
+            "{} does not stub FakeSdeRead::blueprint_activities",
+            std::any::type_name::<Self>()
+        )
+    }
 }
 
 /// Every [`FakeSdeRead`] is an [`SdeReadRepository`].
@@ -865,5 +875,11 @@ impl<T: FakeSdeRead> SdeReadRepository for T {
         limit: u32,
     ) -> Result<Vec<InventableProduct>, SdeError> {
         FakeSdeRead::search_inventable_products(self, query, limit).await
+    }
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError> {
+        FakeSdeRead::blueprint_activities(self, blueprint_type_id).await
     }
 }

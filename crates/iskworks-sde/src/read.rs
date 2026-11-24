@@ -847,4 +847,10 @@ pub trait SdeReadRepository: Send + Sync {
         query: &str,
         limit: u32,
     ) -> Result<Vec<InventableProduct>, SdeError>;
+    /// A blueprint's (or reaction formula's) industry activities. `None`
+    /// for a type without any, or an import made before they were read.
+    async fn blueprint_activities(
+        &self,
+        blueprint_type_id: i64,
+    ) -> Result<Option<BlueprintActivities>, SdeError>;
 }

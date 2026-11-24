@@ -103,7 +103,8 @@ pub use skills_catalogue::{
 pub use sync_metrics::init_metrics as init_sync_metrics;
 pub use ticket_jobs::{IndustryJobsSynced, TicketJobError, TicketJobService};
 pub use type_info::{
-    MetaGroupList, NamedId, TypeBasics, TypeIndustry, TypeInfoService, TypeInfoView, TypeListItem,
-    TypePrice, TypeProducer, TypeQuantity, UsedInItem, UsedInPage, UsedWithSummary, UsedWithView,
+    MetaGroupList, NamedId, TypeActivityOutcome, TypeBasics, TypeBlueprint, TypeBlueprintActivity,
+    TypeIndustry, TypeInfoService, TypeInfoView, TypeListItem, TypeMaterialGroup, TypePrice,
+    TypeProducer, TypeQuantity, UsedInItem, UsedInPage, UsedWithSummary, UsedWithView,
     MAX_USED_IN_LIMIT,
 };

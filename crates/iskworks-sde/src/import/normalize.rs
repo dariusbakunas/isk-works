@@ -93,6 +93,7 @@ pub(super) fn normalize_market_groups(
     Ok(ordered)
 }
 
+mod blueprint_activities;
 mod invention;
 #[cfg(test)]
 mod market_group_ordering_tests;
@@ -270,6 +271,8 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     let mut skipped_reaction_formulas = 0_u64;
     let mut inventions = Vec::new();
     let mut blueprint_copying = Vec::new();
+    let mut blueprint_activities = Vec::new();
+    let mut blueprint_limits = Vec::new();
     let blueprint_group_ids = groups
         .iter()
         .filter(|group| group.category_id == Some(invention::BLUEPRINT_CATEGORY_ID))
@@ -339,6 +342,19 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                     .is_some_and(|id| blueprint_group_ids.contains(&id))
             });
         if source.is_some() {
+            blueprint_activities.extend(blueprint_activities::normalize_blueprint_activities(
+                &blueprint,
+                &raw_types_by_id,
+                &mut referenced_type_ids,
+            ));
+            if let Some(max_production_limit) =
+                blueprint.max_production_limit.filter(|limit| *limit > 0)
+            {
+                blueprint_limits.push(ImportBlueprintLimit {
+                    blueprint_type_id: blueprint.key,
+                    max_production_limit,
+                });
+            }
             if let Some(activity) = blueprint.activities.get("invention") {
                 if let Some(parsed) = invention::normalize_invention(
                     blueprint.key,
@@ -364,6 +380,8 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     }
     inventions.sort_by_key(|item| item.blueprint_type_id);
     blueprint_copying.sort_by_key(|item| item.blueprint_type_id);
+    blueprint_activities.sort_by_key(|item| (item.blueprint_type_id, item.kind));
+    blueprint_limits.sort_by_key(|item| item.blueprint_type_id);
     let decryptors = invention::normalize_decryptors(&raw_type_dogma, &raw_types_by_id);
 
     let planet_schematics = normalize_planet_schematics(
@@ -564,6 +582,8 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         inventions,
         blueprint_copying,
         decryptors,
+        blueprint_activities,
+        blueprint_limits,
         skipped_blueprints,
         skipped_reaction_formulas,
     })
