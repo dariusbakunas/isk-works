@@ -24,10 +24,13 @@ import {
   newTypeInfoState,
   rememberLoaded,
   showType,
+  withActivity,
   withPilot,
   withTab,
+  type OwnedBlueprint,
   type TypeInfoWindowState,
 } from "../../components/type-info/type-info-state";
+import { BlueprintSection } from "./blueprint-section";
 import { TypeIcon } from "./meta-tag";
 import type { OpenType } from "./rich-text";
 import {
@@ -50,20 +53,26 @@ const NARROW_WIDTH = 420;
 const FIRST_USED_IN_PAGE = 8;
 const USED_IN_PAGE = 50;
 const SHIP_CATEGORY = 6;
+const BLUEPRINT_CATEGORY = 9;
 
-/** The tabs a type has content for, in the client's order. */
+/** Whether the Industry tab has anything besides a blueprint's activities. */
+function hasIndustry(info: TypeInfo): boolean {
+  return info.industry.producedBy.length > 0 || info.industry.reprocessesInto.length > 0 || info.industry.usedInCount > 0;
+}
+
+/** The tabs a type has content for, in the client's order: a blueprint
+ * leads with Industry, as its info window does in the game. */
 export function visibleTabs(info: TypeInfo): TypeInfoTab[] {
+  const blueprint = (info.blueprint?.activities.length ?? 0) > 0;
   const tabs: [TypeInfoTab, boolean][] = [
+    ["Industry", blueprint],
     ["Description", info.description.length > 0],
     ["Attributes", info.attributes.length > 0 || hasBasics(info)],
     ["Traits", info.traits.length > 0],
     ["Requirements", info.requirements.length > 0],
     ["Variations", info.variationCount > 1],
     ["Used with", info.usedWith !== null && info.usedWith.count > 0],
-    [
-      "Industry",
-      info.industry.producedBy.length > 0 || info.industry.reprocessesInto.length > 0 || info.industry.usedInCount > 0,
-    ],
+    ["Industry", !blueprint && hasIndustry(info)],
   ];
   return tabs.filter(([, shown]) => shown).map(([tab]) => tab);
 }
@@ -138,8 +147,15 @@ function Tabs({
 
 const actionClass = "flex h-6 items-center border border-border px-2 text-[8px] text-muted hover:bg-hover hover:text-foreground";
 
-/** New build of this item from its blueprint (or else its reaction formula); `null` when nothing makes it. */
+/** New build of this item from its blueprint (or else its reaction formula),
+ * or of what a blueprint or formula itself makes; `null` when nothing does. */
 export function planBuildPath(info: TypeInfo): string | null {
+  const own = info.blueprint?.activities.find((activity) => activity.kind === "manufacturing" || activity.kind === "reaction");
+  if (own) {
+    return own.kind === "manufacturing"
+      ? `/builds/new?blueprintTypeId=${info.typeId}`
+      : `/builds/new?reactionFormulaTypeId=${info.typeId}`;
+  }
   const { producedBy } = info.industry;
   const producer = producedBy.find((entry) => entry.kind === "manufacturing") ?? producedBy[0];
   if (!producer) return null;
@@ -148,14 +164,38 @@ export function planBuildPath(info: TypeInfo): string | null {
     : `/builds/new?reactionFormulaTypeId=${producer.typeId}`;
 }
 
-function Header({ info }: { info: TypeInfo }) {
+/** The owned blueprint a window was opened from: original or copy, runs
+ * left, and its research, as under the name in the game. */
+function OwnedBlueprintLine({ owned }: { owned: OwnedBlueprint }) {
+  const runs =
+    owned.kind === "original"
+      ? "Original · infinite runs"
+      : owned.runs !== null
+        ? `Copy · ${owned.runs.toLocaleString("en-US")} ${owned.runs === 1 ? "run" : "runs"} remaining`
+        : "Copy";
+  const badge = "border border-border px-1.5 font-mono text-[9px] text-foreground";
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] text-muted">
+      <span>{runs}</span>
+      <span className={badge} title="Material efficiency">
+        ME {owned.materialEfficiency}%
+      </span>
+      <span className={badge} title="Time efficiency">
+        TE {owned.timeEfficiency}%
+      </span>
+    </p>
+  );
+}
+
+function Header({ info, owned }: { info: TypeInfo; owned: OwnedBlueprint | undefined }) {
   const [copied, setCopied] = useState(false);
   const classification = [info.group?.name, info.category?.name].filter(Boolean).join(" · ");
   const ship = info.category?.id === SHIP_CATEGORY;
+  const blueprint = info.category?.id === BLUEPRINT_CATEGORY;
   const plan = planBuildPath(info);
   return (
     <div className="flex shrink-0 gap-3 border-b border-border p-3">
-      <TypeIcon name={info.name} size={64} typeId={info.typeId} variation={ship ? "render" : "icon"} />
+      <TypeIcon name={info.name} size={64} typeId={info.typeId} variation={ship ? "render" : blueprint ? (owned?.kind === "copy" ? "bpc" : "bp") : "icon"} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
           <h3 className="truncate text-sm font-semibold text-bright">{info.name}</h3>
@@ -177,6 +217,7 @@ function Header({ info }: { info: TypeInfo }) {
             {formatIskCompact(info.price.bestSell)} ISK
           </p>
         ) : null}
+        {blueprint && owned ? <OwnedBlueprintLine owned={owned} /> : null}
         {info.published || plan ? (
           <div className="mt-2 flex gap-1">
             {info.published ? (
@@ -229,6 +270,7 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
     `w${entry.typeId}`,
   );
   const usedWith = current(usedWithLoad, active === "Used with");
+  const blueprint = loaded?.blueprint?.activities.length ? loaded.blueprint : null;
   const usedInActive = active === "Industry" && loaded !== null && loaded.industry.usedInCount > 0;
   const firstUsedInLoad = useLoad<UsedInPage>(
     usedInActive ? (signal) => getTypeUsedIn(entry.typeId, { limit: FIRST_USED_IN_PAGE }, signal) : null,
@@ -239,8 +281,10 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
   const [loadingMore, setLoadingMore] = useState(false);
   useEffect(() => setUsedIn(firstUsedIn), [firstUsedIn]);
 
-  const charactersLoad = useLoad<CharacterRosterEntry[]>(active === "Requirements" ? () => listCharacters() : null, "characters");
-  const characters = current(charactersLoad, active === "Requirements");
+  // Skills are checked on Requirements and on a blueprint's activities.
+  const skillsActive = active === "Requirements" || (active === "Industry" && blueprint !== null);
+  const charactersLoad = useLoad<CharacterRosterEntry[]>(skillsActive ? () => listCharacters() : null, "characters");
+  const characters = current(charactersLoad, skillsActive);
   // Only characters whose skills have synced can be checked against.
   const skilled = useMemo(() => characters?.filter((character) => character.totalSp !== null) ?? null, [characters]);
 
@@ -312,13 +356,31 @@ export function TypeInfoWindow({ state, setState, width }: ToolWindowRenderProps
       );
       break;
     case "Industry":
-      section = <IndustrySection info={value} loadingMore={loadingMore} onMore={() => void loadMore()} onOpen={onOpen} usedIn={usedIn} />;
+      section = (
+        <>
+          {blueprint ? (
+            <BlueprintSection
+              activity={state.activity}
+              blueprint={blueprint}
+              characters={skilled}
+              info={value}
+              onActivity={(kind) => setState(withActivity(latest.current, kind))}
+              onOpen={onOpen}
+              onPilot={(next) => setState(withPilot(latest.current, next))}
+              pilot={pilot}
+            />
+          ) : null}
+          {!blueprint || hasIndustry(value) ? (
+            <IndustrySection info={value} loadingMore={loadingMore} onMore={() => void loadMore()} onOpen={onOpen} usedIn={usedIn} />
+          ) : null}
+        </>
+      );
       break;
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Header info={value} />
+      <Header info={value} owned={entry.typeId === value.typeId ? entry.blueprint : undefined} />
       {tabs.length && active ? (
         <Tabs active={active} narrow={width < NARROW_WIDTH} onTab={(tab) => setState(withTab(latest.current, tab))} tabs={tabs} />
       ) : null}

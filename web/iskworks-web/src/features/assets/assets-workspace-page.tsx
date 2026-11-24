@@ -14,6 +14,7 @@ import { AssetInspector } from "./asset-inspector";
 import { ContentsButton } from "./contents-button";
 import { useAssetsQuery } from "./use-assets-query";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
+import { ownedBlueprint } from "../../components/type-info/type-info-state";
 import { apiMessage } from "../../api/api-error";
 
 const columns: Array<{ key: AssetColumn; label: string; width: string; numeric?: boolean }> = [
@@ -175,7 +176,7 @@ function AssetTable({ assets, onOpenContents, onSelect, onSort, order, resetKey,
 function assetRowKey(row: FlatAssetRow) { return `${row.connectionId}:${row.eveItemId}`; }
 
 function AssetRow({ onOpenContents, row }: { onOpenContents: (row: FlatAssetRow) => void; row: FlatAssetRow }) {
-  const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}{row.contentCount > 0 ? <ContentsButton count={row.contentCount} name={row.typeName ?? "Unknown item"} onOpen={() => onOpenContents(row)} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() };
+  const values: Record<AssetColumn, React.ReactNode> = { item: <span className="flex min-w-0 items-center gap-2"><EveTypeImage size={32} typeId={row.typeId} typeName={row.typeName ?? "Unknown item"} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} /><span className="truncate font-medium text-foreground">{row.typeName ?? "—"}</span>{row.typeName ? <TypeInfoButton blueprint={ownedBlueprint(row.blueprint)} name={row.typeName} typeId={row.typeId} /> : null}{row.contentCount > 0 ? <ContentsButton count={row.contentCount} name={row.typeName ?? "Unknown item"} onOpen={() => onOpenContents(row)} /> : null}</span>, quantity: row.quantity.toLocaleString(), packagedVolume: row.totalPackagedVolume ? `${formatAssetDecimal(row.totalPackagedVolume)} m³` : "—", character: <span className="flex items-center gap-1.5"><EveCharacterPortrait characterId={row.characterId} characterName={row.characterName} size={32} /><CharacterName className="truncate" name={row.characterName} /></span>, location: row.locationName ?? "—", container: row.containerName ?? "—", group: row.groupName ?? "—", status: labelStatus(row.reconciliation.state), observed: new Date(row.observedAt).toLocaleString() };
   const cells = Object.fromEntries(
     Object.entries(values).map(([key, value]) => [
       key,

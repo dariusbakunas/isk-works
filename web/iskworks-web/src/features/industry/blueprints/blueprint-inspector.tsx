@@ -6,6 +6,7 @@ import type { BlueprintLibraryRow } from "../../../api/industry";
 import { EveTypeImage } from "../../../components/eve-type-image";
 import { formatRuns, kindLabel, planBuildHref } from "./blueprint-format";
 import { TypeInfoButton } from "../../../components/type-info/type-info-button";
+import { ownedBlueprint } from "../../../components/type-info/type-info-state";
 
 export function BlueprintInspector({ blueprint, onClose }: { blueprint: BlueprintLibraryRow; onClose: () => void }) {
   const href = planBuildHref(blueprint);
@@ -25,7 +26,7 @@ export function BlueprintInspector({ blueprint, onClose }: { blueprint: Blueprin
           <span className="text-[0.625rem] font-semibold uppercase text-muted">Selected blueprint</span>
           <div className="flex min-w-0 items-center gap-1">
             <h2 className="truncate text-sm font-semibold" title={blueprint.blueprintName}>{blueprint.blueprintName}</h2>
-            <TypeInfoButton alwaysVisible name={blueprint.blueprintName} typeId={blueprint.blueprintTypeId} />
+            <TypeInfoButton alwaysVisible blueprint={ownedBlueprint(blueprint)} name={blueprint.blueprintName} typeId={blueprint.blueprintTypeId} />
           </div>
         </div>
         <button aria-label="Close blueprint details" className="p-1 text-muted hover:text-foreground" onClick={onClose} type="button">

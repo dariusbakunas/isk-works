@@ -65,6 +65,36 @@ export interface RequirementSummary {
 }
 
 export type RecipeKind = "manufacturing" | "reaction";
+
+/** Mirrors `iskworks_sde::BlueprintActivityKind`, in the game's order. */
+export type BlueprintActivityKind =
+  | "manufacturing"
+  | "researchMaterial"
+  | "researchTime"
+  | "copying"
+  | "invention"
+  | "reaction";
+
+/** Mirrors `iskworks_app::TypeBlueprintActivity`. */
+export interface BlueprintActivity {
+  kind: BlueprintActivityKind;
+  /** Base time for one run, before skills and facility. */
+  timeSeconds: number | null;
+  /** Items made, or blueprints invented; empty for research and copying. */
+  outcome: {
+    typeId: number;
+    name: string;
+    /** Units per run; for invention, the runs on the invented copy. */
+    quantity: number;
+    /** Base success chance in (0, 1] as a decimal string; invention only. */
+    probability: string | null;
+  }[];
+  skills: SkillNode[];
+  /** For a character pilot only. */
+  missing: RequirementSummary | null;
+  /** By item group. */
+  materials: { name: string; items: { typeId: number; name: string; quantity: number }[] }[];
+}
 export type UsedWithKind = "charges" | "modules";
 
 /** Mirrors `iskworks_app::TypeInfoView`. Decimals are strings. */
@@ -98,6 +128,14 @@ export interface TypeInfo {
     reprocessesInto: { typeId: number; name: string; quantity: number }[];
     usedInCount: number;
   };
+  /** A blueprint's or reaction formula's activities; `null` for anything
+   * else, and until the SDE is imported again with them. */
+  blueprint: {
+    /** The most runs one job, and so one copy, can hold. */
+    maxRuns: number | null;
+    /** Only the activities it has. */
+    activities: BlueprintActivity[];
+  } | null;
   /** Itself included. */
   variationCount: number;
   /** `null`: no Used with tab. */

@@ -2,22 +2,26 @@ import { Info } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 
 import { useToolWindows } from "../tool-windows/tool-windows-context";
-import { TYPE_INFO_KIND, newTypeInfoState } from "./type-info-state";
+import { TYPE_INFO_KIND, newTypeInfoState, type OwnedBlueprint } from "./type-info-state";
 
 /**
  * EVE's (i): opens `typeId` in a Type Info window. A plain click reuses the
  * window in front; Shift- or ⌘/Ctrl-click opens another (spec §5.1).
  * Hidden until its row (a `group`) is hovered or focused, unless
  * `alwaysVisible`. Renders nothing outside the tool windows provider.
+ * `blueprint` says which owned blueprint the button sits on, so the window
+ * can show its runs and efficiency.
  */
 export function TypeInfoButton({
   typeId,
   name,
+  blueprint,
   alwaysVisible = false,
   className = "",
 }: {
   typeId: number;
   name: string;
+  blueprint?: OwnedBlueprint;
   alwaysVisible?: boolean;
   className?: string;
 }) {
@@ -27,7 +31,7 @@ export function TypeInfoButton({
   function handleClick(event: MouseEvent<HTMLButtonElement>) {
     // Rows activate on click; showing info isn't selecting the row.
     event.stopPropagation();
-    windows?.open(TYPE_INFO_KIND, newTypeInfoState(typeId, name), {
+    windows?.open(TYPE_INFO_KIND, newTypeInfoState(typeId, name, blueprint), {
       newWindow: event.shiftKey || event.metaKey || event.ctrlKey,
     });
   }

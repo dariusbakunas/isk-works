@@ -5,6 +5,7 @@ import type { FlatAssetQuery, FlatAssetRow } from "../../api/assets";
 import { EveTypeImage } from "../../components/eve-type-image";
 import { OperationalTable, OperationalTableGroup, OperationalTableRow, type OperationalColumn } from "../../components/operational-table";
 import { TypeInfoButton } from "../../components/type-info/type-info-button";
+import { ownedBlueprint } from "../../components/type-info/type-info-state";
 import { formatAssetDecimal } from "./asset-format";
 import { ContentsButton } from "./contents-button";
 import { useAssetsQuery } from "./use-assets-query";
@@ -136,7 +137,7 @@ function ContentRow({ onOpen, row }: { onOpen: (row: FlatAssetRow) => void; row:
       <span className="flex min-w-0 items-center gap-2">
         <EveTypeImage size={32} typeId={row.typeId} typeName={name} variation={row.blueprint?.kind === "copy" ? "bpc" : row.blueprint ? "bp" : "icon"} />
         <span className="truncate font-medium text-foreground" title={name}>{name}</span>
-        {row.typeName ? <TypeInfoButton name={row.typeName} typeId={row.typeId} /> : null}
+        {row.typeName ? <TypeInfoButton blueprint={ownedBlueprint(row.blueprint)} name={row.typeName} typeId={row.typeId} /> : null}
         {row.contentCount > 0 ? <ContentsButton count={row.contentCount} name={name} onOpen={() => onOpen(row)} /> : null}
       </span>
     ),

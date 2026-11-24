@@ -2,12 +2,12 @@ import { ChevronDown, Info } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CharacterRosterEntry } from "../../api/characters";
-import type { MetaGroupList, SkillNode, TypeInfo, UsedInPage } from "../../api/types";
+import type { MetaGroupList, RequirementSummary, SkillNode, TypeInfo, UsedInPage } from "../../api/types";
 import { MetaMark, TypeIcon } from "./meta-tag";
 import { RichText, TypeLink, type OpenType } from "./rich-text";
 
 const GREEN = "#5c9d68";
-const DIVIDER = "border-[#171f2c]";
+export const DIVIDER = "border-[#171f2c]";
 const ROMAN = ["", "I", "II", "III", "IV", "V"];
 
 export function SectionTitle({ children }: { children: ReactNode }) {
@@ -78,7 +78,7 @@ function volume(value: string | null): string | null {
   return `${amount(value)} m³`;
 }
 
-function KeyValue({ label, children }: { label: string; children: ReactNode }) {
+export function KeyValue({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className={`grid min-h-7 grid-cols-2 items-center gap-2 border-b text-[9px] ${DIVIDER}`}>
       <span className="text-muted">{label}</span>
@@ -243,6 +243,93 @@ function SkillLabel({ node, depth, onOpen }: { node: SkillNode; depth: number; o
   );
 }
 
+/** Whether levels are checked: a character is picked, known, and summarised. */
+export function pilotChecked(pilot: string | undefined, characters: CharacterRosterEntry[] | null, missing: RequirementSummary | null): boolean {
+  return Boolean(pilot && characters?.some((character) => character.connectionId === pilot) && missing);
+}
+
+/** The pilot picker and what the pilot still has to train. */
+export function PilotBar({
+  pilot,
+  characters,
+  missing,
+  onPilot,
+}: {
+  /** The character checked against, if any. */
+  pilot: string | undefined;
+  /** Characters with synced skills; `null` while loading. */
+  characters: CharacterRosterEntry[] | null;
+  missing: RequirementSummary | null;
+  onPilot: (pilot: string) => void;
+}) {
+  // Levels are checked only against a character (spec: no All V / All 0 here).
+  const checked = pilotChecked(pilot, characters, missing);
+  const summary =
+    checked && missing
+      ? missing.missingSkills === 0
+        ? null
+        : `Missing ${missing.missingSkills} ${missing.missingSkills === 1 ? "skill" : "skills"}${
+            missing.remainingSeconds ? ` · ${formatTrainingTime(missing.remainingSeconds)} to train` : ""
+          }`
+      : null;
+  return (
+    <div className="flex items-center gap-2">
+      {characters?.length ? <PilotPicker characters={characters} onPilot={onPilot} pilot={pilot} /> : null}
+      {characters && characters.length === 0 ? (
+        <span className="text-[9px] text-subtle">No character with synced skills to check against</span>
+      ) : checked ? (
+        <span className={`ml-auto text-[9px] ${summary ? "text-warning" : ""}`} style={summary ? undefined : { color: GREEN }}>
+          {summary ?? "All requirements met"}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** A skill tree, prerequisites indented; with `checked`, against trained levels. */
+export function SkillRows({ nodes, checked, onOpen }: { nodes: SkillNode[]; checked: boolean; onOpen: OpenType }) {
+  return (
+    <ul>
+      {flatten(nodes).map(({ node, depth }, index) => {
+        const met = node.trainedLevel >= node.level;
+        if (!checked) {
+          return (
+            <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
+              <SkillLabel depth={depth} node={node} onOpen={onOpen} />
+              <span aria-label={`Requires level ${node.level}`} className="flex gap-1" role="img">
+                {[1, 2, 3, 4, 5].map((level) => (
+                  <i className={`block h-2 w-2 border border-primary ${level <= node.level ? "bg-primary/40" : ""}`} key={level} />
+                ))}
+              </span>
+              <span />
+            </li>
+          );
+        }
+        return (
+          <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
+            <SkillLabel depth={depth} node={node} onOpen={onOpen} />
+            <span aria-label={`Trained ${node.trainedLevel} of ${node.level}`} className="flex gap-1" role="img">
+              {[1, 2, 3, 4, 5].map((level) => {
+                const trained = level <= node.trainedLevel;
+                const short = !met && level <= node.level && !trained;
+                return (
+                  <i
+                    className={`block h-2 w-2 border ${short ? "border-warning" : "border-primary"} ${trained ? "bg-primary" : ""}`}
+                    key={level}
+                  />
+                );
+              })}
+            </span>
+            <b aria-label={met ? "Met" : "Missing"} className={met ? "" : "text-warning"} style={met ? { color: GREEN } : undefined}>
+              {met ? "✓" : "✕"}
+            </b>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function RequirementsSection({
   info,
   pilot,
@@ -258,68 +345,12 @@ export function RequirementsSection({
   onPilot: (pilot: string) => void;
   onOpen: OpenType;
 }) {
-  const rows = flatten(info.requirements);
-  // Levels are checked only against a character (spec: no All V / All 0 here).
-  const checked = Boolean(pilot && characters?.some((character) => character.connectionId === pilot) && info.missing);
-  const missing = info.missing;
-  const summary =
-    checked && missing
-      ? missing.missingSkills === 0
-        ? null
-        : `Missing ${missing.missingSkills} ${missing.missingSkills === 1 ? "skill" : "skills"}${
-            missing.remainingSeconds ? ` · ${formatTrainingTime(missing.remainingSeconds)} to train` : ""
-          }`
-      : null;
   return (
     <div className="p-3">
-      <div className="flex items-center gap-2">
-        {characters?.length ? <PilotPicker characters={characters} onPilot={onPilot} pilot={pilot} /> : null}
-        {characters && characters.length === 0 ? (
-          <span className="text-[9px] text-subtle">No character with synced skills to check against</span>
-        ) : checked ? (
-          <span className={`ml-auto text-[9px] ${summary ? "text-warning" : ""}`} style={summary ? undefined : { color: GREEN }}>
-            {summary ?? "All requirements met"}
-          </span>
-        ) : null}
+      <PilotBar characters={characters} missing={info.missing} onPilot={onPilot} pilot={pilot} />
+      <div className="mt-3">
+        <SkillRows checked={pilotChecked(pilot, characters, info.missing)} nodes={info.requirements} onOpen={onOpen} />
       </div>
-      <ul className="mt-3">
-        {rows.map(({ node, depth }, index) => {
-          const met = node.trainedLevel >= node.level;
-          if (!checked) {
-            return (
-              <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
-                <SkillLabel depth={depth} node={node} onOpen={onOpen} />
-                <span aria-label={`Requires level ${node.level}`} className="flex gap-1" role="img">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <i className={`block h-2 w-2 border border-primary ${level <= node.level ? "bg-primary/40" : ""}`} key={level} />
-                  ))}
-                </span>
-                <span />
-              </li>
-            );
-          }
-          return (
-            <li className={`grid h-8 grid-cols-[1fr_64px_16px] items-center border-b text-[9px] ${DIVIDER}`} key={`${node.skillTypeId}-${index}`}>
-              <SkillLabel depth={depth} node={node} onOpen={onOpen} />
-              <span aria-label={`Trained ${node.trainedLevel} of ${node.level}`} className="flex gap-1" role="img">
-                {[1, 2, 3, 4, 5].map((level) => {
-                  const trained = level <= node.trainedLevel;
-                  const short = !met && level <= node.level && !trained;
-                  return (
-                    <i
-                      className={`block h-2 w-2 border ${short ? "border-warning" : "border-primary"} ${trained ? "bg-primary" : ""}`}
-                      key={level}
-                    />
-                  );
-                })}
-              </span>
-              <b aria-label={met ? "Met" : "Missing"} className={met ? "" : "text-warning"} style={met ? { color: GREEN } : undefined}>
-                {met ? "✓" : "✕"}
-              </b>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
