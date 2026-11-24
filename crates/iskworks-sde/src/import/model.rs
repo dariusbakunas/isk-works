@@ -10,14 +10,12 @@ pub struct NormalizedSde {
     pub groups: Vec<ImportGroup>,
     pub meta_groups: Vec<ImportMetaGroup>,
     pub market_groups: Vec<ImportMarketGroup>,
-    pub blueprints: Vec<ImportBlueprint>,
     pub solar_systems: Vec<ImportSolarSystem>,
     pub constellations: Vec<ImportConstellation>,
     pub regions: Vec<ImportRegion>,
     pub npc_stations: Vec<ImportNpcStation>,
     pub structure_modifiers: Vec<ImportStructureModifiers>,
     pub rig_modifiers: Vec<ImportRigModifiers>,
-    pub reaction_formulas: Vec<ImportReactionFormula>,
     pub reaction_rig_modifiers: Vec<ImportRigModifiers>,
     /// EVE's `industryTargetFilters` -- the fixed set (≤ 18) of
     /// `(categoryIDs, groupIDs)` filters that a rig's `material_filter_ids` /
@@ -45,11 +43,6 @@ pub struct NormalizedSde {
     /// What the Type Info window shows: descriptions, attributes,
     /// reprocessing and ship bonuses.
     pub type_info: ImportTypeInfo,
-    /// The `invention` activity of Tech I blueprints. Empty when the SDE's
-    /// blueprints carry none.
-    pub inventions: Vec<ImportInvention>,
-    /// The `copying` time of every published blueprint that has one.
-    pub blueprint_copying: Vec<ImportBlueprintCopying>,
     /// The Generic Decryptors (group 1304). Empty when the SDE lacks
     /// `typeDogma`.
     pub decryptors: Vec<ImportDecryptor>,
@@ -67,6 +60,8 @@ pub struct NormalizedSde {
 impl NormalizedSde {
     #[must_use]
     pub fn counts(&self) -> ImportCounts {
+        let manufacturing = self.recipe_counts(BlueprintActivityKind::Manufacturing);
+        let reactions = self.recipe_counts(BlueprintActivityKind::Reaction);
         ImportCounts {
             types: self.types.len() as u64,
             categories: self.categories.len() as u64,
@@ -78,32 +73,35 @@ impl NormalizedSde {
                 .iter()
                 .filter(|item| item.meta_group_id.is_some())
                 .count() as u64,
-            blueprints: self.blueprints.len() as u64,
-            material_lines: self
-                .blueprints
-                .iter()
-                .map(|blueprint| blueprint.materials.len() as u64)
-                .sum(),
-            product_lines: self
-                .blueprints
-                .iter()
-                .map(|blueprint| blueprint.products.len() as u64)
-                .sum(),
+            blueprints: manufacturing.count,
+            material_lines: manufacturing.material_lines,
+            product_lines: manufacturing.product_lines,
             skipped_blueprints: self.skipped_blueprints,
-            reaction_formulas: self.reaction_formulas.len() as u64,
-            reaction_material_lines: self
-                .reaction_formulas
-                .iter()
-                .map(|formula| formula.materials.len() as u64)
-                .sum(),
-            reaction_product_lines: self
-                .reaction_formulas
-                .iter()
-                .map(|formula| formula.products.len() as u64)
-                .sum(),
+            reaction_formulas: reactions.count,
+            reaction_material_lines: reactions.material_lines,
+            reaction_product_lines: reactions.product_lines,
             skipped_reaction_formulas: self.skipped_reaction_formulas,
         }
     }
+
+    /// How many blueprints have this activity, and its line totals.
+    fn recipe_counts(&self, kind: BlueprintActivityKind) -> RecipeCounts {
+        self.blueprint_activities
+            .iter()
+            .filter(|activity| activity.kind == kind)
+            .fold(RecipeCounts::default(), |counts, activity| RecipeCounts {
+                count: counts.count + 1,
+                material_lines: counts.material_lines + activity.materials.len() as u64,
+                product_lines: counts.product_lines + activity.products.len() as u64,
+            })
+    }
+}
+
+#[derive(Default)]
+struct RecipeCounts {
+    count: u64,
+    material_lines: u64,
+    product_lines: u64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -141,28 +139,6 @@ pub struct ImportMarketGroup {
     pub market_group_id: i64,
     pub name: String,
     pub parent_group_id: Option<i64>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportBlueprint {
-    pub blueprint_type_id: i64,
-    pub name: String,
-    pub duration_seconds: Option<i64>,
-    pub materials: Vec<ImportMaterial>,
-    pub products: Vec<ImportProduct>,
-}
-
-/// A reaction formula (the SDE's `"reaction"` blueprint activity). Unlike a
-/// manufacturing blueprint, reaction formulas have no material efficiency --
-/// the game gives Refinery structures no base reaction discount, only
-/// reaction rigs do (see `ImportRigModifiers` reaction rig entries).
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportReactionFormula {
-    pub reaction_formula_type_id: i64,
-    pub name: String,
-    pub duration_seconds: Option<i64>,
-    pub materials: Vec<ImportMaterial>,
-    pub products: Vec<ImportProduct>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -517,44 +493,6 @@ pub struct ImportMaterial {
     pub position: i32,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportProduct {
-    pub type_id: i64,
-    pub quantity: i64,
-    pub position: i32,
-}
-
-/// What one invention attempt on a Tech I blueprint consumes and can yield.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportInvention {
-    /// The source (Tech I) blueprint.
-    pub blueprint_type_id: i64,
-    pub duration_seconds: Option<i64>,
-    pub materials: Vec<ImportMaterial>,
-    /// The blueprint copies the source can yield, in SDE order. The player
-    /// picks one per job.
-    pub products: Vec<ImportInventionProduct>,
-    /// Sorted by skill type.
-    pub skills: Vec<ImportInventionSkill>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportInventionProduct {
-    /// The invented blueprint, not the item it builds.
-    pub blueprint_type_id: i64,
-    /// Runs on the invented copy before any decryptor.
-    pub base_runs: i64,
-    /// The base success chance, in `(0, 1]`.
-    pub probability: Decimal,
-    pub position: i32,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportInventionSkill {
-    pub skill_type_id: i64,
-    pub level: i16,
-}
-
 /// One industry activity of a blueprint, as the game's info window lists
 /// it.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -589,12 +527,6 @@ pub struct ImportActivitySkill {
 pub struct ImportBlueprintLimit {
     pub blueprint_type_id: i64,
     pub max_production_limit: i64,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ImportBlueprintCopying {
-    pub blueprint_type_id: i64,
-    pub duration_seconds: i64,
 }
 
 /// A decryptor's effect on an invention attempt: the chance is multiplied,

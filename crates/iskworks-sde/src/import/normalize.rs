@@ -264,13 +264,9 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
     }
 
     let mut referenced_type_ids = HashSet::new();
-    let mut blueprints = Vec::new();
     let mut blueprint_ids = HashSet::new();
     let mut skipped_blueprints = 0_u64;
-    let mut reaction_formulas = Vec::new();
     let mut skipped_reaction_formulas = 0_u64;
-    let mut inventions = Vec::new();
-    let mut blueprint_copying = Vec::new();
     let mut blueprint_activities = Vec::new();
     let mut blueprint_limits = Vec::new();
     let blueprint_group_ids = groups
@@ -286,52 +282,6 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                 id: blueprint.key,
             });
         }
-        let name = raw_types_by_id
-            .get(&blueprint.key)
-            .and_then(|item| item.name.en.clone());
-
-        if let Some(activity) = blueprint.activities.get("manufacturing") {
-            match &name {
-                None => skipped_blueprints += 1,
-                Some(name) => {
-                    match parse_activity_recipe(blueprint.key, activity, &raw_types_by_id)? {
-                        None => skipped_blueprints += 1,
-                        Some((duration_seconds, materials, products, recipe_type_ids)) => {
-                            referenced_type_ids.extend(recipe_type_ids);
-                            blueprints.push(ImportBlueprint {
-                                blueprint_type_id: blueprint.key,
-                                name: name.clone(),
-                                duration_seconds,
-                                materials,
-                                products,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(activity) = blueprint.activities.get("reaction") {
-            match &name {
-                None => skipped_reaction_formulas += 1,
-                Some(name) => {
-                    match parse_activity_recipe(blueprint.key, activity, &raw_types_by_id)? {
-                        None => skipped_reaction_formulas += 1,
-                        Some((duration_seconds, materials, products, recipe_type_ids)) => {
-                            referenced_type_ids.extend(recipe_type_ids);
-                            reaction_formulas.push(ImportReactionFormula {
-                                reaction_formula_type_id: blueprint.key,
-                                name: name.clone(),
-                                duration_seconds,
-                                materials,
-                                products,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
         // Ancient relics (Tech III) carry an `invention` activity too; only
         // blueprints are kept. Unpublished ones stay: players hold copies
         // of some (storyline modules), and readers that must not offer one
@@ -348,7 +298,7 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
                 &blueprint,
                 &raw_types_by_id,
                 &mut referenced_type_ids,
-            );
+            )?;
             if let Some(max_production_limit) = blueprint
                 .max_production_limit
                 .filter(|limit| *limit > 0 && !activities.is_empty())
@@ -360,33 +310,23 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
             }
             blueprint_activities.extend(activities);
         }
-        let source = blueprint_type.filter(|item| item.published);
-        if source.is_some() {
-            if let Some(activity) = blueprint.activities.get("invention") {
-                if let Some(parsed) = invention::normalize_invention(
-                    blueprint.key,
-                    activity,
-                    &raw_types_by_id,
-                    &mut referenced_type_ids,
-                )? {
-                    inventions.push(parsed);
-                }
-            }
-            if let Some(duration_seconds) = blueprint
-                .activities
-                .get("copying")
-                .and_then(|activity| activity.time)
-                .filter(|seconds| *seconds > 0)
-            {
-                blueprint_copying.push(ImportBlueprintCopying {
-                    blueprint_type_id: blueprint.key,
-                    duration_seconds,
-                });
-            }
+        // A manufacturing or reaction activity that did not make it in.
+        let kept = |kind: BlueprintActivityKind| {
+            blueprint_activities
+                .iter()
+                .rev()
+                .take_while(|activity| activity.blueprint_type_id == blueprint.key)
+                .any(|activity| activity.kind == kind)
+        };
+        if blueprint.activities.contains_key("manufacturing")
+            && !kept(BlueprintActivityKind::Manufacturing)
+        {
+            skipped_blueprints += 1;
+        }
+        if blueprint.activities.contains_key("reaction") && !kept(BlueprintActivityKind::Reaction) {
+            skipped_reaction_formulas += 1;
         }
     }
-    inventions.sort_by_key(|item| item.blueprint_type_id);
-    blueprint_copying.sort_by_key(|item| item.blueprint_type_id);
     blueprint_activities.sort_by_key(|item| (item.blueprint_type_id, item.kind));
     blueprint_limits.sort_by_key(|item| item.blueprint_type_id);
     let decryptors = invention::normalize_decryptors(&raw_type_dogma, &raw_types_by_id);
@@ -473,7 +413,6 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
             }
         }
     }
-    blueprints.sort_by_key(|item| item.blueprint_type_id);
     let mut solar_systems = raw_solar_systems
         .into_iter()
         .filter_map(|system| {
@@ -568,14 +507,12 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         groups,
         meta_groups,
         market_groups,
-        blueprints,
         solar_systems,
         constellations,
         regions,
         npc_stations,
         structure_modifiers,
         rig_modifiers,
-        reaction_formulas,
         reaction_rig_modifiers,
         industry_target_filters,
         planet_schematics,
@@ -586,8 +523,6 @@ pub fn parse(source: &SdeSource) -> Result<NormalizedSde, SdeError> {
         skills,
         required_skills,
         type_info,
-        inventions,
-        blueprint_copying,
         decryptors,
         blueprint_activities,
         blueprint_limits,
@@ -724,75 +659,6 @@ pub(super) fn normalize_stargates(
     }
     values.sort_by_key(|value| value.stargate_id);
     Ok(values)
-}
-
-/// Parses one blueprint activity (manufacturing or reaction; both share the
-/// same materials/products/time shape) into recipe lines. Returns `Ok(None)`
-/// when the activity should be skipped (unresolvable material/product type,
-/// or no products), matching the skip semantics for manufacturing
-/// blueprints.
-#[allow(clippy::type_complexity)]
-pub(crate) fn parse_activity_recipe(
-    blueprint_key: i64,
-    activity: &RawActivity,
-    raw_types_by_id: &HashMap<i64, RawType>,
-) -> Result<
-    Option<(
-        Option<i64>,
-        Vec<ImportMaterial>,
-        Vec<ImportProduct>,
-        HashSet<i64>,
-    )>,
-    SdeError,
-> {
-    let mut recipe_type_ids = HashSet::from([blueprint_key]);
-
-    let materials = match normalize_quantities(
-        "material",
-        blueprint_key,
-        &activity.materials,
-        raw_types_by_id,
-        &mut recipe_type_ids,
-    ) {
-        Ok(lines) => lines,
-        Err(SdeError::UnknownType { .. }) => return Ok(None),
-        Err(error) => return Err(error),
-    }
-    .into_iter()
-    .map(|(type_id, quantity, position)| ImportMaterial {
-        type_id,
-        quantity,
-        position,
-    })
-    .collect();
-    let products = match normalize_quantities(
-        "product",
-        blueprint_key,
-        &activity.products,
-        raw_types_by_id,
-        &mut recipe_type_ids,
-    ) {
-        Ok(lines) => lines,
-        Err(SdeError::UnknownType { .. }) => return Ok(None),
-        Err(error) => return Err(error),
-    }
-    .into_iter()
-    .map(|(type_id, quantity, position)| ImportProduct {
-        type_id,
-        quantity,
-        position,
-    })
-    .collect::<Vec<_>>();
-    if products.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some((
-        activity.time.filter(|seconds| *seconds > 0),
-        materials,
-        products,
-        recipe_type_ids,
-    )))
 }
 
 /// Manufacturing rigs carry both a base structure discount (2600/2601/2602 on

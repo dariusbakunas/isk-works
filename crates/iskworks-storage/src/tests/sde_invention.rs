@@ -1,7 +1,7 @@
 use super::*;
 use iskworks_sde::{
-    Decryptor, ImportBlueprintCopying, ImportDecryptor, ImportInvention, ImportInventionProduct,
-    ImportInventionSkill, InventionProduct, InventionSkillRequirement, RecipeLine,
+    Decryptor, ImportActivitySkill, ImportDecryptor, InventionProduct, InventionSkillRequirement,
+    RecipeLine,
 };
 use rust_decimal::Decimal;
 
@@ -18,17 +18,19 @@ fn named_type(type_id: i64, name: &str, group_name: &str) -> ImportType {
     }
 }
 
-fn manufacturing(blueprint_type_id: i64, name: &str, product_type_id: i64) -> ImportBlueprint {
-    ImportBlueprint {
+fn manufacturing(blueprint_type_id: i64, product_type_id: i64) -> ImportBlueprintActivity {
+    ImportBlueprintActivity {
+        kind: BlueprintActivityKind::Manufacturing,
+        skills: Vec::new(),
         blueprint_type_id,
-        name: name.to_string(),
         duration_seconds: Some(600),
         materials: vec![ImportMaterial {
             type_id: 34,
             quantity: 10,
             position: 0,
         }],
-        products: vec![ImportProduct {
+        products: vec![ImportActivityProduct {
+            probability: None,
             type_id: product_type_id,
             quantity: 1,
             position: 0,
@@ -57,58 +59,59 @@ fn invention_dataset(checksum: &str) -> NormalizedSde {
         named_type(34_201, "Accelerant Decryptor", "Generic Decryptor"),
         named_type(34_206, "Process Decryptor", "Generic Decryptor"),
     ]);
-    dataset.blueprints.extend([
-        manufacturing(11_372, "Wolf Blueprint", 11_371),
-        manufacturing(11_401, "Jaguar Blueprint", 11_400),
+    dataset
+        .blueprint_activities
+        .extend([manufacturing(11_372, 11_371), manufacturing(11_401, 11_400)]);
+    dataset.blueprint_activities.extend([
+        ImportBlueprintActivity {
+            kind: BlueprintActivityKind::Invention,
+            blueprint_type_id: 6_830,
+            duration_seconds: Some(63_900),
+            materials: vec![
+                ImportMaterial {
+                    type_id: 20_172,
+                    quantity: 2,
+                    position: 0,
+                },
+                ImportMaterial {
+                    type_id: 20_424,
+                    quantity: 2,
+                    position: 1,
+                },
+            ],
+            products: vec![
+                ImportActivityProduct {
+                    type_id: 11_401,
+                    quantity: 1,
+                    probability: Some(Decimal::new(3, 1)),
+                    position: 0,
+                },
+                ImportActivityProduct {
+                    type_id: 11_372,
+                    quantity: 1,
+                    probability: Some(Decimal::new(3, 1)),
+                    position: 1,
+                },
+            ],
+            skills: [11_452, 11_454, 21_791]
+                .into_iter()
+                .enumerate()
+                .map(|(position, skill_type_id)| ImportActivitySkill {
+                    skill_type_id,
+                    level: 1,
+                    position: position as i32,
+                })
+                .collect(),
+        },
+        ImportBlueprintActivity {
+            blueprint_type_id: 6_830,
+            kind: BlueprintActivityKind::Copying,
+            duration_seconds: Some(4_800),
+            materials: Vec::new(),
+            products: Vec::new(),
+            skills: Vec::new(),
+        },
     ]);
-    dataset.inventions = vec![ImportInvention {
-        blueprint_type_id: 6_830,
-        duration_seconds: Some(63_900),
-        materials: vec![
-            ImportMaterial {
-                type_id: 20_172,
-                quantity: 2,
-                position: 0,
-            },
-            ImportMaterial {
-                type_id: 20_424,
-                quantity: 2,
-                position: 1,
-            },
-        ],
-        products: vec![
-            ImportInventionProduct {
-                blueprint_type_id: 11_401,
-                base_runs: 1,
-                probability: Decimal::new(3, 1),
-                position: 0,
-            },
-            ImportInventionProduct {
-                blueprint_type_id: 11_372,
-                base_runs: 1,
-                probability: Decimal::new(3, 1),
-                position: 1,
-            },
-        ],
-        skills: vec![
-            ImportInventionSkill {
-                skill_type_id: 11_452,
-                level: 1,
-            },
-            ImportInventionSkill {
-                skill_type_id: 11_454,
-                level: 1,
-            },
-            ImportInventionSkill {
-                skill_type_id: 21_791,
-                level: 1,
-            },
-        ],
-    }];
-    dataset.blueprint_copying = vec![ImportBlueprintCopying {
-        blueprint_type_id: 6_830,
-        duration_seconds: 4_800,
-    }];
     dataset.decryptors = vec![
         ImportDecryptor {
             type_id: 34_201,
@@ -125,7 +128,6 @@ fn invention_dataset(checksum: &str) -> NormalizedSde {
             run_modifier: 0,
         },
     ];
-    mirror_recipes(&mut dataset);
     dataset
 }
 
