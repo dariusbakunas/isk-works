@@ -99,8 +99,9 @@ impl SdeImportStore for PgSdeRepository {
                 $5 = false
                 OR EXISTS (
                   SELECT 1
-                  FROM sde_reaction_formulas formulas
+                  FROM sde_blueprint_activities formulas
                   WHERE formulas.import_id = sde_imports.id
+                    AND formulas.activity = 'reaction'
                 )
               )
               AND (
@@ -166,8 +167,9 @@ impl SdeImportStore for PgSdeRepository {
                 $13 = false
                 OR EXISTS (
                   SELECT 1
-                  FROM sde_blueprint_invention invention
+                  FROM sde_blueprint_activities invention
                   WHERE invention.import_id = sde_imports.id
+                    AND invention.activity = 'invention'
                 )
               )
               AND (
@@ -527,171 +529,13 @@ impl SdeImportStore for PgSdeRepository {
                 .map_err(map_sde_sqlx_error)?;
         }
 
-        for batch in dataset.blueprints.chunks(RECIPE_BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprints \
-                 (import_id, blueprint_type_id, name_en, duration_seconds) ",
-            );
-            query.push_values(batch, |mut row, blueprint| {
-                row.push_bind(import_id)
-                    .push_bind(blueprint.blueprint_type_id)
-                    .push_bind(&blueprint.name)
-                    .push_bind(blueprint.duration_seconds);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let materials = dataset
-            .blueprints
-            .iter()
-            .flat_map(|blueprint| {
-                blueprint
-                    .materials
-                    .iter()
-                    .map(move |line| (blueprint.blueprint_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for batch in materials.chunks(RECIPE_BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_materials \
-                 (import_id, blueprint_type_id, material_type_id, quantity, position) ",
-            );
-            query.push_values(batch, |mut row, (blueprint_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*blueprint_type_id)
-                    .push_bind(line.type_id)
-                    .push_bind(line.quantity)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let products = dataset
-            .blueprints
-            .iter()
-            .flat_map(|blueprint| {
-                blueprint
-                    .products
-                    .iter()
-                    .map(move |line| (blueprint.blueprint_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for (batch_index, batch) in products.chunks(RECIPE_BATCH_SIZE).enumerate() {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_products \
-                 (import_id, blueprint_type_id, product_type_id, quantity, position) ",
-            );
-            query.push_values(batch, |mut row, (blueprint_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*blueprint_type_id)
-                    .push_bind(line.type_id)
-                    .push_bind(line.quantity)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-            progress.report(ProgressEvent {
-                phase: ImportPhase::WritingBlueprintRecipes,
-                message: "Writing blueprint recipes".to_string(),
-                completed: Some(((batch_index + 1) * RECIPE_BATCH_SIZE).min(products.len()) as u64),
-                total: Some(products.len() as u64),
-            });
-        }
-
-        for batch in dataset.reaction_formulas.chunks(RECIPE_BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_reaction_formulas \
-                 (import_id, reaction_formula_type_id, name_en, duration_seconds) ",
-            );
-            query.push_values(batch, |mut row, formula| {
-                row.push_bind(import_id)
-                    .push_bind(formula.reaction_formula_type_id)
-                    .push_bind(&formula.name)
-                    .push_bind(formula.duration_seconds);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let reaction_materials = dataset
-            .reaction_formulas
-            .iter()
-            .flat_map(|formula| {
-                formula
-                    .materials
-                    .iter()
-                    .map(move |line| (formula.reaction_formula_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for batch in reaction_materials.chunks(RECIPE_BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_reaction_formula_materials \
-                 (import_id, reaction_formula_type_id, material_type_id, quantity, position) ",
-            );
-            query.push_values(batch, |mut row, (reaction_formula_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*reaction_formula_type_id)
-                    .push_bind(line.type_id)
-                    .push_bind(line.quantity)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let reaction_products = dataset
-            .reaction_formulas
-            .iter()
-            .flat_map(|formula| {
-                formula
-                    .products
-                    .iter()
-                    .map(move |line| (formula.reaction_formula_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for (batch_index, batch) in reaction_products.chunks(RECIPE_BATCH_SIZE).enumerate() {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_reaction_formula_products \
-                 (import_id, reaction_formula_type_id, product_type_id, quantity, position) ",
-            );
-            query.push_values(batch, |mut row, (reaction_formula_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*reaction_formula_type_id)
-                    .push_bind(line.type_id)
-                    .push_bind(line.quantity)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-            progress.report(ProgressEvent {
-                phase: ImportPhase::WritingBlueprintRecipes,
-                message: "Writing reaction formula recipes".to_string(),
-                completed: Some(
-                    ((batch_index + 1) * RECIPE_BATCH_SIZE).min(reaction_products.len()) as u64,
-                ),
-                total: Some(reaction_products.len() as u64),
-            });
-        }
+        self.write_blueprint_activities(import_id, dataset).await?;
+        progress.report(ProgressEvent {
+            phase: ImportPhase::WritingBlueprintRecipes,
+            message: "Writing blueprint recipes".to_string(),
+            completed: Some(dataset.blueprint_activities.len() as u64),
+            total: Some(dataset.blueprint_activities.len() as u64),
+        });
 
         for batch in dataset.planet_schematics.chunks(RECIPE_BATCH_SIZE) {
             let mut query = QueryBuilder::<Postgres>::new(
@@ -891,8 +735,7 @@ impl SdeImportStore for PgSdeRepository {
         }
 
         self.write_type_info(import_id, &dataset.type_info).await?;
-        self.write_invention(import_id, dataset).await?;
-        self.write_blueprint_activities(import_id, dataset).await?;
+        self.write_decryptors(import_id, dataset).await?;
         self.rebuild_type_categories(import_id).await?;
         Ok(())
     }

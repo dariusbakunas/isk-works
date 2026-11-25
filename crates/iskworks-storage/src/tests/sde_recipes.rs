@@ -91,39 +91,40 @@ async fn reverse_recipe_lookup_ignores_unpublished_test_recipes(pool: PgPool) {
         packaged_volume_m3: None,
         published: false,
     });
-    dataset.blueprints.push(ImportBlueprint {
+    dataset.blueprint_activities.push(ImportBlueprintActivity {
+        kind: BlueprintActivityKind::Manufacturing,
+        skills: Vec::new(),
         blueprint_type_id: 4_830,
-        name: "Test Rifter Blueprint".to_string(),
         duration_seconds: Some(1),
         materials: vec![ImportMaterial {
             type_id: 34,
             quantity: 1,
             position: 0,
         }],
-        products: vec![ImportProduct {
+        products: vec![ImportActivityProduct {
+            probability: None,
             type_id: 5_876,
             quantity: 7,
             position: 0,
         }],
     });
-    dataset
-        .reaction_formulas
-        .push(iskworks_sde::ImportReactionFormula {
-            reaction_formula_type_id: 45_999,
-            name: "Test Reaction Blueprint".to_string(),
-            duration_seconds: Some(1),
-            materials: vec![ImportMaterial {
-                type_id: 34,
-                quantity: 1,
-                position: 0,
-            }],
-            products: vec![ImportProduct {
-                type_id: 5_876,
-                quantity: 20,
-                position: 0,
-            }],
-        });
-    mirror_recipes(&mut dataset);
+    dataset.blueprint_activities.push(ImportBlueprintActivity {
+        kind: BlueprintActivityKind::Reaction,
+        skills: Vec::new(),
+        blueprint_type_id: 45_999,
+        duration_seconds: Some(1),
+        materials: vec![ImportMaterial {
+            type_id: 34,
+            quantity: 1,
+            position: 0,
+        }],
+        products: vec![ImportActivityProduct {
+            probability: None,
+            type_id: 5_876,
+            quantity: 20,
+            position: 0,
+        }],
+    });
 
     let import_id = repository
         .begin_import(NewImport {
@@ -169,8 +170,9 @@ async fn active_by_checksum_requires_reaction_formulas_when_requested(pool: PgPo
     // formulas -- same archive checksum, but no reaction data was ever
     // written for it.
     let mut legacy = fixture_sde("checksum-legacy", "100000");
-    legacy.reaction_formulas.clear();
-    mirror_recipes(&mut legacy);
+    legacy
+        .blueprint_activities
+        .retain(|activity| activity.kind != BlueprintActivityKind::Reaction);
     legacy.reaction_rig_modifiers.clear();
 
     let import_id = repository

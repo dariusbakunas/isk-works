@@ -13,7 +13,7 @@ import. This page covers the data. The API and the window come later.
 | `typeDogma.jsonl` | `sde_type_attributes` | Imported types' values of the kept attributes. |
 | `typeMaterials.jsonl` | `sde_type_materials` | Fixed reprocessing outputs per portion whose output type was imported. `randomizedMaterials` (min/max quantities) is skipped. |
 | `typeBonus.jsonl` | `sde_type_bonuses` | Ship, subsystem and structure bonuses. `ordinal` runs over the per-skill bonuses (`source_kind = 'skill'`, `skill_type_id` set), then role, then misc. Text keeps CCP markup. |
-| `blueprints.jsonl` | `sde_blueprint_activities`, `_materials`, `_products`, `_skills`, `sde_blueprint_limits` | Every activity (manufacturing, material and time research, copying, invention, reaction) of every blueprint and reaction formula: base time, materials, products (with the base chance for invention) and skills, in SDE order, plus `maxProductionLimit`. An activity naming an unnamed type is left out. |
+| `blueprints.jsonl` | `sde_blueprint_activities`, `_materials`, `_products`, `_skills`, `sde_blueprint_limits` | Every activity (manufacturing, material and time research, copying, invention, reaction) of every blueprint and reaction formula: base time, materials, products (with the base chance for invention) and skills, in SDE order, plus `maxProductionLimit`. An activity whose material or product has no name is left out. |
 
 All files except `types.jsonl` are optional. An export without them still
 imports, with those tables empty.
@@ -31,17 +31,18 @@ imports, with those tables empty.
   After deploying this, run `make sde-import` again.
 - The activity tables are the one source of recipes: the planner, the
   Blueprint library and the Invention page read manufacturing, reaction,
-  invention and copying from them too. The import still fills the older
-  per-activity tables (`sde_blueprints*`, `sde_reaction_formula*`,
-  `sde_blueprint_invention*`, `sde_blueprint_copying`), which nothing reads
-  and which are due to be dropped.
+  invention and copying from them too. The older per-activity tables
+  (`sde_blueprints*`, `sde_reaction_formula*`, `sde_blueprint_invention*`,
+  `sde_blueprint_copying`) are gone.
+- A manufacturing, reaction or invention activity that yields nothing is
+  left out, and an invention product needs a chance in `(0, 1]`.
 - Unpublished blueprints are kept: players hold copies of some (storyline
   modules such as 'Pacifier' Large Remote Armor Repairer Blueprint). A read
   that picks the recipe for a product, or lists what can be built or
   invented, takes published blueprints only, so CCP's unpublished test
   recipes are never offered.
-- Migration `202611240001` copies the recipes of earlier imports from the
-  per-activity tables, so nothing is missing before the next import.
+- Migration `202611240001` copied the recipes of earlier imports from the
+  per-activity tables before `202611240002` dropped them.
 - Re-importing the same archive also redoes the import when the active
   import has no `sde_blueprint_activities` rows
   (`SdeDatasetRequirements::blueprint_activities`). Until then
