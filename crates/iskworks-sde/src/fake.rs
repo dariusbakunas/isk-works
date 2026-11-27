@@ -124,6 +124,13 @@ pub trait FakeSdeRead: Send + Sync {
             std::any::type_name::<Self>()
         )
     }
+    async fn types_by_names(&self, names: &[String]) -> Result<Vec<NamedType>, SdeError> {
+        let _ = names;
+        unimplemented!(
+            "{} does not stub FakeSdeRead::types_by_names",
+            std::any::type_name::<Self>()
+        )
+    }
     async fn type_group_names(
         &self,
         type_ids: &[i64],
@@ -625,6 +632,9 @@ impl<T: FakeSdeRead> SdeReadRepository for T {
         limit: u32,
     ) -> Result<Vec<TypeSearchResult>, SdeError> {
         FakeSdeRead::search_types(self, query, limit).await
+    }
+    async fn types_by_names(&self, names: &[String]) -> Result<Vec<NamedType>, SdeError> {
+        FakeSdeRead::types_by_names(self, names).await
     }
     async fn type_group_names(
         &self,

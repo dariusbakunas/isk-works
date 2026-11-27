@@ -42,6 +42,9 @@ export interface ToolWindowKind<S> {
   renderTitleControls?: (props: ToolWindowRenderProps<S>) => ReactNode;
   defaultSize: Size;
   minSize: Size;
+  /** For a tool opened on its own rather than from an item: lists it in the
+   * rail and ⌘K, opening with `initialState`. */
+  launcher?: { label: string; keywords: string[]; initialState: () => S };
   /** Folds an incoming open into the front window of the kind (Type Info: push history). */
   merge?: (current: S, incoming: S) => S;
   render: (props: ToolWindowRenderProps<S>) => ReactNode;

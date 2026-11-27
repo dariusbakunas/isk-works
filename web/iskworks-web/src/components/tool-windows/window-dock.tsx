@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { launchToolWindow } from "./launch";
 import type { ToolWindow } from "./model";
 import { useToolWindows, type AnyToolWindowKind } from "./tool-windows-context";
 
@@ -13,6 +14,39 @@ function WindowIcon({ kind, window, size }: { kind: AnyToolWindowKind; window: T
     <>{kind.renderIcon(window.state, size)}</>
   ) : (
     <kind.icon aria-hidden="true" className="text-primary" style={{ width: size, height: size }} />
+  );
+}
+
+/**
+ * Tools that open on their own (the Shipping calculator), in the navigation
+ * rail above the dock. Hidden when no kind has a launcher.
+ */
+export function ToolLaunchers({ expanded }: { expanded: boolean }) {
+  const api = useToolWindows();
+  const tools = api ? [...api.kinds.values()].filter((kind) => kind.launcher) : [];
+  if (!api || tools.length === 0) return null;
+  return (
+    <nav aria-label="Tools" className="shrink-0 border-t border-border py-1">
+      {expanded ? (
+        <div className="flex h-5 items-center px-3 text-[8px] uppercase tracking-[.12em] text-subtle">Tools</div>
+      ) : (
+        <span className="sr-only">Tools</span>
+      )}
+      {tools.map((kind) => (
+        <button
+          className={`flex h-8 w-full items-center text-left text-muted hover:bg-hover hover:text-foreground ${rowFocus}`}
+          key={kind.kind}
+          onClick={() => launchToolWindow(api, kind.kind)}
+          title={expanded ? undefined : kind.launcher!.label}
+          type="button"
+        >
+          <span className="grid w-[51px] shrink-0 place-items-center">
+            <kind.icon aria-hidden="true" className="h-4 w-4" />
+          </span>
+          {expanded ? <span className="truncate text-[10px] text-foreground">{kind.launcher!.label}</span> : <span className="sr-only">{kind.launcher!.label}</span>}
+        </button>
+      ))}
+    </nav>
   );
 }
 

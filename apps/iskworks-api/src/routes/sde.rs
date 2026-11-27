@@ -1,5 +1,5 @@
 use axum::extract::{Path, Query, State};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use iskworks_app::AutomaticEiv;
 use iskworks_core::{
@@ -7,7 +7,7 @@ use iskworks_core::{
     ReactionPlan, RecipeSelection,
 };
 use iskworks_sde::{
-    ActiveSde, BlueprintSearchResult, ReactionFormulaSearchResult, TypeSearchResult,
+    ActiveSde, BlueprintSearchResult, NamedType, ReactionFormulaSearchResult, TypeSearchResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,7 @@ pub(crate) fn router() -> Router<AppState> {
             get(search_reaction_formulas),
         )
         .route("/api/types/search", get(search_types))
+        .route("/api/types/resolve", post(resolve_types))
         .route("/api/structure-types/search", get(search_structure_types))
         .route("/api/structure-rigs/search", get(search_structure_rigs))
         .route(
@@ -126,6 +127,39 @@ async fn search_types(
             .search_types(&query.q, crate::routes::clamp_search_limit(query.limit, 20))
             .await?,
     ))
+}
+
+/// More names than any pasted list needs; the rest come back unmatched.
+const MAX_RESOLVE_NAMES: usize = 1_000;
+
+#[derive(Debug, Deserialize)]
+pub struct ResolveTypesRequest {
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResolveTypesResponse {
+    pub types: Vec<NamedType>,
+}
+
+/// Pasted item names to types with their packaged volume (the shipping
+/// calculator). Exact names, ignoring case; unknown names are left out.
+async fn resolve_types(
+    State(state): State<AppState>,
+    Json(request): Json<ResolveTypesRequest>,
+) -> Result<Json<ResolveTypesResponse>, ApiError> {
+    let names: Vec<String> = request
+        .names
+        .iter()
+        .map(|name| name.trim().to_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .take(MAX_RESOLVE_NAMES)
+        .collect();
+    Ok(Json(ResolveTypesResponse {
+        types: state.sde_repository.types_by_names(&names).await?,
+    }))
 }
 
 async fn search_structure_types(

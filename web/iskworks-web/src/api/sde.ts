@@ -138,6 +138,18 @@ export function searchTypes(query: string): Promise<TypeSearchResult[]> {
   return request(`/api/types/search?q=${encodeURIComponent(query)}&limit=20`);
 }
 
+/** A type found by its exact name, with its packaged volume. */
+export interface NamedType {
+  typeId: number;
+  typeName: string;
+  packagedVolumeM3: string | null;
+}
+
+/** Item names (exact, any case) to types; names nothing matches are left out. */
+export function resolveTypes(names: string[]): Promise<NamedType[]> {
+  return request<{ types: NamedType[] }>("/api/types/resolve", { names }).then((body) => body.types);
+}
+
 export function searchStructureTypes(query: string): Promise<TypeSearchResult[]> {
   return request(`/api/structure-types/search?q=${encodeURIComponent(query)}&limit=250`);
 }
@@ -194,11 +206,17 @@ export function recipeForProduct(productTypeId: number): Promise<RecipeSelection
   return request(`/api/recipes/for-product/${productTypeId}`);
 }
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${apiBase}${path}`, {
-      headers: { Accept: "application/json" },
+      ...(body === undefined
+        ? { headers: { Accept: "application/json" } }
+        : {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
       credentials: "include",
     });
   } catch {

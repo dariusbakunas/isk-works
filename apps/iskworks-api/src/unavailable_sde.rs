@@ -82,6 +82,10 @@ impl SdeReadRepository for UnavailableSdeRepository {
         let _ = (query, limit);
         Ok(Vec::new())
     }
+    async fn types_by_names(&self, names: &[String]) -> Result<Vec<NamedType>, SdeError> {
+        let _ = names;
+        Ok(Vec::new())
+    }
     async fn type_group_names(
         &self,
         type_ids: &[i64],

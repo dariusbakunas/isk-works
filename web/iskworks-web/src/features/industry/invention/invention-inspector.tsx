@@ -1,9 +1,11 @@
-import { ClipboardCopy } from "lucide-react";
+import { ClipboardCopy, Truck } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { InventionOption, InventionQuote, ScienceJobFee } from "../../../api/invention";
 import { IskCompact } from "../../../components/money";
 import { PlannerInspectorShell } from "../../../components/planner-inspector-shell";
+import { SHIPPING_KIND, shippingStateWith } from "../../../components/shipping/shipping-state";
+import { useToolWindows } from "../../../components/tool-windows/tool-windows-context";
 import { formatDuration, formatPercent } from "../../../lib/formatting";
 import { formatChance, gapLabel, optionKey, optionName, shoppingLines, shoppingListText } from "./invention-format";
 
@@ -20,6 +22,7 @@ export function InventionInspector({
 }) {
   const [copied, setCopied] = useState(false);
   const lines = shoppingLines(quote, option);
+  const windows = useToolWindows();
   const multiplier = option.decryptor?.probabilityMultiplier ?? "1";
 
   async function copyShoppingList() {
@@ -110,6 +113,21 @@ export function InventionInspector({
                 <ClipboardCopy aria-hidden="true" className="mr-1.5 inline h-3.5 w-3.5" />
                 {copied ? "Copied" : "Copy shopping list"}
               </button>
+              {windows ? (
+                <button
+                  className="iw-button-secondary mt-1 min-h-7 w-full"
+                  onClick={() =>
+                    windows.open(
+                      SHIPPING_KIND,
+                      shippingStateWith(lines.filter((line) => line.marketItem).map((line) => ({ name: line.name, quantity: line.quantity }))),
+                    )
+                  }
+                  type="button"
+                >
+                  <Truck aria-hidden="true" className="mr-1.5 inline h-3.5 w-3.5" />
+                  Send to shipping calculator
+                </button>
+              ) : null}
             </>
           ) : (
             <p className="text-muted">Attempts can't be planned at this chance.</p>
