@@ -4,8 +4,9 @@ use iskworks_core::CreateWorkspaceCommand;
 use iskworks_core::WorkspaceService;
 use iskworks_core::{EveIdentity, SessionRepository, UserRepository};
 use iskworks_sde::{
-    ImportBlueprint, ImportCategory, ImportGroup, ImportMarketGroup, ImportMaterial,
-    ImportMetaGroup, ImportProduct, ImportType, NoopProgressReporter, SdeDatasetRequirements,
+    BlueprintActivityKind, ImportActivityProduct, ImportBlueprintActivity, ImportCategory,
+    ImportGroup, ImportMarketGroup, ImportMaterial, ImportMetaGroup, ImportType,
+    NoopProgressReporter, SdeDatasetRequirements,
 };
 
 mod auth_sessions;
@@ -41,7 +42,7 @@ mod invite_codes;
 // ---------------------------------------------------------------------------
 
 fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
-    let mut dataset = NormalizedSde {
+    NormalizedSde {
         categories: vec![ImportCategory {
             category_id: 6,
             name: "Ship".into(),
@@ -187,21 +188,6 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
                 published: true,
             },
         ],
-        blueprints: vec![ImportBlueprint {
-            blueprint_type_id: 6_830,
-            name: "Rifter Blueprint".to_string(),
-            duration_seconds: Some(600),
-            materials: vec![ImportMaterial {
-                type_id: 34,
-                quantity: 1_000,
-                position: 0,
-            }],
-            products: vec![ImportProduct {
-                type_id: 5_876,
-                quantity: 1,
-                position: 0,
-            }],
-        }],
         solar_systems: vec![iskworks_sde::ImportSolarSystem {
             solar_system_id: 30_000_772,
             name: "C-J6MT".to_string(),
@@ -251,21 +237,6 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
             time_filter_ids: vec![3],
             science: Default::default(),
         }],
-        reaction_formulas: vec![iskworks_sde::ImportReactionFormula {
-            reaction_formula_type_id: 46_157,
-            name: "Methanofullerene Reaction Formula".to_string(),
-            duration_seconds: Some(10_800),
-            materials: vec![ImportMaterial {
-                type_id: 34,
-                quantity: 100,
-                position: 0,
-            }],
-            products: vec![ImportProduct {
-                type_id: 5_876,
-                quantity: 160,
-                position: 0,
-            }],
-        }],
         reaction_rig_modifiers: vec![iskworks_sde::ImportRigModifiers {
             type_id: 46_486,
             material_reduction_percent: rust_decimal::Decimal::new(2, 0),
@@ -302,101 +273,45 @@ fn fixture_sde(checksum: &str, version: &str) -> NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
-        inventions: Vec::new(),
-        blueprint_activities: Vec::new(),
+        blueprint_activities: vec![
+            ImportBlueprintActivity {
+                blueprint_type_id: 6_830,
+                kind: BlueprintActivityKind::Manufacturing,
+                duration_seconds: Some(600),
+                materials: vec![ImportMaterial {
+                    type_id: 34,
+                    quantity: 1_000,
+                    position: 0,
+                }],
+                products: vec![ImportActivityProduct {
+                    type_id: 5_876,
+                    quantity: 1,
+                    probability: None,
+                    position: 0,
+                }],
+                skills: Vec::new(),
+            },
+            ImportBlueprintActivity {
+                blueprint_type_id: 46_157,
+                kind: BlueprintActivityKind::Reaction,
+                duration_seconds: Some(10_800),
+                materials: vec![ImportMaterial {
+                    type_id: 34,
+                    quantity: 100,
+                    position: 0,
+                }],
+                products: vec![ImportActivityProduct {
+                    type_id: 5_876,
+                    quantity: 160,
+                    probability: None,
+                    position: 0,
+                }],
+                skills: Vec::new(),
+            },
+        ],
         blueprint_limits: Vec::new(),
-        blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
-    };
-    mirror_recipes(&mut dataset);
-    dataset
-}
-
-/// Fixtures still describe recipes in the per-activity shape; readers use
-/// the activity tables, so mirror the recipes there. Call it again after
-/// changing a fixture's recipes.
-fn mirror_recipes(dataset: &mut NormalizedSde) {
-    use iskworks_sde::{
-        BlueprintActivityKind, ImportActivityProduct, ImportActivitySkill, ImportBlueprintActivity,
-    };
-    let products = |products: &[ImportProduct]| {
-        products
-            .iter()
-            .map(|product| ImportActivityProduct {
-                type_id: product.type_id,
-                quantity: product.quantity,
-                probability: None,
-                position: product.position,
-            })
-            .collect::<Vec<_>>()
-    };
-    let mirrored = [
-        BlueprintActivityKind::Manufacturing,
-        BlueprintActivityKind::Reaction,
-        BlueprintActivityKind::Invention,
-        BlueprintActivityKind::Copying,
-    ];
-    dataset
-        .blueprint_activities
-        .retain(|activity| !mirrored.contains(&activity.kind));
-    for blueprint in &dataset.blueprints {
-        dataset.blueprint_activities.push(ImportBlueprintActivity {
-            blueprint_type_id: blueprint.blueprint_type_id,
-            kind: BlueprintActivityKind::Manufacturing,
-            duration_seconds: blueprint.duration_seconds,
-            materials: blueprint.materials.clone(),
-            products: products(&blueprint.products),
-            skills: Vec::new(),
-        });
-    }
-    for formula in &dataset.reaction_formulas {
-        dataset.blueprint_activities.push(ImportBlueprintActivity {
-            blueprint_type_id: formula.reaction_formula_type_id,
-            kind: BlueprintActivityKind::Reaction,
-            duration_seconds: formula.duration_seconds,
-            materials: formula.materials.clone(),
-            products: products(&formula.products),
-            skills: Vec::new(),
-        });
-    }
-    for invention in &dataset.inventions {
-        dataset.blueprint_activities.push(ImportBlueprintActivity {
-            blueprint_type_id: invention.blueprint_type_id,
-            kind: BlueprintActivityKind::Invention,
-            duration_seconds: invention.duration_seconds,
-            materials: invention.materials.clone(),
-            products: invention
-                .products
-                .iter()
-                .map(|product| ImportActivityProduct {
-                    type_id: product.blueprint_type_id,
-                    quantity: product.base_runs,
-                    probability: Some(product.probability),
-                    position: product.position,
-                })
-                .collect(),
-            skills: invention
-                .skills
-                .iter()
-                .enumerate()
-                .map(|(position, skill)| ImportActivitySkill {
-                    skill_type_id: skill.skill_type_id,
-                    level: skill.level,
-                    position: position as i32,
-                })
-                .collect(),
-        });
-    }
-    for copying in &dataset.blueprint_copying {
-        dataset.blueprint_activities.push(ImportBlueprintActivity {
-            blueprint_type_id: copying.blueprint_type_id,
-            kind: BlueprintActivityKind::Copying,
-            duration_seconds: Some(copying.duration_seconds),
-            materials: Vec::new(),
-            products: Vec::new(),
-            skills: Vec::new(),
-        });
     }
 }
 
@@ -506,16 +421,18 @@ fn strict_opportunity_fixture() -> NormalizedSde {
             packaged_volume_m3: None,
             published: true,
         });
-        dataset.blueprints.push(ImportBlueprint {
+        dataset.blueprint_activities.push(ImportBlueprintActivity {
+            kind: BlueprintActivityKind::Manufacturing,
+            skills: Vec::new(),
             blueprint_type_id,
-            name: format!("{name} Blueprint"),
             duration_seconds: Some(600),
             materials: vec![ImportMaterial {
                 type_id: 34,
                 quantity: 1_000,
                 position: 0,
             }],
-            products: vec![ImportProduct {
+            products: vec![ImportActivityProduct {
+                probability: None,
                 type_id,
                 quantity: 1,
                 position: 0,
@@ -569,32 +486,36 @@ fn strict_opportunity_fixture() -> NormalizedSde {
             published: true,
         },
     ]);
-    dataset.blueprints.extend([
-        ImportBlueprint {
+    dataset.blueprint_activities.extend([
+        ImportBlueprintActivity {
+            kind: BlueprintActivityKind::Manufacturing,
+            skills: Vec::new(),
             blueprint_type_id: 90_500,
-            name: "Small Trimark Armor Pump I Blueprint".to_string(),
             duration_seconds: Some(1_200),
             materials: vec![ImportMaterial {
                 type_id: 34,
                 quantity: 200,
                 position: 0,
             }],
-            products: vec![ImportProduct {
+            products: vec![ImportActivityProduct {
+                probability: None,
                 type_id: 30_987,
                 quantity: 1,
                 position: 0,
             }],
         },
-        ImportBlueprint {
+        ImportBlueprintActivity {
+            kind: BlueprintActivityKind::Manufacturing,
+            skills: Vec::new(),
             blueprint_type_id: 90_501,
-            name: "Small Trimark Armor Pump II Blueprint".to_string(),
             duration_seconds: Some(1_200),
             materials: vec![ImportMaterial {
                 type_id: 34,
                 quantity: 200,
                 position: 0,
             }],
-            products: vec![ImportProduct {
+            products: vec![ImportActivityProduct {
+                probability: None,
                 type_id: 30_988,
                 quantity: 1,
                 position: 0,
@@ -629,24 +550,23 @@ fn strict_opportunity_fixture() -> NormalizedSde {
             published: true,
         },
     ]);
-    dataset
-        .reaction_formulas
-        .push(iskworks_sde::ImportReactionFormula {
-            reaction_formula_type_id: 46_171,
-            name: "Fernite Alloy Reaction Formula".to_string(),
-            duration_seconds: Some(3_600),
-            materials: vec![ImportMaterial {
-                type_id: 34,
-                quantity: 10,
-                position: 0,
-            }],
-            products: vec![ImportProduct {
-                type_id: 16_656,
-                quantity: 100,
-                position: 0,
-            }],
-        });
+    dataset.blueprint_activities.push(ImportBlueprintActivity {
+        kind: BlueprintActivityKind::Reaction,
+        skills: Vec::new(),
+        blueprint_type_id: 46_171,
+        duration_seconds: Some(3_600),
+        materials: vec![ImportMaterial {
+            type_id: 34,
+            quantity: 10,
+            position: 0,
+        }],
+        products: vec![ImportActivityProduct {
+            probability: None,
+            type_id: 16_656,
+            quantity: 100,
+            position: 0,
+        }],
+    });
 
-    mirror_recipes(&mut dataset);
     dataset
 }

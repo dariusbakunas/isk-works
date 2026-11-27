@@ -1,4 +1,5 @@
-//! Invention data: written with an SDE import, read for the Invention page.
+//! Invention data for the Invention page: recipes from the blueprint
+//! activity tables, and the decryptors written with an SDE import.
 
 use super::sde_import::PgSdeRepository;
 use super::sde_read::map_sde_sqlx_error;
@@ -13,133 +14,11 @@ use rust_decimal::Decimal;
 const BATCH_SIZE: usize = 1_000;
 
 impl PgSdeRepository {
-    pub(super) async fn write_invention(
+    pub(super) async fn write_decryptors(
         &self,
         import_id: Uuid,
         dataset: &NormalizedSde,
     ) -> Result<(), SdeError> {
-        for batch in dataset.inventions.chunks(BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_invention \
-                 (import_id, blueprint_type_id, duration_seconds) ",
-            );
-            query.push_values(batch, |mut row, invention| {
-                row.push_bind(import_id)
-                    .push_bind(invention.blueprint_type_id)
-                    .push_bind(invention.duration_seconds);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let materials = dataset
-            .inventions
-            .iter()
-            .flat_map(|invention| {
-                invention
-                    .materials
-                    .iter()
-                    .map(move |line| (invention.blueprint_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for batch in materials.chunks(BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_invention_materials \
-                 (import_id, blueprint_type_id, material_type_id, quantity, position) ",
-            );
-            query.push_values(batch, |mut row, (blueprint_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*blueprint_type_id)
-                    .push_bind(line.type_id)
-                    .push_bind(line.quantity)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let products = dataset
-            .inventions
-            .iter()
-            .flat_map(|invention| {
-                invention
-                    .products
-                    .iter()
-                    .map(move |line| (invention.blueprint_type_id, line))
-            })
-            .collect::<Vec<_>>();
-        for batch in products.chunks(BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_invention_products \
-                 (import_id, blueprint_type_id, product_blueprint_type_id, base_runs, \
-                  probability, position) ",
-            );
-            query.push_values(batch, |mut row, (blueprint_type_id, line)| {
-                row.push_bind(import_id)
-                    .push_bind(*blueprint_type_id)
-                    .push_bind(line.blueprint_type_id)
-                    .push_bind(line.base_runs)
-                    .push_bind(line.probability)
-                    .push_bind(line.position);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        let skills = dataset
-            .inventions
-            .iter()
-            .flat_map(|invention| {
-                invention
-                    .skills
-                    .iter()
-                    .map(move |skill| (invention.blueprint_type_id, skill))
-            })
-            .collect::<Vec<_>>();
-        for batch in skills.chunks(BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_invention_skills \
-                 (import_id, blueprint_type_id, skill_type_id, level) ",
-            );
-            query.push_values(batch, |mut row, (blueprint_type_id, skill)| {
-                row.push_bind(import_id)
-                    .push_bind(*blueprint_type_id)
-                    .push_bind(skill.skill_type_id)
-                    .push_bind(skill.level);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
-        for batch in dataset.blueprint_copying.chunks(BATCH_SIZE) {
-            let mut query = QueryBuilder::<Postgres>::new(
-                "INSERT INTO sde_blueprint_copying \
-                 (import_id, blueprint_type_id, duration_seconds) ",
-            );
-            query.push_values(batch, |mut row, copying| {
-                row.push_bind(import_id)
-                    .push_bind(copying.blueprint_type_id)
-                    .push_bind(copying.duration_seconds);
-            });
-            query
-                .build()
-                .execute(&self.pool)
-                .await
-                .map_err(map_sde_sqlx_error)?;
-        }
-
         for batch in dataset.decryptors.chunks(BATCH_SIZE) {
             let mut query = QueryBuilder::<Postgres>::new(
                 "INSERT INTO sde_decryptors \

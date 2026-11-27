@@ -3,19 +3,33 @@ use super::*;
 use std::io::{Cursor, Write};
 use zip::write::SimpleFileOptions;
 
+/// The dataset's activities of one kind.
+fn activities(
+    dataset: &NormalizedSde,
+    kind: BlueprintActivityKind,
+) -> Vec<&ImportBlueprintActivity> {
+    dataset
+        .blueprint_activities
+        .iter()
+        .filter(|activity| activity.kind == kind)
+        .collect()
+}
+
 #[test]
 fn parses_only_manufacturing_and_keeps_referenced_unpublished_types() {
     let source = fixture_source(blueprints_fixture()).unwrap();
     let dataset = parse(&source).unwrap();
 
-    assert_eq!(dataset.blueprints.len(), 1);
-    assert_eq!(dataset.blueprints[0].blueprint_type_id, 6830);
-    assert_eq!(dataset.blueprints[0].materials[0].type_id, 34);
+    let blueprints = activities(&dataset, BlueprintActivityKind::Manufacturing);
+    assert_eq!(blueprints.len(), 1);
+    assert_eq!(blueprints[0].blueprint_type_id, 6830);
+    assert_eq!(blueprints[0].materials[0].type_id, 34);
+    assert_eq!(dataset.counts().blueprints, 1);
     assert!(dataset.types.iter().any(|item| item.type_id == 34));
     assert!(dataset.types.iter().any(|item| item.type_id == 6830));
     assert!(!dataset.types.iter().any(|item| item.type_id == 9999));
     assert_eq!(dataset.source_version, "123456");
-    assert!(dataset.reaction_formulas.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Reaction).is_empty());
 }
 
 #[test]
@@ -59,11 +73,11 @@ fn parses_reaction_activity_into_reaction_formulas_not_blueprints() {
     let source = fixture_source_with_reaction_type(reaction_blueprint_fixture()).unwrap();
     let dataset = parse(&source).unwrap();
 
-    assert!(dataset.blueprints.is_empty());
-    assert_eq!(dataset.reaction_formulas.len(), 1);
-    let formula = &dataset.reaction_formulas[0];
-    assert_eq!(formula.reaction_formula_type_id, 46157);
-    assert_eq!(formula.name, "Methanofullerene Reaction Formula");
+    assert!(activities(&dataset, BlueprintActivityKind::Manufacturing).is_empty());
+    let formulas = activities(&dataset, BlueprintActivityKind::Reaction);
+    assert_eq!(formulas.len(), 1);
+    let formula = formulas[0];
+    assert_eq!(formula.blueprint_type_id, 46157);
     assert_eq!(formula.duration_seconds, Some(10800));
     assert_eq!(
         formula.materials,
@@ -75,12 +89,14 @@ fn parses_reaction_activity_into_reaction_formulas_not_blueprints() {
     );
     assert_eq!(
         formula.products,
-        vec![ImportProduct {
+        vec![ImportActivityProduct {
             type_id: 5876,
             quantity: 160,
+            probability: None,
             position: 0
         }]
     );
+    assert_eq!(dataset.counts().reaction_formulas, 1);
     assert_eq!(dataset.skipped_reaction_formulas, 0);
 }
 
@@ -88,7 +104,7 @@ fn parses_reaction_activity_into_reaction_formulas_not_blueprints() {
 fn skips_reaction_formulas_with_unknown_material_types() {
     let blueprint = r#"{"_key":46157,"activities":{"reaction":{"materials":[{"typeID":404,"quantity":1}],"products":[{"typeID":5876,"quantity":1}]}}}"#;
     let dataset = parse(&fixture_source_with_reaction_type(blueprint).unwrap()).unwrap();
-    assert!(dataset.reaction_formulas.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Reaction).is_empty());
     assert_eq!(dataset.skipped_reaction_formulas, 1);
 }
 
@@ -97,7 +113,7 @@ fn skips_reaction_definitions_without_products() {
     let blueprint =
         r#"{"_key":46157,"activities":{"reaction":{"materials":[{"typeID":34,"quantity":1}]}}}"#;
     let dataset = parse(&fixture_source_with_reaction_type(blueprint).unwrap()).unwrap();
-    assert!(dataset.reaction_formulas.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Reaction).is_empty());
     assert_eq!(dataset.skipped_reaction_formulas, 1);
 }
 
@@ -625,7 +641,7 @@ fn reports_json_line_for_malformed_source() {
 fn skips_blueprints_with_unknown_material_types() {
     let blueprint = r#"{"_key":6830,"activities":{"manufacturing":{"materials":[{"typeID":404,"quantity":1}],"products":[{"typeID":5876,"quantity":1}]}}}"#;
     let dataset = parse(&fixture_source(blueprint).unwrap()).unwrap();
-    assert!(dataset.blueprints.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Manufacturing).is_empty());
     assert_eq!(dataset.skipped_blueprints, 1);
 }
 
@@ -647,7 +663,7 @@ fn rejects_non_positive_manufacturing_quantities() {
 fn skips_manufacturing_definitions_without_products() {
     let blueprint = r#"{"_key":6830,"activities":{"manufacturing":{"materials":[{"typeID":34,"quantity":1}]}}}"#;
     let dataset = parse(&fixture_source(blueprint).unwrap()).unwrap();
-    assert!(dataset.blueprints.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Manufacturing).is_empty());
     assert_eq!(dataset.skipped_blueprints, 1);
 }
 
@@ -1014,15 +1030,19 @@ fn fixture_source_inner(
                     "\n",
                     r#"{"_key":25,"categoryID":6,"name":{"en":"Frigate"},"published":true}"#,
                     "\n",
-                    r#"{"_key":105,"name":{"en":"Frigate Blueprint"}}"#,
+                    r#"{"_key":105,"categoryID":9,"name":{"en":"Frigate Blueprint"}}"#,
                     "\n",
-                    r#"{"_key":1889,"name":{"en":"Polymer Reaction Formulas"}}"#
+                    r#"{"_key":1889,"categoryID":9,"name":{"en":"Polymer Reaction Formulas"}}"#
                 ),
             ),
             ("blueprints.jsonl", blueprints),
             (
                 "categories.jsonl",
-                r#"{"_key":6,"name":{"en":"Ship"},"published":true}"#,
+                concat!(
+                    r#"{"_key":6,"name":{"en":"Ship"},"published":true}"#,
+                    "\n",
+                    r#"{"_key":9,"name":{"en":"Blueprint"},"published":true}"#
+                ),
             ),
             ("metaGroups.jsonl", r#"{"_key":1,"name":{"en":"Tech I"}}"#),
             (
@@ -1080,11 +1100,18 @@ fn parses_authoritative_classification_metadata() {
     let parsed = parse(&source).unwrap();
     assert_eq!(
         parsed.categories,
-        vec![ImportCategory {
-            category_id: 6,
-            name: "Ship".into(),
-            published: true
-        }]
+        vec![
+            ImportCategory {
+                category_id: 6,
+                name: "Ship".into(),
+                published: true
+            },
+            ImportCategory {
+                category_id: 9,
+                name: "Blueprint".into(),
+                published: true
+            },
+        ]
     );
     assert_eq!(
         parsed.meta_groups,
@@ -1668,11 +1695,7 @@ fn invention_source(blueprints: &str, type_dogma: Option<&str>) -> SdeSource {
         ),
         (
             "categories.jsonl",
-            concat!(
-                r#"{"_key":9,"name":{"en":"Blueprint"},"published":true}"#,
-                "\n",
-                r#"{"_key":34,"name":{"en":"Ancient Relics"},"published":true}"#
-            ),
+            r#"{"_key":34,"name":{"en":"Ancient Relics"},"published":true}"#,
         ),
     ];
     if let Some(type_dogma) = type_dogma {
@@ -1686,61 +1709,6 @@ fn hammerhead_invention_fixture() -> &'static str {
 }
 
 #[test]
-fn parses_invention_and_copying_activities() {
-    let source = invention_source(hammerhead_invention_fixture(), None);
-    assert!(source.has_invention());
-
-    let dataset = parse(&source).unwrap();
-
-    assert_eq!(
-        dataset.inventions,
-        vec![ImportInvention {
-            blueprint_type_id: 2184,
-            duration_seconds: Some(15_900),
-            materials: vec![
-                ImportMaterial {
-                    type_id: 20_418,
-                    quantity: 2,
-                    position: 0
-                },
-                ImportMaterial {
-                    type_id: 20_419,
-                    quantity: 2,
-                    position: 1
-                },
-            ],
-            products: vec![ImportInventionProduct {
-                blueprint_type_id: 2186,
-                base_runs: 10,
-                probability: Decimal::new(34, 2),
-                position: 0,
-            }],
-            skills: vec![
-                ImportInventionSkill {
-                    skill_type_id: 11_446,
-                    level: 1
-                },
-                ImportInventionSkill {
-                    skill_type_id: 11_453,
-                    level: 1
-                },
-                ImportInventionSkill {
-                    skill_type_id: 23_121,
-                    level: 1
-                },
-            ],
-        }]
-    );
-    assert_eq!(
-        dataset.blueprint_copying,
-        vec![ImportBlueprintCopying {
-            blueprint_type_id: 2184,
-            duration_seconds: 12_720,
-        }]
-    );
-}
-
-#[test]
 fn invention_keeps_every_product_in_source_order() {
     let source = invention_source(
         r#"{"_key":2184,"activities":{"invention":{"materials":[{"typeID":20419,"quantity":2}],"products":[{"typeID":2187,"quantity":1,"probability":0.3},{"typeID":2186,"quantity":1,"probability":0.3}],"skills":[{"typeID":23121,"level":1}],"time":63900}}}"#,
@@ -1749,11 +1717,11 @@ fn invention_keeps_every_product_in_source_order() {
 
     let dataset = parse(&source).unwrap();
 
-    let products = &dataset.inventions[0].products;
+    let products = &activities(&dataset, BlueprintActivityKind::Invention)[0].products;
     assert_eq!(
         products
             .iter()
-            .map(|product| (product.blueprint_type_id, product.position))
+            .map(|product| (product.type_id, product.position))
             .collect::<Vec<_>>(),
         vec![(2187, 0), (2186, 1)]
     );
@@ -1768,16 +1736,15 @@ fn invention_from_an_ancient_relic_is_left_out() {
 
     let dataset = parse(&source).unwrap();
 
-    assert!(dataset.inventions.is_empty());
+    assert!(dataset.blueprint_activities.is_empty());
 }
 
 #[test]
-fn a_blueprint_without_invention_yields_no_invention_row() {
+fn an_invention_that_yields_nothing_is_left_out() {
     // The base fixture carries an empty `invention` activity.
     let dataset = parse(&fixture_source(blueprints_fixture()).unwrap()).unwrap();
 
-    assert!(dataset.inventions.is_empty());
-    assert!(dataset.blueprint_copying.is_empty());
+    assert!(activities(&dataset, BlueprintActivityKind::Invention).is_empty());
 }
 
 #[test]
@@ -1790,10 +1757,10 @@ fn an_invention_product_without_a_usable_chance_is_dropped() {
     let dataset = parse(&source).unwrap();
 
     assert_eq!(
-        dataset.inventions[0]
+        activities(&dataset, BlueprintActivityKind::Invention)[0]
             .products
             .iter()
-            .map(|product| product.blueprint_type_id)
+            .map(|product| product.type_id)
             .collect::<Vec<_>>(),
         vec![2187]
     );
@@ -1826,12 +1793,13 @@ fn parses_generic_decryptors_only() {
 }
 
 #[test]
-fn parses_every_blueprint_activity_for_type_info() {
+fn parses_every_blueprint_activity() {
     let source = invention_source(
         r#"{"_key":2184,"activities":{"copying":{"materials":[{"typeID":20419,"quantity":1}],"skills":[{"typeID":11446,"level":2}],"time":12720},"invention":{"materials":[{"typeID":20419,"quantity":2},{"typeID":20418,"quantity":2}],"products":[{"typeID":2186,"quantity":10,"probability":0.34}],"skills":[{"typeID":11453,"level":1},{"typeID":11446,"level":1}],"time":15900},"research_material":{"skills":[{"typeID":11453,"level":4}],"time":2100},"research_time":{"time":2100}},"maxProductionLimit":30}"#,
         None,
     );
     assert!(source.has_blueprint_activities());
+    assert!(source.has_invention());
 
     let dataset = parse(&source).unwrap();
 
@@ -1904,7 +1872,7 @@ fn parses_every_blueprint_activity_for_type_info() {
 #[test]
 fn blueprint_activity_with_an_unknown_type_is_left_out() {
     let source = invention_source(
-        r#"{"_key":2184,"activities":{"copying":{"skills":[{"typeID":999999,"level":1}],"time":12720},"research_time":{"time":2100}}}"#,
+        r#"{"_key":2184,"activities":{"copying":{"materials":[{"typeID":999999,"quantity":1}],"time":12720},"research_time":{"skills":[{"typeID":999999,"level":1}],"time":2100}}}"#,
         None,
     );
 

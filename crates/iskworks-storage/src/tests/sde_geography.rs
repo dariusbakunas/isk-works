@@ -737,7 +737,6 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         groups: Vec::new(),
         meta_groups: Vec::new(),
         market_groups: Vec::new(),
-        blueprints: Vec::new(),
         solar_systems: Vec::new(),
         constellations: Vec::new(),
         regions: vec![
@@ -761,7 +760,6 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         npc_stations: Vec::new(),
         structure_modifiers: Vec::new(),
         rig_modifiers: Vec::new(),
-        reaction_formulas: Vec::new(),
         reaction_rig_modifiers: Vec::new(),
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
@@ -773,10 +771,8 @@ fn region_eligibility_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
-        inventions: Vec::new(),
         blueprint_activities: Vec::new(),
         blueprint_limits: Vec::new(),
-        blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }
@@ -803,7 +799,6 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
                 parent_group_id: Some(4),
             },
         ],
-        blueprints: Vec::new(),
         solar_systems: vec![
             iskworks_sde::ImportSolarSystem {
                 solar_system_id: 30_000_142,
@@ -875,7 +870,6 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         ],
         structure_modifiers: Vec::new(),
         rig_modifiers: Vec::new(),
-        reaction_formulas: Vec::new(),
         reaction_rig_modifiers: Vec::new(),
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
@@ -887,10 +881,8 @@ fn geography_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
-        inventions: Vec::new(),
         blueprint_activities: Vec::new(),
         blueprint_limits: Vec::new(),
-        blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }
@@ -918,7 +910,6 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         groups: Vec::new(),
         meta_groups: Vec::new(),
         market_groups: Vec::new(),
-        blueprints: Vec::new(),
         solar_systems: vec![
             iskworks_sde::ImportSolarSystem {
                 solar_system_id: 30_000_142,
@@ -990,7 +981,6 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         ],
         structure_modifiers: Vec::new(),
         rig_modifiers: Vec::new(),
-        reaction_formulas: Vec::new(),
         reaction_rig_modifiers: Vec::new(),
         industry_target_filters: Vec::new(),
         planet_schematics: Vec::new(),
@@ -1002,10 +992,8 @@ fn security_classification_fixture() -> iskworks_sde::NormalizedSde {
         required_skills: Vec::new(),
         type_info: iskworks_sde::ImportTypeInfo::default(),
         skipped_blueprints: 0,
-        inventions: Vec::new(),
         blueprint_activities: Vec::new(),
         blueprint_limits: Vec::new(),
-        blueprint_copying: Vec::new(),
         decryptors: Vec::new(),
         skipped_reaction_formulas: 0,
     }

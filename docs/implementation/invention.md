@@ -11,22 +11,20 @@ the quote API, and the page built on them.
 
 | SDE file | Table | Kept |
 |---|---|---|
-| `blueprints.jsonl`, `activities.invention` | `sde_blueprint_invention` | One row per source blueprint, with the job time. |
-| | `sde_blueprint_invention_materials` | What one attempt consumes (the datacores). |
-| | `sde_blueprint_invention_products` | Each blueprint the source can yield: `base_runs` (the product `quantity`) and `probability` (the base chance). |
-| | `sde_blueprint_invention_skills` | The skills the job lists, with their level. |
-| `blueprints.jsonl`, `activities.copying` | `sde_blueprint_copying` | Copy time of every published blueprint that has one. |
+| `blueprints.jsonl`, `activities.invention` | `sde_blueprint_activities` (`activity = 'invention'`) | One row per source blueprint, with the job time. |
+| | `sde_blueprint_activity_materials` | What one attempt consumes (the datacores). |
+| | `sde_blueprint_activity_products` | Each blueprint the source can yield: `quantity` is the runs on the invented copy, `probability` the base chance. |
+| | `sde_blueprint_activity_skills` | The skills the job lists, with their level. |
+| `blueprints.jsonl`, `activities.copying` | `sde_blueprint_activities` (`activity = 'copying'`) | Copy time of every blueprint that has one. |
 | `typeDogma.jsonl` | `sde_decryptors` | The chance multiplier (attribute 1112) and the ME, TE and run modifiers (1113, 1114, 1124) of each decryptor. |
 
-The invention and copying tables are still written but no longer read: the
-lookups below use the `invention` and `copying` rows of
-`sde_blueprint_activities` and its line tables (see
-[type-info.md](type-info.md)), with the same rules applied when reading.
+These are the activity tables every recipe lives in (see
+[type-info.md](type-info.md)); invention has no tables of its own.
 
 ### What is kept and what is not
 
-- **Blueprints only.** A source must be a published type in the Blueprint
-  category. Ancient relics (Tech III) carry an `invention` activity in the
+- **Blueprints only.** A source must be a type in the Blueprint category,
+  and the lookups below take published sources only. Ancient relics (Tech III) carry an `invention` activity in the
   same shape and are left out.
 - **A product needs a chance.** A product without a `probability` in
   `(0, 1]`, or whose blueprint type is unknown, is dropped. A source left
@@ -57,7 +55,7 @@ lookups below use the `invention` and `copying` rows of
 ### Notes
 
 - Re-importing the same archive redoes the import when the active import
-  has no `sde_blueprint_invention` rows
+  has no invention activity
   (`SdeDatasetRequirements::invention`). After deploying this, run
   `make sde-import` again.
 - Size, SDE 3482594: 1,003 source blueprints, 1,056 products (931 Tech II,
