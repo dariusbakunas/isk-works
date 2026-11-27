@@ -70,6 +70,7 @@ import { EveCallbackPage } from "./features/esi/eve-callback-page";
 import { HelpPage } from "./features/help/help-page";
 import { LegalPage } from "./features/legal/legal-page";
 import { OverviewPage } from "./features/overview/overview-page";
+import { shippingKind } from "./features/shipping/shipping-kind";
 import { typeInfoKind } from "./features/type-info/type-info-kind";
 
 type LoadState =
@@ -398,7 +399,7 @@ function OrderDeepLinkRedirect() {
 }
 
 /** Every tool window kind (spec 2026-10-28-type-info §4). */
-const TOOL_WINDOW_KINDS = [typeInfoKind];
+const TOOL_WINDOW_KINDS = [typeInfoKind, shippingKind];
 
 function AppShell({
   apiVersion,
