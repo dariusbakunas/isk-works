@@ -32,6 +32,17 @@ pub struct TypeSearchResult {
     pub published: bool,
 }
 
+/// A type found by its exact name (pasted item lists), with what a hauler
+/// needs to know about it.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NamedType {
+    pub type_id: i64,
+    pub type_name: String,
+    /// `None` when the SDE has no volume for the type.
+    pub packaged_volume_m3: Option<Decimal>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManufacturingRecipe {
@@ -580,6 +591,10 @@ pub trait SdeReadRepository: Send + Sync {
         query: &str,
         limit: u32,
     ) -> Result<Vec<TypeSearchResult>, SdeError>;
+    /// The types named exactly `names`, ignoring case; names nothing matches
+    /// are simply absent. When several types share a name, the published
+    /// one wins, then the lowest type ID.
+    async fn types_by_names(&self, names: &[String]) -> Result<Vec<NamedType>, SdeError>;
     async fn type_group_names(
         &self,
         type_ids: &[i64],

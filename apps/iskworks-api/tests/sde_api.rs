@@ -143,6 +143,21 @@ impl iskworks_sde::FakeSdeRead for FixtureSdeRepository {
     ) -> Result<Option<i64>, SdeError> {
         Ok((product_type_id == 16_662).then_some(46_157))
     }
+
+    async fn types_by_names(
+        &self,
+        names: &[String],
+    ) -> Result<Vec<iskworks_sde::NamedType>, SdeError> {
+        Ok(names
+            .iter()
+            .filter(|name| name.eq_ignore_ascii_case("tritanium"))
+            .map(|_| iskworks_sde::NamedType {
+                type_id: 34,
+                type_name: "Tritanium".to_string(),
+                packaged_volume_m3: Some(rust_decimal::Decimal::new(1, 2)),
+            })
+            .collect())
+    }
 }
 
 #[tokio::test]
@@ -169,6 +184,25 @@ async fn searches_manufacturing_products_and_blueprints() {
     assert_eq!(body[0]["blueprintTypeId"], 6_830);
     assert_eq!(body[0]["productName"], "Rifter");
     assert_eq!(body[0]["manufacturingAvailable"], true);
+}
+
+#[tokio::test]
+async fn resolves_pasted_names_to_types_with_packaged_volume() {
+    let response = test_app()
+        .oneshot(post(
+            "/api/types/resolve",
+            r#"{"names":["  tritanium ","Tritanium","Not An Item",""]}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    // Trimmed and de-duplicated before the lookup: one match, not two.
+    assert_eq!(body["types"].as_array().unwrap().len(), 1);
+    assert_eq!(body["types"][0]["typeId"], 34);
+    assert_eq!(body["types"][0]["typeName"], "Tritanium");
+    assert_eq!(body["types"][0]["packagedVolumeM3"], "0.01");
 }
 
 #[tokio::test]

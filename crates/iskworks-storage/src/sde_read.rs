@@ -522,6 +522,38 @@ impl SdeReadRepository for PgSdeRepository {
             .collect())
     }
 
+    async fn types_by_names(
+        &self,
+        names: &[String],
+    ) -> Result<Vec<iskworks_sde::NamedType>, SdeError> {
+        let names: Vec<String> = names.iter().map(|name| name.to_lowercase()).collect();
+        if names.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, NamedTypeRow>(
+            r#"
+            SELECT DISTINCT ON (lower(t.name_en))
+                   t.type_id, t.name_en AS type_name, t.packaged_volume_m3
+            FROM sde_imports import
+            JOIN sde_types t ON t.import_id = import.id
+            WHERE import.active = true AND lower(t.name_en) = ANY($1)
+            ORDER BY lower(t.name_en), t.published DESC, t.type_id
+            "#,
+        )
+        .bind(&names)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sde_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| iskworks_sde::NamedType {
+                type_id: row.type_id,
+                type_name: row.type_name,
+                packaged_volume_m3: row.packaged_volume_m3,
+            })
+            .collect())
+    }
+
     async fn search_types(
         &self,
         query: &str,
@@ -2257,6 +2289,13 @@ struct TypeSearchRow {
     type_name: String,
     group_name: Option<String>,
     published: bool,
+}
+
+#[derive(sqlx::FromRow)]
+struct NamedTypeRow {
+    type_id: i64,
+    type_name: String,
+    packaged_volume_m3: Option<rust_decimal::Decimal>,
 }
 
 #[derive(sqlx::FromRow)]
