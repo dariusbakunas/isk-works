@@ -80,6 +80,12 @@ test("a sent list is looked up and split into shipments for the hold", async () 
   expect(first.getByText("10 / 10 m³")).toBeInTheDocument();
   expect(first.getByText("Crate")).toBeInTheDocument();
 
+  // A shipment's quantity copies as the bare number, to paste into EVE.
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  fireEvent.click(first.getByRole("button", { name: "Copy 200 Tritanium" }));
+  expect(writeText).toHaveBeenCalledWith("200");
+
   // Halving the Tritanium drops a trip.
   fireEvent.change(screen.getByLabelText("Quantity: Tritanium"), { target: { value: "1,200" } });
   expect(screen.getByText("2 shipments")).toBeInTheDocument();
