@@ -2,6 +2,7 @@ import { ClipboardCopy, ClipboardPaste, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { resolveTypes, searchTypes, type TypeSearchResult } from "../../api/sde";
+import { CopyValueButton } from "../../components/copy-value-button";
 import { EveTypeImage } from "../../components/eve-type-image";
 import {
   applyResolved,
@@ -177,10 +178,17 @@ function ShipmentCard({ index, shipment, holdMicro }: { index: number; shipment:
       </div>
       <ul>
         {shipment.lines.map((line) => (
-          <li className={`grid min-h-6 grid-cols-[1fr_auto_72px] items-center gap-2 border-b px-2 text-[10px] last:border-b-0 ${DIVIDER}`} key={line.typeId}>
+          <li className={`group grid min-h-6 grid-cols-[1fr_auto_104px] items-center gap-2 border-b px-2 text-[10px] last:border-b-0 ${DIVIDER}`} key={line.typeId}>
             <span className="truncate text-foreground">{line.name}</span>
-            <span className="font-mono tabular-nums text-foreground">{line.quantity.toLocaleString("en-US")}</span>
-            <span className="text-right font-mono tabular-nums text-muted">{formatM3(line.volumeMicro)} m³</span>
+            <span className="flex items-center gap-1.5 font-mono tabular-nums text-foreground">
+              <CopyValueButton
+                label={`Copy ${line.quantity.toLocaleString("en-US")} ${line.name}`}
+                revealOnHover
+                value={String(line.quantity)}
+              />
+              {line.quantity.toLocaleString("en-US")}
+            </span>
+            <span className="whitespace-nowrap text-right font-mono tabular-nums text-muted">{formatM3(line.volumeMicro)} m³</span>
           </li>
         ))}
       </ul>
